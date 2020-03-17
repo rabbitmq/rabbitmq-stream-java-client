@@ -9,7 +9,7 @@ Then:
 ```
 git clone git@github.com:rabbitmq/rabbitmq-stream-java-client.git
 cd rabbitmq-stream-java-client
-./mvnw package -DskipTests
+./mvnw clean package -Dmaven.test.skip -P performance-tool
 java -jar target/stream-perf-test.jar --help
 ...
 java -jar target/stream-perf-test.jar
