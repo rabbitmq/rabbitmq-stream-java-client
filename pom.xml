@@ -9,44 +9,28 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
+        <slf4j.version>1.7.30</slf4j.version>
+        <logback.version>1.2.3</logback.version>
         <netty.version>4.1.46.Final</netty.version>
         <swiftmq-client.version>12.0.2</swiftmq-client.version>
         <metrics.version>4.1.4</metrics.version>
         <picocli.version>4.2.0</picocli.version>
-        <slf4j.version>1.7.30</slf4j.version>
         <guava.version>28.2-jre</guava.version>
-        <logback.version>1.2.3</logback.version>
         <junit.jupiter.version>5.6.0</junit.jupiter.version>
         <assertj.version>3.15.0</assertj.version>
         <qpid-jms-client.version>0.49.0</qpid-jms-client.version>
         <maven.compiler.plugin.version>3.8.1</maven.compiler.plugin.version>
+        <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
+        <spring-boot-maven-plugin.version>2.2.5.RELEASE</spring-boot-maven-plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <dependencies>
 
         <dependency>
-            <groupId>info.picocli</groupId>
-            <artifactId>picocli</artifactId>
-            <version>${picocli.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>${logback.version}</version>
-        </dependency>
-
-        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>${slf4j.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>io.dropwizard.metrics</groupId>
-            <artifactId>metrics-core</artifactId>
-            <version>${metrics.version}</version>
         </dependency>
 
         <dependency>
@@ -67,17 +51,32 @@
             <version>${netty.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.swiftmq</groupId>
+            <artifactId>swiftmq-client</artifactId>
+            <version>${swiftmq-client.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>${picocli.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.dropwizard.metrics</groupId>
+            <artifactId>metrics-core</artifactId>
+            <version>${metrics.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
         <!-- for rate limiter -->
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
             <version>${guava.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.swiftmq</groupId>
-            <artifactId>swiftmq-client</artifactId>
-            <version>${swiftmq-client.version}</version>
+            <scope>compile</scope>
         </dependency>
 
         <dependency>
@@ -114,11 +113,16 @@
             <scope>test</scope>
         </dependency>
 
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
-
-        <finalName>stream-perf-test</finalName>
 
         <plugins>
 
@@ -137,24 +141,51 @@
 
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.22.2</version>
-            </plugin>
-
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>2.2.4.RELEASE</version>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>repackage</goal>
-                        </goals>
-                    </execution>
-                </executions>
+                <version>${maven-surefire-plugin.version}</version>
             </plugin>
 
         </plugins>
 
     </build>
+
+    <profiles>
+        <profile>
+            <id>performance-tool</id>
+            <dependencies>
+
+                <dependency>
+                    <groupId>ch.qos.logback</groupId>
+                    <artifactId>logback-classic</artifactId>
+                    <version>${logback.version}</version>
+                </dependency>
+
+            </dependencies>
+            <build>
+                <finalName>stream-perf-test</finalName>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                    </resource>
+                    <resource>
+                        <directory>src/performance-tool/resources</directory>
+                    </resource>
+                </resources>
+                <plugins>
+                    <plugin>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-maven-plugin</artifactId>
+                        <version>${spring-boot-maven-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>repackage</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
