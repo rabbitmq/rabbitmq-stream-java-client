@@ -2,7 +2,7 @@
 
 ## How to Use
 
-Follow the instructions to start start the [RabbitMQ Stream Plugin](https://github.com/rabbitmq/rabbitmq-stream).
+Follow the instructions to start the [RabbitMQ Stream Plugin](https://github.com/rabbitmq/rabbitmq-stream).
 
 Then:
 
