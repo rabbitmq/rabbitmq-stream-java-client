@@ -44,7 +44,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
-public class OsirisClientTest {
+public class ClientTest {
 
     static EventLoopGroup eventLoopGroup;
 
@@ -495,7 +495,6 @@ public class OsirisClientTest {
         Meter consumed = metrics.meter("consumed");
         Meter published = metrics.meter("published");
         Histogram chunkSize = metrics.histogram("chunk.size");
-
 
         CountDownLatch consumedLatch = new CountDownLatch(publishCount);
         Client.ChunkListener chunkListener = (client, correlationId, offset, recordCount, dataSize) -> {
