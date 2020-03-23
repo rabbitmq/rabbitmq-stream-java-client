@@ -31,6 +31,7 @@ public final class Constants {
     public static final short COMMAND_PUBLISH_ERROR = 6;
     public static final short COMMAND_METADATA_UPDATE = 7;
     public static final short COMMAND_METADATA = 8;
+    public static final short COMMAND_SASL_HANDSHAKE = 9;
     public static final short COMMAND_CREATE_TARGET = 998;
     public static final short COMMAND_DELETE_TARGET = 999;
     public static final short VERSION_0 = 0;

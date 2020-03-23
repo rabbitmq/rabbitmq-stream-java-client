@@ -129,7 +129,6 @@ public class Client {
         }
     }
 
-    @SuppressWarnings("unchecked")
     static void handleResponse(ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
         int read = 2 + 2; // already read the command id and version
         int correlationId = bb.readInt();
@@ -137,7 +136,7 @@ public class Client {
         short responseCode = bb.readShort();
         read += 2;
 
-        OutstandingRequest<Response> outstandingRequest = (OutstandingRequest<Response>) outstandingRequests.remove(correlationId);
+        OutstandingRequest<Response> outstandingRequest = remove(outstandingRequests, correlationId, Response.class);
         if (outstandingRequest == null) {
             LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
         } else {
@@ -151,7 +150,55 @@ public class Client {
         }
     }
 
+    static void handleSaslHandshakeResponse(ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+        int read = 2 + 2; // already read the command id and version
+        int correlationId = bb.readInt();
+        read += 4;
+
+        short responseCode = bb.readShort();
+        read += 2;
+        if (responseCode != RESPONSE_CODE_OK) {
+            if (read != frameSize) {
+                bb.readBytes(new byte[frameSize - read]);
+            }
+            throw new ClientException("Unexpected response code for SASL handshake response: " + responseCode);
+        }
+
+
+        int mechanismsCount = bb.readInt();
+
+        read += 4;
+        List<String> mechanisms = new ArrayList<>(mechanismsCount);
+        for (int i = 0; i < mechanismsCount; i++) {
+            String mechanism = readString(bb);
+            mechanisms.add(mechanism);
+            read += 2 + mechanism.length();
+        }
+
+        OutstandingRequest<List<String>> outstandingRequest = remove(outstandingRequests, correlationId, new ParameterizedTypeReference<List<String>>() {
+        });
+        if (outstandingRequest == null) {
+            LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        } else {
+            outstandingRequest.response.set(mechanisms);
+            outstandingRequest.latch.countDown();
+        }
+
+        if (read != frameSize) {
+            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
     @SuppressWarnings("unchecked")
+    private static <T> OutstandingRequest<T> remove(ConcurrentMap<Integer, OutstandingRequest> outstandingRequests, int correlationId, ParameterizedTypeReference<T> type) {
+        return (OutstandingRequest<T>) outstandingRequests.remove(correlationId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> OutstandingRequest<T> remove(ConcurrentMap<Integer, OutstandingRequest> outstandingRequests, int correlationId, Class<T> clazz) {
+        return (OutstandingRequest<T>) outstandingRequests.remove(correlationId);
+    }
+
     static void handleMetadata(ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
         int read = 2 + 2; // already read the command id and version
         int correlationId = bb.readInt();
@@ -197,7 +244,9 @@ public class Client {
             results.put(target, targetMetadata);
         }
 
-        OutstandingRequest<Map<String, TargetMetadata>> outstandingRequest = (OutstandingRequest<Map<String, TargetMetadata>>) outstandingRequests.remove(correlationId);
+        OutstandingRequest<Map<String, TargetMetadata>> outstandingRequest = remove(outstandingRequests, correlationId,
+                new ParameterizedTypeReference<Map<String, TargetMetadata>>() {
+                });
         if (outstandingRequest == null) {
             LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
         } else {
@@ -339,6 +388,26 @@ public class Client {
         }
         if (read != frameSize) {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
+    protected List<String> getSaslMechanisms() {
+        int length = 2 + 2 + 4;
+        int correlationId = correlationSequence.incrementAndGet();
+        try {
+            ByteBuf bb = allocate(length + 4);
+            bb.writeInt(length);
+            bb.writeShort(COMMAND_SASL_HANDSHAKE);
+            bb.writeShort(VERSION_0);
+            bb.writeInt(correlationId);
+            OutstandingRequest<List<String>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+            outstandingRequests.put(correlationId, request);
+            channel.writeAndFlush(bb);
+            request.block();
+            return request.response.get();
+        } catch (RuntimeException e) {
+            outstandingRequests.remove(correlationId);
+            throw new ClientException(e);
         }
     }
 
@@ -864,6 +933,8 @@ public class Client {
                     task = () -> handleMetadataUpdate(m, frameSize, subscriptions, subscriptionListener);
                 } else if (commandId == COMMAND_METADATA) {
                     task = () -> handleMetadata(m, frameSize, outstandingRequests);
+                } else if (commandId == COMMAND_SASL_HANDSHAKE) {
+                    task = () -> handleSaslHandshakeResponse(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
                         || commandId == COMMAND_CREATE_TARGET || commandId == COMMAND_DELETE_TARGET) {
                     task = () -> handleResponse(m, frameSize, outstandingRequests);
@@ -871,8 +942,14 @@ public class Client {
                     throw new ClientException("Unsupported command " + commandId);
                 }
                 executorService.submit(() -> {
-                    task.run();
-                    m.release();
+                    try {
+                        task.run();
+                    } catch (Exception e) {
+                        LOGGER.warn("Error while handling response from server", e);
+                    } finally {
+                        m.release();
+                    }
+
                 });
             } finally {
 

@@ -643,6 +643,13 @@ public class ClientTest {
         assertThat(lastConsumedMessage).hasValue(String.valueOf(messageLimit - 1));
     }
 
+    @Test
+    void getSaslMechanismsShouldReturnDefaultSupportedMechanisms() {
+        Client client = client();
+        List<String> mechanisms = client.getSaslMechanisms();
+        assertThat(mechanisms).hasSize(2).contains("PLAIN", "AMQPLAIN");
+    }
+
     Client client() {
         return client(new Client.ClientParameters());
     }
