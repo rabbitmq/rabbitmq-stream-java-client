@@ -650,6 +650,62 @@ public class ClientTest {
         assertThat(mechanisms).hasSize(2).contains("PLAIN", "AMQPLAIN");
     }
 
+    @Test
+    void authenticateShouldPass() {
+        Client client = client();
+        client.authenticate();
+    }
+
+    @Test
+    void authenticateShouldFailWhenUsingBadCredentials() {
+        Client client = client(new Client.ClientParameters().username("bad").password("bad"));
+        try {
+            client.authenticate();
+        } catch (AuthenticationFailureException e) {
+            assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE)));
+        }
+    }
+
+    @Test
+    void authenticateShouldFailWhenUsingUnsupportedSaslMechanism() {
+        Client client = client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
+            @Override
+            public String getName() {
+                return "FANCY-SASL";
+            }
+
+            @Override
+            public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
+                return new byte[0];
+            }
+        }));
+        try {
+            client.authenticate();
+        } catch (ClientException e) {
+            assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_SASL_MECHANISM_NOT_SUPPORTED)));
+        }
+    }
+
+    @Test
+    void authenticateShouldFailWhenSendingGarbageToSaslChallenge() {
+        Client client = client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
+            @Override
+            public String getName() {
+                return PlainSaslMechanism.INSTANCE.getName();
+            }
+
+            @Override
+            public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
+                return "blabla".getBytes(StandardCharsets.UTF_8);
+            }
+        }));
+        try {
+            client.authenticate();
+        } catch (ClientException e) {
+            assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR)));
+        }
+    }
+
     Client client() {
         return client(new Client.ClientParameters());
     }

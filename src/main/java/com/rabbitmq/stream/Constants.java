@@ -22,6 +22,12 @@ public final class Constants {
     public static final short RESPONSE_CODE_SUBSCRIPTION_ID_DOES_NOT_EXIST = 3;
     public static final short RESPONSE_CODE_TARGET_ALREADY_EXISTS = 4;
     public static final short RESPONSE_CODE_TARGET_DELETED = 5;
+    public static final short RESPONSE_CODE_SASL_MECHANISM_NOT_SUPPORTED = 6;
+    public static final short RESPONSE_CODE_AUTHENTICATION_FAILURE = 7;
+    public static final short RESPONSE_CODE_SASL_ERROR = 8;
+    public static final short RESPONSE_CODE_SASL_CHALLENGE = 9;
+    public static final short RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK = 10;
+
     public static final short COMMAND_PUBLISH = 0;
     public static final short COMMAND_PUBLISH_CONFIRM = 1;
     public static final short COMMAND_SUBSCRIBE = 2;
@@ -32,6 +38,7 @@ public final class Constants {
     public static final short COMMAND_METADATA_UPDATE = 7;
     public static final short COMMAND_METADATA = 8;
     public static final short COMMAND_SASL_HANDSHAKE = 9;
+    public static final short COMMAND_SASL_AUTHENTICATE = 10;
     public static final short COMMAND_CREATE_TARGET = 998;
     public static final short COMMAND_DELETE_TARGET = 999;
     public static final short VERSION_0 = 0;

@@ -69,6 +69,10 @@ public class Client {
 
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
+    private final SaslConfiguration saslConfiguration;
+
+    private final CredentialsProvider credentialsProvider;
+
     public Client() {
         this(new ClientParameters());
     }
@@ -80,6 +84,8 @@ public class Client {
         this.recordListener = parameters.recordListener;
         this.subscriptionListener = parameters.subscriptionListener;
         this.codec = parameters.codec;
+        this.saslConfiguration = parameters.saslConfiguration;
+        this.credentialsProvider = parameters.credentialsProvider;
 
         Bootstrap b = new Bootstrap();
         b.group(parameters.eventLoopGroup);
@@ -161,6 +167,7 @@ public class Client {
             if (read != frameSize) {
                 bb.readBytes(new byte[frameSize - read]);
             }
+            // FIXME: should we unlock the request and notify that there's something wrong?
             throw new ClientException("Unexpected response code for SASL handshake response: " + responseCode);
         }
 
@@ -181,6 +188,40 @@ public class Client {
             LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
         } else {
             outstandingRequest.response.set(mechanisms);
+            outstandingRequest.latch.countDown();
+        }
+
+        if (read != frameSize) {
+            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
+    static void handleSaslAuthenticateResponse(ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+        int read = 2 + 2; // already read the command id and version
+        int correlationId = bb.readInt();
+        read += 4;
+
+        short responseCode = bb.readShort();
+        read += 2;
+
+        byte[] challenge;
+        if (responseCode == RESPONSE_CODE_SASL_CHALLENGE) {
+            int challengeSize = bb.readInt();
+            read += 4;
+            challenge = new byte[challengeSize];
+            bb.readBytes(challenge);
+            read += challenge.length;
+        } else {
+            challenge = null;
+        }
+
+        SaslAuthenticateResponse response = new SaslAuthenticateResponse(responseCode, challenge);
+
+        OutstandingRequest<SaslAuthenticateResponse> outstandingRequest = remove(outstandingRequests, correlationId, SaslAuthenticateResponse.class);
+        if (outstandingRequest == null) {
+            LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        } else {
+            outstandingRequest.response.set(response);
             outstandingRequest.latch.countDown();
         }
 
@@ -391,7 +432,56 @@ public class Client {
         }
     }
 
-    protected List<String> getSaslMechanisms() {
+    void authenticate() {
+        List<String> saslMechanisms = getSaslMechanisms();
+        SaslMechanism saslMechanism = this.saslConfiguration.getSaslMechanism(saslMechanisms);
+
+        byte[] challenge = null;
+        boolean authDone = false;
+        while (!authDone) {
+            byte[] saslResponse = saslMechanism.handleChallenge(challenge, this.credentialsProvider);
+            SaslAuthenticateResponse saslAuthenticateResponse = sendSaslAuthenticate(saslMechanism, saslResponse);
+            if (saslAuthenticateResponse.isOk()) {
+                authDone = true;
+            } else if (saslAuthenticateResponse.isChallenge()) {
+                challenge = saslAuthenticateResponse.challenge;
+            } else if (saslAuthenticateResponse.isAuthenticationFailure()) {
+                throw new AuthenticationFailureException("Unexpected response code during authentication: " + saslAuthenticateResponse.getResponseCode());
+            } else {
+                throw new ClientException("Unexpected response code during authentication: " + saslAuthenticateResponse.getResponseCode());
+            }
+        }
+    }
+
+    private SaslAuthenticateResponse sendSaslAuthenticate(SaslMechanism saslMechanism, byte[] challengeResponse) {
+        int length = 2 + 2 + 4 + 2 + saslMechanism.getName().length() +
+                4 + (challengeResponse == null ? 0 : challengeResponse.length);
+        int correlationId = correlationSequence.incrementAndGet();
+        try {
+            ByteBuf bb = allocate(length + 4);
+            bb.writeInt(length);
+            bb.writeShort(COMMAND_SASL_AUTHENTICATE);
+            bb.writeShort(VERSION_0);
+            bb.writeInt(correlationId);
+            bb.writeShort(saslMechanism.getName().length());
+            bb.writeBytes(saslMechanism.getName().getBytes(StandardCharsets.UTF_8));
+            if (challengeResponse == null) {
+                bb.writeInt(-1);
+            } else {
+                bb.writeInt(challengeResponse.length).writeBytes(challengeResponse);
+            }
+            OutstandingRequest<SaslAuthenticateResponse> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+            outstandingRequests.put(correlationId, request);
+            channel.writeAndFlush(bb);
+            request.block();
+            return request.response.get();
+        } catch (RuntimeException e) {
+            outstandingRequests.remove(correlationId);
+            throw new ClientException(e);
+        }
+    }
+
+    List<String> getSaslMechanisms() {
         int length = 2 + 2 + 4;
         int correlationId = correlationSequence.incrementAndGet();
         try {
@@ -666,6 +756,25 @@ public class Client {
         }
     }
 
+    private static class SaslAuthenticateResponse extends Response {
+
+        private final byte[] challenge;
+
+        public SaslAuthenticateResponse(short responseCode, byte[] challenge) {
+            super(responseCode);
+            this.challenge = challenge;
+        }
+
+        public boolean isChallenge() {
+            return this.getResponseCode() == RESPONSE_CODE_SASL_CHALLENGE;
+        }
+
+        public boolean isAuthenticationFailure() {
+            return this.getResponseCode() == RESPONSE_CODE_AUTHENTICATION_FAILURE ||
+                    this.getResponseCode() == RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK;
+        }
+    }
+
     public static class TargetMetadata {
 
         private final String target;
@@ -768,6 +877,10 @@ public class Client {
         // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
         private EventLoopGroup eventLoopGroup;
 
+        private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
+
+        private CredentialsProvider credentialsProvider = new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
+
         public ClientParameters host(String host) {
             this.host = host;
             return this;
@@ -810,6 +923,40 @@ public class Client {
 
         public ClientParameters eventLoopGroup(EventLoopGroup eventLoopGroup) {
             this.eventLoopGroup = eventLoopGroup;
+            return this;
+        }
+
+        public ClientParameters saslConfiguration(SaslConfiguration saslConfiguration) {
+            this.saslConfiguration = saslConfiguration;
+            return this;
+        }
+
+        public ClientParameters credentialsProvider(CredentialsProvider credentialsProvider) {
+            this.credentialsProvider = credentialsProvider;
+            return this;
+        }
+
+        public ClientParameters username(String username) {
+            if (this.credentialsProvider instanceof UsernamePasswordCredentialsProvider) {
+                this.credentialsProvider = new DefaultUsernamePasswordCredentialsProvider(
+                        username,
+                        ((UsernamePasswordCredentialsProvider) this.credentialsProvider).getPassword()
+                );
+            } else {
+                this.credentialsProvider = new DefaultUsernamePasswordCredentialsProvider(username, null);
+            }
+            return this;
+        }
+
+        public ClientParameters password(String password) {
+            if (this.credentialsProvider instanceof UsernamePasswordCredentialsProvider) {
+                this.credentialsProvider = new DefaultUsernamePasswordCredentialsProvider(
+                        ((UsernamePasswordCredentialsProvider) this.credentialsProvider).getUsername(),
+                        password
+                );
+            } else {
+                this.credentialsProvider = new DefaultUsernamePasswordCredentialsProvider(null, password);
+            }
             return this;
         }
     }
@@ -935,6 +1082,8 @@ public class Client {
                     task = () -> handleMetadata(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_SASL_HANDSHAKE) {
                     task = () -> handleSaslHandshakeResponse(m, frameSize, outstandingRequests);
+                } else if (commandId == COMMAND_SASL_AUTHENTICATE) {
+                    task = () -> handleSaslAuthenticateResponse(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
                         || commandId == COMMAND_CREATE_TARGET || commandId == COMMAND_DELETE_TARGET) {
                     task = () -> handleResponse(m, frameSize, outstandingRequests);
