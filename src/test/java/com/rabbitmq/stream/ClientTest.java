@@ -657,6 +657,14 @@ public class ClientTest {
     }
 
     @Test
+    void authenticateWithJdkSaslConfiguration() {
+        Client client = client(new Client.ClientParameters().saslConfiguration(new JdkSaslConfiguration(
+                new DefaultUsernamePasswordCredentialsProvider("guest", "guest"), () -> "localhost"
+        )));
+        client.authenticate();
+    }
+
+    @Test
     void authenticateShouldFailWhenUsingBadCredentials() {
         Client client = client(new Client.ClientParameters().username("bad").password("bad"));
         try {
