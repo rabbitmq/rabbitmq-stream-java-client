@@ -651,7 +651,7 @@ public class ClientTest {
     }
 
     @Test
-    void authenticateShouldPass() {
+    void authenticateShouldPassWithValidCredentials() {
         Client client = client();
         client.authenticate();
     }

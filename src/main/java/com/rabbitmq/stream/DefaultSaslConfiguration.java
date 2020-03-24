@@ -40,7 +40,7 @@ public class DefaultSaslConfiguration implements SaslConfiguration {
     }
 
     public DefaultSaslConfiguration(String mechanism) {
-        if (!mechanisms.containsKey(mechanism)) {
+        if (mechanism != null && !mechanisms.containsKey(mechanism)) {
             throw new IllegalArgumentException(format(
                     "SASL mechanism not supported: %s. Supported mechanisms: %s.",
                     mechanism, String.join(", ", mechanisms.keySet())
