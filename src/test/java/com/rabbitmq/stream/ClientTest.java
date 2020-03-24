@@ -644,31 +644,21 @@ public class ClientTest {
     }
 
     @Test
-    void getSaslMechanismsShouldReturnDefaultSupportedMechanisms() {
-        Client client = client();
-        List<String> mechanisms = client.getSaslMechanisms();
-        assertThat(mechanisms).hasSize(2).contains("PLAIN", "AMQPLAIN");
-    }
-
-    @Test
     void authenticateShouldPassWithValidCredentials() {
-        Client client = client();
-        client.authenticate();
+        client();
     }
 
     @Test
     void authenticateWithJdkSaslConfiguration() {
-        Client client = client(new Client.ClientParameters().saslConfiguration(new JdkSaslConfiguration(
+        client(new Client.ClientParameters().saslConfiguration(new JdkSaslConfiguration(
                 new DefaultUsernamePasswordCredentialsProvider("guest", "guest"), () -> "localhost"
         )));
-        client.authenticate();
     }
 
     @Test
     void authenticateShouldFailWhenUsingBadCredentials() {
-        Client client = client(new Client.ClientParameters().username("bad").password("bad"));
         try {
-            client.authenticate();
+            client(new Client.ClientParameters().username("bad").password("bad"));
         } catch (AuthenticationFailureException e) {
             assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE)));
         }
@@ -676,19 +666,18 @@ public class ClientTest {
 
     @Test
     void authenticateShouldFailWhenUsingUnsupportedSaslMechanism() {
-        Client client = client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
-            @Override
-            public String getName() {
-                return "FANCY-SASL";
-            }
-
-            @Override
-            public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
-                return new byte[0];
-            }
-        }));
         try {
-            client.authenticate();
+            client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
+                @Override
+                public String getName() {
+                    return "FANCY-SASL";
+                }
+
+                @Override
+                public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
+                    return new byte[0];
+                }
+            }));
         } catch (ClientException e) {
             assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_SASL_MECHANISM_NOT_SUPPORTED)));
         }
@@ -696,19 +685,18 @@ public class ClientTest {
 
     @Test
     void authenticateShouldFailWhenSendingGarbageToSaslChallenge() {
-        Client client = client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
-            @Override
-            public String getName() {
-                return PlainSaslMechanism.INSTANCE.getName();
-            }
-
-            @Override
-            public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
-                return "blabla".getBytes(StandardCharsets.UTF_8);
-            }
-        }));
         try {
-            client.authenticate();
+            client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
+                @Override
+                public String getName() {
+                    return PlainSaslMechanism.INSTANCE.getName();
+                }
+
+                @Override
+                public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
+                    return "blabla".getBytes(StandardCharsets.UTF_8);
+                }
+            }));
         } catch (ClientException e) {
             assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR)));
         }

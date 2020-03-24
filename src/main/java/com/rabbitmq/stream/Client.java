@@ -112,6 +112,7 @@ public class Client {
         }
 
         this.channel = f.channel();
+        authenticate();
     }
 
     static void handleMetadataUpdate(ByteBuf bb, int frameSize, Subscriptions subscriptions, SubscriptionListener subscriptionListener) {
