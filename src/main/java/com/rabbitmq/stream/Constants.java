@@ -39,6 +39,9 @@ public final class Constants {
     public static final short COMMAND_METADATA = 8;
     public static final short COMMAND_SASL_HANDSHAKE = 9;
     public static final short COMMAND_SASL_AUTHENTICATE = 10;
+    public static final short COMMAND_TUNE = 11;
+    public static final short COMMAND_OPEN = 12;
+
     public static final short COMMAND_CREATE_TARGET = 998;
     public static final short COMMAND_DELETE_TARGET = 999;
     public static final short VERSION_0 = 0;

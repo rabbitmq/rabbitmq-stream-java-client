@@ -73,6 +73,8 @@ public class Client {
 
     private final CredentialsProvider credentialsProvider;
 
+    private final CountDownLatch tuneLatch = new CountDownLatch(1);
+
     public Client() {
         this(new ClientParameters());
     }
@@ -113,6 +115,16 @@ public class Client {
 
         this.channel = f.channel();
         authenticate();
+        try {
+            boolean completed = this.tuneLatch.await(10, TimeUnit.SECONDS);
+            if (!completed) {
+                throw new ClientException("Waited for tune frame for 10 seconds");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ClientException("Interrupted while waiting for tune frame");
+        }
+        open(parameters.virtualHost);
     }
 
     static void handleMetadataUpdate(ByteBuf bb, int frameSize, Subscriptions subscriptions, SubscriptionListener subscriptionListener) {
@@ -225,6 +237,29 @@ public class Client {
             outstandingRequest.response.set(response);
             outstandingRequest.latch.countDown();
         }
+
+        if (read != frameSize) {
+            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
+    private static void handleTune(ByteBuf bb, int frameSize, ChannelHandlerContext ctx, CountDownLatch latch) {
+        int read = 2 + 2; // already read the command id and version
+        long maxFrameSize = bb.readLong();
+        read += 8;
+        short heartbeat = bb.readShort();
+        read += 2;
+
+        int length = 2 + 2 + 8 + 2;
+        ByteBuf byteBuf = ctx.alloc().buffer(length + 4);
+        byteBuf.writeInt(length)
+                .writeShort(COMMAND_TUNE).writeShort(VERSION_0)
+                .writeLong(maxFrameSize).writeShort(heartbeat);
+        ctx.writeAndFlush(byteBuf);
+
+        // FIXME take frame max size and heartbeat into account
+
+        latch.countDown();
 
         if (read != frameSize) {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
@@ -433,7 +468,7 @@ public class Client {
         }
     }
 
-    void authenticate() {
+    private void authenticate() {
         List<String> saslMechanisms = getSaslMechanisms();
         SaslMechanism saslMechanism = this.saslConfiguration.getSaslMechanism(saslMechanisms);
 
@@ -476,6 +511,30 @@ public class Client {
             channel.writeAndFlush(bb);
             request.block();
             return request.response.get();
+        } catch (RuntimeException e) {
+            outstandingRequests.remove(correlationId);
+            throw new ClientException(e);
+        }
+    }
+
+    private void open(String virtualHost) {
+        int length = 2 + 2 + 4 + 2 + virtualHost.length();
+        int correlationId = correlationSequence.incrementAndGet();
+        try {
+            ByteBuf bb = allocate(length + 4);
+            bb.writeInt(length);
+            bb.writeShort(COMMAND_OPEN);
+            bb.writeShort(VERSION_0);
+            bb.writeInt(correlationId);
+            bb.writeShort(virtualHost.length());
+            bb.writeBytes(virtualHost.getBytes(StandardCharsets.UTF_8));
+            OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+            outstandingRequests.put(correlationId, request);
+            channel.writeAndFlush(bb);
+            request.block();
+            if (!request.response.get().isOk()) {
+                throw new ClientException("Unexpected response code when connecting to virtual host: " + request.response.get().getResponseCode());
+            }
         } catch (RuntimeException e) {
             outstandingRequests.remove(correlationId);
             throw new ClientException(e);
@@ -852,6 +911,7 @@ public class Client {
 
         private String host = "localhost";
         private int port = DEFAULT_PORT;
+        private String virtualHost = "/";
 
         private ConfirmListener confirmListener = (publishingId) -> {
 
@@ -958,6 +1018,11 @@ public class Client {
             } else {
                 this.credentialsProvider = new DefaultUsernamePasswordCredentialsProvider(null, password);
             }
+            return this;
+        }
+
+        public ClientParameters virtualHost(String virtualHost) {
+            this.virtualHost = virtualHost;
             return this;
         }
     }
@@ -1085,8 +1150,11 @@ public class Client {
                     task = () -> handleSaslHandshakeResponse(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_SASL_AUTHENTICATE) {
                     task = () -> handleSaslAuthenticateResponse(m, frameSize, outstandingRequests);
+                } else if (commandId == COMMAND_TUNE) {
+                    task = () -> handleTune(m, frameSize, ctx, tuneLatch);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
-                        || commandId == COMMAND_CREATE_TARGET || commandId == COMMAND_DELETE_TARGET) {
+                        || commandId == COMMAND_CREATE_TARGET || commandId == COMMAND_DELETE_TARGET
+                        || commandId == COMMAND_OPEN) {
                     task = () -> handleResponse(m, frameSize, outstandingRequests);
                 } else {
                     throw new ClientException("Unsupported command " + commandId);
