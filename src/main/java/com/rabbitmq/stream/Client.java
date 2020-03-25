@@ -482,7 +482,7 @@ public class Client {
         }
     }
 
-    List<String> getSaslMechanisms() {
+    private List<String> getSaslMechanisms() {
         int length = 2 + 2 + 4;
         int correlationId = correlationSequence.incrementAndGet();
         try {
