@@ -27,6 +27,7 @@ public final class Constants {
     public static final short RESPONSE_CODE_SASL_ERROR = 8;
     public static final short RESPONSE_CODE_SASL_CHALLENGE = 9;
     public static final short RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK = 10;
+    public static final short RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE = 11;
 
     public static final short COMMAND_PUBLISH = 0;
     public static final short COMMAND_PUBLISH_CONFIRM = 1;

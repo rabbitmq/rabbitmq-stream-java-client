@@ -702,6 +702,15 @@ public class ClientTest {
         }
     }
 
+    @Test
+    void accessToNonExistingVirtualHostShouldFail() {
+        try {
+            client(new Client.ClientParameters().virtualHost(UUID.randomUUID().toString()));
+        } catch (ClientException e) {
+            assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE)));
+        }
+    }
+
     Client client() {
         return client(new Client.ClientParameters());
     }
