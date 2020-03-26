@@ -471,6 +471,33 @@ public class Client implements AutoCloseable {
         }
     }
 
+    private void handleClose(ByteBuf bb, int frameSize, ChannelHandlerContext ctx) {
+        int read = 2 + 2; // already read the command id and version
+        int correlationId = bb.readInt();
+        read += 4;
+        short closeCode = bb.readShort();
+        read += 2;
+        String closeReason = readString(bb);
+        read += 2 + closeReason.length();
+
+        LOGGER.info("Received close from server, reason: {} {}", closeCode, closeReason);
+
+        int length = 2 + 2 + 4 + 2;
+        ByteBuf byteBuf = ctx.alloc().buffer(length + 4);
+        byteBuf.writeInt(length)
+                .writeShort(COMMAND_CLOSE).writeShort(VERSION_0)
+                .writeInt(correlationId).writeShort(RESPONSE_CODE_OK);
+        ctx.writeAndFlush(byteBuf);
+
+        if (closing.compareAndSet(false, true)) {
+            closeNetty();
+        }
+
+        if (read != frameSize) {
+            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
     private void authenticate() {
         List<String> saslMechanisms = getSaslMechanisms();
         SaslMechanism saslMechanism = this.saslConfiguration.getSaslMechanism(saslMechanisms);
@@ -540,6 +567,17 @@ public class Client implements AutoCloseable {
             }
         } catch (RuntimeException e) {
             outstandingRequests.remove(correlationId);
+            throw new ClientException(e);
+        }
+    }
+
+    // for testing
+    void send(byte[] content) {
+        ByteBuf bb = allocate(content.length);
+        bb.writeBytes(content);
+        try {
+            channel.writeAndFlush(bb).sync();
+        } catch (InterruptedException e) {
             throw new ClientException(e);
         }
     }
@@ -787,7 +825,6 @@ public class Client implements AutoCloseable {
         if (closing.compareAndSet(false, true)) {
             LOGGER.debug("Closing client");
 
-            // TODO send close and wait for close ok
             sendClose(RESPONSE_CODE_OK, "OK");
 
             closeNetty();
@@ -799,6 +836,7 @@ public class Client implements AutoCloseable {
     private void closeNetty() {
         try {
             if (this.channel.isOpen()) {
+                LOGGER.debug("Closing Netty channel");
                 this.channel.close().get(10, TimeUnit.SECONDS);
             }
         } catch (InterruptedException e) {
@@ -809,6 +847,10 @@ public class Client implements AutoCloseable {
         } catch (TimeoutException e) {
             LOGGER.info("Could not close channel in 10 seconds");
         }
+    }
+
+    public boolean isOpen() {
+        return !closing.get();
     }
 
     public interface ConfirmListener {
@@ -1212,6 +1254,8 @@ public class Client implements AutoCloseable {
                     task = () -> handleSaslAuthenticateResponse(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_TUNE) {
                     task = () -> handleTune(m, frameSize, ctx, tuneLatch);
+                } else if (commandId == COMMAND_CLOSE) {
+                    task = () -> handleClose(m, frameSize, ctx);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
                         || commandId == COMMAND_CREATE_TARGET || commandId == COMMAND_DELETE_TARGET
                         || commandId == COMMAND_OPEN) {
@@ -1238,7 +1282,7 @@ public class Client implements AutoCloseable {
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-            LOGGER.debug("Netty channel became inactive, client decision? {}", closing.get());
+            LOGGER.debug("Netty channel became inactive", closing.get());
             closing.set(true);
         }
 

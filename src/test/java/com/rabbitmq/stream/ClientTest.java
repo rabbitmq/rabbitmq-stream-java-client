@@ -24,6 +24,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -709,6 +711,18 @@ public class ClientTest {
         } catch (ClientException e) {
             assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE)));
         }
+    }
+
+    @Test
+    void serverShouldSendCloseWhenSendingGarbage() throws Exception {
+        Client client = client();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        DataOutputStream dataOutputStream = new DataOutputStream(out);
+        dataOutputStream.writeInt(4);
+        dataOutputStream.writeShort(30000); // command ID
+        dataOutputStream.writeShort(Constants.VERSION_0);
+        client.send(out.toByteArray());
+        TestUtils.waitAtMost(10, () -> client.isOpen() == false);
     }
 
     Client client() {
