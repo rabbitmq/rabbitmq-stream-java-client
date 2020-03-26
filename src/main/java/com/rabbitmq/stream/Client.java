@@ -29,13 +29,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.rabbitmq.stream.Constants.*;
 
-public class Client {
+public class Client implements AutoCloseable {
 
     public static final int DEFAULT_PORT = 5555;
 
@@ -74,6 +75,8 @@ public class Client {
     private final CredentialsProvider credentialsProvider;
 
     private final CountDownLatch tuneLatch = new CountDownLatch(1);
+
+    private final AtomicBoolean closing = new AtomicBoolean(false);
 
     public Client() {
         this(new ClientParameters());
@@ -541,6 +544,32 @@ public class Client {
         }
     }
 
+    private void sendClose(short code, String reason) {
+        int length = 2 + 2 + 4 + 2 + 2 + reason.length();
+        int correlationId = correlationSequence.incrementAndGet();
+        try {
+            ByteBuf bb = allocate(length + 4);
+            bb.writeInt(length);
+            bb.writeShort(COMMAND_CLOSE);
+            bb.writeShort(VERSION_0);
+            bb.writeInt(correlationId);
+            bb.writeShort(code);
+            bb.writeShort(reason.length());
+            bb.writeBytes(reason.getBytes(StandardCharsets.UTF_8));
+            OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+            outstandingRequests.put(correlationId, request);
+            channel.writeAndFlush(bb);
+            request.block();
+            if (!request.response.get().isOk()) {
+                LOGGER.warn("Unexpected response code when closing: {}", request.response.get().getResponseCode());
+                throw new ClientException("Unexpected response code when closing: " + request.response.get().getResponseCode());
+            }
+        } catch (RuntimeException e) {
+            outstandingRequests.remove(correlationId);
+            throw new ClientException(e);
+        }
+    }
+
     private List<String> getSaslMechanisms() {
         int length = 2 + 2 + 4;
         int correlationId = correlationSequence.incrementAndGet();
@@ -755,8 +784,23 @@ public class Client {
     }
 
     public void close() {
+        if (closing.compareAndSet(false, true)) {
+            LOGGER.debug("Closing client");
+
+            // TODO send close and wait for close ok
+            sendClose(RESPONSE_CODE_OK, "OK");
+
+            closeNetty();
+
+            LOGGER.debug("Client closed");
+        }
+    }
+
+    private void closeNetty() {
         try {
-            this.channel.close().get(10, TimeUnit.SECONDS);
+            if (this.channel.isOpen()) {
+                this.channel.close().get(10, TimeUnit.SECONDS);
+            }
         } catch (InterruptedException e) {
             LOGGER.info("Channel closing has been interrupted");
             Thread.currentThread().interrupt();
@@ -1125,17 +1169,33 @@ public class Client {
     }
 
     private class StreamHandler extends ChannelInboundHandlerAdapter {
+
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             ByteBuf m = (ByteBuf) msg;
-            try {
-                int frameSize = m.readableBytes();
-                short commandId = m.readShort();
-                short version = m.readShort();
-                if (version != VERSION_0) {
-                    throw new ClientException("Unsupported version " + version + " for command " + commandId);
+
+            int frameSize = m.readableBytes();
+            short commandId = m.readShort();
+            short version = m.readShort();
+            if (version != VERSION_0) {
+                throw new ClientException("Unsupported version " + version + " for command " + commandId);
+            }
+            Runnable task;
+            if (closing.get()) {
+                if (commandId == COMMAND_CLOSE) {
+                    task = () -> handleResponse(m, frameSize, outstandingRequests);
+                } else {
+                    LOGGER.warn("Ignoring command {} from server while closing", commandId);
+                    try {
+                        while (m.isReadable()) {
+                            m.readByte();
+                        }
+                    } finally {
+                        m.release();
+                    }
+                    task = null;
                 }
-                Runnable task;
+            } else {
                 if (commandId == COMMAND_PUBLISH_CONFIRM) {
                     task = () -> handleConfirm(m, confirmListener, frameSize);
                 } else if (commandId == COMMAND_DELIVER) {
@@ -1159,6 +1219,9 @@ public class Client {
                 } else {
                     throw new ClientException("Unsupported command " + commandId);
                 }
+            }
+
+            if (task != null) {
                 executorService.submit(() -> {
                     try {
                         task.run();
@@ -1167,11 +1230,16 @@ public class Client {
                     } finally {
                         m.release();
                     }
-
                 });
-            } finally {
-
             }
+
+
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) {
+            LOGGER.debug("Netty channel became inactive, client decision? {}", closing.get());
+            closing.set(true);
         }
 
         @Override
