@@ -74,9 +74,13 @@ public class Client implements AutoCloseable {
 
     private final CredentialsProvider credentialsProvider;
 
-    private final CountDownLatch tuneLatch = new CountDownLatch(1);
+    private final TuneState tuneState;
 
     private final AtomicBoolean closing = new AtomicBoolean(false);
+
+    private final long maxFrameSize;
+
+    private final int heartbeat;
 
     public Client() {
         this(new ClientParameters());
@@ -117,16 +121,12 @@ public class Client implements AutoCloseable {
         }
 
         this.channel = f.channel();
+        this.tuneState = new TuneState(parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
         authenticate();
-        try {
-            boolean completed = this.tuneLatch.await(10, TimeUnit.SECONDS);
-            if (!completed) {
-                throw new ClientException("Waited for tune frame for 10 seconds");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ClientException("Interrupted while waiting for tune frame");
-        }
+        this.tuneState.await(Duration.ofSeconds(10));
+        this.maxFrameSize = this.tuneState.getMaxFrameSize();
+        this.heartbeat = this.tuneState.getHeartbeat();
+        LOGGER.debug("Connection tuned with max frame size {} and heart {}", this.maxFrameSize, this.heartbeat);
         open(parameters.virtualHost);
     }
 
@@ -246,27 +246,36 @@ public class Client implements AutoCloseable {
         }
     }
 
-    private static void handleTune(ByteBuf bb, int frameSize, ChannelHandlerContext ctx, CountDownLatch latch) {
+    private static void handleTune(ByteBuf bb, int frameSize, ChannelHandlerContext ctx, TuneState tuneState) {
         int read = 2 + 2; // already read the command id and version
-        long maxFrameSize = bb.readLong();
-        read += 8;
-        short heartbeat = bb.readShort();
-        read += 2;
+        int serverMaxFrameSize = bb.readInt();
+        read += 4;
+        int serverHeartbeat = bb.readInt();
+        read += 4;
 
-        int length = 2 + 2 + 8 + 2;
+        int maxFrameSize = negotiatedMaxValue(tuneState.requestedMaxFrameSize, serverMaxFrameSize);
+        int heartbeat = negotiatedMaxValue(tuneState.requestedHeartbeat, serverHeartbeat);
+
+        int length = 2 + 2 + 4 + 4;
         ByteBuf byteBuf = ctx.alloc().buffer(length + 4);
         byteBuf.writeInt(length)
                 .writeShort(COMMAND_TUNE).writeShort(VERSION_0)
-                .writeLong(maxFrameSize).writeShort(heartbeat);
+                .writeInt(maxFrameSize).writeInt(heartbeat);
         ctx.writeAndFlush(byteBuf);
 
-        // FIXME take frame max size and heartbeat into account
+        tuneState.maxFrameSize(maxFrameSize).heartbeat(heartbeat);
 
-        latch.countDown();
+        tuneState.done();
 
         if (read != frameSize) {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
         }
+    }
+
+    private static int negotiatedMaxValue(int clientValue, int serverValue) {
+        return (clientValue == 0 || serverValue == 0) ?
+                Math.max(clientValue, serverValue) :
+                Math.min(clientValue, serverValue);
     }
 
     @SuppressWarnings("unchecked")
@@ -859,12 +868,12 @@ public class Client implements AutoCloseable {
 
     }
 
-
     public interface PublishErrorListener {
 
         void handle(long publishingId, short responseCode);
 
     }
+
 
     public interface SubscriptionListener {
 
@@ -878,11 +887,62 @@ public class Client implements AutoCloseable {
 
     }
 
-
     public interface RecordListener {
 
         void handle(int subscriptionId, long offset, Message message);
 
+    }
+
+    private static class TuneState {
+
+        private final CountDownLatch latch = new CountDownLatch(1);
+
+        private final AtomicInteger maxFrameSize = new AtomicInteger();
+
+        private final AtomicInteger heartbeat = new AtomicInteger();
+
+        private final int requestedMaxFrameSize;
+
+        private final int requestedHeartbeat;
+
+        public TuneState(int requestedMaxFrameSize, int requestedHeartbeat) {
+            this.requestedMaxFrameSize = requestedMaxFrameSize;
+            this.requestedHeartbeat = requestedHeartbeat;
+        }
+
+        void await(Duration duration) {
+            try {
+                boolean completed = latch.await(duration.toMillis(), TimeUnit.MILLISECONDS);
+                if (!completed) {
+                    throw new ClientException("Waited for tune frame for " + duration.getSeconds() + " second(s)");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ClientException("Interrupted while waiting for tune frame");
+            }
+        }
+
+        int getMaxFrameSize() {
+            return maxFrameSize.get();
+        }
+
+        int getHeartbeat() {
+            return heartbeat.get();
+        }
+
+        TuneState maxFrameSize(int maxFrameSize) {
+            this.maxFrameSize.set(maxFrameSize);
+            return this;
+        }
+
+        TuneState heartbeat(int heartbeat) {
+            this.heartbeat.set(heartbeat);
+            return this;
+        }
+
+        public void done() {
+            latch.countDown();
+        }
     }
 
     public static class Response {
@@ -998,6 +1058,8 @@ public class Client implements AutoCloseable {
         private String host = "localhost";
         private int port = DEFAULT_PORT;
         private String virtualHost = "/";
+        private Duration requestedHeartbeat = Duration.ofSeconds(60);
+        private int requestedMaxFrameSize = 131072;
 
         private ConfirmListener confirmListener = (publishingId) -> {
 
@@ -1109,6 +1171,16 @@ public class Client implements AutoCloseable {
 
         public ClientParameters virtualHost(String virtualHost) {
             this.virtualHost = virtualHost;
+            return this;
+        }
+
+        public ClientParameters requestedHeartbeat(Duration requestedHeartbeat) {
+            this.requestedHeartbeat = requestedHeartbeat;
+            return this;
+        }
+
+        public ClientParameters requestedMaxFrameSize(int requestedMaxFrameSize) {
+            this.requestedMaxFrameSize = requestedMaxFrameSize;
             return this;
         }
     }
@@ -1253,7 +1325,7 @@ public class Client implements AutoCloseable {
                 } else if (commandId == COMMAND_SASL_AUTHENTICATE) {
                     task = () -> handleSaslAuthenticateResponse(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_TUNE) {
-                    task = () -> handleTune(m, frameSize, ctx, tuneLatch);
+                    task = () -> handleTune(m, frameSize, ctx, tuneState);
                 } else if (commandId == COMMAND_CLOSE) {
                     task = () -> handleClose(m, frameSize, ctx);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
