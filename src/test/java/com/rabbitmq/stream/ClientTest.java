@@ -19,7 +19,6 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -38,15 +37,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.rabbitmq.stream.TestUtils.waitAtMost;
 import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.fail;
 
 public class ClientTest {
 
@@ -78,23 +75,6 @@ public class ClientTest {
         client.close();
     }
 
-    private static void waitAtMost(int timeoutInSeconds, BooleanSupplier condition) throws InterruptedException {
-        if (condition.getAsBoolean()) {
-            return;
-        }
-        int waitTime = 100;
-        int waitedTime = 0;
-        int timeoutInMs = timeoutInSeconds * 1000;
-        while (waitedTime <= timeoutInMs) {
-            Thread.sleep(waitTime);
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            waitedTime += waitTime;
-        }
-        fail("Waited " + timeoutInSeconds + " second(s), condition never got true");
-    }
-
     @BeforeAll
     static void initSuite() {
         eventLoopGroup = new NioEventLoopGroup();
@@ -102,7 +82,7 @@ public class ClientTest {
 
     @AfterAll
     static void tearDownSuite() throws Exception {
-        eventLoopGroup.shutdownGracefully().get(10, SECONDS);
+        eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
     }
 
     @BeforeEach
@@ -648,74 +628,6 @@ public class ClientTest {
     }
 
     @Test
-    void authenticateShouldPassWithValidCredentials() {
-        client();
-    }
-
-    @Test
-    void authenticateWithJdkSaslConfiguration() {
-        client(new Client.ClientParameters().saslConfiguration(new JdkSaslConfiguration(
-                new DefaultUsernamePasswordCredentialsProvider("guest", "guest"), () -> "localhost"
-        )));
-    }
-
-    @Test
-    void authenticateShouldFailWhenUsingBadCredentials() {
-        try {
-            client(new Client.ClientParameters().username("bad").password("bad"));
-        } catch (AuthenticationFailureException e) {
-            assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE)));
-        }
-    }
-
-    @Test
-    void authenticateShouldFailWhenUsingUnsupportedSaslMechanism() {
-        try {
-            client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
-                @Override
-                public String getName() {
-                    return "FANCY-SASL";
-                }
-
-                @Override
-                public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
-                    return new byte[0];
-                }
-            }));
-        } catch (ClientException e) {
-            assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_SASL_MECHANISM_NOT_SUPPORTED)));
-        }
-    }
-
-    @Test
-    void authenticateShouldFailWhenSendingGarbageToSaslChallenge() {
-        try {
-            client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
-                @Override
-                public String getName() {
-                    return PlainSaslMechanism.INSTANCE.getName();
-                }
-
-                @Override
-                public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
-                    return "blabla".getBytes(StandardCharsets.UTF_8);
-                }
-            }));
-        } catch (ClientException e) {
-            assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR)));
-        }
-    }
-
-    @Test
-    void accessToNonExistingVirtualHostShouldFail() {
-        try {
-            client(new Client.ClientParameters().virtualHost(UUID.randomUUID().toString()));
-        } catch (ClientException e) {
-            assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE)));
-        }
-    }
-
-    @Test
     void serverShouldSendCloseWhenSendingGarbage() throws Exception {
         Client client = client();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -724,40 +636,7 @@ public class ClientTest {
         dataOutputStream.writeShort(30000); // command ID
         dataOutputStream.writeShort(Constants.VERSION_0);
         client.send(out.toByteArray());
-        TestUtils.waitAtMost(10, () -> client.isOpen() == false);
-    }
-
-    @Test void messageTooBigToFitInOneFrameShouldThrowException() {
-        Client client = client(new Client.ClientParameters().requestedMaxFrameSize(1024));
-        byte [] binary = new byte[1000];
-        Message message = new Message() {
-            @Override
-            public byte[] getBodyAsBinary() {
-                return binary;
-            }
-
-            @Override
-            public Object getBody() {
-                return null;
-            }
-
-            @Override
-            public Properties getProperties() {
-                return null;
-            }
-
-            @Override
-            public Map<String, Object> getApplicationProperties() {
-                return null;
-            }
-        };
-        List<ThrowableAssert.ThrowingCallable> publishCalls = Arrays.asList(
-                () -> client.publish(target, binary),
-                () -> client.publishBinary(target, Arrays.asList(binary)),
-                () -> client.publish(target, message),
-                () -> client.publish(target, Arrays.asList(message))
-        );
-        publishCalls.forEach(callable -> assertThatThrownBy(callable).isInstanceOf(IllegalArgumentException.class));
+        waitAtMost(10, () -> client.isOpen() == false);
     }
 
     Client client() {

@@ -128,7 +128,7 @@ public class Client implements AutoCloseable {
         authenticate();
         this.tuneState.await(Duration.ofSeconds(10));
         this.maxFrameSize = this.tuneState.getMaxFrameSize();
-        this.frameSizeCopped = this.maxFrameSize > 0 ? true : false;
+        this.frameSizeCopped = this.maxFrameSize > 0;
         this.heartbeat = this.tuneState.getHeartbeat();
         LOGGER.debug("Connection tuned with max frame size {} and heartbeat {}", this.maxFrameSize, this.heartbeat);
         open(parameters.virtualHost);
@@ -249,34 +249,6 @@ public class Client implements AutoCloseable {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
         }
     }
-
-    private void handleTune(ByteBuf bb, int frameSize, ChannelHandlerContext ctx, TuneState tuneState) {
-        int read = 2 + 2; // already read the command id and version
-        int serverMaxFrameSize = bb.readInt();
-        read += 4;
-        int serverHeartbeat = bb.readInt();
-        read += 4;
-
-        int maxFrameSize = negotiatedMaxValue(tuneState.requestedMaxFrameSize, serverMaxFrameSize);
-        int heartbeat = negotiatedMaxValue(tuneState.requestedHeartbeat, serverHeartbeat);
-
-        int length = 2 + 2 + 4 + 4;
-        ByteBuf byteBuf = allocateNoCheck(ctx.alloc(), length + 4);
-        byteBuf.writeInt(length)
-                .writeShort(COMMAND_TUNE).writeShort(VERSION_0)
-                .writeInt(maxFrameSize).writeInt(heartbeat);
-        ctx.writeAndFlush(byteBuf);
-
-        tuneState.maxFrameSize(maxFrameSize).heartbeat(heartbeat);
-
-        tuneState.done();
-
-        if (read != frameSize) {
-            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-        }
-    }
-
-
 
     private static int negotiatedMaxValue(int clientValue, int serverValue) {
         return (clientValue == 0 || serverValue == 0) ?
@@ -481,6 +453,32 @@ public class Client implements AutoCloseable {
             publishErrorListener.handle(publishingId, code);
             publishingErrorCount--;
         }
+        if (read != frameSize) {
+            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
+    private void handleTune(ByteBuf bb, int frameSize, ChannelHandlerContext ctx, TuneState tuneState) {
+        int read = 2 + 2; // already read the command id and version
+        int serverMaxFrameSize = bb.readInt();
+        read += 4;
+        int serverHeartbeat = bb.readInt();
+        read += 4;
+
+        int maxFrameSize = negotiatedMaxValue(tuneState.requestedMaxFrameSize, serverMaxFrameSize);
+        int heartbeat = negotiatedMaxValue(tuneState.requestedHeartbeat, serverHeartbeat);
+
+        int length = 2 + 2 + 4 + 4;
+        ByteBuf byteBuf = allocateNoCheck(ctx.alloc(), length + 4);
+        byteBuf.writeInt(length)
+                .writeShort(COMMAND_TUNE).writeShort(VERSION_0)
+                .writeInt(maxFrameSize).writeInt(heartbeat);
+        ctx.writeAndFlush(byteBuf);
+
+        tuneState.maxFrameSize(maxFrameSize).heartbeat(heartbeat);
+
+        tuneState.done();
+
         if (read != frameSize) {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
         }
@@ -745,13 +743,13 @@ public class Client implements AutoCloseable {
             checkMessageFitsInFrame(target, encodedMessage);
             encodedMessages.add(encodedMessage);
         }
-        return publishInternal(target, encodedMessages);
+        return publishInternal(this.channel, target, encodedMessages);
     }
 
     public long publish(String target, Message message) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
         checkMessageFitsInFrame(target, encodedMessage);
-        return publishInternal(target, Collections.singletonList(encodedMessage)).get(0);
+        return publishInternal(this.channel, target, Collections.singletonList(encodedMessage)).get(0);
     }
 
     public List<Long> publishBinary(String target, List<byte[]> messages) {
@@ -761,7 +759,7 @@ public class Client implements AutoCloseable {
             checkMessageFitsInFrame(target, encodedMessage);
             encodedMessages.add(encodedMessage);
         }
-        return publishInternal(target, encodedMessages);
+        return publishInternal(this.channel, target, encodedMessages);
     }
 
     private void checkMessageFitsInFrame(String target, Codec.EncodedMessage encodedMessage) {
@@ -774,33 +772,50 @@ public class Client implements AutoCloseable {
     public long publish(String target, byte[] data) {
         Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(data));
         checkMessageFitsInFrame(target, encodedMessage);
-        return publishInternal(target, Collections.singletonList(encodedMessage)).get(0);
+        return publishInternal(this.channel, target, Collections.singletonList(encodedMessage)).get(0);
     }
 
-    private List<Long> publishInternal(String target, List<Codec.EncodedMessage> encodedMessages) {
-        int length = 2 + 2 + 2 + target.length() + 4;
-        for (Codec.EncodedMessage encodedMessage : encodedMessages) {
-            length += (8 + 4 + encodedMessage.getSize());
-        }
+    List<Long> publishInternal(Channel ch, String target, List<Codec.EncodedMessage> encodedMessages) {
+        int frameHeaderLength = 2 + 2 + 2 + target.length() + 4;
 
         List<Long> sequences = new ArrayList<>(encodedMessages.size());
+        int length = frameHeaderLength;
+        int currentIndex = 0;
+        int startIndex = 0;
+        for (Codec.EncodedMessage encodedMessage : encodedMessages) {
+            length += (8 + 4 + encodedMessage.getSize()); // publish ID + message size
+            if (length > this.maxFrameSize) {
+                // the current message does not fit, we're sending the batch
+                int frameLength = length - (12 + encodedMessage.getSize());
+                sendMessageBatch(ch, frameLength, target, startIndex, currentIndex, encodedMessages, sequences);
+                length = frameHeaderLength + (8 + 4 + encodedMessage.getSize()); // publish ID + message size
+                startIndex = currentIndex;
+            }
+            currentIndex++;
+        }
+        sendMessageBatch(ch, length, target, startIndex, currentIndex, encodedMessages, sequences);
+
+        return sequences;
+    }
+
+    private void sendMessageBatch(Channel ch, int frameLength, String target, int fromIncluded, int toExcluded, List<Codec.EncodedMessage> messages, List<Long> sequences) {
         // no check because it's been done already
-        ByteBuf out = allocateNoCheck(length + 4);
-        out.writeInt(length);
+        ByteBuf out = allocateNoCheck(ch.alloc(), frameLength + 4);
+        out.writeInt(frameLength);
         out.writeShort(COMMAND_PUBLISH);
         out.writeShort(VERSION_0);
         out.writeShort(target.length());
         out.writeBytes(target.getBytes(StandardCharsets.UTF_8));
-        out.writeInt(encodedMessages.size());
-        for (Codec.EncodedMessage encodedMessage : encodedMessages) {
+        out.writeInt(toExcluded - fromIncluded);
+        for (int i = fromIncluded; i < toExcluded; i++) {
+            Codec.EncodedMessage messageToPublish = messages.get(i);
             long sequence = publishSequence.getAndIncrement();
             out.writeLong(sequence);
-            out.writeInt(encodedMessage.getSize());
-            out.writeBytes(encodedMessage.getData(), 0, encodedMessage.getSize());
+            out.writeInt(messageToPublish.getSize());
+            out.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
             sequences.add(sequence);
         }
-        channel.writeAndFlush(out);
-        return sequences;
+        ch.writeAndFlush(out);
     }
 
     public void credit(int subscriptionId, int credit) {
