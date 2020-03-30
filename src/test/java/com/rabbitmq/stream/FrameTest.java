@@ -26,12 +26,15 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.rabbitmq.stream.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -93,12 +96,27 @@ public class FrameTest {
     }
 
     @Test
+    void frameTooLargeShouldTriggerCloseFromServer() throws Exception {
+        int maxFrameSize = 1024;
+        try (Client client = client(new Client.ClientParameters().requestedMaxFrameSize(maxFrameSize))) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            DataOutputStream dataOutputStream = new DataOutputStream(out);
+            int frameSize = 1021;
+            dataOutputStream.writeInt(frameSize);
+            dataOutputStream.write(new byte[frameSize]);
+            client.send(out.toByteArray());
+            waitAtMost(10, () -> client.isOpen() == false);
+        }
+    }
+
+    @Test
     void splitPublishedMessagesToFitMaxFrameSize() {
         int maxFrameSize = 1024;
         class TestDesc {
             String description;
             List<Integer> sizes;
             int expectedCalls;
+
             public TestDesc(String description, List<Integer> sizes, int expectedCalls) {
                 this.description = description;
                 this.sizes = sizes;

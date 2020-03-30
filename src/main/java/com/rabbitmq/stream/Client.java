@@ -586,7 +586,7 @@ public class Client implements AutoCloseable {
 
     // for testing
     void send(byte[] content) {
-        ByteBuf bb = allocate(content.length);
+        ByteBuf bb = allocateNoCheck(content.length);
         bb.writeBytes(content);
         try {
             channel.writeAndFlush(bb).sync();
