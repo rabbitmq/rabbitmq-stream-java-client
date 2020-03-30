@@ -16,6 +16,7 @@ package com.rabbitmq.stream;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
@@ -78,9 +79,11 @@ public class Client implements AutoCloseable {
 
     private final AtomicBoolean closing = new AtomicBoolean(false);
 
-    private final long maxFrameSize;
+    private final int maxFrameSize;
 
     private final int heartbeat;
+
+    private final boolean frameSizeCopped;
 
     public Client() {
         this(new ClientParameters());
@@ -125,8 +128,9 @@ public class Client implements AutoCloseable {
         authenticate();
         this.tuneState.await(Duration.ofSeconds(10));
         this.maxFrameSize = this.tuneState.getMaxFrameSize();
+        this.frameSizeCopped = this.maxFrameSize > 0 ? true : false;
         this.heartbeat = this.tuneState.getHeartbeat();
-        LOGGER.debug("Connection tuned with max frame size {} and heart {}", this.maxFrameSize, this.heartbeat);
+        LOGGER.debug("Connection tuned with max frame size {} and heartbeat {}", this.maxFrameSize, this.heartbeat);
         open(parameters.virtualHost);
     }
 
@@ -246,7 +250,7 @@ public class Client implements AutoCloseable {
         }
     }
 
-    private static void handleTune(ByteBuf bb, int frameSize, ChannelHandlerContext ctx, TuneState tuneState) {
+    private void handleTune(ByteBuf bb, int frameSize, ChannelHandlerContext ctx, TuneState tuneState) {
         int read = 2 + 2; // already read the command id and version
         int serverMaxFrameSize = bb.readInt();
         read += 4;
@@ -257,7 +261,7 @@ public class Client implements AutoCloseable {
         int heartbeat = negotiatedMaxValue(tuneState.requestedHeartbeat, serverHeartbeat);
 
         int length = 2 + 2 + 4 + 4;
-        ByteBuf byteBuf = ctx.alloc().buffer(length + 4);
+        ByteBuf byteBuf = allocateNoCheck(ctx.alloc(), length + 4);
         byteBuf.writeInt(length)
                 .writeShort(COMMAND_TUNE).writeShort(VERSION_0)
                 .writeInt(maxFrameSize).writeInt(heartbeat);
@@ -271,6 +275,8 @@ public class Client implements AutoCloseable {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
         }
     }
+
+
 
     private static int negotiatedMaxValue(int clientValue, int serverValue) {
         return (clientValue == 0 || serverValue == 0) ?
@@ -492,7 +498,7 @@ public class Client implements AutoCloseable {
         LOGGER.info("Received close from server, reason: {} {}", closeCode, closeReason);
 
         int length = 2 + 2 + 4 + 2;
-        ByteBuf byteBuf = ctx.alloc().buffer(length + 4);
+        ByteBuf byteBuf = allocate(ctx.alloc(), length + 4);
         byteBuf.writeInt(length)
                 .writeShort(COMMAND_CLOSE).writeShort(VERSION_0)
                 .writeInt(correlationId).writeShort(RESPONSE_CODE_OK);
@@ -533,7 +539,7 @@ public class Client implements AutoCloseable {
                 4 + (challengeResponse == null ? 0 : challengeResponse.length);
         int correlationId = correlationSequence.incrementAndGet();
         try {
-            ByteBuf bb = allocate(length + 4);
+            ByteBuf bb = allocateNoCheck(length + 4);
             bb.writeInt(length);
             bb.writeShort(COMMAND_SASL_AUTHENTICATE);
             bb.writeShort(VERSION_0);
@@ -621,7 +627,7 @@ public class Client implements AutoCloseable {
         int length = 2 + 2 + 4;
         int correlationId = correlationSequence.incrementAndGet();
         try {
-            ByteBuf bb = allocate(length + 4);
+            ByteBuf bb = allocateNoCheck(length + 4);
             bb.writeInt(length);
             bb.writeShort(COMMAND_SASL_HANDSHAKE);
             bb.writeShort(VERSION_0);
@@ -659,8 +665,23 @@ public class Client implements AutoCloseable {
         }
     }
 
+    private ByteBuf allocate(ByteBufAllocator allocator, int capacity) {
+        if (frameSizeCopped && capacity > this.maxFrameSize) {
+            throw new IllegalArgumentException("Cannot allocate " + capacity + " bytes for outbound frame, limit is " + this.maxFrameSize);
+        }
+        return allocator.buffer(capacity);
+    }
+
     private ByteBuf allocate(int capacity) {
-        return channel.alloc().buffer(capacity);
+        return allocate(channel.alloc(), capacity);
+    }
+
+    private ByteBuf allocateNoCheck(ByteBufAllocator allocator, int capacity) {
+        return allocator.buffer(capacity);
+    }
+
+    private ByteBuf allocateNoCheck(int capacity) {
+        return allocateNoCheck(channel.alloc(), capacity);
     }
 
     public Response delete(String target) {
@@ -720,25 +741,39 @@ public class Client implements AutoCloseable {
     public List<Long> publish(String target, List<Message> messages) {
         List<Codec.EncodedMessage> encodedMessages = new ArrayList<>(messages.size());
         for (Message message : messages) {
-            encodedMessages.add(codec.encode(message));
+            Codec.EncodedMessage encodedMessage = codec.encode(message);
+            checkMessageFitsInFrame(target, encodedMessage);
+            encodedMessages.add(encodedMessage);
         }
         return publishInternal(target, encodedMessages);
     }
 
     public long publish(String target, Message message) {
-        return publishInternal(target, Collections.singletonList(codec.encode(message))).get(0);
+        Codec.EncodedMessage encodedMessage = codec.encode(message);
+        checkMessageFitsInFrame(target, encodedMessage);
+        return publishInternal(target, Collections.singletonList(encodedMessage)).get(0);
     }
 
     public List<Long> publishBinary(String target, List<byte[]> messages) {
         List<Codec.EncodedMessage> encodedMessages = new ArrayList<>(messages.size());
         for (byte[] message : messages) {
-            encodedMessages.add(codec.encode(new BinaryOnlyMessage(message)));
+            Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(message));
+            checkMessageFitsInFrame(target, encodedMessage);
+            encodedMessages.add(encodedMessage);
         }
         return publishInternal(target, encodedMessages);
     }
 
+    private void checkMessageFitsInFrame(String target, Codec.EncodedMessage encodedMessage) {
+        int frameBeginning = 4 + 2 + 2 + 2 + target.length() + 4 + 8 + 4 + encodedMessage.getSize();
+        if (frameBeginning > this.maxFrameSize) {
+            throw new IllegalArgumentException("Message too big to fit in one frame: " + encodedMessage.getSize());
+        }
+    }
+
     public long publish(String target, byte[] data) {
         Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(data));
+        checkMessageFitsInFrame(target, encodedMessage);
         return publishInternal(target, Collections.singletonList(encodedMessage)).get(0);
     }
 
@@ -749,7 +784,8 @@ public class Client implements AutoCloseable {
         }
 
         List<Long> sequences = new ArrayList<>(encodedMessages.size());
-        ByteBuf out = allocate(length + 4);
+        // no check because it's been done already
+        ByteBuf out = allocateNoCheck(length + 4);
         out.writeInt(length);
         out.writeShort(COMMAND_PUBLISH);
         out.writeShort(VERSION_0);

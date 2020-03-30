@@ -14,7 +14,6 @@
 
 package com.rabbitmq.stream;
 
-import java.util.Map;
 import java.util.UUID;
 
 public interface Properties {

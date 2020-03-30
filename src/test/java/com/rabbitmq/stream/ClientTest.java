@@ -19,6 +19,7 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -44,6 +45,7 @@ import java.util.stream.IntStream;
 import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.fail;
 
 public class ClientTest {
@@ -723,6 +725,39 @@ public class ClientTest {
         dataOutputStream.writeShort(Constants.VERSION_0);
         client.send(out.toByteArray());
         TestUtils.waitAtMost(10, () -> client.isOpen() == false);
+    }
+
+    @Test void messageTooBigToFitInOneFrameShouldThrowException() {
+        Client client = client(new Client.ClientParameters().requestedMaxFrameSize(1024));
+        byte [] binary = new byte[1000];
+        Message message = new Message() {
+            @Override
+            public byte[] getBodyAsBinary() {
+                return binary;
+            }
+
+            @Override
+            public Object getBody() {
+                return null;
+            }
+
+            @Override
+            public Properties getProperties() {
+                return null;
+            }
+
+            @Override
+            public Map<String, Object> getApplicationProperties() {
+                return null;
+            }
+        };
+        List<ThrowableAssert.ThrowingCallable> publishCalls = Arrays.asList(
+                () -> client.publish(target, binary),
+                () -> client.publishBinary(target, Arrays.asList(binary)),
+                () -> client.publish(target, message),
+                () -> client.publish(target, Arrays.asList(message))
+        );
+        publishCalls.forEach(callable -> assertThatThrownBy(callable).isInstanceOf(IllegalArgumentException.class));
     }
 
     Client client() {
