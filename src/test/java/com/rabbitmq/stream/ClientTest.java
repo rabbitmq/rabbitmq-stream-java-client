@@ -339,6 +339,8 @@ public class ClientTest {
         assertThat(latches.get(2).await(10, SECONDS)).isTrue();
         assertThat(messageCounts.get(2)).hasValue(messageCount * 2);
         assertThat(messageCounts.get(1)).hasValue(messageCount);
+
+        client.unsubscribe(2);
     }
 
     @Test
