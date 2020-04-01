@@ -23,6 +23,9 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.flush.FlushConsolidationHandler;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,6 +88,11 @@ public class Client implements AutoCloseable {
 
     private final boolean frameSizeCopped;
 
+    private final String NETTY_HANDLER_FLUSH_CONSOLIDATION = FlushConsolidationHandler.class.getSimpleName();
+    private final String NETTY_HANDLER_FRAME_DECODER = LengthFieldBasedFrameDecoder.class.getSimpleName();
+    private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
+    private final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
+
     public Client() {
         this(new ClientParameters());
     }
@@ -105,15 +113,17 @@ public class Client implements AutoCloseable {
         b.option(ChannelOption.SO_KEEPALIVE, true);
         // is that the default?
         b.option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
+        ChannelCustomizer channelCustomizer = parameters.channelCustomizer == null ? ch -> {
+        } : parameters.channelCustomizer;
         b.handler(new ChannelInitializer<SocketChannel>() {
             @Override
             public void initChannel(SocketChannel ch) {
-                ch.pipeline().addFirst(new FlushConsolidationHandler(FlushConsolidationHandler.DEFAULT_EXPLICIT_FLUSH_AFTER_FLUSHES, true));
-                ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(
+                ch.pipeline().addFirst(NETTY_HANDLER_FLUSH_CONSOLIDATION, new FlushConsolidationHandler(FlushConsolidationHandler.DEFAULT_EXPLICIT_FLUSH_AFTER_FLUSHES, true));
+                ch.pipeline().addLast(NETTY_HANDLER_FRAME_DECODER, new LengthFieldBasedFrameDecoder(
                         Integer.MAX_VALUE, 0, 4, 0, 4));
-                ch.pipeline().addLast(new StreamHandler());
+                ch.pipeline().addLast(NETTY_HANDLER_STREAM, new StreamHandler());
+                channelCustomizer.customize(ch);
             }
-
         });
 
         ChannelFuture f = null;
@@ -458,6 +468,15 @@ public class Client implements AutoCloseable {
         }
     }
 
+    private void handleHeartbeat(int frameSize) {
+        // FIXME handle heartbeat
+        LOGGER.debug("Received heartbeat frame");
+        int read = 2 + 2; // already read the command id and version
+        if (read != frameSize) {
+            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
     private void handleTune(ByteBuf bb, int frameSize, ChannelHandlerContext ctx, TuneState tuneState) {
         int read = 2 + 2; // already read the command id and version
         int serverMaxFrameSize = bb.readInt();
@@ -476,6 +495,14 @@ public class Client implements AutoCloseable {
         ctx.writeAndFlush(byteBuf);
 
         tuneState.maxFrameSize(maxFrameSize).heartbeat(heartbeat);
+
+        if (heartbeat > 0) {
+            this.channel.pipeline().addBefore(
+                    NETTY_HANDLER_FRAME_DECODER,
+                    NETTY_HANDLER_IDLE_STATE,
+                    new IdleStateHandler(heartbeat * 2, heartbeat, 0)
+            );
+        }
 
         tuneState.done();
 
@@ -1141,6 +1168,9 @@ public class Client implements AutoCloseable {
 
         private CredentialsProvider credentialsProvider = new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
 
+        private ChannelCustomizer channelCustomizer = ch -> {
+        };
+
         public ClientParameters host(String host) {
             this.host = host;
             return this;
@@ -1232,6 +1262,11 @@ public class Client implements AutoCloseable {
 
         public ClientParameters requestedMaxFrameSize(int requestedMaxFrameSize) {
             this.requestedMaxFrameSize = requestedMaxFrameSize;
+            return this;
+        }
+
+        public ClientParameters channelCustomizer(ChannelCustomizer channelCustomizer) {
+            this.channelCustomizer = channelCustomizer;
             return this;
         }
     }
@@ -1379,6 +1414,8 @@ public class Client implements AutoCloseable {
                     task = () -> handleTune(m, frameSize, ctx, tuneState);
                 } else if (commandId == COMMAND_CLOSE) {
                     task = () -> handleClose(m, frameSize, ctx);
+                } else if (commandId == COMMAND_HEARTBEAT) {
+                    task = () -> handleHeartbeat(frameSize);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
                         || commandId == COMMAND_CREATE_TARGET || commandId == COMMAND_DELETE_TARGET
                         || commandId == COMMAND_OPEN) {
@@ -1399,14 +1436,30 @@ public class Client implements AutoCloseable {
                     }
                 });
             }
-
-
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
             LOGGER.debug("Netty channel became inactive", closing.get());
             closing.set(true);
+            closeNetty();
+        }
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+            if (evt instanceof IdleStateEvent) {
+                IdleStateEvent e = (IdleStateEvent) evt;
+                if (e.state() == IdleState.READER_IDLE) {
+                    LOGGER.info("Closing connection because it's been idle for too long");
+                    closing.set(true);
+                    closeNetty();
+                } else if (e.state() == IdleState.WRITER_IDLE) {
+                    LOGGER.debug("Sending heartbeat frame");
+                    ByteBuf bb = allocate(ctx.alloc(), 4 + 2 + 2);
+                    bb.writeInt(4).writeShort(COMMAND_HEARTBEAT).writeShort(VERSION_0);
+                    ctx.writeAndFlush(bb);
+                }
+            }
         }
 
         @Override

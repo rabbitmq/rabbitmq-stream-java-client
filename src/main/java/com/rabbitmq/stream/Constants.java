@@ -43,6 +43,7 @@ public final class Constants {
     public static final short COMMAND_TUNE = 11;
     public static final short COMMAND_OPEN = 12;
     public static final short COMMAND_CLOSE = 13;
+    public static final short COMMAND_HEARTBEAT = 14;
 
     public static final short COMMAND_CREATE_TARGET = 998;
     public static final short COMMAND_DELETE_TARGET = 999;
