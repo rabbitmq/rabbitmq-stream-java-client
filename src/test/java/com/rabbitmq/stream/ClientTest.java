@@ -265,13 +265,13 @@ public class ClientTest {
             latches.get(correlationId).countDown();
         }));
 
-        consumer.subscribe(1, target, 0, messageCount * 100);
+        consumer.subscribe(1, target, 0, messageCount * 2);
 
         IntStream.range(0, messageCount).forEach(i -> publisher.publish(target, ("" + i).getBytes()));
 
         waitAtMost(5, () -> messageCounts.computeIfAbsent(1, k -> new AtomicInteger(0)).get() == messageCount);
 
-        consumer.subscribe(2, target, 0, messageCount * 100);
+        consumer.subscribe(2, target, 0, messageCount * 2);
 
         IntStream.range(0, messageCount).forEach(i -> publisher.publish(target, ("" + i).getBytes()));
 

@@ -366,13 +366,13 @@ public class Client implements AutoCloseable {
         read += 1;
 
         // FIXME handle unsigned
-        short numEntries = bb.readShort();
+        int numEntries = bb.readUnsignedShort();
         read += 2;
-        int numRecords = bb.readInt();
+        long numRecords = bb.readUnsignedInt();
         read += 4;
         long epoch = bb.readLong();
         read += 8;
-        long offset = bb.readLong();
+        long offset = bb.readLong(); // unsigned long
         read += 8;
         int crc = bb.readInt();
         read += 4;
@@ -395,6 +395,7 @@ public class Client implements AutoCloseable {
                 }
             }
         }
+
 
         byte[] data;
         while (numRecords != 0) {
@@ -419,14 +420,14 @@ public class Client implements AutoCloseable {
             bb.readBytes(data);
             read += typeAndSize;
 
-            if (filter && offset < offsetLimit) {
+            if (filter && Long.compareUnsigned(offset, offsetLimit) < 0) {
                 // filter
             } else {
                 Message message = codec.decode(data);
                 recordListener.handle(subscriptionId, offset, message);
             }
             numRecords--;
-            offset++;
+            offset++; // works even for unsigned long
         }
         if (read != frameSize) {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
@@ -846,6 +847,9 @@ public class Client implements AutoCloseable {
     }
 
     public void credit(int subscriptionId, int credit) {
+        if (credit < 0 || credit > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
+        }
         int length = 2 + 2 + 4 + 2;
 
         ByteBuf bb = allocate(length + 4);
@@ -858,6 +862,9 @@ public class Client implements AutoCloseable {
     }
 
     public Response subscribe(int subscriptionId, String target, long offset, int credit) {
+        if (credit < 0 || credit > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
+        }
         int length = 2 + 2 + 4 + 4 + 2 + target.length() + 8 + 2;
         int correlationId = correlationSequence.getAndIncrement();
         try {
@@ -870,7 +877,7 @@ public class Client implements AutoCloseable {
             bb.writeShort(target.length());
             bb.writeBytes(target.getBytes(StandardCharsets.UTF_8));
             bb.writeLong(offset);
-            bb.writeShort((short) credit);
+            bb.writeShort(credit);
             OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
             outstandingRequests.put(correlationId, request);
             if (offset > 0) {
@@ -961,7 +968,7 @@ public class Client implements AutoCloseable {
 
     public interface ChunkListener {
 
-        void handle(Client client, int subscriptionId, long offset, int recordCount, int dataSize);
+        void handle(Client client, int subscriptionId, long offset, long recordCount, int dataSize);
 
     }
 
@@ -1327,12 +1334,12 @@ public class Client implements AutoCloseable {
 
     }
 
-    private static final class SubscriptionOffset {
+    static final class SubscriptionOffset {
 
         private final int subscriptionId;
         private final long offset;
 
-        private SubscriptionOffset(int subscriptionId, long offset) {
+        SubscriptionOffset(int subscriptionId, long offset) {
             this.subscriptionId = subscriptionId;
             this.offset = offset;
         }
