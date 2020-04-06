@@ -28,6 +28,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -37,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -83,6 +85,14 @@ public class ClientTest {
     @AfterAll
     static void tearDownSuite() throws Exception {
         eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+    }
+
+    static boolean await(CountDownLatch latch, Duration timeout) {
+        try {
+            return latch.await(timeout.getSeconds(), SECONDS);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @BeforeEach
@@ -392,12 +402,35 @@ public class ClientTest {
         assertThat(correlationIds).isEmpty();
     }
 
-    @Test
-    public void publishConsumeComplexMessages() throws Exception {
-        Client publisher = client();
-
+    void publishConsumeComplexMessage(Client publisher, Function<Integer, Message> messageFactory) {
         int publishCount = 1000;
         for (int i = 1; i <= publishCount; i++) {
+            publisher.publish(target, messageFactory.apply(i));
+        }
+
+        CountDownLatch latch = new CountDownLatch(publishCount);
+        Set<Message> messages = ConcurrentHashMap.newKeySet(publishCount);
+        Client.ChunkListener chunkListener = (client, correlationId, offset, recordCount, dataSize) -> client.credit(correlationId, 1);
+        Client.RecordListener recordListener = (correlationId, offset, message) -> {
+            messages.add(message);
+            latch.countDown();
+        };
+        Client consumer = client(new Client.ClientParameters().recordListener(recordListener).chunkListener(chunkListener));
+        consumer.subscribe(1, target, 0, credit);
+        assertThat(await(latch, Duration.ofSeconds(10))).isTrue();
+        assertThat(messages).hasSize(publishCount);
+        messages.stream().forEach(message -> {
+            assertThat(message.getApplicationProperties()).hasSize(1);
+            Integer id = (Integer) message.getApplicationProperties().get("id");
+            assertThat(message.getBodyAsBinary()).isEqualTo(("message" + id).getBytes(StandardCharsets.UTF_8));
+        });
+        assertThat(consumer.unsubscribe(1).isOk()).isTrue();
+    }
+
+    @Test
+    void publishConsumeComplexMessagesWithMessageImplementation() {
+        Client publisher = client();
+        publishConsumeComplexMessage(publisher, i -> {
             byte[] body = ("message" + i).getBytes(StandardCharsets.UTF_8);
             Map<String, Object> applicationProperties = Collections.singletonMap("id", i);
             Message message = new Message() {
@@ -421,26 +454,15 @@ public class ClientTest {
                     return applicationProperties;
                 }
             };
-            publisher.publish(target, message);
-        }
-
-        CountDownLatch latch = new CountDownLatch(publishCount);
-        Set<Message> messages = ConcurrentHashMap.newKeySet(publishCount);
-        Client.ChunkListener chunkListener = (client, correlationId, offset, recordCount, dataSize) -> client.credit(correlationId, 1);
-        Client.RecordListener recordListener = (correlationId, offset, message) -> {
-            messages.add(message);
-            latch.countDown();
-        };
-        Client consumer = client(new Client.ClientParameters().recordListener(recordListener).chunkListener(chunkListener));
-        consumer.subscribe(1, target, 0, credit);
-        assertThat(latch.await(10, SECONDS)).isTrue();
-        assertThat(messages).hasSize(publishCount);
-        messages.stream().forEach(message -> {
-            assertThat(message.getApplicationProperties()).hasSize(1);
-            Integer id = (Integer) message.getApplicationProperties().get("id");
-            assertThat(message.getBodyAsBinary()).isEqualTo(("message" + id).getBytes(StandardCharsets.UTF_8));
+            return message;
         });
-        assertThat(consumer.unsubscribe(1).isOk()).isTrue();
+    }
+
+    @Test
+    void publishConsumeComplexMessageWithMessageBuilder() {
+        Client publisher = client();
+        publishConsumeComplexMessage(publisher, i -> publisher.messageBuilder().applicationProperties().entry("id", i)
+                .messageBuilder().addData(("message" + i).getBytes(StandardCharsets.UTF_8)).build());
     }
 
     @Test

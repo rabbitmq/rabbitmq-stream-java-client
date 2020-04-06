@@ -39,6 +39,11 @@ public class DeliveryTest {
         public Message decode(byte[] data) {
             return null;
         }
+
+        @Override
+        public MessageBuilder messageBuilder() {
+            return null;
+        }
     };
 
     ByteBuf generateFrameBuffer(int nbRecords, long chunkOffset, int dataSize, Iterable<byte[]> records) {

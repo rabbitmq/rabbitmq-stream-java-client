@@ -38,6 +38,7 @@ public class SwiftMqTest {
     public void writeReadMessage() throws Exception {
         AMQPMessage message = new AMQPMessage();
         Properties properties = new Properties();
+
         properties.setContentType(new AMQPSymbol("application/json"));
         properties.setCorrelationId(new MessageIdUlong(1));
         message.setProperties(properties);
@@ -60,7 +61,6 @@ public class SwiftMqTest {
         assertThat(protonMessage.getCorrelationId().toString()).isEqualTo("1");
         assertThat(protonMessage.getBody()).isInstanceOf(org.apache.qpid.proton.amqp.messaging.Data.class);
         assertThat(((org.apache.qpid.proton.amqp.messaging.Data) protonMessage.getBody()).getValue().getArray()).isEqualTo("hello".getBytes());
-
 
         ByteBuf buffer = Unpooled.buffer();
         buffer.writeBytes(out.toByteArray(), 0, out.size());

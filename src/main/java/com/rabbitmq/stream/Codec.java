@@ -20,10 +20,12 @@ public interface Codec {
 
     Message decode(byte[] data);
 
+    MessageBuilder messageBuilder();
+
     class EncodedMessage {
 
         private final int size;
-        private final byte [] data;
+        private final byte[] data;
 
         public EncodedMessage(int size, byte[] data) {
             this.size = size;

@@ -20,7 +20,6 @@ import com.swiftmq.amqp.v100.messaging.AMQPMessage;
 import com.swiftmq.amqp.v100.types.*;
 import com.swiftmq.tools.util.DataByteArrayOutputStream;
 
-import java.io.DataOutput;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -29,117 +28,128 @@ import java.util.UUID;
 public class SwiftMqCodec implements Codec {
 
     @Override
+    public MessageBuilder messageBuilder() {
+        return new SwiftMqMessageBuilder();
+    }
+
+    @Override
     public EncodedMessage encode(Message message) {
-        AMQPMessage outboundMessage = new AMQPMessage();
-        if (message.getProperties() != null) {
-            Properties headers = message.getProperties();
-            com.swiftmq.amqp.v100.generated.messaging.message_format.Properties properties = new com.swiftmq.amqp.v100.generated.messaging.message_format.Properties();
-            boolean propertiesSet = false;
-            if (headers.getMessageId() != null) {
-                if (headers.getMessageId() instanceof String) {
-                    properties.setMessageId(new MessageIdString(headers.getMessageIdAsString()));
-                } else if (headers.getMessageId().getClass().isPrimitive() || headers.getMessageId() instanceof Long) {
-                    properties.setMessageId(new MessageIdUlong(headers.getMessageIdAsLong()));
-                } else if (headers.getMessageId().getClass().isArray()) {
-                    properties.setMessageId(new MessageIdBinary(headers.getMessageIdAsBinary()));
-                } else if (headers.getMessageId() instanceof UUID) {
-                    properties.setMessageId(new MessageIdUuid(headers.getMessageIdAsUuid()));
-                } else {
-                    throw new IllegalStateException("Type not supported for message ID:" + properties.getMessageId().getClass());
+        AMQPMessage outboundMessage;
+        if (message instanceof SwiftMqAmqpMessageWrapper) {
+            outboundMessage = ((SwiftMqAmqpMessageWrapper) message).message;
+        } else {
+            outboundMessage = new AMQPMessage();
+            if (message.getProperties() != null) {
+                Properties headers = message.getProperties();
+                com.swiftmq.amqp.v100.generated.messaging.message_format.Properties properties = new com.swiftmq.amqp.v100.generated.messaging.message_format.Properties();
+                boolean propertiesSet = false;
+                if (headers.getMessageId() != null) {
+                    if (headers.getMessageId() instanceof String) {
+                        properties.setMessageId(new MessageIdString(headers.getMessageIdAsString()));
+                    } else if (headers.getMessageId().getClass().isPrimitive() || headers.getMessageId() instanceof Long) {
+                        properties.setMessageId(new MessageIdUlong(headers.getMessageIdAsLong()));
+                    } else if (headers.getMessageId().getClass().isArray()) {
+                        properties.setMessageId(new MessageIdBinary(headers.getMessageIdAsBinary()));
+                    } else if (headers.getMessageId() instanceof UUID) {
+                        properties.setMessageId(new MessageIdUuid(headers.getMessageIdAsUuid()));
+                    } else {
+                        throw new IllegalStateException("Type not supported for message ID:" + properties.getMessageId().getClass());
+                    }
+                    propertiesSet = true;
                 }
-                propertiesSet = true;
-            }
 
-            if (headers.getUserId() != null) {
-                properties.setUserId(new AMQPBinary(headers.getUserAsBinary()));
-                propertiesSet = true;
-            }
-
-            if (headers.getTo() != null) {
-                properties.setTo(new AddressString(headers.getTo()));
-                propertiesSet = true;
-            }
-
-            if (headers.getSubject() != null) {
-                properties.setSubject(new AddressString(headers.getSubject()));
-                propertiesSet = true;
-            }
-
-            if (headers.getReplyTo() != null) {
-                properties.setReplyTo(new AddressString(headers.getReplyTo()));
-                propertiesSet = true;
-            }
-
-            if (headers.getCorrelationId() != null) {
-                if (headers.getCorrelationId() instanceof String) {
-                    properties.setCorrelationId(new MessageIdString(headers.getCorrelationIdAsString()));
-                } else if (headers.getCorrelationId().getClass().isPrimitive() || headers.getCorrelationId() instanceof Long) {
-                    properties.setCorrelationId(new MessageIdUlong(headers.getCorrelationIdAsLong()));
-                } else if (headers.getCorrelationId().getClass().isArray()) {
-                    properties.setCorrelationId(new MessageIdBinary(headers.getCorrelationIdAsBinary()));
-                } else if (headers.getCorrelationId() instanceof UUID) {
-                    properties.setCorrelationId(new MessageIdUuid(headers.getCorrelationIdAsUuid()));
-                } else {
-                    throw new IllegalStateException("Type not supported for correlation ID:" + properties.getCorrelationId().getClass());
+                if (headers.getUserId() != null) {
+                    properties.setUserId(new AMQPBinary(headers.getUserAsBinary()));
+                    propertiesSet = true;
                 }
-                propertiesSet = true;
+
+                if (headers.getTo() != null) {
+                    properties.setTo(new AddressString(headers.getTo()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getSubject() != null) {
+                    properties.setSubject(new AMQPString(headers.getSubject()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getReplyTo() != null) {
+                    properties.setReplyTo(new AddressString(headers.getReplyTo()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getCorrelationId() != null) {
+                    if (headers.getCorrelationId() instanceof String) {
+                        properties.setCorrelationId(new MessageIdString(headers.getCorrelationIdAsString()));
+                    } else if (headers.getCorrelationId().getClass().isPrimitive() || headers.getCorrelationId() instanceof Long) {
+                        properties.setCorrelationId(new MessageIdUlong(headers.getCorrelationIdAsLong()));
+                    } else if (headers.getCorrelationId().getClass().isArray()) {
+                        properties.setCorrelationId(new MessageIdBinary(headers.getCorrelationIdAsBinary()));
+                    } else if (headers.getCorrelationId() instanceof UUID) {
+                        properties.setCorrelationId(new MessageIdUuid(headers.getCorrelationIdAsUuid()));
+                    } else {
+                        throw new IllegalStateException("Type not supported for correlation ID:" + properties.getCorrelationId().getClass());
+                    }
+                    propertiesSet = true;
+                }
+
+                if (headers.getContentType() != null) {
+                    properties.setContentType(new AMQPSymbol(headers.getContentType()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getContentEncoding() != null) {
+                    properties.setContentEncoding(new AMQPSymbol(headers.getContentEncoding()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getAbsoluteExpiryTime() > 0) {
+                    properties.setAbsoluteExpiryTime(new AMQPTimestamp(headers.getAbsoluteExpiryTime()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getCreationTime() > 0) {
+                    properties.setCreationTime(new AMQPTimestamp(headers.getCreationTime()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getGroupId() != null) {
+                    properties.setGroupId(new AMQPString(headers.getGroupId()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getGroupSequence() >= 0) {
+                    properties.setGroupSequence(new SequenceNo(headers.getGroupSequence()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getReplyToGroupId() != null) {
+                    properties.setReplyToGroupId(new AMQPString(headers.getReplyToGroupId()));
+                    propertiesSet = true;
+                }
+
+                if (propertiesSet) {
+                    outboundMessage.setProperties(properties);
+                }
             }
 
-            if (headers.getContentType() != null) {
-                properties.setContentType(new AMQPSymbol(headers.getContentType()));
-                propertiesSet = true;
+            if (message.getApplicationProperties() != null && !message.getApplicationProperties().isEmpty()) {
+                Map<AMQPType, AMQPType> applicationProperties = new LinkedHashMap<>(message.getApplicationProperties().size());
+                for (Map.Entry<String, Object> entry : message.getApplicationProperties().entrySet()) {
+                    applicationProperties.put(new AMQPString(entry.getKey()), convertApplicationProperty(entry.getValue()));
+                }
+                try {
+                    outboundMessage.setApplicationProperties(new ApplicationProperties(applicationProperties));
+                } catch (IOException e) {
+                    throw new ClientException("Error while setting application properties", e);
+                }
             }
 
-            if (headers.getContentEncoding() != null) {
-                properties.setContentEncoding(new AMQPSymbol(headers.getContentEncoding()));
-                propertiesSet = true;
-            }
-
-            if (headers.getAbsoluteExpiryTime() > 0) {
-                properties.setAbsoluteExpiryTime(new AMQPTimestamp(headers.getAbsoluteExpiryTime()));
-                propertiesSet = true;
-            }
-
-            if (headers.getCreationTime() > 0) {
-                properties.setCreationTime(new AMQPTimestamp(headers.getCreationTime()));
-                propertiesSet = true;
-            }
-
-            if (headers.getGroupId() != null) {
-                properties.setGroupId(new AMQPString(headers.getGroupId()));
-                propertiesSet = true;
-            }
-
-            if (headers.getGroupSequence() >= 0) {
-                properties.setGroupSequence(new SequenceNo(headers.getGroupSequence()));
-                propertiesSet = true;
-            }
-
-            if (headers.getReplyToGroupId() != null) {
-                properties.setReplyToGroupId(new AMQPString(headers.getReplyToGroupId()));
-                propertiesSet = true;
-            }
-
-            if (propertiesSet) {
-                outboundMessage.setProperties(properties);
+            if (message.getBodyAsBinary() != null) {
+                outboundMessage.addData(new Data(message.getBodyAsBinary()));
             }
         }
 
-        if (message.getApplicationProperties() != null && !message.getApplicationProperties().isEmpty()) {
-            Map<AMQPType, AMQPType> applicationProperties = new LinkedHashMap<>(message.getApplicationProperties().size());
-            for (Map.Entry<String, Object> entry : message.getApplicationProperties().entrySet()) {
-                applicationProperties.put(new AMQPString(entry.getKey()), convertApplicationProperty(entry.getValue()));
-            }
-            try {
-                outboundMessage.setApplicationProperties(new ApplicationProperties(applicationProperties));
-            } catch (IOException e) {
-                throw new ClientException("Error while setting application properties", e);
-            }
-        }
-
-        if (message.getBodyAsBinary() != null) {
-            outboundMessage.addData(new Data(message.getBodyAsBinary()));
-        }
 
         try {
             int bufferSize;
@@ -419,6 +429,35 @@ public class SwiftMqCodec implements Codec {
         @Override
         public String getReplyToGroupId() {
             return amqpProperties.getReplyToGroupId().getValue();
+        }
+    }
+
+    static class SwiftMqAmqpMessageWrapper implements Message {
+
+        private final AMQPMessage message;
+
+        SwiftMqAmqpMessageWrapper(AMQPMessage message) {
+            this.message = message;
+        }
+
+        @Override
+        public byte[] getBodyAsBinary() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Object getBody() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Properties getProperties() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Map<String, Object> getApplicationProperties() {
+            throw new UnsupportedOperationException();
         }
     }
 }

@@ -846,6 +846,10 @@ public class Client implements AutoCloseable {
         ch.writeAndFlush(out);
     }
 
+    public MessageBuilder messageBuilder() {
+        return this.codec.messageBuilder();
+    }
+
     public void credit(int subscriptionId, int credit) {
         if (credit < 0 || credit > Short.MAX_VALUE) {
             throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
@@ -863,15 +867,15 @@ public class Client implements AutoCloseable {
 
     /**
      * Subscribe to receive messages from a stream.
-     *
+     * <p>
      * Note the offset is an unsigned long. Longs are signed in Java, but unsigned longs
      * can be used as long as some care is taken for some operations. See
      * the <code>unsigned*</code> static methods in {@link Long}.
      *
      * @param subscriptionId identifier to correlate inbound messages to this subscription
-     * @param target the stream to consume from
-     * @param offset the offset in the stream to consume from (unsigned long)
-     * @param credit the initial number of credits
+     * @param target         the stream to consume from
+     * @param offset         the offset in the stream to consume from (unsigned long)
+     * @param credit         the initial number of credits
      * @return the subscription confirmation
      */
     public Response subscribe(int subscriptionId, String target, long offset, int credit) {
@@ -983,16 +987,16 @@ public class Client implements AutoCloseable {
 
         /**
          * Callback when a chunk is received as part of a deliver operation.
-         *
+         * <p>
          * Note the offset is an unsigned long. Longs are signed in Java, but unsigned longs
          * can be used as long as some care is taken for some operations. See
          * the <code>unsigned*</code> static methods in {@link Long}.
          *
-         * @param client the client instance (e.g. to ask for more credit)
+         * @param client         the client instance (e.g. to ask for more credit)
          * @param subscriptionId the subscription ID to correlate with a callback
-         * @param offset the first offset in the chunk
-         * @param recordCount the total number of records (messages) in the chunk
-         * @param dataSize the size in bytes of the data in the chunk
+         * @param offset         the first offset in the chunk
+         * @param recordCount    the total number of records (messages) in the chunk
+         * @param dataSize       the size in bytes of the data in the chunk
          */
         void handle(Client client, int subscriptionId, long offset, long recordCount, long dataSize);
 
