@@ -402,7 +402,7 @@ public class ClientTest {
         assertThat(correlationIds).isEmpty();
     }
 
-    void publishConsumeComplexMessage(Client publisher, Function<Integer, Message> messageFactory) {
+    void publishConsumeComplexMessage(Client publisher, Codec codec, Function<Integer, Message> messageFactory) {
         int publishCount = 1000;
         for (int i = 1; i <= publishCount; i++) {
             publisher.publish(target, messageFactory.apply(i));
@@ -415,7 +415,9 @@ public class ClientTest {
             messages.add(message);
             latch.countDown();
         };
-        Client consumer = client(new Client.ClientParameters().recordListener(recordListener).chunkListener(chunkListener));
+        Client consumer = client(new Client.ClientParameters()
+                .codec(codec)
+                .recordListener(recordListener).chunkListener(chunkListener));
         consumer.subscribe(1, target, 0, credit);
         assertThat(await(latch, Duration.ofSeconds(10))).isTrue();
         assertThat(messages).hasSize(publishCount);
@@ -428,9 +430,10 @@ public class ClientTest {
     }
 
     @Test
-    void publishConsumeComplexMessagesWithMessageImplementation() {
-        Client publisher = client();
-        publishConsumeComplexMessage(publisher, i -> {
+    void publishConsumeComplexMessagesWithMessageImplementationAndSwiftMqCodec() {
+        Codec codec = new SwiftMqCodec();
+        Client publisher = client(new Client.ClientParameters().codec(codec));
+        publishConsumeComplexMessage(publisher, codec, i -> {
             byte[] body = ("message" + i).getBytes(StandardCharsets.UTF_8);
             Map<String, Object> applicationProperties = Collections.singletonMap("id", i);
             Message message = new Message() {
@@ -459,9 +462,18 @@ public class ClientTest {
     }
 
     @Test
-    void publishConsumeComplexMessageWithMessageBuilder() {
-        Client publisher = client();
-        publishConsumeComplexMessage(publisher, i -> publisher.messageBuilder().applicationProperties().entry("id", i)
+    void publishConsumeComplexMessageWithMessageBuilderAndSwiftMqCodec() {
+        Codec codec = new SwiftMqCodec();
+        Client publisher = client(new Client.ClientParameters().codec(codec));
+        publishConsumeComplexMessage(publisher, codec, i -> publisher.messageBuilder().applicationProperties().entry("id", i)
+                .messageBuilder().addData(("message" + i).getBytes(StandardCharsets.UTF_8)).build());
+    }
+
+    @Test
+    void publishConsumeComplexMessageWithMessageBuilderAndQpidProtonCodec() {
+        Codec codec = new QpidProtonCodec();
+        Client publisher = client(new Client.ClientParameters().codec(codec));
+        publishConsumeComplexMessage(publisher, codec, i -> publisher.messageBuilder().applicationProperties().entry("id", i)
                 .messageBuilder().addData(("message" + i).getBytes(StandardCharsets.UTF_8)).build());
     }
 

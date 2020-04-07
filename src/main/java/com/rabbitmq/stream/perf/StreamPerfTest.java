@@ -20,7 +20,9 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.Client;
-
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.SwiftMqCodec;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import org.slf4j.Logger;
@@ -29,7 +31,6 @@ import picocli.CommandLine;
 
 import java.io.*;
 import java.text.SimpleDateFormat;
-
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -46,6 +47,7 @@ public class StreamPerfTest implements Callable<Integer> {
     private static final Logger LOGGER = LoggerFactory.getLogger(StreamPerfTest.class);
     private final String[] arguments;
     private final EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
+    private final Codec codec = new SwiftMqCodec();
     int addressDispatching = 0;
     int targetDispatching = 0;
     @CommandLine.Option(names = {"--addresses", "-a"}, description = "servers to connect to, e.g. localhost:5555", defaultValue = "localhost:5555")
@@ -180,7 +182,6 @@ public class StreamPerfTest implements Callable<Integer> {
         Meter consumed = metrics.meter("consumed");
         Histogram chunkSize = metrics.histogram("chunk.size");
 
-
         if (!preDeclared) {
             Address address = addresses.get(0);
             Client client = client(new Client.ClientParameters()
@@ -308,14 +309,14 @@ public class StreamPerfTest implements Callable<Integer> {
             return (Runnable) () -> {
                 // FIXME fill the message with some data
                 byte[] data = new byte[this.messageSize];
-                List<byte[]> messages = new ArrayList<>(this.batchSize);
+                List<Message> messages = new ArrayList<>(this.batchSize);
                 for (int j = 0; j < this.batchSize; j++) {
-                    messages.add(data);
+                    messages.add(client.messageBuilder().addData(data).build());
                 }
                 while (true && !Thread.currentThread().isInterrupted()) {
                     beforePublishingCallback.run();
                     rateLimiterCallback.run();
-                    client.publishBinary(target, messages);
+                    client.publish(target, messages);
                     published.mark(this.batchSize);
                 }
             };
@@ -374,7 +375,7 @@ public class StreamPerfTest implements Callable<Integer> {
     }
 
     private Client client(Client.ClientParameters parameters) {
-        return new Client(parameters.eventLoopGroup(this.eventLoopGroup));
+        return new Client(parameters.eventLoopGroup(this.eventLoopGroup).codec(codec));
     }
 
     private String target() {

@@ -39,6 +39,7 @@ public class SwiftMqTest {
         AMQPMessage message = new AMQPMessage();
         Properties properties = new Properties();
 
+        properties.setMessageId(new MessageIdUlong(1));
         properties.setContentType(new AMQPSymbol("application/json"));
         properties.setCorrelationId(new MessageIdUlong(1));
         message.setProperties(properties);
@@ -50,6 +51,7 @@ public class SwiftMqTest {
 
         AMQPMessage readMessage = new AMQPMessage(out.toByteArray());
         assertThat(readMessage.getProperties().getContentType().getValue()).isEqualTo("application/json");
+        assertThat(readMessage.getProperties().getMessageId().getValueString()).isEqualTo("1");
         assertThat(readMessage.getProperties().getCorrelationId().getValueString()).isEqualTo("1");
         assertThat(readMessage.getData()).hasSize(1);
         assertThat(readMessage.getData().get(0).getValue()).isEqualTo("hello".getBytes());
@@ -57,6 +59,7 @@ public class SwiftMqTest {
         Message protonMessage = Message.Factory.create();
         ReadableBuffer readableBuffer = ReadableBuffer.ByteBufferReader.wrap(out.toByteArray());
         protonMessage.decode(readableBuffer);
+        assertThat(protonMessage.getMessageId().toString()).isEqualTo("1");
         assertThat(protonMessage.getContentType()).isEqualTo("application/json");
         assertThat(protonMessage.getCorrelationId().toString()).isEqualTo("1");
         assertThat(protonMessage.getBody()).isInstanceOf(org.apache.qpid.proton.amqp.messaging.Data.class);
@@ -66,6 +69,7 @@ public class SwiftMqTest {
         buffer.writeBytes(out.toByteArray(), 0, out.size());
         readableBuffer = new AmqpReadableBuffer(buffer);
         protonMessage.decode(readableBuffer);
+        assertThat(protonMessage.getMessageId().toString()).isEqualTo("1");
         assertThat(protonMessage.getContentType()).isEqualTo("application/json");
         assertThat(protonMessage.getCorrelationId().toString()).isEqualTo("1");
         assertThat(protonMessage.getBody()).isInstanceOf(org.apache.qpid.proton.amqp.messaging.Data.class);
