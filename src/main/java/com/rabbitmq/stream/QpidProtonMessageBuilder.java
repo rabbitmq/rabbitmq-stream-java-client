@@ -18,6 +18,7 @@ import org.apache.qpid.proton.amqp.*;
 import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
 import org.apache.qpid.proton.amqp.messaging.Data;
 
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -93,6 +94,90 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
         @Override
         public PropertiesBuilder messageId(UUID id) {
             properties.setMessageId(id);
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder userId(byte[] userId) {
+            properties.setUserId(new Binary(userId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder to(String address) {
+            properties.setTo(address);
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder subject(String subject) {
+            properties.setSubject(subject);
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder replyTo(String replyTo) {
+            properties.setReplyTo(replyTo);
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder correlationId(String correlationId) {
+            properties.setCorrelationId(correlationId);
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder correlationId(long correlationId) {
+            properties.setCorrelationId(new UnsignedLong(correlationId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder correlationId(byte[] correlationId) {
+            properties.setCorrelationId(new Binary(correlationId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder correlationId(UUID correlationId) {
+            properties.setCorrelationId(correlationId);
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder contentType(String contentType) {
+            properties.setContentType(Symbol.valueOf(contentType));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder contentEncoding(String contentEncoding) {
+            properties.setContentEncoding(Symbol.valueOf(contentEncoding));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder absoluteExpiryTime(long absoluteExpiryTime) {
+            properties.setAbsoluteExpiryTime(new Date(absoluteExpiryTime));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder creationTime(long creationTime) {
+            properties.setCreationTime(new Date(creationTime));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder groupId(String groupId) {
+            properties.setGroupId(groupId);
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder groupSequence(long groupSequence) {
+            properties.setGroupSequence(UnsignedInteger.valueOf(groupSequence));
             return this;
         }
 

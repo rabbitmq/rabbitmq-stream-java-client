@@ -14,8 +14,7 @@
 
 package com.rabbitmq.stream;
 
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.UnsignedLong;
+import org.apache.qpid.proton.amqp.*;
 import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
@@ -81,6 +80,16 @@ public class QpidProtonCodec implements Codec {
             return value;
         } else if (value instanceof Binary) {
             return ((Binary) value).getArray();
+        }
+        if (value instanceof UnsignedByte) {
+            return com.rabbitmq.stream.amqp.UnsignedByte.valueOf(((UnsignedByte) value).byteValue());
+        }
+        if (value instanceof UnsignedShort) {
+            return com.rabbitmq.stream.amqp.UnsignedShort.valueOf(((UnsignedShort) value).shortValue());
+        } else if (value instanceof UnsignedInteger) {
+            return com.rabbitmq.stream.amqp.UnsignedInteger.valueOf(((UnsignedInteger) value).intValue());
+        } else if (value instanceof UnsignedLong) {
+            return com.rabbitmq.stream.amqp.UnsignedLong.valueOf(((UnsignedLong) value).longValue());
         } else {
             throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
         }
@@ -95,8 +104,15 @@ public class QpidProtonCodec implements Codec {
 
         private final org.apache.qpid.proton.amqp.messaging.Properties properties;
 
+        private final com.rabbitmq.stream.amqp.UnsignedInteger groupSequence;
+
         private QpidProtonProperties(org.apache.qpid.proton.amqp.messaging.Properties properties) {
             this.properties = properties;
+            if (this.properties.getGroupSequence() != null) {
+                this.groupSequence = com.rabbitmq.stream.amqp.UnsignedInteger.valueOf(this.properties.getGroupSequence().intValue());
+            } else {
+                this.groupSequence = null;
+            }
         }
 
         @Override
@@ -200,8 +216,8 @@ public class QpidProtonCodec implements Codec {
         }
 
         @Override
-        public long getGroupSequence() {
-            return properties.getGroupSequence().longValue();
+        public com.rabbitmq.stream.amqp.UnsignedInteger getGroupSequence() {
+            return this.groupSequence;
         }
 
         @Override

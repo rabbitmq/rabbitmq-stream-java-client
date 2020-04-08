@@ -14,6 +14,10 @@
 
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.amqp.UnsignedByte;
+import com.rabbitmq.stream.amqp.UnsignedInteger;
+import com.rabbitmq.stream.amqp.UnsignedLong;
+import com.rabbitmq.stream.amqp.UnsignedShort;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
 import com.swiftmq.amqp.v100.generated.transport.definitions.SequenceNo;
 import com.swiftmq.amqp.v100.messaging.AMQPMessage;
@@ -118,8 +122,8 @@ public class SwiftMqCodec implements Codec {
                     propertiesSet = true;
                 }
 
-                if (headers.getGroupSequence() >= 0) {
-                    properties.setGroupSequence(new SequenceNo(headers.getGroupSequence()));
+                if (headers.getGroupSequence() != null) {
+                    properties.setGroupSequence(new SequenceNo(headers.getGroupSequence().longValue()));
                     propertiesSet = true;
                 }
 
@@ -196,12 +200,20 @@ public class SwiftMqCodec implements Codec {
             return ((AMQPBoolean) value).getValue() ? Boolean.TRUE : Boolean.FALSE;
         } else if (value instanceof AMQPByte) {
             return ((AMQPByte) value).getValue();
+        } else if (value instanceof AMQPUnsignedByte) {
+            return UnsignedByte.valueOf((byte) ((AMQPUnsignedByte) value).getValue());
         } else if (value instanceof AMQPShort) {
-            return ((AMQPShort) value).getValue();
+            return (short) ((AMQPShort) value).getValue();
+        } else if (value instanceof AMQPUnsignedShort) {
+            return UnsignedShort.valueOf((short) ((AMQPUnsignedShort) value).getValue());
         } else if (value instanceof AMQPInt) {
             return ((AMQPInt) value).getValue();
+        } else if (value instanceof AMQPUnsignedInt) {
+            return UnsignedInteger.valueOf(((AMQPUnsignedInt) value).getValue());
         } else if (value instanceof AMQPLong) {
             return ((AMQPLong) value).getValue();
+        } else if (value instanceof AMQPUnsignedLong) {
+            return UnsignedLong.valueOf(((AMQPUnsignedLong) value).getValue());
         } else if (value instanceof AMQPFloat) {
             return ((AMQPFloat) value).getValue();
         } else if (value instanceof AMQPDouble) {
@@ -317,8 +329,15 @@ public class SwiftMqCodec implements Codec {
 
         private final com.swiftmq.amqp.v100.generated.messaging.message_format.Properties amqpProperties;
 
+        private final UnsignedInteger groupSequence;
+
         private SwiftMqProperties(com.swiftmq.amqp.v100.generated.messaging.message_format.Properties amqpProperties) {
             this.amqpProperties = amqpProperties;
+            if (this.amqpProperties.getGroupSequence() != null) {
+                this.groupSequence = UnsignedInteger.valueOf(this.amqpProperties.getGroupSequence().getValue());
+            } else {
+                this.groupSequence = null;
+            }
         }
 
         @Override
@@ -422,8 +441,8 @@ public class SwiftMqCodec implements Codec {
         }
 
         @Override
-        public long getGroupSequence() {
-            return amqpProperties.getGroupSequence().getValue();
+        public UnsignedInteger getGroupSequence() {
+            return groupSequence;
         }
 
         @Override
@@ -460,4 +479,5 @@ public class SwiftMqCodec implements Codec {
             throw new UnsupportedOperationException();
         }
     }
+
 }

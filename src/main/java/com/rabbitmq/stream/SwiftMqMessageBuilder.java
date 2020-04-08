@@ -15,6 +15,7 @@
 package com.rabbitmq.stream;
 
 import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
+import com.swiftmq.amqp.v100.generated.transport.definitions.SequenceNo;
 import com.swiftmq.amqp.v100.messaging.AMQPMessage;
 import com.swiftmq.amqp.v100.types.*;
 
@@ -98,6 +99,90 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
         @Override
         public PropertiesBuilder messageId(UUID id) {
             properties.setMessageId(new MessageIdUuid(id));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder userId(byte[] userId) {
+            properties.setUserId(new AMQPBinary(userId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder to(String address) {
+            properties.setTo(new AddressString(address));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder subject(String subject) {
+            properties.setSubject(new AMQPString(subject));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder replyTo(String replyTo) {
+            properties.setReplyTo(new AddressString(replyTo));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder correlationId(String correlationId) {
+            properties.setCorrelationId(new MessageIdString(correlationId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder correlationId(long correlationId) {
+            properties.setCorrelationId(new MessageIdUlong(correlationId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder correlationId(byte[] correlationId) {
+            properties.setCorrelationId(new MessageIdBinary(correlationId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder correlationId(UUID correlationId) {
+            properties.setCorrelationId(new MessageIdUuid(correlationId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder contentType(String contentType) {
+            properties.setContentType(new AMQPSymbol(contentType));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder contentEncoding(String contentEncoding) {
+            properties.setContentEncoding(new AMQPSymbol(contentEncoding));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder absoluteExpiryTime(long absoluteExpiryTime) {
+            properties.setAbsoluteExpiryTime(new AMQPTimestamp(absoluteExpiryTime));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder creationTime(long creationTime) {
+            properties.setCreationTime(new AMQPTimestamp(creationTime));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder groupId(String groupId) {
+            properties.setGroupId(new AMQPString(groupId));
+            return this;
+        }
+
+        @Override
+        public PropertiesBuilder groupSequence(long groupSequence) {
+            properties.setGroupSequence(new SequenceNo(groupSequence));
             return this;
         }
 

@@ -58,6 +58,34 @@ public interface MessageBuilder {
 
         PropertiesBuilder messageId(UUID id);
 
+        PropertiesBuilder userId(byte[] userId);
+
+        PropertiesBuilder to(String address);
+
+        PropertiesBuilder subject(String subject);
+
+        PropertiesBuilder replyTo(String replyTo);
+
+        PropertiesBuilder correlationId(String correlationId);
+
+        PropertiesBuilder correlationId(long correlationId);
+
+        PropertiesBuilder correlationId(byte[] correlationId);
+
+        PropertiesBuilder correlationId(UUID correlationId);
+
+        PropertiesBuilder contentType(String contentType);
+
+        PropertiesBuilder contentEncoding(String contentEncoding);
+
+        PropertiesBuilder absoluteExpiryTime(long absoluteExpiryTime);
+
+        PropertiesBuilder creationTime(long creationTime);
+
+        PropertiesBuilder groupId(String groupId);
+
+        PropertiesBuilder groupSequence(long groupSequence);
+
         MessageBuilder messageBuilder();
 
     }
