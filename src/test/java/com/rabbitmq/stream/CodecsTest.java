@@ -144,6 +144,8 @@ public class CodecsTest {
                     .entryUnsigned("large.ulong", Long.MAX_VALUE + 10)
                     .entry("float", 3.14f)
                     .entry("double", 6.28)
+                    .entry("char", 'c')
+                    .entryTimestamp("timestamp", now)
                     .messageBuilder()
                     .build();
             Codec.EncodedMessage encoded = serializer.encode(outboundMessage);
@@ -203,13 +205,13 @@ public class CodecsTest {
                     .extracting(v -> v.toString()).isEqualTo(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.TEN).toString());
 
             assertThat(inboundMessage.getApplicationProperties().get("float"))
-                    .isNotNull().isInstanceOf(Float.class)
-                    .asInstanceOf(InstanceOfAssertFactories.type(Float.class))
-                    .isEqualTo(Float.valueOf(3.14f));
+                    .isNotNull().isInstanceOf(Float.class).isEqualTo(Float.valueOf(3.14f));
             assertThat(inboundMessage.getApplicationProperties().get("double"))
-                    .isNotNull().isInstanceOf(Double.class)
-                    .asInstanceOf(InstanceOfAssertFactories.type(Double.class))
-                    .isEqualTo(Double.valueOf(6.28));
+                    .isNotNull().isInstanceOf(Double.class).isEqualTo(Double.valueOf(6.28));
+            assertThat(inboundMessage.getApplicationProperties().get("char"))
+                    .isNotNull().isInstanceOf(Character.class).isEqualTo('c');
+            assertThat(inboundMessage.getApplicationProperties().get("timestamp"))
+                    .isNotNull().isInstanceOf(Long.class).isEqualTo(now);
         });
 
 

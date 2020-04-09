@@ -20,6 +20,7 @@ import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
 import java.nio.ByteBuffer;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -76,20 +77,21 @@ public class QpidProtonCodec implements Codec {
         if (value instanceof Boolean || value instanceof Byte ||
                 value instanceof Short || value instanceof Integer ||
                 value instanceof Long || value instanceof Float ||
-                value instanceof Double || value instanceof String) {
+                value instanceof Double || value instanceof String ||
+                value instanceof Character) {
             return value;
         } else if (value instanceof Binary) {
             return ((Binary) value).getArray();
-        }
-        if (value instanceof UnsignedByte) {
+        } else if (value instanceof UnsignedByte) {
             return com.rabbitmq.stream.amqp.UnsignedByte.valueOf(((UnsignedByte) value).byteValue());
-        }
-        if (value instanceof UnsignedShort) {
+        } else if (value instanceof UnsignedShort) {
             return com.rabbitmq.stream.amqp.UnsignedShort.valueOf(((UnsignedShort) value).shortValue());
         } else if (value instanceof UnsignedInteger) {
             return com.rabbitmq.stream.amqp.UnsignedInteger.valueOf(((UnsignedInteger) value).intValue());
         } else if (value instanceof UnsignedLong) {
             return com.rabbitmq.stream.amqp.UnsignedLong.valueOf(((UnsignedLong) value).longValue());
+        } else if (value instanceof Date) {
+            return ((Date) value).getTime();
         } else {
             throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
         }

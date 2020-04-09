@@ -48,6 +48,10 @@ public interface MessageBuilder {
 
         ApplicationPropertiesBuilder entry(String key, double value);
 
+        ApplicationPropertiesBuilder entry(String key, char value);
+
+        ApplicationPropertiesBuilder entryTimestamp(String key, long value);
+
         MessageBuilder messageBuilder();
 
     }
