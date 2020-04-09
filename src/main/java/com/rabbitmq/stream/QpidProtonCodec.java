@@ -104,17 +104,11 @@ public class QpidProtonCodec implements Codec {
 
     private static final class QpidProtonProperties implements Properties {
 
+        private static final long NULL_GROUP_SEQUENCE = -1L;
         private final org.apache.qpid.proton.amqp.messaging.Properties properties;
-
-        private final com.rabbitmq.stream.amqp.UnsignedInteger groupSequence;
 
         private QpidProtonProperties(org.apache.qpid.proton.amqp.messaging.Properties properties) {
             this.properties = properties;
-            if (this.properties.getGroupSequence() != null) {
-                this.groupSequence = com.rabbitmq.stream.amqp.UnsignedInteger.valueOf(this.properties.getGroupSequence().intValue());
-            } else {
-                this.groupSequence = null;
-            }
         }
 
         @Override
@@ -218,8 +212,8 @@ public class QpidProtonCodec implements Codec {
         }
 
         @Override
-        public com.rabbitmq.stream.amqp.UnsignedInteger getGroupSequence() {
-            return this.groupSequence;
+        public long getGroupSequence() {
+            return properties.getGroupSequence() == null ? NULL_GROUP_SEQUENCE : properties.getGroupSequence().longValue();
         }
 
         @Override

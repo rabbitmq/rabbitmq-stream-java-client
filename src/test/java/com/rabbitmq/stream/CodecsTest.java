@@ -91,14 +91,16 @@ public class CodecsTest {
 //                        message -> assertThat(message.getProperties().getCorrelationIdAsUuid()).isEqualTo(TEST_UUID)
 //                )
                 test(
+                        builder -> builder,
+                        message -> assertThat(message.getProperties().getGroupSequence()).isEqualTo(-1)
+                ),
+                test(
                         builder -> builder.properties().groupSequence(10).messageBuilder(),
-                        message -> assertThat(message.getProperties().getGroupSequence()).isNotNull()
-                                .extracting(v -> v.intValue()).isEqualTo(10)
+                        message -> assertThat(message.getProperties().getGroupSequence()).isEqualTo(10)
                 ),
                 test(
                         builder -> builder.properties().groupSequence((long) Integer.MAX_VALUE + 10).messageBuilder(),
-                        message -> assertThat(message.getProperties().getGroupSequence()).isNotNull()
-                                .extracting(v -> v.longValue()).isEqualTo((long) Integer.MAX_VALUE + 10)
+                        message -> assertThat(message.getProperties().getGroupSequence()).isEqualTo((long) Integer.MAX_VALUE + 10)
                 )
         );
 

@@ -14,8 +14,6 @@
 
 package com.rabbitmq.stream;
 
-import com.rabbitmq.stream.amqp.UnsignedInteger;
-
 import java.util.UUID;
 
 public interface Properties {
@@ -60,7 +58,7 @@ public interface Properties {
 
     String getGroupId();
 
-    UnsignedInteger getGroupSequence();
+    long getGroupSequence();
 
     String getReplyToGroupId();
 

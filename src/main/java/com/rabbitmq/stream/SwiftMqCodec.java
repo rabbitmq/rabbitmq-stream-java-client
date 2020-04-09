@@ -122,8 +122,8 @@ public class SwiftMqCodec implements Codec {
                     propertiesSet = true;
                 }
 
-                if (headers.getGroupSequence() != null) {
-                    properties.setGroupSequence(new SequenceNo(headers.getGroupSequence().longValue()));
+                if (headers.getGroupSequence() >= 0) {
+                    properties.setGroupSequence(new SequenceNo(headers.getGroupSequence()));
                     propertiesSet = true;
                 }
 
@@ -331,17 +331,11 @@ public class SwiftMqCodec implements Codec {
 
     private static final class SwiftMqProperties implements Properties {
 
+        private static final long NULL_GROUP_SEQUENCE = -1;
         private final com.swiftmq.amqp.v100.generated.messaging.message_format.Properties amqpProperties;
-
-        private final UnsignedInteger groupSequence;
 
         private SwiftMqProperties(com.swiftmq.amqp.v100.generated.messaging.message_format.Properties amqpProperties) {
             this.amqpProperties = amqpProperties;
-            if (this.amqpProperties.getGroupSequence() != null) {
-                this.groupSequence = UnsignedInteger.valueOf(this.amqpProperties.getGroupSequence().getValue());
-            } else {
-                this.groupSequence = null;
-            }
         }
 
         @Override
@@ -445,8 +439,8 @@ public class SwiftMqCodec implements Codec {
         }
 
         @Override
-        public UnsignedInteger getGroupSequence() {
-            return groupSequence;
+        public long getGroupSequence() {
+            return amqpProperties.getGroupSequence() == null ? NULL_GROUP_SEQUENCE : amqpProperties.getGroupSequence().getValue();
         }
 
         @Override
