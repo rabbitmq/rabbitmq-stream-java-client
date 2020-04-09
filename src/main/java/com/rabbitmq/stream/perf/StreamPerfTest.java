@@ -14,12 +14,12 @@
 
 package com.rabbitmq.stream.perf;
 
-import com.codahale.metrics.ConsoleReporter;
-import com.codahale.metrics.Histogram;
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.*;
 import com.google.common.util.concurrent.RateLimiter;
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Client;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.QpidProtonCodec;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import org.slf4j.Logger;
@@ -119,7 +119,17 @@ public class StreamPerfTest implements Callable<Integer> {
                 );
 
         Histogram chunkSize = metrics.getHistograms().get("chunk.size");
-        Function<Histogram, String> formatHistogram = histogram -> String.format("chunk size %.0f", histogram.getSnapshot().getMean());
+        Function<Histogram, String> formatChunkSize = histogram -> String.format("chunk size %.0f", histogram.getSnapshot().getMean());
+
+        Histogram latency = metrics.getHistograms().get("latency");
+        Function<Histogram, String> formatLatency = histogram -> {
+            Snapshot snapshot = histogram.getSnapshot();
+            return String.format(
+                    "latency min/median/75th/95th/99th %d/%.0f/%.0f/%.0f/%.0f µs",
+                    snapshot.getMin(), snapshot.getMedian(), snapshot.get75thPercentile(),
+                    snapshot.get95thPercentile(), snapshot.get99thPercentile()
+            );
+        };
 
         fileReporter.start(1, TimeUnit.SECONDS);
 
@@ -128,7 +138,8 @@ public class StreamPerfTest implements Callable<Integer> {
             StringBuilder builder = new StringBuilder();
             builder.append(reportCount.get()).append(", ");
             meters.entrySet().forEach(entry -> builder.append(formatMeter.apply(entry)));
-            builder.append(formatHistogram.apply(chunkSize));
+            builder.append(formatLatency.apply(latency)).append(", ");
+            builder.append(formatChunkSize.apply(chunkSize));
             System.out.println(builder);
             reportCount.incrementAndGet();
         }, 1, 1, TimeUnit.SECONDS);
@@ -147,9 +158,15 @@ public class StreamPerfTest implements Callable<Integer> {
                     entry.getKey(),
                     entry.getValue().getCount() * 1000 / duration);
 
+            Function<Histogram, String> formatLatencySummary = histogram -> String.format(
+                    "latency 95th %.0f µs",
+                    latency.getSnapshot().get95thPercentile()
+            );
+
             StringBuilder builder = new StringBuilder("Summary: ");
             meters.entrySet().forEach(entry -> builder.append(formatMeterSummary.apply(entry)));
-            builder.append(formatHistogram.apply(chunkSize));
+            builder.append(formatLatencySummary.apply(latency)).append(", ");
+            builder.append(formatChunkSize.apply(chunkSize));
             System.out.println();
             System.out.println(builder);
 
@@ -178,6 +195,7 @@ public class StreamPerfTest implements Callable<Integer> {
         MetricRegistry metrics = new MetricRegistry();
         Meter consumed = metrics.meter("consumed");
         Histogram chunkSize = metrics.histogram("chunk.size");
+        Histogram latency = metrics.histogram("latency");
 
         if (!preDeclared) {
             Address address = addresses.get(0);
@@ -231,7 +249,10 @@ public class StreamPerfTest implements Callable<Integer> {
                     client.credit(correlationId, creditToAsk);
                 }
             };
-            Client.RecordListener recordListener = (correlationId, offset, data) -> consumed.mark();
+            Client.RecordListener recordListener = (correlationId, offset, data) -> {
+                consumed.mark();
+                latency.update((System.nanoTime() - data.getProperties().getCreationTime()) / 1000L);
+            };
 
             Address address = address();
             Client client = client(new Client.ClientParameters()
@@ -313,6 +334,12 @@ public class StreamPerfTest implements Callable<Integer> {
                 while (true && !Thread.currentThread().isInterrupted()) {
                     beforePublishingCallback.run();
                     rateLimiterCallback.run();
+                    long creationTime = System.nanoTime();
+                    for (int j = 0; j < this.batchSize; j++) {
+                        messages.set(j, client.messageBuilder()
+                                .properties().creationTime(creationTime).messageBuilder()
+                                .addData(data).build());
+                    }
                     client.publish(target, messages);
                     published.mark(this.batchSize);
                 }
