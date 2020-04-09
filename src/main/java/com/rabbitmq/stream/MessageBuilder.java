@@ -56,6 +56,8 @@ public interface MessageBuilder {
 
         ApplicationPropertiesBuilder entry(String key, byte[] value);
 
+        ApplicationPropertiesBuilder entry(String key, String value);
+
         ApplicationPropertiesBuilder entrySymbol(String key, String value);
 
         MessageBuilder messageBuilder();

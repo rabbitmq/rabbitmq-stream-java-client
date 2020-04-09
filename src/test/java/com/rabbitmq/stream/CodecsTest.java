@@ -116,6 +116,7 @@ public class CodecsTest {
         long now = new Date().getTime();
         //UUID uuid = UUID.randomUUID();
         byte[] binary = "the binary".getBytes(CHARSET);
+        String string = "a string";
         String symbol = "a symbol";
         messageOperations.forEach(messageTestConfiguration -> {
             Function<MessageBuilder, MessageBuilder> messageOperation = messageTestConfiguration.messageOperation;
@@ -153,6 +154,7 @@ public class CodecsTest {
                     .entryTimestamp("timestamp", now)
                     //.entry("uuid", uuid)
                     .entry("binary", binary)
+                    .entry("string", string)
                     .entrySymbol("symbol", symbol)
                     .messageBuilder()
                     .build();
@@ -224,6 +226,8 @@ public class CodecsTest {
 //                    .isNotNull().isInstanceOf(UUID.class).isEqualTo(uuid);
             assertThat(inboundMessage.getApplicationProperties().get("binary"))
                     .isNotNull().isInstanceOf(byte[].class).isEqualTo(binary);
+            assertThat(inboundMessage.getApplicationProperties().get("string"))
+                    .isNotNull().isInstanceOf(String.class).isEqualTo(string);
             assertThat(inboundMessage.getApplicationProperties().get("symbol"))
                     .isNotNull().isInstanceOf(String.class).isEqualTo(symbol);
         });

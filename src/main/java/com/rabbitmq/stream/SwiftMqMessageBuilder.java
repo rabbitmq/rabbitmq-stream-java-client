@@ -292,6 +292,12 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
         }
 
         @Override
+        public ApplicationPropertiesBuilder entry(String key, String value) {
+            applicationProperties.put(new AMQPString(key), new AMQPString(value));
+            return this;
+        }
+
+        @Override
         public ApplicationPropertiesBuilder entrySymbol(String key, String value) {
             applicationProperties.put(new AMQPString(key), new AMQPSymbol(value));
             return this;
