@@ -103,7 +103,7 @@ public class Client implements AutoCloseable {
         this.chunkListener = parameters.chunkListener;
         this.recordListener = parameters.recordListener;
         this.subscriptionListener = parameters.subscriptionListener;
-        this.codec = parameters.codec;
+        this.codec = parameters.codec == null ? new SwiftMqCodec() : parameters.codec;
         this.saslConfiguration = parameters.saslConfiguration;
         this.credentialsProvider = parameters.credentialsProvider;
 
@@ -936,6 +936,8 @@ public class Client implements AutoCloseable {
         if (closing.compareAndSet(false, true)) {
             LOGGER.debug("Closing client");
 
+            // FIXME unsubscribe current subscriptions?
+
             sendClose(RESPONSE_CODE_OK, "OK");
 
             closeNetty();
@@ -1196,7 +1198,7 @@ public class Client implements AutoCloseable {
 
         };
 
-        private Codec codec = new SwiftMqCodec();
+        private Codec codec;
 
         // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
         private EventLoopGroup eventLoopGroup;

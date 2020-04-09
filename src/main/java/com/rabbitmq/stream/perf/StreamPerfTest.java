@@ -19,10 +19,7 @@ import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.util.concurrent.RateLimiter;
-import com.rabbitmq.stream.Client;
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.SwiftMqCodec;
+import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import org.slf4j.Logger;
@@ -47,7 +44,7 @@ public class StreamPerfTest implements Callable<Integer> {
     private static final Logger LOGGER = LoggerFactory.getLogger(StreamPerfTest.class);
     private final String[] arguments;
     private final EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
-    private final Codec codec = new SwiftMqCodec();
+    private final Codec codec = new QpidProtonCodec();
     int addressDispatching = 0;
     int targetDispatching = 0;
     @CommandLine.Option(names = {"--addresses", "-a"}, description = "servers to connect to, e.g. localhost:5555", defaultValue = "localhost:5555")

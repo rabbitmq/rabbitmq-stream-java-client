@@ -57,14 +57,15 @@
             <groupId>com.swiftmq</groupId>
             <artifactId>swiftmq-client</artifactId>
             <version>${swiftmq-client.version}</version>
+            <optional>true</optional>
         </dependency>
 
         <dependency>
             <groupId>org.apache.qpid</groupId>
             <artifactId>proton-j</artifactId>
             <version>${proton-j.version}</version>
+            <optional>true</optional>
         </dependency>
-
 
         <dependency>
             <groupId>info.picocli</groupId>
@@ -180,6 +181,12 @@
                     <version>${logback.version}</version>
                 </dependency>
 
+                <dependency>
+                    <groupId>org.apache.qpid</groupId>
+                    <artifactId>proton-j</artifactId>
+                    <version>${proton-j.version}</version>
+                </dependency>
+
             </dependencies>
             <build>
                 <finalName>stream-perf-test</finalName>
@@ -203,6 +210,9 @@
                                 </goals>
                             </execution>
                         </executions>
+                        <configuration>
+                            <excludeGroupIds>com.swiftmq</excludeGroupIds>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>
