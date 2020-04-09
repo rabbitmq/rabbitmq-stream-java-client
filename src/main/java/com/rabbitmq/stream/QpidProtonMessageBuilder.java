@@ -275,6 +275,24 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
         }
 
         @Override
+        public ApplicationPropertiesBuilder entry(String key, UUID uuid) {
+            applicationProperties.put(key, uuid);
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entry(String key, byte[] value) {
+            applicationProperties.put(key, new Binary(value));
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entrySymbol(String key, String value) {
+            applicationProperties.put(key, Symbol.valueOf(value));
+            return this;
+        }
+
+        @Override
         public MessageBuilder messageBuilder() {
             return messageBuilder;
         }

@@ -114,6 +114,9 @@ public class CodecsTest {
         String groupId = "the group ID";
         String replyToGroupId = "the reply to group ID";
         long now = new Date().getTime();
+        //UUID uuid = UUID.randomUUID();
+        byte[] binary = "the binary".getBytes(CHARSET);
+        String symbol = "a symbol";
         messageOperations.forEach(messageTestConfiguration -> {
             Function<MessageBuilder, MessageBuilder> messageOperation = messageTestConfiguration.messageOperation;
             Consumer<Message> messageExpectation = messageTestConfiguration.messageExpectation;
@@ -148,6 +151,9 @@ public class CodecsTest {
                     .entry("double", 6.28)
                     .entry("char", 'c')
                     .entryTimestamp("timestamp", now)
+                    //.entry("uuid", uuid)
+                    .entry("binary", binary)
+                    .entrySymbol("symbol", symbol)
                     .messageBuilder()
                     .build();
             Codec.EncodedMessage encoded = serializer.encode(outboundMessage);
@@ -214,6 +220,12 @@ public class CodecsTest {
                     .isNotNull().isInstanceOf(Character.class).isEqualTo('c');
             assertThat(inboundMessage.getApplicationProperties().get("timestamp"))
                     .isNotNull().isInstanceOf(Long.class).isEqualTo(now);
+//            assertThat(inboundMessage.getApplicationProperties().get("uuid"))
+//                    .isNotNull().isInstanceOf(UUID.class).isEqualTo(uuid);
+            assertThat(inboundMessage.getApplicationProperties().get("binary"))
+                    .isNotNull().isInstanceOf(byte[].class).isEqualTo(binary);
+            assertThat(inboundMessage.getApplicationProperties().get("symbol"))
+                    .isNotNull().isInstanceOf(String.class).isEqualTo(symbol);
         });
 
 

@@ -52,6 +52,12 @@ public interface MessageBuilder {
 
         ApplicationPropertiesBuilder entryTimestamp(String key, long value);
 
+        ApplicationPropertiesBuilder entry(String key, UUID value);
+
+        ApplicationPropertiesBuilder entry(String key, byte[] value);
+
+        ApplicationPropertiesBuilder entrySymbol(String key, String value);
+
         MessageBuilder messageBuilder();
 
     }

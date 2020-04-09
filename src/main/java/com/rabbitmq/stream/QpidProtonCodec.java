@@ -78,7 +78,7 @@ public class QpidProtonCodec implements Codec {
                 value instanceof Short || value instanceof Integer ||
                 value instanceof Long || value instanceof Float ||
                 value instanceof Double || value instanceof String ||
-                value instanceof Character) {
+                value instanceof Character || value instanceof UUID) {
             return value;
         } else if (value instanceof Binary) {
             return ((Binary) value).getArray();
@@ -92,6 +92,8 @@ public class QpidProtonCodec implements Codec {
             return com.rabbitmq.stream.amqp.UnsignedLong.valueOf(((UnsignedLong) value).longValue());
         } else if (value instanceof Date) {
             return ((Date) value).getTime();
+        } else if (value instanceof Symbol) {
+            return ((Symbol) value).toString();
         } else {
             throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
         }
