@@ -110,6 +110,7 @@ public class CodecsTest {
         String contentType = "text/plain";
         String contentEncoding = "gzip";
         String groupId = "the group ID";
+        String replyToGroupId = "the reply to group ID";
         long now = new Date().getTime();
         messageOperations.forEach(messageTestConfiguration -> {
             Function<MessageBuilder, MessageBuilder> messageOperation = messageTestConfiguration.messageOperation;
@@ -126,6 +127,7 @@ public class CodecsTest {
                     .absoluteExpiryTime(now + 1000)
                     .creationTime(now)
                     .groupId(groupId)
+                    .replyToGroupId(replyToGroupId)
                     .messageBuilder()
                     .applicationProperties()
                     .entry("byte", (byte) 1)
@@ -140,6 +142,8 @@ public class CodecsTest {
                     .entryUnsigned("large.ushort", (short) (Short.MAX_VALUE + 10))
                     .entryUnsigned("large.uint", Integer.MAX_VALUE + 10)
                     .entryUnsigned("large.ulong", Long.MAX_VALUE + 10)
+                    .entry("float", 3.14f)
+                    .entry("double", 6.28)
                     .messageBuilder()
                     .build();
             Codec.EncodedMessage encoded = serializer.encode(outboundMessage);
@@ -161,6 +165,7 @@ public class CodecsTest {
             assertThat(inboundMessage.getProperties().getAbsoluteExpiryTime()).isEqualTo(now + 1000);
             assertThat(inboundMessage.getProperties().getCreationTime()).isEqualTo(now);
             assertThat(inboundMessage.getProperties().getGroupId()).isEqualTo(groupId);
+            assertThat(inboundMessage.getProperties().getReplyToGroupId()).isEqualTo(replyToGroupId);
 
             assertThat(inboundMessage.getApplicationProperties().get("byte"))
                     .isNotNull().isInstanceOf(Byte.class).isEqualTo(Byte.valueOf((byte) 1));
@@ -196,6 +201,15 @@ public class CodecsTest {
                     .isNotNull().isInstanceOf(UnsignedLong.class)
                     .asInstanceOf(InstanceOfAssertFactories.type(UnsignedLong.class))
                     .extracting(v -> v.toString()).isEqualTo(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.TEN).toString());
+
+            assertThat(inboundMessage.getApplicationProperties().get("float"))
+                    .isNotNull().isInstanceOf(Float.class)
+                    .asInstanceOf(InstanceOfAssertFactories.type(Float.class))
+                    .isEqualTo(Float.valueOf(3.14f));
+            assertThat(inboundMessage.getApplicationProperties().get("double"))
+                    .isNotNull().isInstanceOf(Double.class)
+                    .asInstanceOf(InstanceOfAssertFactories.type(Double.class))
+                    .isEqualTo(Double.valueOf(6.28));
         });
 
 

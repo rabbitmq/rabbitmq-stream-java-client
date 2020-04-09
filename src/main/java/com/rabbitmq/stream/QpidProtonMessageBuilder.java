@@ -182,6 +182,12 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
         }
 
         @Override
+        public PropertiesBuilder replyToGroupId(String replyToGroupId) {
+            properties.setReplyToGroupId(replyToGroupId);
+            return this;
+        }
+
+        @Override
         public MessageBuilder messageBuilder() {
             return messageBuilder;
         }
@@ -241,6 +247,18 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
         @Override
         public ApplicationPropertiesBuilder entryUnsigned(String key, long value) {
             applicationProperties.put(key, new UnsignedLong(value));
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entry(String key, float value) {
+            applicationProperties.put(key, value);
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entry(String key, double value) {
+            applicationProperties.put(key, value);
             return this;
         }
 

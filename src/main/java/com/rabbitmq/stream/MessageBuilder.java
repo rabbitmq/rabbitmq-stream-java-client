@@ -44,6 +44,10 @@ public interface MessageBuilder {
 
         ApplicationPropertiesBuilder entryUnsigned(String key, long value);
 
+        ApplicationPropertiesBuilder entry(String key, float value);
+
+        ApplicationPropertiesBuilder entry(String key, double value);
+
         MessageBuilder messageBuilder();
 
     }
@@ -85,6 +89,8 @@ public interface MessageBuilder {
         PropertiesBuilder groupId(String groupId);
 
         PropertiesBuilder groupSequence(long groupSequence);
+
+        PropertiesBuilder replyToGroupId(String replyToGroupId);
 
         MessageBuilder messageBuilder();
 

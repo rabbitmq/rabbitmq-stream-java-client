@@ -187,6 +187,12 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
         }
 
         @Override
+        public PropertiesBuilder replyToGroupId(String replyToGroupId) {
+            properties.setReplyToGroupId(new AMQPString(replyToGroupId));
+            return this;
+        }
+
+        @Override
         public MessageBuilder messageBuilder() {
             return messageBuilder;
         }
@@ -246,6 +252,18 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
         @Override
         public ApplicationPropertiesBuilder entryUnsigned(String key, long value) {
             applicationProperties.put(new AMQPString(key), new AMQPUnsignedLong(value));
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entry(String key, float value) {
+            applicationProperties.put(new AMQPString(key), new AMQPFloat(value));
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entry(String key, double value) {
+            applicationProperties.put(new AMQPString(key), new AMQPDouble(value));
             return this;
         }
 
