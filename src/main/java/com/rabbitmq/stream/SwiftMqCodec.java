@@ -14,7 +14,10 @@
 
 package com.rabbitmq.stream;
 
-import com.rabbitmq.stream.amqp.*;
+import com.rabbitmq.stream.amqp.UnsignedByte;
+import com.rabbitmq.stream.amqp.UnsignedInteger;
+import com.rabbitmq.stream.amqp.UnsignedLong;
+import com.rabbitmq.stream.amqp.UnsignedShort;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
 import com.swiftmq.amqp.v100.generated.transport.definitions.SequenceNo;
 import com.swiftmq.amqp.v100.messaging.AMQPMessage;
@@ -227,10 +230,6 @@ public class SwiftMqCodec implements Codec {
             return ((AMQPUuid) value).getValue();
         } else if (value instanceof AMQPSymbol) {
             return ((AMQPSymbol) value).getValue();
-        } else if (value instanceof AMQPDecimal32) {
-            return new Decimal32(((AMQPDecimal32) value).getValue());
-        } else if (value instanceof AMQPDecimal64) {
-            return new Decimal64(((AMQPDecimal64) value).getValue());
         } else {
             throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
         }

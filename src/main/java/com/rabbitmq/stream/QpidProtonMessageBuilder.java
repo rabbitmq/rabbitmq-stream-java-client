@@ -265,14 +265,12 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
 
         @Override
         public ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value) {
-            applicationProperties.put(key, new Decimal32(value));
-            return this;
+            throw new UnsupportedOperationException();
         }
 
         @Override
         public ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value) {
-            applicationProperties.put(key, new Decimal64(value));
-            return this;
+            throw new UnsupportedOperationException();
         }
 
         @Override

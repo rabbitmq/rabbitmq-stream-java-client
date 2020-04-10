@@ -94,10 +94,6 @@ public class QpidProtonCodec implements Codec {
             return ((Date) value).getTime();
         } else if (value instanceof Symbol) {
             return ((Symbol) value).toString();
-        } else if (value instanceof Decimal32) {
-            return new com.rabbitmq.stream.amqp.Decimal32(((Decimal32) value).getBits());
-        } else if (value instanceof Decimal64) {
-            return new com.rabbitmq.stream.amqp.Decimal64(((Decimal64) value).getBits());
         } else {
             throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
         }

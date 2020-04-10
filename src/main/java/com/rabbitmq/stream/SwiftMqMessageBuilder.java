@@ -270,14 +270,12 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
 
         @Override
         public ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value) {
-            applicationProperties.put(new AMQPString(key), new AMQPDecimal32(value));
-            return this;
+            throw new UnsupportedOperationException();
         }
 
         @Override
         public ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value) {
-            applicationProperties.put(new AMQPString(key), new AMQPDecimal64(value));
-            return this;
+            throw new UnsupportedOperationException();
         }
 
         @Override
