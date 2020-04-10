@@ -19,7 +19,6 @@
         <junit.jupiter.version>5.6.1</junit.jupiter.version>
         <assertj.version>3.15.0</assertj.version>
         <mockito.version>3.3.3</mockito.version>
-        <qpid-jms-client.version>0.50.0</qpid-jms-client.version>
         <maven.compiler.plugin.version>3.8.1</maven.compiler.plugin.version>
         <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
         <spring-boot-maven-plugin.version>2.2.6.RELEASE</spring-boot-maven-plugin.version>
@@ -87,23 +86,6 @@
             <artifactId>guava</artifactId>
             <version>${guava.version}</version>
             <scope>compile</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.qpid</groupId>
-            <artifactId>qpid-jms-client</artifactId>
-            <version>${qpid-jms-client.version}</version>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>io.netty</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.qpid</groupId>
-                    <artifactId>proton-j</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <dependency>
