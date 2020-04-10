@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public interface MessageBuilder {
@@ -47,6 +48,12 @@ public interface MessageBuilder {
         ApplicationPropertiesBuilder entry(String key, float value);
 
         ApplicationPropertiesBuilder entry(String key, double value);
+
+        ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value);
+
+        ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value);
+
+        ApplicationPropertiesBuilder entryDecimal128(String key, BigDecimal value);
 
         ApplicationPropertiesBuilder entry(String key, char value);
 

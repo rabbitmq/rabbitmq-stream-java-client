@@ -14,14 +14,12 @@
 
 package com.rabbitmq.stream;
 
-import com.rabbitmq.stream.amqp.UnsignedByte;
-import com.rabbitmq.stream.amqp.UnsignedInteger;
-import com.rabbitmq.stream.amqp.UnsignedLong;
-import com.rabbitmq.stream.amqp.UnsignedShort;
+import com.rabbitmq.stream.amqp.*;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -118,6 +116,8 @@ public class CodecsTest {
         byte[] binary = "the binary".getBytes(CHARSET);
         String string = "a string";
         String symbol = "a symbol";
+        BigDecimal bigDecimal32 = BigDecimal.valueOf(0.0001);
+        BigDecimal bigDecimal64 = BigDecimal.valueOf(0.0002);
         messageOperations.forEach(messageTestConfiguration -> {
             Function<MessageBuilder, MessageBuilder> messageOperation = messageTestConfiguration.messageOperation;
             Consumer<Message> messageExpectation = messageTestConfiguration.messageExpectation;
@@ -150,6 +150,8 @@ public class CodecsTest {
                     .entryUnsigned("large.ulong", Long.MAX_VALUE + 10)
                     .entry("float", 3.14f)
                     .entry("double", 6.28)
+                    .entryDecimal32("bigDecimal32", bigDecimal32)
+                    .entryDecimal64("bigDecimal64", bigDecimal64)
                     .entry("char", 'c')
                     .entryTimestamp("timestamp", now)
                     //.entry("uuid", uuid)
@@ -218,6 +220,10 @@ public class CodecsTest {
                     .isNotNull().isInstanceOf(Float.class).isEqualTo(Float.valueOf(3.14f));
             assertThat(inboundMessage.getApplicationProperties().get("double"))
                     .isNotNull().isInstanceOf(Double.class).isEqualTo(Double.valueOf(6.28));
+            assertThat(inboundMessage.getApplicationProperties().get("bigDecimal32"))
+                    .isNotNull().isInstanceOf(Decimal32.class).isEqualTo(new Decimal32(bigDecimal32));
+            assertThat(inboundMessage.getApplicationProperties().get("bigDecimal64"))
+                    .isNotNull().isInstanceOf(Decimal64.class).isEqualTo(new Decimal64(bigDecimal64));
             assertThat(inboundMessage.getApplicationProperties().get("char"))
                     .isNotNull().isInstanceOf(Character.class).isEqualTo('c');
             assertThat(inboundMessage.getApplicationProperties().get("timestamp"))

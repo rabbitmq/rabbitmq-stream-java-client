@@ -20,6 +20,7 @@ import com.swiftmq.amqp.v100.messaging.AMQPMessage;
 import com.swiftmq.amqp.v100.types.*;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -265,6 +266,23 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
         public ApplicationPropertiesBuilder entry(String key, double value) {
             applicationProperties.put(new AMQPString(key), new AMQPDouble(value));
             return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value) {
+            applicationProperties.put(new AMQPString(key), new AMQPDecimal32(value));
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value) {
+            applicationProperties.put(new AMQPString(key), new AMQPDecimal64(value));
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entryDecimal128(String key, BigDecimal value) {
+            throw new UnsupportedOperationException();
         }
 
         @Override

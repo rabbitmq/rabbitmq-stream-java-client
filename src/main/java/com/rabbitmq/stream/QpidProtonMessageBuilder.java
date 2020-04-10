@@ -18,6 +18,7 @@ import org.apache.qpid.proton.amqp.*;
 import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
 import org.apache.qpid.proton.amqp.messaging.Data;
 
+import java.math.BigDecimal;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -260,6 +261,23 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
         public ApplicationPropertiesBuilder entry(String key, double value) {
             applicationProperties.put(key, value);
             return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value) {
+            applicationProperties.put(key, new Decimal32(value));
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value) {
+            applicationProperties.put(key, new Decimal64(value));
+            return this;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entryDecimal128(String key, BigDecimal value) {
+            throw new UnsupportedOperationException();
         }
 
         @Override
