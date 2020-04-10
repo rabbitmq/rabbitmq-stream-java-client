@@ -24,7 +24,7 @@
         <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
         <spring-boot-maven-plugin.version>2.2.6.RELEASE</spring-boot-maven-plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <proton-j.version>0.33.3</proton-j.version>
+        <proton-j.version>0.33.4</proton-j.version>
     </properties>
 
     <dependencies>
