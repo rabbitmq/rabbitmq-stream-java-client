@@ -14,8 +14,11 @@
 
 package com.rabbitmq.stream;
 
+
 import org.apache.qpid.proton.amqp.*;
+import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
 import org.apache.qpid.proton.amqp.messaging.Data;
+import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
@@ -32,20 +35,134 @@ public class QpidProtonCodec implements Codec {
 
     @Override
     public EncodedMessage encode(Message message) {
+        org.apache.qpid.proton.message.Message qpidMessage;
         if (message instanceof QpidProtonAmqpMessageWrapper) {
-            org.apache.qpid.proton.message.Message qpidMessage = ((QpidProtonAmqpMessageWrapper) message).message;
-            int bufferSize;
-            if (qpidMessage.getBody() instanceof Data) {
-                bufferSize = ((Data) qpidMessage.getBody()).getValue().getLength() * 2;
-            } else {
-                bufferSize = 8192;
-            }
-            ByteArrayWritableBuffer writableBuffer = new ByteArrayWritableBuffer(bufferSize);
-            qpidMessage.encode(writableBuffer);
-            return new EncodedMessage(writableBuffer.getArrayLength(), writableBuffer.getArray());
+            qpidMessage = ((QpidProtonAmqpMessageWrapper) message).message;
         } else {
-            throw new IllegalArgumentException("Message implementation not supported: " + message.getClass().getName());
+            qpidMessage = org.apache.qpid.proton.message.Message.Factory.create();
+            if (message.getProperties() != null) {
+                Properties headers = message.getProperties();
+                org.apache.qpid.proton.amqp.messaging.Properties properties = new org.apache.qpid.proton.amqp.messaging.Properties();
+                boolean propertiesSet = false;
+                if (headers.getMessageId() != null) {
+                    if (headers.getMessageId() instanceof String) {
+                        properties.setMessageId(headers.getMessageIdAsString());
+                    } else if (headers.getMessageId().getClass().isPrimitive() || headers.getMessageId() instanceof Long) {
+                        properties.setMessageId(new UnsignedLong(headers.getMessageIdAsLong()));
+                    } else if (headers.getMessageId().getClass().isArray()) {
+                        properties.setMessageId(new Binary(headers.getMessageIdAsBinary()));
+                    } else if (headers.getMessageId() instanceof UUID) {
+                        properties.setMessageId(headers.getMessageIdAsUuid());
+                    } else {
+                        throw new IllegalStateException("Type not supported for message ID:" + properties.getMessageId().getClass());
+                    }
+                    propertiesSet = true;
+                }
+
+                if (headers.getUserId() != null) {
+                    properties.setUserId(new Binary(headers.getUserId()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getTo() != null) {
+                    properties.setTo(headers.getTo());
+                    propertiesSet = true;
+                }
+
+                if (headers.getSubject() != null) {
+                    properties.setSubject(headers.getSubject());
+                    propertiesSet = true;
+                }
+
+                if (headers.getReplyTo() != null) {
+                    properties.setReplyTo(headers.getReplyTo());
+                    propertiesSet = true;
+                }
+
+                if (headers.getCorrelationId() != null) {
+                    if (headers.getCorrelationId() instanceof String) {
+                        properties.setCorrelationId(headers.getCorrelationIdAsString());
+                    } else if (headers.getCorrelationId().getClass().isPrimitive() || headers.getCorrelationId() instanceof Long) {
+                        properties.setCorrelationId(new UnsignedLong(headers.getCorrelationIdAsLong()));
+                    } else if (headers.getCorrelationId().getClass().isArray()) {
+                        properties.setCorrelationId(new Binary(headers.getCorrelationIdAsBinary()));
+                    } else if (headers.getCorrelationId() instanceof UUID) {
+                        properties.setCorrelationId(headers.getCorrelationIdAsUuid());
+                    } else {
+                        throw new IllegalStateException("Type not supported for correlation ID:" + properties.getCorrelationId().getClass());
+                    }
+                    propertiesSet = true;
+                }
+
+                if (headers.getContentType() != null) {
+                    properties.setContentType(Symbol.getSymbol(headers.getContentType()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getContentEncoding() != null) {
+                    properties.setContentEncoding(Symbol.getSymbol(headers.getContentEncoding()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getAbsoluteExpiryTime() > 0) {
+                    properties.setAbsoluteExpiryTime(new Date(headers.getAbsoluteExpiryTime()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getCreationTime() > 0) {
+                    properties.setCreationTime(new Date(headers.getCreationTime()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getGroupId() != null) {
+                    properties.setGroupId(headers.getGroupId());
+                    propertiesSet = true;
+                }
+
+                if (headers.getGroupSequence() >= 0) {
+                    properties.setGroupSequence(UnsignedInteger.valueOf(headers.getGroupSequence()));
+                    propertiesSet = true;
+                }
+
+                if (headers.getReplyToGroupId() != null) {
+                    properties.setReplyToGroupId(headers.getReplyToGroupId());
+                    propertiesSet = true;
+                }
+
+                if (propertiesSet) {
+                    qpidMessage.setProperties(properties);
+                }
+            }
+
+            if (message.getApplicationProperties() != null && !message.getApplicationProperties().isEmpty()) {
+                Map<String, Object> applicationProperties = new LinkedHashMap<>(message.getApplicationProperties().size());
+                for (Map.Entry<String, Object> entry : message.getApplicationProperties().entrySet()) {
+                    applicationProperties.put(entry.getKey(), convertToQpidType(entry.getValue()));
+                }
+                qpidMessage.setApplicationProperties(new ApplicationProperties(applicationProperties));
+            }
+
+            if (message.getMessageAnnotations() != null && !message.getMessageAnnotations().isEmpty()) {
+                Map<Symbol, Object> messageAnnotations = new LinkedHashMap<>(message.getMessageAnnotations().size());
+                for (Map.Entry<String, Object> entry : message.getMessageAnnotations().entrySet()) {
+                    messageAnnotations.put(Symbol.getSymbol(entry.getKey()), convertToQpidType(entry.getValue()));
+                }
+                qpidMessage.setMessageAnnotations(new MessageAnnotations(messageAnnotations));
+            }
+
+            if (message.getBodyAsBinary() != null) {
+                qpidMessage.setBody(new Data(new Binary(message.getBodyAsBinary())));
+            }
         }
+        int bufferSize;
+        if (qpidMessage.getBody() instanceof Data) {
+            bufferSize = ((Data) qpidMessage.getBody()).getValue().getLength() * 2;
+        } else {
+            bufferSize = 8192;
+        }
+        ByteArrayWritableBuffer writableBuffer = new ByteArrayWritableBuffer(bufferSize);
+        qpidMessage.encode(writableBuffer);
+        return new EncodedMessage(writableBuffer.getArrayLength(), writableBuffer.getArray());
     }
 
     @Override
@@ -91,6 +208,31 @@ public class QpidProtonCodec implements Codec {
             result = null;
         }
         return result;
+    }
+
+    protected Object convertToQpidType(Object value) {
+        if (value instanceof Boolean || value instanceof Byte ||
+                value instanceof Short || value instanceof Integer ||
+                value instanceof Long || value instanceof Float ||
+                value instanceof Double || value instanceof String ||
+                value instanceof Character || value instanceof UUID ||
+                value instanceof Date) {
+            return value;
+        } else if (value instanceof com.rabbitmq.stream.amqp.UnsignedByte) {
+            return UnsignedByte.valueOf(((com.rabbitmq.stream.amqp.UnsignedByte) value).byteValue());
+        } else if (value instanceof com.rabbitmq.stream.amqp.UnsignedShort) {
+            return UnsignedShort.valueOf(((com.rabbitmq.stream.amqp.UnsignedShort) value).shortValue());
+        } else if (value instanceof com.rabbitmq.stream.amqp.UnsignedInteger) {
+            return UnsignedInteger.valueOf(((com.rabbitmq.stream.amqp.UnsignedInteger) value).intValue());
+        } else if (value instanceof com.rabbitmq.stream.amqp.UnsignedLong) {
+            return UnsignedLong.valueOf(((com.rabbitmq.stream.amqp.UnsignedLong) value).longValue());
+        } else if (value instanceof com.rabbitmq.stream.amqp.Symbol) {
+            return Symbol.getSymbol(value.toString());
+        } else if (value instanceof byte[]) {
+            return new Binary((byte[]) value);
+        } else {
+            throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
+        }
     }
 
     protected Object convertApplicationProperty(Object value) {
@@ -159,12 +301,7 @@ public class QpidProtonCodec implements Codec {
         }
 
         @Override
-        public Object getUserId() {
-            return properties.getUserId();
-        }
-
-        @Override
-        public byte[] getUserAsBinary() {
+        public byte[] getUserId() {
             return properties.getUserId().getArray();
         }
 

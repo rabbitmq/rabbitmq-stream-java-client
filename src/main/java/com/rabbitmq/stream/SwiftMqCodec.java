@@ -14,10 +14,7 @@
 
 package com.rabbitmq.stream;
 
-import com.rabbitmq.stream.amqp.UnsignedByte;
-import com.rabbitmq.stream.amqp.UnsignedInteger;
-import com.rabbitmq.stream.amqp.UnsignedLong;
-import com.rabbitmq.stream.amqp.UnsignedShort;
+import com.rabbitmq.stream.amqp.*;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
 import com.swiftmq.amqp.v100.generated.transport.definitions.SequenceNo;
 import com.swiftmq.amqp.v100.messaging.AMQPMessage;
@@ -25,6 +22,7 @@ import com.swiftmq.amqp.v100.types.*;
 import com.swiftmq.tools.util.DataByteArrayOutputStream;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -63,7 +61,7 @@ public class SwiftMqCodec implements Codec {
                 }
 
                 if (headers.getUserId() != null) {
-                    properties.setUserId(new AMQPBinary(headers.getUserAsBinary()));
+                    properties.setUserId(new AMQPBinary(headers.getUserId()));
                     propertiesSet = true;
                 }
 
@@ -140,12 +138,24 @@ public class SwiftMqCodec implements Codec {
             if (message.getApplicationProperties() != null && !message.getApplicationProperties().isEmpty()) {
                 Map<AMQPType, AMQPType> applicationProperties = new LinkedHashMap<>(message.getApplicationProperties().size());
                 for (Map.Entry<String, Object> entry : message.getApplicationProperties().entrySet()) {
-                    applicationProperties.put(new AMQPString(entry.getKey()), convertApplicationProperty(entry.getValue()));
+                    applicationProperties.put(new AMQPString(entry.getKey()), convertToSwiftMqType(entry.getValue()));
                 }
                 try {
                     outboundMessage.setApplicationProperties(new ApplicationProperties(applicationProperties));
                 } catch (IOException e) {
                     throw new ClientException("Error while setting application properties", e);
+                }
+            }
+
+            if (message.getMessageAnnotations() != null && !message.getMessageAnnotations().isEmpty()) {
+                Map<AMQPType, AMQPType> messageAnnotations = new LinkedHashMap<>(message.getMessageAnnotations().size());
+                for (Map.Entry<String, Object> entry : message.getMessageAnnotations().entrySet()) {
+                    messageAnnotations.put(new AMQPSymbol(entry.getKey()), convertToSwiftMqType(entry.getValue()));
+                }
+                try {
+                    outboundMessage.setMessageAnnotations(new MessageAnnotations(messageAnnotations));
+                } catch (IOException e) {
+                    throw new ClientException("Error while setting message annotations", e);
                 }
             }
 
@@ -171,7 +181,7 @@ public class SwiftMqCodec implements Codec {
         }
     }
 
-    protected AMQPType convertApplicationProperty(Object value) {
+    protected AMQPType convertToSwiftMqType(Object value) {
         if (value instanceof Boolean) {
             return ((Boolean) value).booleanValue() ? AMQPBoolean.TRUE : AMQPBoolean.FALSE;
         } else if (value instanceof Byte) {
@@ -182,6 +192,14 @@ public class SwiftMqCodec implements Codec {
             return new AMQPInt((Integer) value);
         } else if (value instanceof Long) {
             return new AMQPLong((Long) value);
+        } else if (value instanceof UnsignedByte) {
+            return new AMQPUnsignedByte(((UnsignedByte) value).byteValue());
+        } else if (value instanceof UnsignedShort) {
+            return new AMQPUnsignedShort(((UnsignedShort) value).shortValue());
+        } else if (value instanceof UnsignedInteger) {
+            return new AMQPUnsignedInt(((UnsignedInteger) value).intValue());
+        } else if (value instanceof UnsignedLong) {
+            return new AMQPUnsignedLong(((UnsignedLong) value).longValue());
         } else if (value instanceof Float) {
             return new AMQPFloat((Float) value);
         } else if (value instanceof Double) {
@@ -190,12 +208,18 @@ public class SwiftMqCodec implements Codec {
             return new AMQPBinary((byte[]) value);
         } else if (value instanceof String) {
             return new AMQPString((String) value);
+        } else if (value instanceof Character) {
+            return new AMQPChar((Character) value);
+        } else if (value instanceof Date) {
+            return new AMQPTimestamp(((Date) value).getTime());
+        } else if (value instanceof Symbol) {
+            return new AMQPSymbol(value.toString());
         } else {
             throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
         }
     }
 
-    protected Object convertApplicationProperty(AMQPType value) {
+    protected Object convertAmqpMapValue(AMQPType value) {
         if (value instanceof AMQPBoolean) {
             return ((AMQPBoolean) value).getValue() ? Boolean.TRUE : Boolean.FALSE;
         } else if (value instanceof AMQPByte) {
@@ -293,9 +317,9 @@ public class SwiftMqCodec implements Codec {
     private Map<String, Object> createMapFromAmqpMap(Map<AMQPType, AMQPType> map) {
         Map<String, Object> result;
         if (map != null) {
-            result = new LinkedHashMap<String, Object>(map.size());
+            result = new LinkedHashMap<>(map.size());
             for (Map.Entry<AMQPType, AMQPType> entry : map.entrySet()) {
-                result.put(entry.getKey().getValueString(), convertApplicationProperty(entry.getValue()));
+                result.put(entry.getKey().getValueString(), convertAmqpMapValue(entry.getValue()));
             }
         } else {
             result = null;
@@ -400,12 +424,7 @@ public class SwiftMqCodec implements Codec {
         }
 
         @Override
-        public Object getUserId() {
-            return amqpProperties.getUserId();
-        }
-
-        @Override
-        public byte[] getUserAsBinary() {
+        public byte[] getUserId() {
             return amqpProperties.getUserId().getValue();
         }
 

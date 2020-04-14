@@ -28,9 +28,7 @@ public interface Properties {
 
     UUID getMessageIdAsUuid();
 
-    Object getUserId();
-
-    byte[] getUserAsBinary();
+    byte[] getUserId();
 
     String getTo();
 

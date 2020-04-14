@@ -28,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,7 +44,8 @@ public class CodecsTest {
         List<CodecCouple> couples = new ArrayList<>();
         for (Codec serializer : codecs) {
             for (Codec deserializer : codecs) {
-                couples.add(new CodecCouple(serializer, deserializer));
+                couples.add(new CodecCouple(serializer, deserializer, () -> serializer.messageBuilder()));
+                couples.add(new CodecCouple(serializer, deserializer, () -> new SimpleMessageBuilder()));
             }
         }
         return couples;
@@ -121,7 +123,8 @@ public class CodecsTest {
         messageOperations.forEach(messageTestConfiguration -> {
             Function<MessageBuilder, MessageBuilder> messageOperation = messageTestConfiguration.messageOperation;
             Consumer<Message> messageExpectation = messageTestConfiguration.messageExpectation;
-            Message outboundMessage = messageOperation.apply(serializer.messageBuilder())
+            MessageBuilder messageBuilder = codecCouple.messageBuilderSupplier.get();
+            Message outboundMessage = messageOperation.apply(messageBuilder)
                     .addData(body.getBytes(CHARSET))
                     .properties()
                     .userId(userId.getBytes(CHARSET))
@@ -190,7 +193,7 @@ public class CodecsTest {
 
             assertThat(new String(inboundMessage.getBodyAsBinary())).isEqualTo(body);
 
-            assertThat(inboundMessage.getProperties().getUserAsBinary()).isEqualTo(userId.getBytes(CHARSET));
+            assertThat(inboundMessage.getProperties().getUserId()).isEqualTo(userId.getBytes(CHARSET));
             assertThat(inboundMessage.getProperties().getTo()).isEqualTo(to);
             assertThat(inboundMessage.getProperties().getSubject()).isEqualTo(subject);
             assertThat(inboundMessage.getProperties().getReplyTo()).isEqualTo(replyTo);
@@ -331,16 +334,19 @@ public class CodecsTest {
 
         final Codec serializer;
         final Codec deserializer;
+        final Supplier<MessageBuilder> messageBuilderSupplier;
 
-        CodecCouple(Codec serializer, Codec deserializer) {
+        CodecCouple(Codec serializer, Codec deserializer, Supplier<MessageBuilder> messageBuilderSupplier) {
             this.serializer = serializer;
             this.deserializer = deserializer;
+            this.messageBuilderSupplier = messageBuilderSupplier;
         }
 
         @Override
         public String toString() {
             return "serializer=" + serializer.getClass().getSimpleName() +
-                    ", deserializer=" + deserializer.getClass().getSimpleName();
+                    ", deserializer=" + deserializer.getClass().getSimpleName() +
+                    ", messageBuilder=" + messageBuilderSupplier.get().getClass().getSimpleName();
         }
     }
 
