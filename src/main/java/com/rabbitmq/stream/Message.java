@@ -18,12 +18,14 @@ import java.util.Map;
 
 public interface Message {
 
-    byte [] getBodyAsBinary();
+    byte[] getBodyAsBinary();
 
     Object getBody();
 
     Properties getProperties();
 
     Map<String, Object> getApplicationProperties();
+
+    Map<String, Object> getMessageAnnotations();
 
 }

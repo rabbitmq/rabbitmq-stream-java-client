@@ -25,6 +25,8 @@ public interface MessageBuilder {
 
     ApplicationPropertiesBuilder applicationProperties();
 
+    MessageAnnotationsBuilder messageAnnotations();
+
     MessageBuilder addData(byte[] data);
 
     interface ApplicationPropertiesBuilder {
@@ -66,6 +68,50 @@ public interface MessageBuilder {
         ApplicationPropertiesBuilder entry(String key, String value);
 
         ApplicationPropertiesBuilder entrySymbol(String key, String value);
+
+        MessageBuilder messageBuilder();
+
+    }
+
+    interface MessageAnnotationsBuilder {
+
+        MessageAnnotationsBuilder entry(String key, byte value);
+
+        MessageAnnotationsBuilder entry(String key, short value);
+
+        MessageAnnotationsBuilder entry(String key, int value);
+
+        MessageAnnotationsBuilder entry(String key, long value);
+
+        MessageAnnotationsBuilder entryUnsigned(String key, byte value);
+
+        MessageAnnotationsBuilder entryUnsigned(String key, short value);
+
+        MessageAnnotationsBuilder entryUnsigned(String key, int value);
+
+        MessageAnnotationsBuilder entryUnsigned(String key, long value);
+
+        MessageAnnotationsBuilder entry(String key, float value);
+
+        MessageAnnotationsBuilder entry(String key, double value);
+
+        MessageAnnotationsBuilder entryDecimal32(String key, BigDecimal value);
+
+        MessageAnnotationsBuilder entryDecimal64(String key, BigDecimal value);
+
+        MessageAnnotationsBuilder entryDecimal128(String key, BigDecimal value);
+
+        MessageAnnotationsBuilder entry(String key, char value);
+
+        MessageAnnotationsBuilder entryTimestamp(String key, long value);
+
+        MessageAnnotationsBuilder entry(String key, UUID value);
+
+        MessageAnnotationsBuilder entry(String key, byte[] value);
+
+        MessageAnnotationsBuilder entry(String key, String value);
+
+        MessageAnnotationsBuilder entrySymbol(String key, String value);
 
         MessageBuilder messageBuilder();
 

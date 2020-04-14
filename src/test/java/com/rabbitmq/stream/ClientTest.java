@@ -456,6 +456,11 @@ public class ClientTest {
                 public Map<String, Object> getApplicationProperties() {
                     return applicationProperties;
                 }
+
+                @Override
+                public Map<String, Object> getMessageAnnotations() {
+                    return null;
+                }
             };
             return message;
         });

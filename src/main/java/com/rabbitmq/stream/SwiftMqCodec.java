@@ -263,22 +263,44 @@ public class SwiftMqCodec implements Codec {
     }
 
     protected Map<String, Object> createApplicationProperties(AMQPMessage amqpMessage) {
-        Map<String, Object> applicationProperties;
         if (amqpMessage.getApplicationProperties() != null) {
-            Map<AMQPType, AMQPType> amqpApplicationProperties = null;
+            Map<AMQPType, AMQPType> applicationProperties;
             try {
-                amqpApplicationProperties = amqpMessage.getApplicationProperties().getValue();
+                applicationProperties = amqpMessage.getApplicationProperties().getValue();
             } catch (IOException e) {
                 throw new ClientException("Error while reading application properties", e);
             }
-            applicationProperties = new LinkedHashMap<>(amqpApplicationProperties.size());
-            for (Map.Entry<AMQPType, AMQPType> entry : amqpApplicationProperties.entrySet()) {
-                applicationProperties.put(entry.getKey().getValueString(), convertApplicationProperty(entry.getValue()));
+            return createMapFromAmqpMap(applicationProperties);
+        } else {
+            return null;
+        }
+    }
+
+    protected Map<String, Object> createMessageAnnotations(AMQPMessage amqpMessage) {
+        if (amqpMessage.getMessageAnnotations() != null) {
+            Map<AMQPType, AMQPType> messageAnnotations;
+            try {
+                messageAnnotations = amqpMessage.getMessageAnnotations().getValue();
+            } catch (IOException e) {
+                throw new ClientException("Error while reading message annotations", e);
+            }
+            return createMapFromAmqpMap(messageAnnotations);
+        } else {
+            return null;
+        }
+    }
+
+    private Map<String, Object> createMapFromAmqpMap(Map<AMQPType, AMQPType> map) {
+        Map<String, Object> result;
+        if (map != null) {
+            result = new LinkedHashMap<String, Object>(map.size());
+            for (Map.Entry<AMQPType, AMQPType> entry : map.entrySet()) {
+                result.put(entry.getKey().getValueString(), convertApplicationProperty(entry.getValue()));
             }
         } else {
-            applicationProperties = null;
+            result = null;
         }
-        return applicationProperties;
+        return result;
     }
 
     protected Message createMessage(byte[] data) {
@@ -294,7 +316,8 @@ public class SwiftMqCodec implements Codec {
         Properties properties = createProperties(amqpMessage);
 
         Map<String, Object> applicationProperties = createApplicationProperties(amqpMessage);
-        return new SwiftMqMessage(amqpMessage, body, properties, applicationProperties);
+        Map<String, Object> messageAnnotations = createMessageAnnotations(amqpMessage);
+        return new SwiftMqMessage(amqpMessage, body, properties, applicationProperties, messageAnnotations);
     }
 
     private static final class SwiftMqMessage implements Message {
@@ -303,13 +326,17 @@ public class SwiftMqCodec implements Codec {
         private final Object body;
         private final Properties properties;
         private final Map<String, Object> applicationProperties;
+        private final Map<String, Object> messageAnnotations;
 
 
-        private SwiftMqMessage(AMQPMessage amqpMessage, Object body, Properties properties, Map<String, Object> applicationProperties) {
+        private SwiftMqMessage(AMQPMessage amqpMessage, Object body, Properties properties,
+                               Map<String, Object> applicationProperties,
+                               Map<String, Object> messageAnnotations) {
             this.amqpMessage = amqpMessage;
             this.body = body;
             this.properties = properties;
             this.applicationProperties = applicationProperties;
+            this.messageAnnotations = messageAnnotations;
         }
 
         @Override
@@ -330,6 +357,11 @@ public class SwiftMqCodec implements Codec {
         @Override
         public Map<String, Object> getApplicationProperties() {
             return applicationProperties;
+        }
+
+        @Override
+        public Map<String, Object> getMessageAnnotations() {
+            return messageAnnotations;
         }
     }
 
@@ -478,6 +510,11 @@ public class SwiftMqCodec implements Codec {
 
         @Override
         public Map<String, Object> getApplicationProperties() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Map<String, Object> getMessageAnnotations() {
             throw new UnsupportedOperationException();
         }
     }

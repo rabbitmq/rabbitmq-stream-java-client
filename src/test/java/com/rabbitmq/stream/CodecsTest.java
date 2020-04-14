@@ -157,6 +157,28 @@ public class CodecsTest {
                     .entry("string", string)
                     .entrySymbol("symbol", symbol)
                     .messageBuilder()
+                    .messageAnnotations()
+                    .entry("annotations.byte", (byte) 1)
+                    .entry("annotations.short", (short) 2)
+                    .entry("annotations.int", 3)
+                    .entry("annotations.long", 4l)
+                    .entryUnsigned("annotations.ubyte", (byte) 1)
+                    .entryUnsigned("annotations.ushort", (short) 2)
+                    .entryUnsigned("annotations.uint", 3)
+                    .entryUnsigned("annotations.ulong", 4l)
+                    .entryUnsigned("annotations.large.ubyte", (byte) (Byte.MAX_VALUE + 10))
+                    .entryUnsigned("annotations.large.ushort", (short) (Short.MAX_VALUE + 10))
+                    .entryUnsigned("annotations.large.uint", Integer.MAX_VALUE + 10)
+                    .entryUnsigned("annotations.large.ulong", Long.MAX_VALUE + 10)
+                    .entry("annotations.float", 3.14f)
+                    .entry("annotations.double", 6.28)
+                    .entry("annotations.char", 'c')
+                    .entryTimestamp("annotations.timestamp", now)
+                    //.entry("uuid", uuid)
+                    .entry("annotations.binary", binary)
+                    .entry("annotations.string", string)
+                    .entrySymbol("annotations.symbol", symbol)
+                    .messageBuilder()
                     .build();
             Codec.EncodedMessage encoded = serializer.encode(outboundMessage);
 
@@ -179,6 +201,7 @@ public class CodecsTest {
             assertThat(inboundMessage.getProperties().getGroupId()).isEqualTo(groupId);
             assertThat(inboundMessage.getProperties().getReplyToGroupId()).isEqualTo(replyToGroupId);
 
+            // application properties
             assertThat(inboundMessage.getApplicationProperties().get("byte"))
                     .isNotNull().isInstanceOf(Byte.class).isEqualTo(Byte.valueOf((byte) 1));
             assertThat(inboundMessage.getApplicationProperties().get("short"))
@@ -229,6 +252,60 @@ public class CodecsTest {
             assertThat(inboundMessage.getApplicationProperties().get("string"))
                     .isNotNull().isInstanceOf(String.class).isEqualTo(string);
             assertThat(inboundMessage.getApplicationProperties().get("symbol"))
+                    .isNotNull().isInstanceOf(String.class).isEqualTo(symbol);
+
+
+            // message annotations
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.byte"))
+                    .isNotNull().isInstanceOf(Byte.class).isEqualTo(Byte.valueOf((byte) 1));
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.short"))
+                    .isNotNull().isInstanceOf(Short.class).isEqualTo(Short.valueOf((short) 2));
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.int"))
+                    .isNotNull().isInstanceOf(Integer.class).isEqualTo(Integer.valueOf(3));
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.long"))
+                    .isNotNull().isInstanceOf(Long.class).isEqualTo(Long.valueOf(4));
+
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.ubyte"))
+                    .isNotNull().isInstanceOf(UnsignedByte.class).isEqualTo(UnsignedByte.valueOf((byte) 1));
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.ushort"))
+                    .isNotNull().isInstanceOf(UnsignedShort.class).isEqualTo(UnsignedShort.valueOf((short) 2));
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.uint"))
+                    .isNotNull().isInstanceOf(UnsignedInteger.class).isEqualTo(UnsignedInteger.valueOf(3));
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.ulong"))
+                    .isNotNull().isInstanceOf(UnsignedLong.class).isEqualTo(UnsignedLong.valueOf(4));
+
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.large.ubyte"))
+                    .isNotNull().isInstanceOf(UnsignedByte.class)
+                    .asInstanceOf(InstanceOfAssertFactories.type(UnsignedByte.class))
+                    .extracting(v -> v.intValue()).isEqualTo(Byte.MAX_VALUE + 10);
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.large.ushort"))
+                    .isNotNull().isInstanceOf(UnsignedShort.class)
+                    .asInstanceOf(InstanceOfAssertFactories.type(UnsignedShort.class))
+                    .extracting(v -> v.intValue()).isEqualTo(Short.MAX_VALUE + 10);
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.large.uint"))
+                    .isNotNull().isInstanceOf(UnsignedInteger.class)
+                    .asInstanceOf(InstanceOfAssertFactories.type(UnsignedInteger.class))
+                    .extracting(v -> v.toString()).isEqualTo(BigInteger.valueOf((long) Integer.MAX_VALUE + 10L).toString());
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.large.ulong"))
+                    .isNotNull().isInstanceOf(UnsignedLong.class)
+                    .asInstanceOf(InstanceOfAssertFactories.type(UnsignedLong.class))
+                    .extracting(v -> v.toString()).isEqualTo(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.TEN).toString());
+
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.float"))
+                    .isNotNull().isInstanceOf(Float.class).isEqualTo(Float.valueOf(3.14f));
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.double"))
+                    .isNotNull().isInstanceOf(Double.class).isEqualTo(Double.valueOf(6.28));
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.char"))
+                    .isNotNull().isInstanceOf(Character.class).isEqualTo('c');
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.timestamp"))
+                    .isNotNull().isInstanceOf(Long.class).isEqualTo(now);
+//            assertThat(inboundMessage.getMessageAnnotations().get("annotations.uuid"))
+//                    .isNotNull().isInstanceOf(UUID.class).isEqualTo(uuid);
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.binary"))
+                    .isNotNull().isInstanceOf(byte[].class).isEqualTo(binary);
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.string"))
+                    .isNotNull().isInstanceOf(String.class).isEqualTo(string);
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.symbol"))
                     .isNotNull().isInstanceOf(String.class).isEqualTo(symbol);
         });
 

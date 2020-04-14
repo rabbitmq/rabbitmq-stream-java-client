@@ -1337,6 +1337,11 @@ public class Client implements AutoCloseable {
         public Map<String, Object> getApplicationProperties() {
             return null;
         }
+
+        @Override
+        public Map<String, Object> getMessageAnnotations() {
+            return null;
+        }
     }
 
     private static class OutstandingRequest<T> {
@@ -1379,7 +1384,7 @@ public class Client implements AutoCloseable {
 
     private static class Subscriptions {
 
-        private Map<String, List<Integer>> targetsToSubscriptions = new ConcurrentHashMap<>();
+        private final Map<String, List<Integer>> targetsToSubscriptions = new ConcurrentHashMap<>();
 
         void add(String target, int subscriptionId) {
             List<Integer> subscriptionIds = targetsToSubscriptions.compute(target, (k, v) -> v == null ? new CopyOnWriteArrayList<>() : v);

@@ -17,6 +17,7 @@ package com.rabbitmq.stream;
 import org.apache.qpid.proton.amqp.*;
 import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
 import org.apache.qpid.proton.amqp.messaging.Data;
+import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 
 import java.math.BigDecimal;
 import java.util.Date;
@@ -32,6 +33,8 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
 
     private QpidProtonjApplicationPropertiesBuilder applicationPropertiesBuilder;
 
+    private QpidProtonjMessageAnnotationsBuilder messageAnnotationsBuilder;
+
     @Override
     public Message build() {
         if (propertiesBuilder != null) {
@@ -39,6 +42,9 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
         }
         if (applicationPropertiesBuilder != null) {
             message.setApplicationProperties(new ApplicationProperties(applicationPropertiesBuilder.applicationProperties));
+        }
+        if (messageAnnotationsBuilder != null) {
+            message.setMessageAnnotations(new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
         }
         return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(message);
     }
@@ -57,6 +63,14 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
             applicationPropertiesBuilder = new QpidProtonjApplicationPropertiesBuilder(this);
         }
         return applicationPropertiesBuilder;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder messageAnnotations() {
+        if (messageAnnotationsBuilder == null) {
+            messageAnnotationsBuilder = new QpidProtonjMessageAnnotationsBuilder(this);
+        }
+        return messageAnnotationsBuilder;
     }
 
     @Override
@@ -192,6 +206,134 @@ public class QpidProtonMessageBuilder implements MessageBuilder {
         public MessageBuilder messageBuilder() {
             return messageBuilder;
         }
+    }
+
+    private static class QpidProtonjMessageAnnotationsBuilder implements MessageAnnotationsBuilder {
+
+        private final Map<Symbol, Object> messageAnnotations = new LinkedHashMap<>();
+
+        private final MessageBuilder messageBuilder;
+
+        private QpidProtonjMessageAnnotationsBuilder(MessageBuilder messageBuilder) {
+            this.messageBuilder = messageBuilder;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, byte value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, short value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, int value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, long value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryUnsigned(String key, byte value) {
+            messageAnnotations.put(Symbol.getSymbol(key), new UnsignedByte(value));
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryUnsigned(String key, short value) {
+            messageAnnotations.put(Symbol.getSymbol(key), new UnsignedShort(value));
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryUnsigned(String key, int value) {
+            messageAnnotations.put(Symbol.getSymbol(key), new UnsignedInteger(value));
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryUnsigned(String key, long value) {
+            messageAnnotations.put(Symbol.getSymbol(key), new UnsignedLong(value));
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, float value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, double value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryDecimal32(String key, BigDecimal value) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryDecimal64(String key, BigDecimal value) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryDecimal128(String key, BigDecimal value) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, char value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryTimestamp(String key, long value) {
+            messageAnnotations.put(Symbol.getSymbol(key), new Date(value));
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, UUID uuid) {
+            messageAnnotations.put(Symbol.getSymbol(key), uuid);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, byte[] value) {
+            messageAnnotations.put(Symbol.getSymbol(key), new Binary(value));
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, String value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entrySymbol(String key, String value) {
+            messageAnnotations.put(Symbol.getSymbol(key), Symbol.valueOf(value));
+            return this;
+        }
+
+        @Override
+        public MessageBuilder messageBuilder() {
+            return messageBuilder;
+        }
+
     }
 
     private static class QpidProtonjApplicationPropertiesBuilder implements ApplicationPropertiesBuilder {

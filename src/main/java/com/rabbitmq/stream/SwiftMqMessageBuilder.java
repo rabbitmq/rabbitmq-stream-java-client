@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 
 public class SwiftMqMessageBuilder implements MessageBuilder {
 
@@ -33,14 +34,23 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
 
     private SwiftMqApplicationPropertiesBuilder applicationPropertiesBuilder;
 
+    private SwiftMqMessageAnnotationsBuilder messageAnnotationsBuilder;
+
     @Override
     public Message build() {
+        if (messageAnnotationsBuilder != null) {
+            try {
+                outboundMessage.setMessageAnnotations(new MessageAnnotations(messageAnnotationsBuilder.map));
+            } catch (IOException e) {
+                throw new ClientException("Error while setting message annotations", e);
+            }
+        }
         if (propertiesBuilder != null) {
             outboundMessage.setProperties(propertiesBuilder.properties);
         }
         if (applicationPropertiesBuilder != null) {
             try {
-                outboundMessage.setApplicationProperties(new ApplicationProperties(applicationPropertiesBuilder.applicationProperties));
+                outboundMessage.setApplicationProperties(new ApplicationProperties(applicationPropertiesBuilder.map));
             } catch (IOException e) {
                 throw new ClientException("Error while setting application properties", e);
             }
@@ -62,6 +72,14 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
             applicationPropertiesBuilder = new SwiftMqApplicationPropertiesBuilder(this);
         }
         return applicationPropertiesBuilder;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder messageAnnotations() {
+        if (messageAnnotationsBuilder == null) {
+            messageAnnotationsBuilder = new SwiftMqMessageAnnotationsBuilder(this);
+        }
+        return messageAnnotationsBuilder;
     }
 
     @Override
@@ -199,72 +217,148 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
         }
     }
 
-    private static class SwiftMqApplicationPropertiesBuilder implements ApplicationPropertiesBuilder {
+    private static class AmqpMapBuilderSupport {
 
-        private final Map<AMQPType, AMQPType> applicationProperties = new LinkedHashMap<>();
+        protected final Map<AMQPType, AMQPType> map = new LinkedHashMap<>();
+        private final Function<String, AMQPType> keyMaker;
+
+        private AmqpMapBuilderSupport(Function<String, AMQPType> keyMaker) {
+            this.keyMaker = keyMaker;
+        }
+
+        protected void addEntry(String key, byte value) {
+            map.put(keyMaker.apply(key), new AMQPByte(value));
+        }
+
+        protected void addEntry(String key, short value) {
+            map.put(keyMaker.apply(key), new AMQPShort(value));
+        }
+
+        protected void addEntry(String key, int value) {
+            map.put(keyMaker.apply(key), new AMQPInt(value));
+        }
+
+        protected void addEntry(String key, long value) {
+            map.put(keyMaker.apply(key), new AMQPLong(value));
+        }
+
+        protected void addEntryUnsigned(String key, byte value) {
+            map.put(keyMaker.apply(key), new AMQPUnsignedByte(value));
+        }
+
+        protected void addEntryUnsigned(String key, short value) {
+            map.put(keyMaker.apply(key), new AMQPUnsignedShort(value));
+        }
+
+        protected void addEntryUnsigned(String key, int value) {
+            map.put(keyMaker.apply(key), new AMQPUnsignedInt(value));
+        }
+
+        protected void addEntryUnsigned(String key, long value) {
+            map.put(keyMaker.apply(key), new AMQPUnsignedLong(value));
+        }
+
+        protected void addEntry(String key, float value) {
+            map.put(keyMaker.apply(key), new AMQPFloat(value));
+        }
+
+        protected void addEntry(String key, double value) {
+            map.put(keyMaker.apply(key), new AMQPDouble(value));
+        }
+
+        protected void addEntry(String key, char value) {
+            map.put(keyMaker.apply(key), new AMQPChar(value));
+        }
+
+        protected void addEntryTimestamp(String key, long value) {
+            map.put(keyMaker.apply(key), new AMQPTimestamp(value));
+        }
+
+        protected void addEntry(String key, UUID value) {
+            map.put(keyMaker.apply(key), new AMQPUuid(value));
+        }
+
+        protected void addEntry(String key, byte[] value) {
+            map.put(keyMaker.apply(key), new AMQPBinary(value));
+        }
+
+        protected void addEntry(String key, String value) {
+            map.put(keyMaker.apply(key), new AMQPString(value));
+        }
+
+        protected void addEntrySymbol(String key, String value) {
+            map.put(keyMaker.apply(key), new AMQPSymbol(value));
+        }
+    }
+
+    private static class SwiftMqApplicationPropertiesBuilder extends AmqpMapBuilderSupport implements ApplicationPropertiesBuilder {
+
+        private static final Function<String, AMQPType> KEY_MAKER = key -> new AMQPString(key);
+
         private final MessageBuilder messageBuilder;
 
         private SwiftMqApplicationPropertiesBuilder(MessageBuilder messageBuilder) {
+            super(KEY_MAKER);
             this.messageBuilder = messageBuilder;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, byte value) {
-            applicationProperties.put(new AMQPString(key), new AMQPByte(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, short value) {
-            applicationProperties.put(new AMQPString(key), new AMQPShort(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, int value) {
-            applicationProperties.put(new AMQPString(key), new AMQPInt(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, long value) {
-            applicationProperties.put(new AMQPString(key), new AMQPLong(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entryUnsigned(String key, byte value) {
-            applicationProperties.put(new AMQPString(key), new AMQPUnsignedByte(value));
+            addEntryUnsigned(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entryUnsigned(String key, short value) {
-            applicationProperties.put(new AMQPString(key), new AMQPUnsignedShort(value));
+            addEntryUnsigned(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entryUnsigned(String key, int value) {
-            applicationProperties.put(new AMQPString(key), new AMQPUnsignedInt(value));
+            addEntryUnsigned(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entryUnsigned(String key, long value) {
-            applicationProperties.put(new AMQPString(key), new AMQPUnsignedLong(value));
+            addEntryUnsigned(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, float value) {
-            applicationProperties.put(new AMQPString(key), new AMQPFloat(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, double value) {
-            applicationProperties.put(new AMQPString(key), new AMQPDouble(value));
+            addEntry(key, value);
             return this;
         }
 
@@ -285,37 +379,165 @@ public class SwiftMqMessageBuilder implements MessageBuilder {
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, char value) {
-            applicationProperties.put(new AMQPString(key), new AMQPChar(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entryTimestamp(String key, long value) {
-            applicationProperties.put(new AMQPString(key), new AMQPTimestamp(value));
+            addEntryTimestamp(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, UUID value) {
-            applicationProperties.put(new AMQPString(key), new AMQPUuid(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, byte[] value) {
-            applicationProperties.put(new AMQPString(key), new AMQPBinary(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entry(String key, String value) {
-            applicationProperties.put(new AMQPString(key), new AMQPString(value));
+            addEntry(key, value);
             return this;
         }
 
         @Override
         public ApplicationPropertiesBuilder entrySymbol(String key, String value) {
-            applicationProperties.put(new AMQPString(key), new AMQPSymbol(value));
+            addEntrySymbol(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageBuilder messageBuilder() {
+            return messageBuilder;
+        }
+    }
+
+    private static class SwiftMqMessageAnnotationsBuilder extends AmqpMapBuilderSupport implements MessageAnnotationsBuilder {
+
+        private static final Function<String, AMQPType> KEY_MAKER = key -> new AMQPSymbol(key);
+
+        private final MessageBuilder messageBuilder;
+
+        private SwiftMqMessageAnnotationsBuilder(MessageBuilder messageBuilder) {
+            super(KEY_MAKER);
+            this.messageBuilder = messageBuilder;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, byte value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, short value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, int value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, long value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryUnsigned(String key, byte value) {
+            addEntryUnsigned(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryUnsigned(String key, short value) {
+            addEntryUnsigned(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryUnsigned(String key, int value) {
+            addEntryUnsigned(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryUnsigned(String key, long value) {
+            addEntryUnsigned(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, float value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, double value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryDecimal32(String key, BigDecimal value) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryDecimal64(String key, BigDecimal value) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryDecimal128(String key, BigDecimal value) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, char value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entryTimestamp(String key, long value) {
+            addEntryTimestamp(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, UUID value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, byte[] value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, String value) {
+            addEntry(key, value);
+            return this;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entrySymbol(String key, String value) {
+            addEntrySymbol(key, value);
             return this;
         }
 

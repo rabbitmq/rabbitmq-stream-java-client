@@ -84,6 +84,11 @@ public class FrameTest {
                 public Map<String, Object> getApplicationProperties() {
                     return null;
                 }
+
+                @Override
+                public Map<String, Object> getMessageAnnotations() {
+                    return null;
+                }
             };
             List<ThrowableAssert.ThrowingCallable> publishCalls = Arrays.asList(
                     () -> client.publish("", binary),
@@ -113,9 +118,9 @@ public class FrameTest {
     void splitPublishedMessagesToFitMaxFrameSize() {
         int maxFrameSize = 1024;
         class TestDesc {
-            String description;
-            List<Integer> sizes;
-            int expectedCalls;
+            final String description;
+            final List<Integer> sizes;
+            final int expectedCalls;
 
             public TestDesc(String description, List<Integer> sizes, int expectedCalls) {
                 this.description = description;

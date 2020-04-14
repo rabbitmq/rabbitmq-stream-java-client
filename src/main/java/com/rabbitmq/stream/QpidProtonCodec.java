@@ -24,8 +24,12 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 
 public class QpidProtonCodec implements Codec {
+    private static final Function<String, String> MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR = k -> k;
+    private static final Function<Symbol, String> MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR = Symbol::toString;
+
     @Override
     public EncodedMessage encode(Message message) {
         if (message instanceof QpidProtonAmqpMessageWrapper) {
@@ -48,7 +52,8 @@ public class QpidProtonCodec implements Codec {
     public Message decode(byte[] data) {
         org.apache.qpid.proton.message.Message message = org.apache.qpid.proton.message.Message.Factory.create();
         message.decode(data, 0, data.length);
-        return new QpidProtonMessage(message, createProperties(message), createApplicationProperties(message));
+        return new QpidProtonMessage(message, createProperties(message),
+                createApplicationProperties(message), createMessageAnnotations(message));
     }
 
     protected Properties createProperties(org.apache.qpid.proton.message.Message message) {
@@ -60,17 +65,32 @@ public class QpidProtonCodec implements Codec {
     }
 
     protected Map<String, Object> createApplicationProperties(org.apache.qpid.proton.message.Message message) {
-        Map<String, Object> applicationProperties;
-        if (message.getApplicationProperties() != null) {
-            Map<String, Object> nativeApplicationProperties = message.getApplicationProperties().getValue();
-            applicationProperties = new LinkedHashMap<>(nativeApplicationProperties.size());
-            for (Map.Entry<String, Object> entry : nativeApplicationProperties.entrySet()) {
-                applicationProperties.put(entry.getKey(), convertApplicationProperty(entry.getValue()));
+        if (message.getApplicationProperties().getValue() != null) {
+            return createMapFromAmqpMap(MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR, message.getApplicationProperties().getValue());
+        } else {
+            return null;
+        }
+    }
+
+    protected Map<String, Object> createMessageAnnotations(org.apache.qpid.proton.message.Message message) {
+        if (message.getMessageAnnotations() != null) {
+            return createMapFromAmqpMap(MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR, message.getMessageAnnotations().getValue());
+        } else {
+            return null;
+        }
+    }
+
+    private <K> Map<String, Object> createMapFromAmqpMap(Function<K, String> keyMaker, Map<K, Object> amqpMap) {
+        Map<String, Object> result;
+        if (amqpMap != null) {
+            result = new LinkedHashMap<>(amqpMap.size());
+            for (Map.Entry<K, Object> entry : amqpMap.entrySet()) {
+                result.put(keyMaker.apply(entry.getKey()), convertApplicationProperty(entry.getValue()));
             }
         } else {
-            applicationProperties = null;
+            result = null;
         }
-        return applicationProperties;
+        return result;
     }
 
     protected Object convertApplicationProperty(Object value) {
@@ -229,11 +249,15 @@ public class QpidProtonCodec implements Codec {
         private final org.apache.qpid.proton.message.Message message;
         private final Properties properties;
         private final Map<String, Object> applicationProperties;
+        private final Map<String, Object> messageAnnotations;
 
-        private QpidProtonMessage(org.apache.qpid.proton.message.Message message, Properties properties, Map<String, Object> applicationProperties) {
+        private QpidProtonMessage(org.apache.qpid.proton.message.Message message, Properties properties,
+                                  Map<String, Object> applicationProperties,
+                                  Map<String, Object> messageAnnotations) {
             this.message = message;
             this.properties = properties;
             this.applicationProperties = applicationProperties;
+            this.messageAnnotations = messageAnnotations;
         }
 
         @Override
@@ -254,6 +278,11 @@ public class QpidProtonCodec implements Codec {
         @Override
         public Map<String, Object> getApplicationProperties() {
             return applicationProperties;
+        }
+
+        @Override
+        public Map<String, Object> getMessageAnnotations() {
+            return messageAnnotations;
         }
     }
 
@@ -282,6 +311,11 @@ public class QpidProtonCodec implements Codec {
 
         @Override
         public Map<String, Object> getApplicationProperties() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Map<String, Object> getMessageAnnotations() {
             throw new UnsupportedOperationException();
         }
     }
