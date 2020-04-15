@@ -182,7 +182,7 @@ public class QpidProtonCodec implements Codec {
     }
 
     protected Map<String, Object> createApplicationProperties(org.apache.qpid.proton.message.Message message) {
-        if (message.getApplicationProperties().getValue() != null) {
+        if (message.getApplicationProperties() != null) {
             return createMapFromAmqpMap(MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR, message.getApplicationProperties().getValue());
         } else {
             return null;
