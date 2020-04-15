@@ -151,7 +151,7 @@ public class Client implements AutoCloseable {
         if (code == RESPONSE_CODE_TARGET_DELETED) {
             String target = readString(bb);
             read += (2 + target.length());
-            LOGGER.info("Target {} has been deleted", target);
+            LOGGER.debug("Target {} has been deleted", target);
             List<Integer> subscriptionIds = subscriptions.removeSubscriptionsFor(target);
             for (Integer subscriptionId : subscriptionIds) {
                 subscriptionListener.subscriptionCancelled(subscriptionId, target, RESPONSE_CODE_TARGET_DELETED);
@@ -1429,7 +1429,7 @@ public class Client implements AutoCloseable {
                 if (commandId == COMMAND_CLOSE) {
                     task = () -> handleResponse(m, frameSize, outstandingRequests);
                 } else {
-                    LOGGER.warn("Ignoring command {} from server while closing", commandId);
+                    LOGGER.debug("Ignoring command {} from server while closing", commandId);
                     try {
                         while (m.isReadable()) {
                             m.readByte();

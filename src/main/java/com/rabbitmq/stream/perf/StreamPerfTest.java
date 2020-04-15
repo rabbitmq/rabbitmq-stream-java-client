@@ -218,12 +218,12 @@ public class StreamPerfTest implements Callable<Integer> {
                             .host(address.host).port(addr.port)
                     );
                     for (String target : targets) {
-                        LOGGER.info("Deleting {}", target);
+                        LOGGER.debug("Deleting {}", target);
                         Client.Response response = c.delete(target);
                         if (!response.isOk()) {
                             LOGGER.warn("Could not delete target {}, response code was {}", target, response.getResponseCode());
                         }
-                        LOGGER.info("Deleted {}", target);
+                        LOGGER.debug("Deleted {}", target);
                     }
                     c.close();
                 }
