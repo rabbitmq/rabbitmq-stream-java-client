@@ -27,6 +27,9 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
@@ -92,8 +95,15 @@ public class StreamPerfTest implements Callable<Integer> {
     }
 
     private static Closeable startMetricsReporting(String header, MetricRegistry metrics) throws IOException {
-        String filename = "stream-perf-test-" + new SimpleDateFormat("yyyy-MM-dd-HHmmss").format(new Date()) + ".txt";
-        OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(filename));
+        String currentFilename = "stream-perf-test-current.txt";
+        String finalFilename = "stream-perf-test-" + new SimpleDateFormat("yyyy-MM-dd-HHmmss").format(new Date()) + ".txt";
+        Path currentFile = Paths.get(currentFilename);
+        if (Files.exists(currentFile)) {
+            if (!Files.deleteIfExists(Paths.get(currentFilename))) {
+                LOGGER.warn("Could not delete file {}", currentFilename);
+            }
+        }
+        OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(currentFilename));
         PrintStream printStream = new PrintStream(outputStream);
         if (header != null && !header.trim().isEmpty()) {
             printStream.println(header);
@@ -150,6 +160,9 @@ public class StreamPerfTest implements Callable<Integer> {
             consoleReportingTask.cancel(true);
             fileReporter.stop();
             printStream.close();
+
+            Files.move(currentFile, currentFile.resolveSibling(finalFilename));
+
             scheduledExecutorService.shutdownNow();
 
             long duration = System.currentTimeMillis() - start;
