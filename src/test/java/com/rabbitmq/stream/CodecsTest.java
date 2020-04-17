@@ -19,9 +19,11 @@ import com.rabbitmq.stream.amqp.UnsignedInteger;
 import com.rabbitmq.stream.amqp.UnsignedLong;
 import com.rabbitmq.stream.amqp.UnsignedShort;
 import org.assertj.core.api.InstanceOfAssertFactories;
+import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -32,6 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class CodecsTest {
 
@@ -49,6 +52,14 @@ public class CodecsTest {
             }
         }
         return couples;
+    }
+
+    static Iterable<Supplier<MessageBuilder>> messageBuilderSuppliers() {
+        return Arrays.asList(
+                new MessageBuilderCreator(QpidProtonMessageBuilder.class),
+                new MessageBuilderCreator(SwiftMqMessageBuilder.class),
+                new MessageBuilderCreator(SimpleMessageBuilder.class)
+        );
     }
 
     @ParameterizedTest
@@ -310,6 +321,16 @@ public class CodecsTest {
         });
     }
 
+    @ParameterizedTest
+    @MethodSource("messageBuilderSuppliers")
+    void notSupportedTypes(Supplier<MessageBuilder> messageBuilderSupplier) {
+        Stream.of(
+                (ThrowableAssert.ThrowingCallable) () -> messageBuilderSupplier.get().applicationProperties().entryDecimal32("", BigDecimal.ONE),
+                () -> messageBuilderSupplier.get().applicationProperties().entryDecimal64("", BigDecimal.ONE),
+                () -> messageBuilderSupplier.get().applicationProperties().entryDecimal128("", BigDecimal.ONE)
+        ).forEach(action -> assertThatThrownBy(action).isInstanceOf(UnsupportedOperationException.class));
+    }
+
     MessageTestConfiguration test(Function<MessageBuilder, MessageBuilder> messageOperation, Consumer<Message> messageExpectation) {
         return new MessageTestConfiguration(messageOperation, messageExpectation);
     }
@@ -342,6 +363,30 @@ public class CodecsTest {
             return "serializer=" + serializer.getClass().getSimpleName() +
                     ", deserializer=" + deserializer.getClass().getSimpleName() +
                     ", messageBuilder=" + messageBuilderSupplier.get().getClass().getSimpleName();
+        }
+    }
+
+    static class MessageBuilderCreator implements Supplier<MessageBuilder> {
+
+        final Supplier<MessageBuilder> supplier;
+
+        MessageBuilderCreator(Class<? extends MessageBuilder> clazz) {
+            supplier = () -> {
+                try {
+                    return clazz.getConstructor().newInstance();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            };
+        }
+
+        public MessageBuilder get() {
+            return supplier.get();
+        }
+
+        @Override
+        public String toString() {
+            return get().getClass().getSimpleName();
         }
     }
 
