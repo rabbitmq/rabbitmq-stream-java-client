@@ -12,7 +12,7 @@
         <slf4j.version>1.7.30</slf4j.version>
         <logback.version>1.2.3</logback.version>
         <netty.version>4.1.48.Final</netty.version>
-        <swiftmq-client.version>12.0.2</swiftmq-client.version>
+        <swiftmq-client.version>12.1.0</swiftmq-client.version>
         <metrics.version>4.1.5</metrics.version>
         <picocli.version>4.2.0</picocli.version>
         <guava.version>28.2-jre</guava.version>

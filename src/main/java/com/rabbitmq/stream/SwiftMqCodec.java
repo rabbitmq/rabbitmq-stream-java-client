@@ -214,6 +214,8 @@ public class SwiftMqCodec implements Codec {
             return new AMQPTimestamp(((Date) value).getTime());
         } else if (value instanceof Symbol) {
             return new AMQPSymbol(value.toString());
+        } else if (value instanceof UUID) {
+            return new AMQPUuid((UUID) value);
         } else {
             throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
         }

@@ -70,11 +70,10 @@ public class CodecsTest {
                         builder -> builder.properties().messageId("bar".getBytes(CHARSET)).messageBuilder(),
                         message -> assertThat(message.getProperties().getMessageIdAsBinary()).isEqualTo("bar".getBytes(CHARSET))
                 ),
-                // UUID broken in SwiftMQ, https://github.com/iitsoftware/swiftmq-client/issues/36
-//                test(
-//                        builder -> builder.properties().messageId(TEST_UUID).messageBuilder(),
-//                        message -> assertThat(message.getProperties().getMessageIdAsUuid()).isEqualTo(TEST_UUID)
-//                ),
+                test(
+                        builder -> builder.properties().messageId(TEST_UUID).messageBuilder(),
+                        message -> assertThat(message.getProperties().getMessageIdAsUuid()).isEqualTo(TEST_UUID)
+                ),
                 test(
                         builder -> builder.properties().correlationId(42 + 10).messageBuilder(),
                         message -> assertThat(message.getProperties().getCorrelationIdAsLong()).isEqualTo(42 + 10)
@@ -87,11 +86,10 @@ public class CodecsTest {
                         builder -> builder.properties().correlationId("correlation bar".getBytes(CHARSET)).messageBuilder(),
                         message -> assertThat(message.getProperties().getCorrelationIdAsBinary()).isEqualTo("correlation bar".getBytes(CHARSET))
                 ),
-                // UUID broken in SwiftMQ, https://github.com/iitsoftware/swiftmq-client/issues/36
-//                test(
-//                        builder -> builder.properties().correlationId(TEST_UUID).messageBuilder(),
-//                        message -> assertThat(message.getProperties().getCorrelationIdAsUuid()).isEqualTo(TEST_UUID)
-//                )
+                test(
+                        builder -> builder.properties().correlationId(TEST_UUID).messageBuilder(),
+                        message -> assertThat(message.getProperties().getCorrelationIdAsUuid()).isEqualTo(TEST_UUID)
+                ),
                 test(
                         builder -> builder,
                         message -> assertThat(message.getProperties().getGroupSequence()).isEqualTo(-1)
@@ -116,7 +114,7 @@ public class CodecsTest {
         String groupId = "the group ID";
         String replyToGroupId = "the reply to group ID";
         long now = new Date().getTime();
-        //UUID uuid = UUID.randomUUID();
+        UUID uuid = UUID.randomUUID();
         byte[] binary = "the binary".getBytes(CHARSET);
         String string = "a string";
         String symbol = "a symbol";
@@ -155,7 +153,7 @@ public class CodecsTest {
                     .entry("double", 6.28)
                     .entry("char", 'c')
                     .entryTimestamp("timestamp", now)
-                    //.entry("uuid", uuid)
+                    .entry("uuid", uuid)
                     .entry("binary", binary)
                     .entry("string", string)
                     .entrySymbol("symbol", symbol)
@@ -177,7 +175,7 @@ public class CodecsTest {
                     .entry("annotations.double", 6.28)
                     .entry("annotations.char", 'c')
                     .entryTimestamp("annotations.timestamp", now)
-                    //.entry("uuid", uuid)
+                    .entry("annotations.uuid", uuid)
                     .entry("annotations.binary", binary)
                     .entry("annotations.string", string)
                     .entrySymbol("annotations.symbol", symbol)
@@ -248,15 +246,14 @@ public class CodecsTest {
                     .isNotNull().isInstanceOf(Character.class).isEqualTo('c');
             assertThat(inboundMessage.getApplicationProperties().get("timestamp"))
                     .isNotNull().isInstanceOf(Long.class).isEqualTo(now);
-//            assertThat(inboundMessage.getApplicationProperties().get("uuid"))
-//                    .isNotNull().isInstanceOf(UUID.class).isEqualTo(uuid);
+            assertThat(inboundMessage.getApplicationProperties().get("uuid"))
+                    .isNotNull().isInstanceOf(UUID.class).isEqualTo(uuid);
             assertThat(inboundMessage.getApplicationProperties().get("binary"))
                     .isNotNull().isInstanceOf(byte[].class).isEqualTo(binary);
             assertThat(inboundMessage.getApplicationProperties().get("string"))
                     .isNotNull().isInstanceOf(String.class).isEqualTo(string);
             assertThat(inboundMessage.getApplicationProperties().get("symbol"))
                     .isNotNull().isInstanceOf(String.class).isEqualTo(symbol);
-
 
             // message annotations
             assertThat(inboundMessage.getMessageAnnotations().get("annotations.byte"))
@@ -302,8 +299,8 @@ public class CodecsTest {
                     .isNotNull().isInstanceOf(Character.class).isEqualTo('c');
             assertThat(inboundMessage.getMessageAnnotations().get("annotations.timestamp"))
                     .isNotNull().isInstanceOf(Long.class).isEqualTo(now);
-//            assertThat(inboundMessage.getMessageAnnotations().get("annotations.uuid"))
-//                    .isNotNull().isInstanceOf(UUID.class).isEqualTo(uuid);
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.uuid"))
+                    .isNotNull().isInstanceOf(UUID.class).isEqualTo(uuid);
             assertThat(inboundMessage.getMessageAnnotations().get("annotations.binary"))
                     .isNotNull().isInstanceOf(byte[].class).isEqualTo(binary);
             assertThat(inboundMessage.getMessageAnnotations().get("annotations.string"))
@@ -311,8 +308,6 @@ public class CodecsTest {
             assertThat(inboundMessage.getMessageAnnotations().get("annotations.symbol"))
                     .isNotNull().isInstanceOf(String.class).isEqualTo(symbol);
         });
-
-
     }
 
     MessageTestConfiguration test(Function<MessageBuilder, MessageBuilder> messageOperation, Consumer<Message> messageExpectation) {
