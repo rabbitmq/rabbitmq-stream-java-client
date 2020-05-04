@@ -30,7 +30,11 @@ A RabbitMQ node with the stream plugin enabled is required:
  * Enable the plugin `./rabbitmq-plugins enable rabbitmq_stream`.
  * Start the broker `./rabbitmq-server -detached`. This starts the stream listener on port 5555.
 
-=== Maven
+=== Dependencies
+
+Use your favorite build management tool to add the client dependencies to your project.
+
+==== Maven
 
 .pom.xml
 [source,xml,subs="attributes,specialcharacters"]
@@ -63,7 +67,7 @@ A RabbitMQ node with the stream plugin enabled is required:
 </repositories>
 ----
 
-=== Gradle
+==== Gradle
 
 .build.gradle
 [source,groovy,subs="attributes,specialcharacters"]
