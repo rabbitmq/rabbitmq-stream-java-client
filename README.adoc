@@ -156,6 +156,24 @@ consumer.close();                                                            // 
 <7> Delete the stream
 <8> Close the consumer connection
 
+== Build Instructions
+
+You need JDK 1.8 or more installed.
+
+To build the JAR file:
+
+[source]
+----
+./mvnw clean package -DskipITs -DskipTests
+----
+
+To launch the test suite (requires a local RabbitMQ node with stream plugin enabled):
+
+[source]
+----
+./mvnw verify
+----
+
 == Copyright and License
 
 (c) 2020, VMware Inc or its affiliates.
