@@ -19,6 +19,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.*;
+import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
@@ -39,6 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.rabbitmq.stream.Constants.*;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class Client implements AutoCloseable {
 
@@ -88,6 +90,8 @@ public class Client implements AutoCloseable {
 
     private final boolean frameSizeCopped;
 
+    private final EventLoopGroup eventLoopGroup;
+
     private final String NETTY_HANDLER_FLUSH_CONSOLIDATION = FlushConsolidationHandler.class.getSimpleName();
     private final String NETTY_HANDLER_FRAME_DECODER = LengthFieldBasedFrameDecoder.class.getSimpleName();
     private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
@@ -107,8 +111,17 @@ public class Client implements AutoCloseable {
         this.saslConfiguration = parameters.saslConfiguration;
         this.credentialsProvider = parameters.credentialsProvider;
 
+        EventLoopGroup eventLoopGroup;
+        if (parameters.eventLoopGroup == null) {
+            this.eventLoopGroup = new NioEventLoopGroup();
+            eventLoopGroup = this.eventLoopGroup;
+        } else {
+            this.eventLoopGroup = null;
+            eventLoopGroup = parameters.eventLoopGroup;
+        }
+
         Bootstrap b = new Bootstrap();
-        b.group(parameters.eventLoopGroup);
+        b.group(eventLoopGroup);
         b.channel(NioSocketChannel.class);
         b.option(ChannelOption.SO_KEEPALIVE, true);
         // is that the default?
@@ -951,6 +964,10 @@ public class Client implements AutoCloseable {
             if (this.channel.isOpen()) {
                 LOGGER.debug("Closing Netty channel");
                 this.channel.close().get(10, TimeUnit.SECONDS);
+            }
+            if (this.eventLoopGroup != null) {
+                LOGGER.debug("Closing Netty event loop group");
+                this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
             }
         } catch (InterruptedException e) {
             LOGGER.info("Channel closing has been interrupted");
