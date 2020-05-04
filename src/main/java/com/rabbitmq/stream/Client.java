@@ -103,7 +103,7 @@ public class Client implements AutoCloseable {
         this.chunkListener = parameters.chunkListener;
         this.recordListener = parameters.recordListener;
         this.subscriptionListener = parameters.subscriptionListener;
-        this.codec = parameters.codec == null ? new SwiftMqCodec() : parameters.codec;
+        this.codec = parameters.codec == null ? new QpidProtonCodec() : parameters.codec;
         this.saslConfiguration = parameters.saslConfiguration;
         this.credentialsProvider = parameters.credentialsProvider;
 

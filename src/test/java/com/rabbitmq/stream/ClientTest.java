@@ -545,7 +545,7 @@ public class ClientTest {
                     .confirmListener(correlationId -> confirmedLatch.countDown())
             );
             int messageId = 0;
-            while (confirmedLatch.getCount() != 0) {
+            while (messageId < publishCount) {
                 messageId++;
                 publisher.publish(target, ("message" + messageId).getBytes(StandardCharsets.UTF_8));
                 published.mark();
