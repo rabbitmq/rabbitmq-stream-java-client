@@ -84,6 +84,8 @@ public class Client implements AutoCloseable {
 
     private final AtomicBoolean closing = new AtomicBoolean(false);
 
+    private final AtomicBoolean nettyClosing = new AtomicBoolean(false);
+
     private final int maxFrameSize;
 
     private final int heartbeat;
@@ -955,27 +957,33 @@ public class Client implements AutoCloseable {
 
             closeNetty();
 
+            if (this.executorService != null) {
+                this.executorService.shutdownNow();
+            }
+
             LOGGER.debug("Client closed");
         }
     }
 
     private void closeNetty() {
-        try {
-            if (this.channel.isOpen()) {
-                LOGGER.debug("Closing Netty channel");
-                this.channel.close().get(10, TimeUnit.SECONDS);
+        if (this.nettyClosing.compareAndSet(false, true)) {
+            try {
+                if (this.channel.isOpen()) {
+                    LOGGER.debug("Closing Netty channel");
+                    this.channel.close().get(10, TimeUnit.SECONDS);
+                }
+                if (this.eventLoopGroup != null && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
+                    LOGGER.debug("Closing Netty event loop group");
+                    this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+                }
+            } catch (InterruptedException e) {
+                LOGGER.info("Channel closing has been interrupted");
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException e) {
+                LOGGER.info("Channel closing failed", e);
+            } catch (TimeoutException e) {
+                LOGGER.info("Could not close channel in 10 seconds");
             }
-            if (this.eventLoopGroup != null) {
-                LOGGER.debug("Closing Netty event loop group");
-                this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
-            }
-        } catch (InterruptedException e) {
-            LOGGER.info("Channel closing has been interrupted");
-            Thread.currentThread().interrupt();
-        } catch (ExecutionException e) {
-            LOGGER.info("Channel closing failed", e);
-        } catch (TimeoutException e) {
-            LOGGER.info("Could not close channel in 10 seconds");
         }
     }
 
