@@ -1,0 +1,43 @@
+:protonj-version: 0.33.4
+
+= RabbitMQ Stream Java Client
+
+== How to Use
+
+.pom.xml
+[source,xml,subs="attributes,specialcharacters"]
+----
+<dependencies>
+
+  <dependency>
+    <groupId>com.rabbitmq</groupId>
+    <artifactId>stream-client</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </dependency>
+
+  <dependency>
+    <groupId>org.apache.qpid</groupId>
+    <artifactId>proton-j</artifactId>
+    <version>{protonj-version}</version>
+  </dependency>
+
+</dependencies>
+
+<repositories>
+
+  <repository>
+    <id>ossrh</id>
+    <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+    <snapshots><enabled>true</enabled></snapshots>
+    <releases><enabled>false</enabled></releases>
+  </repository>
+
+</repositories>
+----
+
+== Copyright and License
+
+(c) 2020, VMware Inc or its affiliates.
+
+Double licensed under the ASL2 and MPL1.1.
+See [LICENSE](./LICENSE) for details.
