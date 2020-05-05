@@ -288,13 +288,13 @@ public class StreamPerfTest implements Callable<Integer> {
                 creditRequestCondition = () -> chunkCount.incrementAndGet() % ackEvery == 0;
             }
             int creditToAsk = this.credit;
-            Client.ChunkListener chunkListener = (client, correlationId, offset, recordCount, dataSize) -> {
-                chunkSize.update(recordCount);
+            Client.ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> {
+                chunkSize.update(messageCount);
                 if (creditRequestCondition.getAsBoolean()) {
                     client.credit(correlationId, creditToAsk);
                 }
             };
-            Client.RecordListener recordListener = (correlationId, offset, data) -> {
+            Client.MessageListener messageListener = (correlationId, offset, data) -> {
                 consumed.mark();
                 latency.update((System.nanoTime() - data.getProperties().getCreationTime()) / 1000L);
             };
@@ -303,7 +303,7 @@ public class StreamPerfTest implements Callable<Integer> {
             Client client = client(new Client.ClientParameters()
                     .host(address.host).port(address.port)
                     .chunkListener(chunkListener)
-                    .recordListener(recordListener)
+                    .messageListener(messageListener)
             );
 
             return client;

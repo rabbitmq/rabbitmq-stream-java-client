@@ -56,7 +56,7 @@ public class Client implements AutoCloseable {
 
     private final ChunkListener chunkListener;
 
-    private final RecordListener recordListener;
+    private final MessageListener messageListener;
 
     private final SubscriptionListener subscriptionListener;
 
@@ -107,7 +107,7 @@ public class Client implements AutoCloseable {
         this.confirmListener = parameters.confirmListener;
         this.publishErrorListener = parameters.publishErrorListener;
         this.chunkListener = parameters.chunkListener;
-        this.recordListener = parameters.recordListener;
+        this.messageListener = parameters.messageListener;
         this.subscriptionListener = parameters.subscriptionListener;
         this.codec = parameters.codec == null ? new QpidProtonCodec() : parameters.codec;
         this.saslConfiguration = parameters.saslConfiguration;
@@ -359,7 +359,7 @@ public class Client implements AutoCloseable {
         return string;
     }
 
-    static void handleDeliver(ByteBuf bb, Client client, ChunkListener chunkListener, RecordListener recordListener, int frameSize, Codec codec, List<SubscriptionOffset> subscriptionOffsets) {
+    static void handleDeliver(ByteBuf bb, Client client, ChunkListener chunkListener, MessageListener messageListener, int frameSize, Codec codec, List<SubscriptionOffset> subscriptionOffsets) {
         int read = 2 + 2; // already read the command id and version
         int subscriptionId = bb.readInt();
         read += 4;
@@ -439,7 +439,7 @@ public class Client implements AutoCloseable {
                 // filter
             } else {
                 Message message = codec.decode(data);
-                recordListener.handle(subscriptionId, offset, message);
+                messageListener.handle(subscriptionId, offset, message);
             }
             numRecords--;
             offset++; // works even for unsigned long
@@ -1022,14 +1022,14 @@ public class Client implements AutoCloseable {
          * @param client         the client instance (e.g. to ask for more credit)
          * @param subscriptionId the subscription ID to correlate with a callback
          * @param offset         the first offset in the chunk
-         * @param recordCount    the total number of records (messages) in the chunk
+         * @param messageCount    the total number of messages in the chunk
          * @param dataSize       the size in bytes of the data in the chunk
          */
-        void handle(Client client, int subscriptionId, long offset, long recordCount, long dataSize);
+        void handle(Client client, int subscriptionId, long offset, long messageCount, long dataSize);
 
     }
 
-    public interface RecordListener {
+    public interface MessageListener {
 
         void handle(int subscriptionId, long offset, Message message);
 
@@ -1211,11 +1211,11 @@ public class Client implements AutoCloseable {
 
         };
 
-        private ChunkListener chunkListener = (client, correlationId, offset, recordCount, dataSize) -> {
+        private ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> {
 
         };
 
-        private RecordListener recordListener = (correlationId, offset, message) -> {
+        private MessageListener messageListener = (correlationId, offset, message) -> {
 
         };
 
@@ -1260,8 +1260,8 @@ public class Client implements AutoCloseable {
             return this;
         }
 
-        public ClientParameters recordListener(RecordListener recordListener) {
-            this.recordListener = recordListener;
+        public ClientParameters messageListener(MessageListener messageListener) {
+            this.messageListener = messageListener;
             return this;
         }
 
@@ -1468,7 +1468,7 @@ public class Client implements AutoCloseable {
                 if (commandId == COMMAND_PUBLISH_CONFIRM) {
                     task = () -> handleConfirm(m, confirmListener, frameSize);
                 } else if (commandId == COMMAND_DELIVER) {
-                    task = () -> handleDeliver(m, Client.this, chunkListener, recordListener, frameSize, codec, subscriptionOffsets);
+                    task = () -> handleDeliver(m, Client.this, chunkListener, messageListener, frameSize, codec, subscriptionOffsets);
                 } else if (commandId == COMMAND_PUBLISH_ERROR) {
                     task = () -> handlePublishError(m, publishErrorListener, frameSize);
                 } else if (commandId == COMMAND_METADATA_UPDATE) {

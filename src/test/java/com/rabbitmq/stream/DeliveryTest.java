@@ -46,45 +46,45 @@ public class DeliveryTest {
         }
     };
 
-    ByteBuf generateFrameBuffer(int nbRecords, long chunkOffset, int dataSize, Iterable<byte[]> records) {
+    ByteBuf generateFrameBuffer(int nbMessages, long chunkOffset, int dataSize, Iterable<byte[]> messages) {
         ByteBuf bb = ByteBufAllocator.DEFAULT.buffer(1024);
         bb.writeShort(Constants.COMMAND_DELIVER).writeShort(Constants.VERSION_0)
                 .writeInt(1) // subscription id
                 .writeByte(1) // magic and version
-                .writeShort(nbRecords) // num entries
-                .writeInt(nbRecords) // num records
+                .writeShort(nbMessages) // num entries
+                .writeInt(nbMessages) // num messages
                 .writeLong(0) // epoch
                 .writeLong(chunkOffset) // offset
                 .writeInt(0) // CRC
                 .writeInt(dataSize); // data size
 
-        for (byte[] record : records) {
-            bb.writeInt(record.length).writeBytes(record);
+        for (byte[] message : messages) {
+            bb.writeInt(message.length).writeBytes(message);
         }
         return bb;
     }
 
-    Iterable<byte[]> generateRecords(int nbRecords) {
+    Iterable<byte[]> generateMessages(int nbMessages) {
         Random random = new Random();
-        List<byte[]> records = new ArrayList<>();
-        for (int i = 0; i < nbRecords; i++) {
+        List<byte[]> messages = new ArrayList<>();
+        for (int i = 0; i < nbMessages; i++) {
             // <<0=SimpleEntryType:1, Size:31/unsigned,Data:Size/binary>>
-            int recordSize = random.nextInt(100) + 1;
-            records.add(new byte[recordSize]);
+            int messageSize = random.nextInt(100) + 1;
+            messages.add(new byte[messageSize]);
         }
-        return records;
+        return messages;
     }
 
-    int computeDataSize(Iterable<byte[]> records) {
+    int computeDataSize(Iterable<byte[]> messages) {
         int dataSize = 0;
-        for (byte[] record : records) {
-            dataSize += 4 + record.length;
+        for (byte[] message : messages) {
+            dataSize += 4 + message.length;
         }
         return dataSize;
     }
 
     @Test
-    void handleDeliveryShouldFilterRecordsBeforeSubscriptionOffsetAndCallCallbacks() {
+    void handleDeliveryShouldFilterMessagesBeforeSubscriptionOffsetAndCallCallbacks() {
         class TestConfig {
             long chunkOffset, subscriptionOffset;
 
@@ -102,11 +102,11 @@ public class DeliveryTest {
             long chunkOffset = config.chunkOffset;
             long subscriptionOffset = config.subscriptionOffset;
 
-            int nbRecords = (int) (subscriptionOffset - chunkOffset) + 100;
-            Iterable<byte[]> records = generateRecords(nbRecords);
-            int dataSize = computeDataSize(records);
+            int nbMessages = (int) (subscriptionOffset - chunkOffset) + 100;
+            Iterable<byte[]> messages = generateMessages(nbMessages);
+            int dataSize = computeDataSize(messages);
 
-            ByteBuf bb = generateFrameBuffer(nbRecords, chunkOffset, dataSize, records);
+            ByteBuf bb = generateFrameBuffer(nbMessages, chunkOffset, dataSize, messages);
 
             int frameSize = bb.readableBytes();
 
@@ -122,15 +122,15 @@ public class DeliveryTest {
             }
 
             Client.handleDeliver(bb, null,
-                    (client, subscriptionId, offset, recordCount, sizeOfData) -> {
-                        assertThat(recordCount).isEqualTo(nbRecords);
+                    (client, subscriptionId, offset, messageCount, sizeOfData) -> {
+                        assertThat(messageCount).isEqualTo(nbMessages);
                         chunkCountInCallback.incrementAndGet();
                     },
                     (subscriptionId, offset, message) -> messageCountInCallback.incrementAndGet(),
                     frameSize, NO_OP_CODEC, subscriptionOffsets);
 
             assertThat(chunkCountInCallback).hasValue(1);
-            assertThat(messageCountInCallback).hasValue(nbRecords - (subscriptionOffset - chunkOffset));
+            assertThat(messageCountInCallback).hasValue(nbMessages - (subscriptionOffset - chunkOffset));
             bb.release();
         });
     }

@@ -270,7 +270,7 @@ public class ClientTest {
         latches.put(2, new CountDownLatch(messageCount));
 
         ConcurrentMap<Integer, AtomicInteger> messageCounts = new ConcurrentHashMap<>(2);
-        Client consumer = client(new Client.ClientParameters().recordListener((correlationId, offset, message) -> {
+        Client consumer = client(new Client.ClientParameters().messageListener((correlationId, offset, message) -> {
             messageCounts.computeIfAbsent(correlationId, k -> new AtomicInteger(0)).incrementAndGet();
             latches.get(correlationId).countDown();
         }));
@@ -302,7 +302,7 @@ public class ClientTest {
         int messageCount = 10;
         CountDownLatch latch = new CountDownLatch(messageCount);
         AtomicInteger receivedMessageCount = new AtomicInteger(0);
-        Client client = client(new Client.ClientParameters().recordListener((correlationId, offset, message) -> {
+        Client client = client(new Client.ClientParameters().messageListener((correlationId, offset, message) -> {
             receivedMessageCount.incrementAndGet();
             latch.countDown();
         }));
@@ -314,7 +314,7 @@ public class ClientTest {
         assertThat(response.isOk()).isTrue();
 
         CountDownLatch latch2 = new CountDownLatch(messageCount);
-        Client client2 = client(new Client.ClientParameters().recordListener((correlationId, offset, message) -> latch2.countDown()));
+        Client client2 = client(new Client.ClientParameters().messageListener((correlationId, offset, message) -> latch2.countDown()));
         client2.subscribe(1, target, 0, messageCount * 100);
         IntStream.range(0, messageCount).forEach(i -> client.publish(target, ("" + i).getBytes()));
         assertThat(latch2.await(10, SECONDS)).isTrue();
@@ -329,7 +329,7 @@ public class ClientTest {
         latches.put(1, new CountDownLatch(messageCount));
         latches.put(2, new CountDownLatch(messageCount * 2));
         ConcurrentMap<Integer, AtomicInteger> messageCounts = new ConcurrentHashMap<>(2);
-        Client client = client(new Client.ClientParameters().recordListener((correlationId, offset, message) -> {
+        Client client = client(new Client.ClientParameters().messageListener((correlationId, offset, message) -> {
             messageCounts.computeIfAbsent(correlationId, k -> new AtomicInteger(0)).incrementAndGet();
             latches.get(correlationId).countDown();
         }));
@@ -410,14 +410,14 @@ public class ClientTest {
 
         CountDownLatch latch = new CountDownLatch(publishCount);
         Set<Message> messages = ConcurrentHashMap.newKeySet(publishCount);
-        Client.ChunkListener chunkListener = (client, correlationId, offset, recordCount, dataSize) -> client.credit(correlationId, 1);
-        Client.RecordListener recordListener = (correlationId, offset, message) -> {
+        Client.ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> client.credit(correlationId, 1);
+        Client.MessageListener messageListener = (correlationId, offset, message) -> {
             messages.add(message);
             latch.countDown();
         };
         Client consumer = client(new Client.ClientParameters()
                 .codec(codec)
-                .recordListener(recordListener).chunkListener(chunkListener));
+                .messageListener(messageListener).chunkListener(chunkListener));
         consumer.subscribe(1, target, 0, credit);
         assertThat(await(latch, Duration.ofSeconds(10))).isTrue();
         assertThat(messages).hasSize(publishCount);
@@ -493,19 +493,19 @@ public class ClientTest {
         CountDownLatch latch = new CountDownLatch(publishCount);
 
         AtomicInteger receivedCorrelationId = new AtomicInteger();
-        Client.ChunkListener chunkListener = (client, corr, offset, recordCountInChunk, dataSize) -> {
+        Client.ChunkListener chunkListener = (client, corr, offset, messageCountInChunk, dataSize) -> {
             receivedCorrelationId.set(corr);
             client.credit(correlationId, 1);
         };
 
-        Client.RecordListener recordListener = (corr, offset, message) -> {
+        Client.MessageListener messageListener = (corr, offset, message) -> {
             consumed.mark();
             latch.countDown();
         };
 
         Client client = client(new Client.ClientParameters()
                 .chunkListener(chunkListener)
-                .recordListener(recordListener));
+                .messageListener(messageListener));
         client.subscribe(correlationId, target, 0, credit);
 
         assertThat(latch.await(60, SECONDS)).isTrue();
@@ -522,21 +522,21 @@ public class ClientTest {
         Histogram chunkSize = metrics.histogram("chunk.size");
 
         CountDownLatch consumedLatch = new CountDownLatch(publishCount);
-        Client.ChunkListener chunkListener = (client, correlationId, offset, recordCount, dataSize) -> {
-            chunkSize.update(recordCount);
+        Client.ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> {
+            chunkSize.update(messageCount);
             if (consumedLatch.getCount() != 0) {
                 client.credit(correlationId, 1);
             }
         };
 
-        Client.RecordListener recordListener = (corr, offset, data) -> {
+        Client.MessageListener messageListener = (corr, offset, data) -> {
             consumed.mark();
             consumedLatch.countDown();
         };
 
         Client client = client(new Client.ClientParameters()
                 .chunkListener(chunkListener)
-                .recordListener(recordListener));
+                .messageListener(messageListener));
         client.subscribe(1, target, 0, credit);
 
         CountDownLatch confirmedLatch = new CountDownLatch(publishCount);
@@ -581,14 +581,14 @@ public class ClientTest {
             Map<Integer, CountDownLatch> latches = new ConcurrentHashMap<>();
             latches.put(1, new CountDownLatch(1));
             latches.put(2, new CountDownLatch(1));
-            Client client = new Client(new Client.ClientParameters().recordListener((subscriptionId, offset, message) -> {
+            Client client = new Client(new Client.ClientParameters().messageListener((subscriptionId, offset, message) -> {
                 if (firstOffsets.get(subscriptionId) == null) {
                     firstOffsets.put(subscriptionId, offset);
                 }
                 if (offset == messageCount - 1) {
                     latches.get(subscriptionId).countDown();
                 }
-            }).chunkListener((client1, subscriptionId, offset, recordCount, dataSize) -> client1.credit(subscriptionId, 1))
+            }).chunkListener((client1, subscriptionId, offset, msgCount, dataSize) -> client1.credit(subscriptionId, 1))
                     .eventLoopGroup(eventLoopGroup));
             client.subscribe(1, target, 50, 10);
             client.subscribe(2, target, 100, 10);
@@ -641,8 +641,8 @@ public class ClientTest {
         CountDownLatch consumedMessagesLatch = new CountDownLatch(messageLimit);
         AtomicReference<String> lastConsumedMessage = new AtomicReference<>();
         Client consumer = client(new Client.ClientParameters()
-                .chunkListener((client, subscriptionId, offset, recordCount, dataSize) -> client.credit(0, 1))
-                .recordListener((subscriptionId, offset, message) -> {
+                .chunkListener((client, subscriptionId, offset, msgCount, dataSize) -> client.credit(0, 1))
+                .messageListener((subscriptionId, offset, message) -> {
                     lastConsumedMessage.set(new String(message.getBodyAsBinary()));
                     consumedMessagesLatch.countDown();
                 }));
