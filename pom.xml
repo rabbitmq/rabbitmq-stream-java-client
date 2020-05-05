@@ -216,7 +216,6 @@
                             </fileSets>
                             <algorithms>
                                 <algorithm>MD5</algorithm>
-                                <algorithm>SHA-1</algorithm>
                             </algorithms>
                         </configuration>
                         <executions>
