@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 import java.io.*;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -39,7 +40,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-@CommandLine.Command(name = "stream-perf-test", mixinStandardHelpOptions = true, showDefaultValues = true,
+import static java.lang.String.format;
+
+@CommandLine.Command(name = "stream-perf-test", mixinStandardHelpOptions = false, showDefaultValues = true,
         version = "perftest 0.1",
         description = "Tests the performance of stream queues in RabbitMQ.")
 public class StreamPerfTest implements Callable<Integer> {
@@ -77,6 +80,11 @@ public class StreamPerfTest implements Callable<Integer> {
     @CommandLine.Option(names = {"--batch-size", "-bs"}, description = "size of a batch of published messages", defaultValue = "1")
     private int batchSize;
     private List<Address> addresses;
+
+    @CommandLine.Option(names = {"--version", "-v"}, description = "show version information", defaultValue = "false")
+    private boolean version;
+    @CommandLine.Mixin
+    private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
 
     public StreamPerfTest(String[] arguments) {
         this.arguments = arguments;
@@ -187,8 +195,32 @@ public class StreamPerfTest implements Callable<Integer> {
 
     }
 
+    private static void versionInformation() {
+        String lineSeparator = System.getProperty("line.separator");
+        String version = format(
+                "RabbitMQ Stream Perf Test %s (%s; %s)",
+                Version.VERSION, Version.BUILD, Version.BUILD_TIMESTAMP
+        );
+        String info = format(
+                "Java version: %s, vendor: %s" + lineSeparator +
+                        "Java home: %s" + lineSeparator +
+                        "Default locale: %s, platform encoding: %s" + lineSeparator +
+                        "OS name: %s, version: %s, arch: %s",
+                System.getProperty("java.version"), System.getProperty("java.vendor"),
+                System.getProperty("java.home"),
+                Locale.getDefault().toString(), Charset.defaultCharset().toString(),
+                System.getProperty("os.name"), System.getProperty("os.version"), System.getProperty("os.arch")
+        );
+        System.out.println("\u001B[1m" + version);
+        System.out.println("\u001B[0m" + info);
+    }
+
     @Override
     public Integer call() throws Exception {
+        if (this.version) {
+            versionInformation();
+            System.exit(0);
+        }
         this.addresses = addresses(this.addrs);
 
         ShutdownService shutdownService = new ShutdownService();
@@ -433,6 +465,5 @@ public class StreamPerfTest implements Callable<Integer> {
             this.port = port;
         }
     }
-
 
 }
