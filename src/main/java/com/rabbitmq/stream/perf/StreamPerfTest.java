@@ -51,9 +51,15 @@ public class StreamPerfTest implements Callable<Integer> {
     private final String[] arguments;
     private final EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
     private final Codec codec = new QpidProtonCodec();
+    @CommandLine.Mixin
+    private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
     int addressDispatching = 0;
     int streamDispatching = 0;
-    @CommandLine.Option(names = {"--addresses", "-a"}, description = "servers to connect to, e.g. localhost:5555", defaultValue = "localhost:5555")
+    @CommandLine.Option(names = {"--addresses", "-a"},
+            description = "servers to connect to, e.g. localhost:5555, separated by commas",
+            defaultValue = "localhost:5555",
+            split = ","
+    )
     private List<String> addrs;
     @CommandLine.Option(names = {"--producers", "-x"}, description = "number of producers", defaultValue = "1")
     private int producers;
@@ -61,7 +67,9 @@ public class StreamPerfTest implements Callable<Integer> {
     private int consumers;
     @CommandLine.Option(names = {"--size", "-s"}, description = "size of messages in bytes", defaultValue = "10")
     private int messageSize;
-    @CommandLine.Option(names = {"--initial-credit", "-icr"}, description = "initial credit when registering a consumer", defaultValue = "10")
+    @CommandLine.Option(names = {"--initial-credit", "-icr"},
+            description = "initial credit when registering a consumer", defaultValue = "10"
+    )
     private int initialCredit;
     @CommandLine.Option(names = {"--credit", "-cr"}, description = "credit requested on acknowledgment", defaultValue = "1")
     private int credit;
@@ -69,10 +77,13 @@ public class StreamPerfTest implements Callable<Integer> {
     private int ack;
     @CommandLine.Option(names = {"--confirms", "-c"}, description = "outstanding confirms", defaultValue = "-1")
     private int confirms;
-    @CommandLine.Option(names = {"--streams", "-st"}, description = "stream(s) to send to and consume from", defaultValue = "stream1")
+    @CommandLine.Option(names = {"--streams", "-st"},
+            description = "stream(s) to send to and consume from, separated by commas", defaultValue = "stream1",
+            split = ","
+    )
     private List<String> streams;
     @CommandLine.Option(names = {"--offset", "-o"}, description = "offset to start listening from", defaultValue = "0")
-    private int offset;
+    private long offset;
     @CommandLine.Option(names = {"--pre-declared", "-p"}, description = "whether streams are already declared or not", defaultValue = "false")
     private boolean preDeclared;
     @CommandLine.Option(names = {"--rate", "-r"}, description = "maximum rate of published messages", defaultValue = "-1")
@@ -80,11 +91,8 @@ public class StreamPerfTest implements Callable<Integer> {
     @CommandLine.Option(names = {"--batch-size", "-bs"}, description = "size of a batch of published messages", defaultValue = "1")
     private int batchSize;
     private List<Address> addresses;
-
     @CommandLine.Option(names = {"--version", "-v"}, description = "show version information", defaultValue = "false")
     private boolean version;
-    @CommandLine.Mixin
-    private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
 
     public StreamPerfTest(String[] arguments) {
         this.arguments = arguments;
