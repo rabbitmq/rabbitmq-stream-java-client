@@ -52,7 +52,7 @@ public class StreamPerfTest implements Callable<Integer> {
     private final EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
     private final Codec codec = new QpidProtonCodec();
     int addressDispatching = 0;
-    int targetDispatching = 0;
+    int streamDispatching = 0;
     @CommandLine.Option(names = {"--addresses", "-a"}, description = "servers to connect to, e.g. localhost:5555", defaultValue = "localhost:5555")
     private List<String> addrs;
     @CommandLine.Option(names = {"--producers", "-x"}, description = "number of producers", defaultValue = "1")
@@ -69,11 +69,11 @@ public class StreamPerfTest implements Callable<Integer> {
     private int ack;
     @CommandLine.Option(names = {"--confirms", "-c"}, description = "outstanding confirms", defaultValue = "-1")
     private int confirms;
-    @CommandLine.Option(names = {"--targets", "-t"}, description = "target(s) to send to and consume from", defaultValue = "target1")
-    private List<String> targets;
+    @CommandLine.Option(names = {"--streams", "-st"}, description = "stream(s) to send to and consume from", defaultValue = "stream1")
+    private List<String> streams;
     @CommandLine.Option(names = {"--offset", "-o"}, description = "offset to start listening from", defaultValue = "0")
     private int offset;
-    @CommandLine.Option(names = {"--pre-declared", "-p"}, description = "whether targets are already declared or not", defaultValue = "false")
+    @CommandLine.Option(names = {"--pre-declared", "-p"}, description = "whether streams are already declared or not", defaultValue = "false")
     private boolean preDeclared;
     @CommandLine.Option(names = {"--rate", "-r"}, description = "maximum rate of published messages", defaultValue = "-1")
     private int rate;
@@ -247,28 +247,28 @@ public class StreamPerfTest implements Callable<Integer> {
             Client client = client(new Client.ClientParameters()
                     .host(address.host).port(address.port)
             );
-            for (String target : targets) {
-                Client.Response response = client.create(target);
+            for (String stream : streams) {
+                Client.Response response = client.create(stream);
                 if (response.isOk()) {
-                    LOGGER.info("Created target {}", target);
+                    LOGGER.info("Created stream {}", stream);
                 } else {
-                    throw new IllegalStateException("Could not create " + target + ", response code is " + response.getResponseCode());
+                    throw new IllegalStateException("Could not create " + stream + ", response code is " + response.getResponseCode());
                 }
             }
             client.close();
-            shutdownService.wrap(closeStep("Deleting target(s)", () -> {
+            shutdownService.wrap(closeStep("Deleting stream(s)", () -> {
                 if (!preDeclared) {
                     Address addr = addresses.get(0);
                     Client c = client(new Client.ClientParameters()
                             .host(address.host).port(addr.port)
                     );
-                    for (String target : targets) {
-                        LOGGER.debug("Deleting {}", target);
-                        Client.Response response = c.delete(target);
+                    for (String stream : streams) {
+                        LOGGER.debug("Deleting {}", stream);
+                        Client.Response response = c.delete(stream);
                         if (!response.isOk()) {
-                            LOGGER.warn("Could not delete target {}, response code was {}", target, response.getResponseCode());
+                            LOGGER.warn("Could not delete stream {}, response code was {}", stream, response.getResponseCode());
                         }
-                        LOGGER.debug("Deleted {}", target);
+                        LOGGER.debug("Deleted {}", stream);
                     }
                     c.close();
                 }
@@ -276,7 +276,7 @@ public class StreamPerfTest implements Callable<Integer> {
         }
 
         // FIXME handle metadata update for consumers and publishers
-        // they should at least issue a warning that their target has been deleted and that they're now useless
+        // they should at least issue a warning that their stream has been deleted and that they're now useless
 
         List<Client> consumers = Collections.synchronizedList(IntStream.range(0, this.consumers).mapToObj(i -> {
             BooleanSupplier creditRequestCondition;
@@ -367,8 +367,8 @@ public class StreamPerfTest implements Callable<Integer> {
                 }
             }));
 
-            String target = target();
-            LOGGER.info("Producer will target {}", target);
+            String stream = stream();
+            LOGGER.info("Producer will stream {}", stream);
             return (Runnable) () -> {
                 // FIXME fill the message with some data
                 byte[] data = new byte[this.messageSize];
@@ -385,7 +385,7 @@ public class StreamPerfTest implements Callable<Integer> {
                                 .properties().creationTime(creationTime).messageBuilder()
                                 .addData(data).build());
                     }
-                    client.publish(target, messages);
+                    client.publish(stream, messages);
                     published.mark(this.batchSize);
                 }
             };
@@ -394,9 +394,9 @@ public class StreamPerfTest implements Callable<Integer> {
 
         int consumerSequence = 0;
         for (Client consumer : consumers) {
-            String target = target();
-            LOGGER.info("Starting consuming on {}", target);
-            consumer.subscribe(consumerSequence++, target, this.offset, this.initialCredit);
+            String stream = stream();
+            LOGGER.info("Starting consuming on {}", stream);
+            consumer.subscribe(consumerSequence++, stream, this.offset, this.initialCredit);
         }
 
         ExecutorService executorService;
@@ -447,8 +447,8 @@ public class StreamPerfTest implements Callable<Integer> {
         return new Client(parameters.eventLoopGroup(this.eventLoopGroup).codec(codec));
     }
 
-    private String target() {
-        return targets.get(targetDispatching++ % targets.size());
+    private String stream() {
+        return streams.get(streamDispatching++ % streams.size());
     }
 
     private Address address() {

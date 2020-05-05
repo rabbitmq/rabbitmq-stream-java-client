@@ -17,11 +17,11 @@ package com.rabbitmq.stream;
 public final class Constants {
 
     public static final short RESPONSE_CODE_OK = 0;
-    public static final short RESPONSE_CODE_TARGET_DOES_NOT_EXIST = 1;
+    public static final short RESPONSE_CODE_STREAM_DOES_NOT_EXIST = 1;
     public static final short RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS = 2;
     public static final short RESPONSE_CODE_SUBSCRIPTION_ID_DOES_NOT_EXIST = 3;
-    public static final short RESPONSE_CODE_TARGET_ALREADY_EXISTS = 4;
-    public static final short RESPONSE_CODE_TARGET_DELETED = 5;
+    public static final short RESPONSE_CODE_STREAM_ALREADY_EXISTS = 4;
+    public static final short RESPONSE_CODE_STREAM_DELETED = 5;
     public static final short RESPONSE_CODE_SASL_MECHANISM_NOT_SUPPORTED = 6;
     public static final short RESPONSE_CODE_AUTHENTICATION_FAILURE = 7;
     public static final short RESPONSE_CODE_SASL_ERROR = 8;
@@ -45,8 +45,8 @@ public final class Constants {
     public static final short COMMAND_CLOSE = 13;
     public static final short COMMAND_HEARTBEAT = 14;
 
-    public static final short COMMAND_CREATE_TARGET = 998;
-    public static final short COMMAND_DELETE_TARGET = 999;
+    public static final short COMMAND_CREATE_STREAM = 998;
+    public static final short COMMAND_DELETE_STREAM = 999;
     public static final short VERSION_0 = 0;
 
     private Constants() {

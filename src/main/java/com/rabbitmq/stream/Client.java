@@ -163,13 +163,13 @@ public class Client implements AutoCloseable {
         int read = 2 + 2; // already read the command id and version
         short code = bb.readShort();
         read += 2;
-        if (code == RESPONSE_CODE_TARGET_DELETED) {
-            String target = readString(bb);
-            read += (2 + target.length());
-            LOGGER.debug("Target {} has been deleted", target);
-            List<Integer> subscriptionIds = subscriptions.removeSubscriptionsFor(target);
+        if (code == RESPONSE_CODE_STREAM_DELETED) {
+            String stream = readString(bb);
+            read += (2 + stream.length());
+            LOGGER.debug("Stream {} has been deleted", stream);
+            List<Integer> subscriptionIds = subscriptions.removeSubscriptionsFor(stream);
             for (Integer subscriptionId : subscriptionIds) {
-                subscriptionListener.subscriptionCancelled(subscriptionId, target, RESPONSE_CODE_TARGET_DELETED);
+                subscriptionListener.subscriptionCancelled(subscriptionId, stream, RESPONSE_CODE_STREAM_DELETED);
             }
 
         } else {
@@ -309,12 +309,12 @@ public class Client implements AutoCloseable {
             brokers.put(brokerReference, new Broker(host, port));
         }
 
-        int targetsCount = bb.readInt();
-        Map<String, TargetMetadata> results = new LinkedHashMap<>(targetsCount);
+        int streamsCount = bb.readInt();
+        Map<String, StreamMetadata> results = new LinkedHashMap<>(streamsCount);
         read += 4;
-        for (int i = 0; i < targetsCount; i++) {
-            String target = readString(bb);
-            read += 2 + target.length();
+        for (int i = 0; i < streamsCount; i++) {
+            String stream = readString(bb);
+            read += 2 + stream.length();
             short responseCode = bb.readShort();
             read += 2;
             short leaderReference = bb.readShort();
@@ -332,12 +332,12 @@ public class Client implements AutoCloseable {
                     replicas.add(brokers.get(replicaReference));
                 }
             }
-            TargetMetadata targetMetadata = new TargetMetadata(target, responseCode, brokers.get(leaderReference), replicas);
-            results.put(target, targetMetadata);
+            StreamMetadata streamMetadata = new StreamMetadata(stream, responseCode, brokers.get(leaderReference), replicas);
+            results.put(stream, streamMetadata);
         }
 
-        OutstandingRequest<Map<String, TargetMetadata>> outstandingRequest = remove(outstandingRequests, correlationId,
-                new ParameterizedTypeReference<Map<String, TargetMetadata>>() {
+        OutstandingRequest<Map<String, StreamMetadata>> outstandingRequest = remove(outstandingRequests, correlationId,
+                new ParameterizedTypeReference<Map<String, StreamMetadata>>() {
                 });
         if (outstandingRequest == null) {
             LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
@@ -684,17 +684,17 @@ public class Client implements AutoCloseable {
         }
     }
 
-    public Response create(String target) {
-        int length = 2 + 2 + 4 + 2 + target.length();
+    public Response create(String stream) {
+        int length = 2 + 2 + 4 + 2 + stream.length();
         int correlationId = correlationSequence.incrementAndGet();
         try {
             ByteBuf bb = allocate(length + 4);
             bb.writeInt(length);
-            bb.writeShort(COMMAND_CREATE_TARGET);
+            bb.writeShort(COMMAND_CREATE_STREAM);
             bb.writeShort(VERSION_0);
             bb.writeInt(correlationId);
-            bb.writeShort(target.length());
-            bb.writeBytes(target.getBytes(StandardCharsets.UTF_8));
+            bb.writeShort(stream.length());
+            bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
             OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
             outstandingRequests.put(correlationId, request);
             channel.writeAndFlush(bb);
@@ -725,17 +725,17 @@ public class Client implements AutoCloseable {
         return allocateNoCheck(channel.alloc(), capacity);
     }
 
-    public Response delete(String target) {
-        int length = 2 + 2 + 4 + 2 + target.length();
+    public Response delete(String stream) {
+        int length = 2 + 2 + 4 + 2 + stream.length();
         int correlationId = correlationSequence.incrementAndGet();
         try {
             ByteBuf bb = allocate(length + 4);
             bb.writeInt(length);
-            bb.writeShort(COMMAND_DELETE_TARGET);
+            bb.writeShort(COMMAND_DELETE_STREAM);
             bb.writeShort(VERSION_0);
             bb.writeInt(correlationId);
-            bb.writeShort(target.length());
-            bb.writeBytes(target.getBytes(StandardCharsets.UTF_8));
+            bb.writeShort(stream.length());
+            bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
             OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
             outstandingRequests.put(correlationId, request);
             channel.writeAndFlush(bb);
@@ -747,14 +747,14 @@ public class Client implements AutoCloseable {
         }
     }
 
-    public Map<String, TargetMetadata> metadata(String... targets) {
-        if (targets == null || targets.length == 0) {
-            throw new IllegalArgumentException("At least one target must be specified");
+    public Map<String, StreamMetadata> metadata(String... streams) {
+        if (streams == null || streams.length == 0) {
+            throw new IllegalArgumentException("At least one stream must be specified");
         }
         int length = 2 + 2 + 4 + 4; // API code, version, correlation ID, size of array
-        for (String target : targets) {
+        for (String stream : streams) {
             length += 2;
-            length += target.length();
+            length += stream.length();
         }
         int correlationId = correlationSequence.incrementAndGet();
         try {
@@ -763,12 +763,12 @@ public class Client implements AutoCloseable {
             bb.writeShort(COMMAND_METADATA);
             bb.writeShort(VERSION_0);
             bb.writeInt(correlationId);
-            bb.writeInt(targets.length);
-            for (String target : targets) {
-                bb.writeShort(target.length());
-                bb.writeBytes(target.getBytes(StandardCharsets.UTF_8));
+            bb.writeInt(streams.length);
+            for (String stream : streams) {
+                bb.writeShort(stream.length());
+                bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
             }
-            OutstandingRequest<Map<String, TargetMetadata>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+            OutstandingRequest<Map<String, StreamMetadata>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
             outstandingRequests.put(correlationId, request);
             channel.writeAndFlush(bb);
             request.block();
@@ -779,47 +779,47 @@ public class Client implements AutoCloseable {
         }
     }
 
-    public List<Long> publish(String target, List<Message> messages) {
+    public List<Long> publish(String stream, List<Message> messages) {
         List<Codec.EncodedMessage> encodedMessages = new ArrayList<>(messages.size());
         for (Message message : messages) {
             Codec.EncodedMessage encodedMessage = codec.encode(message);
-            checkMessageFitsInFrame(target, encodedMessage);
+            checkMessageFitsInFrame(stream, encodedMessage);
             encodedMessages.add(encodedMessage);
         }
-        return publishInternal(this.channel, target, encodedMessages);
+        return publishInternal(this.channel, stream, encodedMessages);
     }
 
-    public long publish(String target, Message message) {
+    public long publish(String stream, Message message) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
-        checkMessageFitsInFrame(target, encodedMessage);
-        return publishInternal(this.channel, target, Collections.singletonList(encodedMessage)).get(0);
+        checkMessageFitsInFrame(stream, encodedMessage);
+        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage)).get(0);
     }
 
-    public List<Long> publishBinary(String target, List<byte[]> messages) {
+    public List<Long> publishBinary(String stream, List<byte[]> messages) {
         List<Codec.EncodedMessage> encodedMessages = new ArrayList<>(messages.size());
         for (byte[] message : messages) {
             Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(message));
-            checkMessageFitsInFrame(target, encodedMessage);
+            checkMessageFitsInFrame(stream, encodedMessage);
             encodedMessages.add(encodedMessage);
         }
-        return publishInternal(this.channel, target, encodedMessages);
+        return publishInternal(this.channel, stream, encodedMessages);
     }
 
-    private void checkMessageFitsInFrame(String target, Codec.EncodedMessage encodedMessage) {
-        int frameBeginning = 4 + 2 + 2 + 2 + target.length() + 4 + 8 + 4 + encodedMessage.getSize();
+    private void checkMessageFitsInFrame(String stream, Codec.EncodedMessage encodedMessage) {
+        int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8 + 4 + encodedMessage.getSize();
         if (frameBeginning > this.maxFrameSize) {
             throw new IllegalArgumentException("Message too big to fit in one frame: " + encodedMessage.getSize());
         }
     }
 
-    public long publish(String target, byte[] data) {
+    public long publish(String stream, byte[] data) {
         Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(data));
-        checkMessageFitsInFrame(target, encodedMessage);
-        return publishInternal(this.channel, target, Collections.singletonList(encodedMessage)).get(0);
+        checkMessageFitsInFrame(stream, encodedMessage);
+        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage)).get(0);
     }
 
-    List<Long> publishInternal(Channel ch, String target, List<Codec.EncodedMessage> encodedMessages) {
-        int frameHeaderLength = 2 + 2 + 2 + target.length() + 4;
+    List<Long> publishInternal(Channel ch, String stream, List<Codec.EncodedMessage> encodedMessages) {
+        int frameHeaderLength = 2 + 2 + 2 + stream.length() + 4;
 
         List<Long> sequences = new ArrayList<>(encodedMessages.size());
         int length = frameHeaderLength;
@@ -830,25 +830,25 @@ public class Client implements AutoCloseable {
             if (length > this.maxFrameSize) {
                 // the current message does not fit, we're sending the batch
                 int frameLength = length - (12 + encodedMessage.getSize());
-                sendMessageBatch(ch, frameLength, target, startIndex, currentIndex, encodedMessages, sequences);
+                sendMessageBatch(ch, frameLength, stream, startIndex, currentIndex, encodedMessages, sequences);
                 length = frameHeaderLength + (8 + 4 + encodedMessage.getSize()); // publish ID + message size
                 startIndex = currentIndex;
             }
             currentIndex++;
         }
-        sendMessageBatch(ch, length, target, startIndex, currentIndex, encodedMessages, sequences);
+        sendMessageBatch(ch, length, stream, startIndex, currentIndex, encodedMessages, sequences);
 
         return sequences;
     }
 
-    private void sendMessageBatch(Channel ch, int frameLength, String target, int fromIncluded, int toExcluded, List<Codec.EncodedMessage> messages, List<Long> sequences) {
+    private void sendMessageBatch(Channel ch, int frameLength, String stream, int fromIncluded, int toExcluded, List<Codec.EncodedMessage> messages, List<Long> sequences) {
         // no check because it's been done already
         ByteBuf out = allocateNoCheck(ch.alloc(), frameLength + 4);
         out.writeInt(frameLength);
         out.writeShort(COMMAND_PUBLISH);
         out.writeShort(VERSION_0);
-        out.writeShort(target.length());
-        out.writeBytes(target.getBytes(StandardCharsets.UTF_8));
+        out.writeShort(stream.length());
+        out.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
         out.writeInt(toExcluded - fromIncluded);
         for (int i = fromIncluded; i < toExcluded; i++) {
             Codec.EncodedMessage messageToPublish = messages.get(i);
@@ -888,16 +888,16 @@ public class Client implements AutoCloseable {
      * the <code>unsigned*</code> static methods in {@link Long}.
      *
      * @param subscriptionId identifier to correlate inbound messages to this subscription
-     * @param target         the stream to consume from
+     * @param stream         the stream to consume from
      * @param offset         the offset in the stream to consume from (unsigned long)
      * @param credit         the initial number of credits
      * @return the subscription confirmation
      */
-    public Response subscribe(int subscriptionId, String target, long offset, int credit) {
+    public Response subscribe(int subscriptionId, String stream, long offset, int credit) {
         if (credit < 0 || credit > Short.MAX_VALUE) {
             throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
         }
-        int length = 2 + 2 + 4 + 4 + 2 + target.length() + 8 + 2;
+        int length = 2 + 2 + 4 + 4 + 2 + stream.length() + 8 + 2;
         int correlationId = correlationSequence.getAndIncrement();
         try {
             ByteBuf bb = allocate(length + 4);
@@ -906,8 +906,8 @@ public class Client implements AutoCloseable {
             bb.writeShort(VERSION_0);
             bb.writeInt(correlationId);
             bb.writeInt(subscriptionId);
-            bb.writeShort(target.length());
-            bb.writeBytes(target.getBytes(StandardCharsets.UTF_8));
+            bb.writeShort(stream.length());
+            bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
             bb.writeLong(offset);
             bb.writeShort(credit);
             OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
@@ -917,7 +917,7 @@ public class Client implements AutoCloseable {
             }
             channel.writeAndFlush(bb);
             request.block();
-            subscriptions.add(target, subscriptionId);
+            subscriptions.add(stream, subscriptionId);
             return request.response.get();
         } catch (RuntimeException e) {
             outstandingRequests.remove(correlationId);
@@ -1006,7 +1006,7 @@ public class Client implements AutoCloseable {
 
     public interface SubscriptionListener {
 
-        void subscriptionCancelled(int subscriptionId, String target, short reason);
+        void subscriptionCancelled(int subscriptionId, String stream, short reason);
 
     }
 
@@ -1123,9 +1123,9 @@ public class Client implements AutoCloseable {
         }
     }
 
-    public static class TargetMetadata {
+    public static class StreamMetadata {
 
-        private final String target;
+        private final String stream;
 
         private final short responseCode;
 
@@ -1133,8 +1133,8 @@ public class Client implements AutoCloseable {
 
         private final Collection<Broker> replicas;
 
-        public TargetMetadata(String target, short responseCode, Broker leader, Collection<Broker> replicas) {
-            this.target = target;
+        public StreamMetadata(String stream, short responseCode, Broker leader, Collection<Broker> replicas) {
+            this.stream = stream;
             this.responseCode = responseCode;
             this.leader = leader;
             this.replicas = replicas;
@@ -1152,14 +1152,14 @@ public class Client implements AutoCloseable {
             return replicas;
         }
 
-        public String getTarget() {
-            return target;
+        public String getStream() {
+            return stream;
         }
 
         @Override
         public String toString() {
-            return "TargetMetadata{" +
-                    "target='" + target + '\'' +
+            return "StreamMetadata{" +
+                    "stream='" + stream + '\'' +
                     ", responseCode=" + responseCode +
                     ", leader=" + leader +
                     ", replicas=" + replicas +
@@ -1219,7 +1219,7 @@ public class Client implements AutoCloseable {
 
         };
 
-        private SubscriptionListener subscriptionListener = (subscriptionId, target, reason) -> {
+        private SubscriptionListener subscriptionListener = (subscriptionId, stream, reason) -> {
 
         };
 
@@ -1409,15 +1409,15 @@ public class Client implements AutoCloseable {
 
     private static class Subscriptions {
 
-        private final Map<String, List<Integer>> targetsToSubscriptions = new ConcurrentHashMap<>();
+        private final Map<String, List<Integer>> streamsToSubscriptions = new ConcurrentHashMap<>();
 
-        void add(String target, int subscriptionId) {
-            List<Integer> subscriptionIds = targetsToSubscriptions.compute(target, (k, v) -> v == null ? new CopyOnWriteArrayList<>() : v);
+        void add(String stream, int subscriptionId) {
+            List<Integer> subscriptionIds = streamsToSubscriptions.compute(stream, (k, v) -> v == null ? new CopyOnWriteArrayList<>() : v);
             subscriptionIds.add(subscriptionId);
         }
 
         void remove(int subscriptionId) {
-            Iterator<Map.Entry<String, List<Integer>>> iterator = targetsToSubscriptions.entrySet().iterator();
+            Iterator<Map.Entry<String, List<Integer>>> iterator = streamsToSubscriptions.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, List<Integer>> entry = iterator.next();
                 boolean removed = entry.getValue().remove((Object) subscriptionId);
@@ -1430,8 +1430,8 @@ public class Client implements AutoCloseable {
             }
         }
 
-        List<Integer> removeSubscriptionsFor(String target) {
-            List<Integer> subscriptionIds = targetsToSubscriptions.remove(target);
+        List<Integer> removeSubscriptionsFor(String stream) {
+            List<Integer> subscriptionIds = streamsToSubscriptions.remove(stream);
             return subscriptionIds == null ? Collections.emptyList() : subscriptionIds;
         }
 
@@ -1486,7 +1486,7 @@ public class Client implements AutoCloseable {
                 } else if (commandId == COMMAND_HEARTBEAT) {
                     task = () -> handleHeartbeat(frameSize);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
-                        || commandId == COMMAND_CREATE_TARGET || commandId == COMMAND_DELETE_TARGET
+                        || commandId == COMMAND_CREATE_STREAM || commandId == COMMAND_DELETE_STREAM
                         || commandId == COMMAND_OPEN) {
                     task = () -> handleResponse(m, frameSize, outstandingRequests);
                 } else {

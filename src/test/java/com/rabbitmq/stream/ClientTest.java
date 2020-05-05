@@ -51,11 +51,11 @@ public class ClientTest {
 
     static EventLoopGroup eventLoopGroup;
 
-    String target;
+    String stream;
     int credit = 10;
     Set<Client> clients = ConcurrentHashMap.newKeySet();
 
-    static void publishAndWaitForConfirms(int publishCount, String target) {
+    static void publishAndWaitForConfirms(int publishCount, String stream) {
         long start = System.currentTimeMillis();
         CountDownLatch latchConfirm = new CountDownLatch(publishCount);
         Client.ConfirmListener confirmListener = correlationId -> latchConfirm.countDown();
@@ -64,7 +64,7 @@ public class ClientTest {
                 .confirmListener(confirmListener).eventLoopGroup(eventLoopGroup));
 
         for (int i = 1; i <= publishCount; i++) {
-            client.publish(target, ("message" + i).getBytes(StandardCharsets.UTF_8));
+            client.publish(stream, ("message" + i).getBytes(StandardCharsets.UTF_8));
         }
 
         try {
@@ -97,9 +97,9 @@ public class ClientTest {
 
     @BeforeEach
     void init() {
-        target = UUID.randomUUID().toString();
+        stream = UUID.randomUUID().toString();
         Client client = new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup));
-        Client.Response response = client.create(target);
+        Client.Response response = client.create(stream);
         assertThat(response.isOk()).isTrue();
         client.close();
     }
@@ -107,7 +107,7 @@ public class ClientTest {
     @AfterEach
     void tearDown() {
         Client client = new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup));
-        Client.Response response = client.delete(target);
+        Client.Response response = client.delete(stream);
         assertThat(response.isOk()).isTrue();
         client.close();
 
@@ -118,41 +118,41 @@ public class ClientTest {
 
     @ValueSource(ints = {1, 2, 3, 4, 5})
     @ParameterizedTest
-    void metadataExistingTargets(int targetCount) throws Exception {
+    void metadataExistingStreams(int streamCount) throws Exception {
         String hostname = InetAddress.getLocalHost().getHostName();
 
-        Client targetClient = client();
-        String[] targets = IntStream.range(0, targetCount).mapToObj(i -> {
+        Client streamClient = client();
+        String[] streams = IntStream.range(0, streamCount).mapToObj(i -> {
             String t = UUID.randomUUID().toString();
-            targetClient.create(t);
+            streamClient.create(t);
             return t;
         }).toArray(String[]::new);
 
         Client client = client();
-        Map<String, Client.TargetMetadata> metadata = client.metadata(targets);
-        assertThat(metadata).hasSize(targetCount).containsKeys(targets);
-        asList(targets).forEach(t -> {
-            Client.TargetMetadata targetMetadata = metadata.get(t);
-            assertThat(targetMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
-            assertThat(targetMetadata.getTarget()).isEqualTo(t);
-            assertThat(targetMetadata.getLeader().getHost()).isEqualTo(hostname);
-            assertThat(targetMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
-            assertThat(targetMetadata.getReplicas()).isEmpty();
+        Map<String, Client.StreamMetadata> metadata = client.metadata(streams);
+        assertThat(metadata).hasSize(streamCount).containsKeys(streams);
+        asList(streams).forEach(t -> {
+            Client.StreamMetadata streamMetadata = metadata.get(t);
+            assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+            assertThat(streamMetadata.getStream()).isEqualTo(t);
+            assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
+            assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
+            assertThat(streamMetadata.getReplicas()).isEmpty();
         });
-        asList(targets).forEach(t -> targetClient.delete(t));
+        asList(streams).forEach(t -> streamClient.delete(t));
     }
 
     @Test
-    void metadataOneNonExistingTarget() {
+    void metadataOneNonExistingStream() {
         Client client = client();
-        String nonExistingTarget = UUID.randomUUID().toString();
-        Map<String, Client.TargetMetadata> metadata = client.metadata(nonExistingTarget);
-        assertThat(metadata).hasSize(1).containsKey(nonExistingTarget);
-        Client.TargetMetadata targetMetadata = metadata.get(nonExistingTarget);
-        assertThat(targetMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_TARGET_DOES_NOT_EXIST);
-        assertThat(targetMetadata.getTarget()).isEqualTo(nonExistingTarget);
-        assertThat(targetMetadata.getLeader()).isNull();
-        assertThat(targetMetadata.getReplicas()).isEmpty();
+        String nonExistingStream = UUID.randomUUID().toString();
+        Map<String, Client.StreamMetadata> metadata = client.metadata(nonExistingStream);
+        assertThat(metadata).hasSize(1).containsKey(nonExistingStream);
+        Client.StreamMetadata streamMetadata = metadata.get(nonExistingStream);
+        assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+        assertThat(streamMetadata.getStream()).isEqualTo(nonExistingStream);
+        assertThat(streamMetadata.getLeader()).isNull();
+        assertThat(streamMetadata.getReplicas()).isEmpty();
     }
 
     @ParameterizedTest
@@ -167,50 +167,50 @@ public class ClientTest {
             "2,3",
             "5,3",
     })
-    void metadataExistingNonExistingTargets(int existingCount, int nonExistingCount) throws Exception {
+    void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount) throws Exception {
         String hostname = InetAddress.getLocalHost().getHostName();
-        Client targetClient = client();
-        List<String> existingTargets = IntStream.range(0, existingCount).mapToObj(i -> {
+        Client streamClient = client();
+        List<String> existingStreams = IntStream.range(0, existingCount).mapToObj(i -> {
             String t = UUID.randomUUID().toString();
-            targetClient.create(t);
+            streamClient.create(t);
             return t;
         }).collect(Collectors.toList());
 
-        List<String> nonExistingTargets = IntStream.range(0, nonExistingCount)
+        List<String> nonExistingStreams = IntStream.range(0, nonExistingCount)
                 .mapToObj(i -> UUID.randomUUID().toString())
                 .collect(Collectors.toList());
 
-        List<String> allTargets = new ArrayList<>(existingCount + nonExistingCount);
-        allTargets.addAll(existingTargets);
-        allTargets.addAll(nonExistingTargets);
-        Collections.shuffle(allTargets);
+        List<String> allStreams = new ArrayList<>(existingCount + nonExistingCount);
+        allStreams.addAll(existingStreams);
+        allStreams.addAll(nonExistingStreams);
+        Collections.shuffle(allStreams);
 
-        String[] targets = allTargets.toArray(new String[]{});
+        String[] streams = allStreams.toArray(new String[]{});
 
 
         Client client = client();
-        Map<String, Client.TargetMetadata> metadata = client.metadata(targets);
-        assertThat(metadata).hasSize(targets.length).containsKeys(targets);
+        Map<String, Client.StreamMetadata> metadata = client.metadata(streams);
+        assertThat(metadata).hasSize(streams.length).containsKeys(streams);
         metadata.keySet().forEach(t -> {
-            Client.TargetMetadata targetMetadata = metadata.get(t);
-            assertThat(targetMetadata.getTarget()).isEqualTo(t);
-            if (existingTargets.contains(t)) {
-                assertThat(targetMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
-                assertThat(targetMetadata.getLeader().getHost()).isEqualTo(hostname);
-                assertThat(targetMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
-                assertThat(targetMetadata.getReplicas()).isEmpty();
+            Client.StreamMetadata streamMetadata = metadata.get(t);
+            assertThat(streamMetadata.getStream()).isEqualTo(t);
+            if (existingStreams.contains(t)) {
+                assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+                assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
+                assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
+                assertThat(streamMetadata.getReplicas()).isEmpty();
             } else {
-                assertThat(targetMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_TARGET_DOES_NOT_EXIST);
-                assertThat(targetMetadata.getTarget()).isEqualTo(t);
-                assertThat(targetMetadata.getLeader()).isNull();
-                assertThat(targetMetadata.getReplicas()).isEmpty();
+                assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+                assertThat(streamMetadata.getStream()).isEqualTo(t);
+                assertThat(streamMetadata.getLeader()).isNull();
+                assertThat(streamMetadata.getReplicas()).isEmpty();
             }
         });
-        existingTargets.forEach(t -> targetClient.delete(t));
+        existingStreams.forEach(t -> streamClient.delete(t));
     }
 
     @Test
-    void subscriptionListenerIsCalledWhenTargetIsDeleted() throws Exception {
+    void subscriptionListenerIsCalledWhenStreamIsDeleted() throws Exception {
         class TestParameters {
             final boolean sameClient;
             final int subscriptionCount;
@@ -232,8 +232,8 @@ public class ClientTest {
             String t = UUID.randomUUID().toString();
             CountDownLatch subscriptionListenerLatch = new CountDownLatch(testParameter.subscriptionCount);
             List<Integer> cancelledSubscriptions = new CopyOnWriteArrayList<>();
-            Client subscriptionClient = client(new Client.ClientParameters().subscriptionListener((subscriptionId, deletedTarget, reason) -> {
-                if (t.equals(deletedTarget) && reason == Constants.RESPONSE_CODE_TARGET_DELETED) {
+            Client subscriptionClient = client(new Client.ClientParameters().subscriptionListener((subscriptionId, deletedStream, reason) -> {
+                if (t.equals(deletedStream) && reason == Constants.RESPONSE_CODE_STREAM_DELETED) {
                     cancelledSubscriptions.add(subscriptionId);
                     subscriptionListenerLatch.countDown();
                 }
@@ -275,26 +275,26 @@ public class ClientTest {
             latches.get(correlationId).countDown();
         }));
 
-        consumer.subscribe(1, target, 0, messageCount * 2);
+        consumer.subscribe(1, stream, 0, messageCount * 2);
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(target, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("" + i).getBytes()));
 
         waitAtMost(5, () -> messageCounts.computeIfAbsent(1, k -> new AtomicInteger(0)).get() == messageCount);
 
-        consumer.subscribe(2, target, 0, messageCount * 2);
+        consumer.subscribe(2, stream, 0, messageCount * 2);
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(target, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("" + i).getBytes()));
 
         assertThat(latches.get(1).await(5, SECONDS)).isTrue();
         assertThat(latches.get(2).await(5, SECONDS)).isTrue();
     }
 
     @Test
-    void subscriptionToNonExistingTargetShouldReturnError() {
-        String nonExistingTarget = UUID.randomUUID().toString();
-        Client.Response response = client().subscribe(1, nonExistingTarget, 0, 10);
+    void subscriptionToNonExistingStreamShouldReturnError() {
+        String nonExistingStream = UUID.randomUUID().toString();
+        Client.Response response = client().subscribe(1, nonExistingStream, 0, 10);
         assertThat(response.isOk()).isFalse();
-        assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_TARGET_DOES_NOT_EXIST);
+        assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
     }
 
     @Test
@@ -306,17 +306,17 @@ public class ClientTest {
             receivedMessageCount.incrementAndGet();
             latch.countDown();
         }));
-        Client.Response response = client.subscribe(1, target, 0, messageCount * 100);
+        Client.Response response = client.subscribe(1, stream, 0, messageCount * 100);
         assertThat(response.isOk()).isTrue();
-        IntStream.range(0, messageCount).forEach(i -> client.publish(target, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, ("" + i).getBytes()));
         assertThat(latch.await(10, SECONDS)).isTrue();
         response = client.unsubscribe(1);
         assertThat(response.isOk()).isTrue();
 
         CountDownLatch latch2 = new CountDownLatch(messageCount);
         Client client2 = client(new Client.ClientParameters().messageListener((correlationId, offset, message) -> latch2.countDown()));
-        client2.subscribe(1, target, 0, messageCount * 100);
-        IntStream.range(0, messageCount).forEach(i -> client.publish(target, ("" + i).getBytes()));
+        client2.subscribe(1, stream, 0, messageCount * 100);
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, ("" + i).getBytes()));
         assertThat(latch2.await(10, SECONDS)).isTrue();
         Thread.sleep(1000L);
         assertThat(receivedMessageCount).hasValue(messageCount);
@@ -334,18 +334,18 @@ public class ClientTest {
             latches.get(correlationId).countDown();
         }));
 
-        Client.Response response = client.subscribe(1, target, 0, messageCount * 100);
+        Client.Response response = client.subscribe(1, stream, 0, messageCount * 100);
         assertThat(response.isOk()).isTrue();
-        response = client.subscribe(2, target, 0, messageCount * 100);
+        response = client.subscribe(2, stream, 0, messageCount * 100);
         assertThat(response.isOk()).isTrue();
 
-        IntStream.range(0, messageCount).forEach(i -> client.publish(target, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, ("" + i).getBytes()));
         assertThat(latches.get(1).await(10, SECONDS)).isTrue();
 
         response = client.unsubscribe(1);
         assertThat(response.isOk()).isTrue();
 
-        IntStream.range(0, messageCount).forEach(i -> client.publish(target, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, ("" + i).getBytes()));
         assertThat(latches.get(2).await(10, SECONDS)).isTrue();
         assertThat(messageCounts.get(2)).hasValue(messageCount * 2);
         assertThat(messageCounts.get(1)).hasValue(messageCount);
@@ -356,7 +356,7 @@ public class ClientTest {
     @Test
     void unsubscribeNonExistingSubscriptionShouldReturnError() {
         Client client = client();
-        Client.Response response = client.subscribe(1, target, 0, 10);
+        Client.Response response = client.subscribe(1, stream, 0, 10);
         assertThat(response.isOk()).isTrue();
 
         response = client.unsubscribe(42);
@@ -367,11 +367,11 @@ public class ClientTest {
     @Test
     void subscriptionWithAlreadyExistingSubscriptionIdShouldReturnError() {
         Client client = client();
-        Client.Response response = client.subscribe(1, target, 0, 20);
+        Client.Response response = client.subscribe(1, stream, 0, 20);
         assertThat(response.isOk()).isTrue();
         assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
-        response = client.subscribe(1, target, 0, 20);
+        response = client.subscribe(1, stream, 0, 20);
         assertThat(response.isOk()).isFalse();
         assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS);
     }
@@ -393,7 +393,7 @@ public class ClientTest {
 
         Set<Long> correlationIds = new HashSet<>(publishCount);
         for (int i = 1; i <= publishCount; i++) {
-            long sequenceId = client.publish(target, ("message" + i).getBytes(StandardCharsets.UTF_8));
+            long sequenceId = client.publish(stream, ("message" + i).getBytes(StandardCharsets.UTF_8));
             correlationIds.add(sequenceId);
         }
 
@@ -405,7 +405,7 @@ public class ClientTest {
     void publishConsumeComplexMessage(Client publisher, Codec codec, Function<Integer, Message> messageFactory) {
         int publishCount = 1000;
         for (int i = 1; i <= publishCount; i++) {
-            publisher.publish(target, messageFactory.apply(i));
+            publisher.publish(stream, messageFactory.apply(i));
         }
 
         CountDownLatch latch = new CountDownLatch(publishCount);
@@ -418,7 +418,7 @@ public class ClientTest {
         Client consumer = client(new Client.ClientParameters()
                 .codec(codec)
                 .messageListener(messageListener).chunkListener(chunkListener));
-        consumer.subscribe(1, target, 0, credit);
+        consumer.subscribe(1, stream, 0, credit);
         assertThat(await(latch, Duration.ofSeconds(10))).isTrue();
         assertThat(messages).hasSize(publishCount);
         messages.stream().forEach(message -> {
@@ -486,7 +486,7 @@ public class ClientTest {
     void consume() throws Exception {
         int publishCount = 100000;
         int correlationId = 42;
-        publishAndWaitForConfirms(publishCount, target);
+        publishAndWaitForConfirms(publishCount, stream);
         MetricRegistry metrics = new MetricRegistry();
         Meter consumed = metrics.meter("consumed");
 
@@ -506,7 +506,7 @@ public class ClientTest {
         Client client = client(new Client.ClientParameters()
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
-        client.subscribe(correlationId, target, 0, credit);
+        client.subscribe(correlationId, stream, 0, credit);
 
         assertThat(latch.await(60, SECONDS)).isTrue();
         assertThat(receivedCorrelationId).hasValue(correlationId);
@@ -537,7 +537,7 @@ public class ClientTest {
         Client client = client(new Client.ClientParameters()
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
-        client.subscribe(1, target, 0, credit);
+        client.subscribe(1, stream, 0, credit);
 
         CountDownLatch confirmedLatch = new CountDownLatch(publishCount);
         new Thread(() -> {
@@ -547,7 +547,7 @@ public class ClientTest {
             int messageId = 0;
             while (messageId < publishCount) {
                 messageId++;
-                publisher.publish(target, ("message" + messageId).getBytes(StandardCharsets.UTF_8));
+                publisher.publish(stream, ("message" + messageId).getBytes(StandardCharsets.UTF_8));
                 published.mark();
             }
         }).start();
@@ -558,24 +558,24 @@ public class ClientTest {
     }
 
     @Test
-    void deleteNonExistingTargetShouldReturnError() {
-        String nonExistingTarget = UUID.randomUUID().toString();
-        Client.Response response = client().delete(nonExistingTarget);
+    void deleteNonExistingStreamShouldReturnError() {
+        String nonExistingStream = UUID.randomUUID().toString();
+        Client.Response response = client().delete(nonExistingStream);
         assertThat(response.isOk()).isFalse();
-        assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_TARGET_DOES_NOT_EXIST);
+        assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
     }
 
     @Test
-    void createAlreadyExistingTargetShouldReturnError() {
-        Client.Response response = client().create(target);
+    void createAlreadyExistingStreamShouldReturnError() {
+        Client.Response response = client().create(stream);
         assertThat(response.isOk()).isFalse();
-        assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_TARGET_ALREADY_EXISTS);
+        assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_ALREADY_EXISTS);
     }
 
     @Test
     void filterSmallerOffsets() throws Exception {
         int messageCount = 50000;
-        publishAndWaitForConfirms(messageCount, target);
+        publishAndWaitForConfirms(messageCount, stream);
         for (int i = 0; i < 10; i++) {
             Map<Integer, Long> firstOffsets = new ConcurrentHashMap<>();
             Map<Integer, CountDownLatch> latches = new ConcurrentHashMap<>();
@@ -590,8 +590,8 @@ public class ClientTest {
                 }
             }).chunkListener((client1, subscriptionId, offset, msgCount, dataSize) -> client1.credit(subscriptionId, 1))
                     .eventLoopGroup(eventLoopGroup));
-            client.subscribe(1, target, 50, 10);
-            client.subscribe(2, target, 100, 10);
+            client.subscribe(1, stream, 50, 10);
+            client.subscribe(2, stream, 100, 10);
 
             assertThat(latches.get(1).await(10, SECONDS)).isTrue();
             assertThat(latches.get(2).await(10, SECONDS)).isTrue();
@@ -602,7 +602,7 @@ public class ClientTest {
     }
 
     @Test
-    void publishToNonExistingTargetTriggersPublishErrorListener() throws Exception {
+    void publishToNonExistingStreamTriggersPublishErrorListener() throws Exception {
         int messageCount = 1000;
         AtomicInteger confirms = new AtomicInteger(0);
         Set<Short> responseCodes = ConcurrentHashMap.newKeySet(1);
@@ -617,12 +617,12 @@ public class ClientTest {
                 })
         );
 
-        String nonExistingTarget = UUID.randomUUID().toString();
+        String nonExistingStream = UUID.randomUUID().toString();
         Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-        IntStream.range(0, messageCount).forEach(i -> publishingIds.add(client.publish(nonExistingTarget, ("" + i).getBytes())));
+        IntStream.range(0, messageCount).forEach(i -> publishingIds.add(client.publish(nonExistingStream, ("" + i).getBytes())));
 
         assertThat(latch.await(10, SECONDS)).isTrue();
-        assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_TARGET_DOES_NOT_EXIST);
+        assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
         assertThat(publishingIdErrors).hasSameSizeAs(publishingIds).hasSameElementsAs(publishingIdErrors);
     }
 
@@ -651,7 +651,7 @@ public class ClientTest {
         new Thread(() -> {
             int publishedMessageCount = 0;
             while (true) {
-                publisher.publish(target, String.valueOf(publishedMessageCount).getBytes());
+                publisher.publish(stream, String.valueOf(publishedMessageCount).getBytes());
                 if (++publishedMessageCount == messageLimit) {
                     break;
                 }
@@ -661,7 +661,7 @@ public class ClientTest {
 
         assertThat(consumerStartLatch.await(10, SECONDS)).isTrue();
 
-        assertThat(consumer.subscribe(0, target, 0, 10).isOk()).isTrue();
+        assertThat(consumer.subscribe(0, stream, 0, 10).isOk()).isTrue();
         assertThat(consumedMessagesLatch.await(10, SECONDS)).isTrue();
         assertThat(publisherHasStopped).isTrue();
         assertThat(lastConfirmed).hasValue(messageLimit - 1);

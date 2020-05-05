@@ -140,7 +140,7 @@ public class FrameTest {
                 Channel channel = Mockito.mock(Channel.class);
                 Mockito.when(channel.alloc()).thenReturn(ByteBufAllocator.DEFAULT);
 
-                client.publishInternal(channel, "target", test.sizes.stream()
+                client.publishInternal(channel, "stream", test.sizes.stream()
                         .map(size -> new Codec.EncodedMessage(size, new byte[size])).collect(Collectors.toList()));
 
                 ArgumentCaptor<ByteBuf> bbCaptor = ArgumentCaptor.forClass(ByteBuf.class);
