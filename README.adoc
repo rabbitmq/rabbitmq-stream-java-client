@@ -122,8 +122,8 @@ publisher.close();                                                          // <
 The next snippet shows how to consume and process the messages published previously.
 It sets up a chunk listener when creating the client instance. The chunk listener is called
 every time a chunk (batch) of messages is delivered by the server to the client. It
-asks the server to deliver another chunk with the `credit` command. A record listener
-is also set up on client creation. The record listener is called every time a message
+asks the server to deliver another chunk with the `credit` command. A message listener
+is also set up on client creation. The message listener is called every time a message
 is delivered (as part of a chunk). Once all messages have been received, the sum is output
 to the console, the stream is deleted, and the consumer connection is closed.
 
@@ -132,9 +132,9 @@ to the console, the stream is deleted, and the consumer connection is closed.
 AtomicLong sum = new AtomicLong(0);
 CountDownLatch consumeLatch = new CountDownLatch(messageCount);
 Client consumer = new Client(new Client.ClientParameters()
-  .chunkListener((client, subscriptionId, offset, recordCount, dataSize) ->
+  .chunkListener((client, subscriptionId, offset, messageCount, dataSize) ->
       client.credit(subscriptionId, 1))                                      // <1>
-  .recordListener((subscriptionId, offset, message) -> {
+  .messageListener((subscriptionId, offset, message) -> {
     sum.addAndGet(Long.parseLong(new String(message.getBodyAsBinary())));    // <2>
     consumeLatch.countDown();                                                // <3>
 }));
