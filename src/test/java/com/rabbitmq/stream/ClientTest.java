@@ -17,6 +17,9 @@ package com.rabbitmq.stream;
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import org.junit.jupiter.api.*;
@@ -298,6 +301,21 @@ public class ClientTest {
     }
 
     @Test
+    void subscriptionToNonStreamQueueShouldReturnError() throws Exception {
+        String nonStreamQueue = UUID.randomUUID().toString();
+        ConnectionFactory cf = new ConnectionFactory();
+        try (Connection amqpConnection = cf.newConnection();
+             Channel c = amqpConnection.createChannel()) {
+            c.queueDeclare(nonStreamQueue, false, true, false, null);
+
+            Client.Response response = client().subscribe(1, nonStreamQueue, 0, 10);
+            assertThat(response.isOk()).isFalse();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+        }
+    }
+
+
+    @Test
     void unsubscribeShouldNotReceiveMoreMessageAfterUnsubscribe() throws Exception {
         int messageCount = 10;
         CountDownLatch latch = new CountDownLatch(messageCount);
@@ -566,6 +584,19 @@ public class ClientTest {
     }
 
     @Test
+    void deleteNonStreamQueueShouldReturnError() throws Exception {
+        String nonStreamQueue = UUID.randomUUID().toString();
+        ConnectionFactory cf = new ConnectionFactory();
+        try (Connection amqpConnection = cf.newConnection();
+             Channel c = amqpConnection.createChannel()) {
+            c.queueDeclare(nonStreamQueue, false, true, false, null);
+            Client.Response response = client().delete(nonStreamQueue);
+            assertThat(response.isOk()).isFalse();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+        }
+    }
+
+    @Test
     void createAlreadyExistingStreamShouldReturnError() {
         Client.Response response = client().create(stream);
         assertThat(response.isOk()).isFalse();
@@ -624,6 +655,37 @@ public class ClientTest {
         assertThat(latch.await(10, SECONDS)).isTrue();
         assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
         assertThat(publishingIdErrors).hasSameSizeAs(publishingIds).hasSameElementsAs(publishingIdErrors);
+    }
+
+    @Test
+    void publishToNonStreamQueueTriggersPublishErrorListener() throws Exception {
+        String nonStreamQueue = UUID.randomUUID().toString();
+        ConnectionFactory cf = new ConnectionFactory();
+        try (Connection amqpConnection = cf.newConnection();
+             Channel c = amqpConnection.createChannel()) {
+            c.queueDeclare(nonStreamQueue, false, true, false, null);
+
+            int messageCount = 1000;
+            AtomicInteger confirms = new AtomicInteger(0);
+            Set<Short> responseCodes = ConcurrentHashMap.newKeySet(1);
+            Set<Long> publishingIdErrors = ConcurrentHashMap.newKeySet(messageCount);
+            CountDownLatch latch = new CountDownLatch(messageCount);
+            Client client = client(new Client.ClientParameters()
+                    .confirmListener(publishingId -> confirms.incrementAndGet())
+                    .publishErrorListener((publishingId, responseCode) -> {
+                        publishingIdErrors.add(publishingId);
+                        responseCodes.add(responseCode);
+                        latch.countDown();
+                    })
+            );
+
+            Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
+            IntStream.range(0, messageCount).forEach(i -> publishingIds.add(client.publish(nonStreamQueue, ("" + i).getBytes())));
+
+            assertThat(latch.await(10, SECONDS)).isTrue();
+            assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+            assertThat(publishingIdErrors).hasSameSizeAs(publishingIds).hasSameElementsAs(publishingIdErrors);
+        }
     }
 
     @Test
