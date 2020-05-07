@@ -4,6 +4,7 @@
 ifndef::imagesdir[:imagesdir: images]
 ifndef::sourcedir[:sourcedir: ../../main/java]
 :source-highlighter: prettify
+:test-examples: ../../test/java/com/rabbitmq/stream/docs
 
 The RabbitMQ Stream Java Client is a Java library to communicate with
 the https://github.com/rabbitmq/rabbitmq-stream[RabbitMQ Stream Plugin].
@@ -129,7 +130,24 @@ repositories {
 
 === Connecting to RabbitMQ Stream
 
+The main API of the stream Java client is the `com.rabbitmq.stream.Client`
+class. To connect to a local instance of the RabbitMQ Stream plugin
+with the default user and password, just create an `Client` instance
 
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=client-creation]
+--------
+<1> Connect to localhost:5555 with guest / guest
+
+A `Client` constructor can take a `ClientParameters` to set
+parameters like host, port, username, and password:
+
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=client-creation-with-client-parameters]
+--------
+<1> Use `ClientParameters` to set connection parameters
 
 === Publishing Messages
 
