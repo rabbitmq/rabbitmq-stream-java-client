@@ -576,6 +576,38 @@ public class ClientTest {
     }
 
     @Test
+    void consumeFromTail() throws Exception {
+        int messageCount = 10000;
+        CountDownLatch firstWaveLatch = new CountDownLatch(messageCount);
+        CountDownLatch secondWaveLatch = new CountDownLatch(messageCount * 2);
+        Client publisher = client(new Client.ClientParameters()
+                .confirmListener(publishingId -> {
+                    firstWaveLatch.countDown();
+                    secondWaveLatch.countDown();
+                }));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("first wave " + i).getBytes(StandardCharsets.UTF_8)));
+        assertThat(firstWaveLatch.await(10, SECONDS)).isTrue();
+
+        CountDownLatch consumedLatch = new CountDownLatch(messageCount);
+
+        Set<String> consumed = ConcurrentHashMap.newKeySet();
+        Client consumer = new Client(new Client.ClientParameters()
+                .chunkListener((client, subscriptionId, offset, messageCount1, dataSize) -> client.credit(subscriptionId, 1))
+                .messageListener((subscriptionId, offset, message) -> {
+                    consumed.add(new String(message.getBodyAsBinary(), StandardCharsets.UTF_8));
+                    consumedLatch.countDown();
+                }));
+
+        consumer.subscribe(1, stream, -1, 10);
+
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("second wave " + i).getBytes(StandardCharsets.UTF_8)));
+
+        assertThat(consumedLatch.await(10, SECONDS)).isTrue();
+        assertThat(consumed).hasSize(messageCount);
+        consumed.stream().forEach(v -> assertThat(v).startsWith("second wave").doesNotStartWith("first wave"));
+    }
+
+    @Test
     void deleteNonExistingStreamShouldReturnError() {
         String nonExistingStream = UUID.randomUUID().toString();
         Client.Response response = client().delete(nonExistingStream);
