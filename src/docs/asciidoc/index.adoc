@@ -252,3 +252,100 @@ They can have fixed and arbitrary headers. We will see how to
 create complex messages in a dedicated section.
 
 === Consuming Messages
+
+The `Client#subscribe` method allows subscribing to a stream:
+
+.Subscribing to a stream
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=subscribe]
+--------
+<1> The identifier of the subscription
+<2> The stream to consume from
+<3> The offset to start consuming from
+<4> The initial number of credits
+<5> Check if response is OK
+<6> Check response code
+
+Once the subscription is done, the broker will start sending messages.
+We will see how to handle these messages asynchronously in a callback in a moment.
+Let's have a further look at the parameters of `subscribe`:
+
+* Identifier of the subscription: this is an arbitrary number to correlate
+the subscription with the inbound messages. The value must be unique within
+the connection.
+* Stream: this is the stream to consume from. It obviously must exist.
+* Offset: this is the offset to start consuming from. 0 means consuming
+from the beginning of the stream (first messages). -1 means consuming
+from the end of the stream at the time of subscription (last messages). The client
+can also specify a number in between, for example the offset where it left off
+in a previous incarnation of the application.
+* Initial number of credits: the number of chunks of messages the broker can
+send immediately after the subscription. This is a way to throttle delivery
+in case the broker send messages faster than the client can process them. We will
+see more about credits later.
+
+The broker delivers messages in chunks (batches). The size of a chunk is not
+fixed, it can vary from a few messages to thousands of them in the same chunk.
+Delivering messages in chunks instead of one by one contributes to the higher throughput
+RabbitMQ Stream can achieve compared to other protocols like AMQP 0-9-1
+(which do use batch at all).
+
+The `Client` provides 2 callbacks to handle inbound messages: one for each
+chunk and another one for each message within a chunk. Here is more information
+about each callback:
+
+* A `ChunkListener`: this callback is merely technical, it gives
+the application the occasion to ask for more chunks of messages
+or to compute metrics about chunks (number of messages, size in bytes).
+* A `MessageListener`: this callback should contain the application code
+to process a message.
+
+The 2 callbacks are provided when creating the `Client` instance:
+
+.Consuming messages
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=consume]
+--------
+<1> Set chunk listener
+<2> Ask for a new chunk after each chunk delivery
+<3> Set message listener
+<4> Get and process byte array payload
+
+Asking for a new credit on each chunk is usually a good default, so
+the `ChunkListener` implementation above can be taken as-is for
+most applications.
+
+[NOTE]
+.What's the deal with credits?
+====
+The broker cannot keep sending messages to a client if the latter
+cannot keep up. There must be a way for the client and the server
+to agree on the delivery rate, not too high, but also not to low
+(to keep the client busy). Credits are way to achieve this.
+
+When subscribing, the client specifies an initial number of credits. For
+every chunk the broker delivers, it removes a credit from the initial
+count. Once the credit count reaches 0 for the subscription, the broker
+stops sending chunks of messages. The client needs to ask for more credits to see
+more chunks of messages getting sent. This way a client can make
+sure it is not overwhelmed by the flow of incoming message.
+
+But the client must be careful in the way it asks for credits.
+It can choose to ask for more
+chunks when its credit count reaches 0, but this is usually not a good strategy:
+during the time the credit request arrives to the broker and a new chunk
+is received, the client remains idle, wasting processing time. This is why
+it is usually preferable to ask for a reasonable amount of initial credits
+(a few, not dozens, remember a chunk can contain thousands of messages)
+and ask for a new credit on every chunk.
+
+Inappropriate credit values can be the cause of an unstable consuming rate.
+The recommendation given above is usually a good rule of thumb, but may not
+be appropriate for all workloads.
+====
+
+=== Working with Complex Messages
+
+== Using the Performance Tool

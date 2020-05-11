@@ -63,7 +63,7 @@ public class ClientUsage {
     void publishSimple() {
         Client client = new Client();
         // tag::publish-simple[]
-        byte[] messagePayload = "hello".getBytes(StandardCharsets.UTF_8); // <1>
+        byte[] messagePayload = "hello".getBytes(StandardCharsets.UTF_8);  // <1>
         long publishingId = client.publish(
                 "my-stream",  // <2>
                 messagePayload  // <3>
@@ -76,7 +76,7 @@ public class ClientUsage {
         // tag::publish-multiple[]
         List<byte[]> messages = IntStream.range(0, 9)
                 .mapToObj(i -> ("hello" + i).getBytes(StandardCharsets.UTF_8))
-                .collect(Collectors.toList()); // <1>
+                .collect(Collectors.toList());  // <1>
 
         List<Long> publishingIds = client.publishBinary(
                 "my-stream",  // <2>
@@ -88,7 +88,7 @@ public class ClientUsage {
     void publishConfirmCallback() {
         // tag::publish-confirm-callback[]
         Client client = new Client(new Client.ClientParameters()
-                .confirmListener(publishingId -> { // <1>
+                .confirmListener(publishingId -> {  // <1>
                     // map publishing ID with initial outbound message
                 })
         );
@@ -98,11 +98,38 @@ public class ClientUsage {
     void publishErrorCallback() {
         // tag::publish-error-callback[]
         Client client = new Client(new Client.ClientParameters()
-                .publishErrorListener((publishingId, errorCode) -> { // <1>
+                .publishErrorListener((publishingId, errorCode) -> {  // <1>
                     // map publishing ID with initial outbound message
                 })
         );
         // end::publish-error-callback[]
+    }
+
+    void subscribe() {
+        Client client = new Client();
+        // tag::subscribe[]
+        Client.Response response = client.subscribe(
+                1,  // <1>
+                "my-stream",  // <2>
+                0,  // <3>
+                10  // <4>
+        );
+        if (!response.isOk()) {  // <5>
+            response.getResponseCode();  // <6>
+        }
+        // end::subscribe[]
+    }
+
+    void consume() {
+        // tag::consume[]
+        Client consumer = new Client(new Client.ClientParameters()
+                .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -> {  // <1>
+                    client.credit(subscriptionId, 1);  // <2>
+                })
+                .messageListener((subscriptionId, offset, message) -> {  // <3>
+                    message.getBodyAsBinary();  // <4>
+                }));
+        // end::consume[]
     }
 
 }
