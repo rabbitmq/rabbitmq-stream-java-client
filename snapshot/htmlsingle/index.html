@@ -639,6 +639,7 @@ class. To connect to a local instance of the RabbitMQ Stream plugin
 with the default user and password, just create an <code>Client</code> instance</p>
 </div>
 <div class="listingblock">
+<div class="title">Connecting with all the defaults</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(); <i class="conum" data-value="1"></i><b>(1)</b></code></pre>
 </div>
@@ -656,6 +657,7 @@ with the default user and password, just create an <code>Client</code> instance<
 parameters like host, port, username, and password:</p>
 </div>
 <div class="listingblock">
+<div class="title">Connecting with parameters</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters() <i class="conum" data-value="1"></i><b>(1)</b>
         .host(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-rabbitmq-stream</span><span class="delimiter">&quot;</span></span>)
@@ -680,6 +682,7 @@ parameters like host, port, username, and password:</p>
 <p>Streams can be created with the <code>Client#create(String)</code> method:</p>
 </div>
 <div class="listingblock">
+<div class="title">Creating a stream</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.create(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>); <i class="conum" data-value="1"></i><b>(1)</b>
 <span class="keyword">if</span> (!response.isOk()) { <i class="conum" data-value="2"></i><b>(2)</b>
@@ -711,6 +714,7 @@ parameters like host, port, username, and password:</p>
 <code>Client#delete(String)</code> method:</p>
 </div>
 <div class="listingblock">
+<div class="title">Deleting a stream</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.delete(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>); <i class="conum" data-value="1"></i><b>(1)</b>
 <span class="keyword">if</span> (!response.isOk()) { <i class="conum" data-value="2"></i><b>(2)</b>
@@ -744,7 +748,156 @@ Therefore you should consider streams as long-lived objects.</p>
 </div>
 <div class="sect2">
 <h3 id="publishing-messages"><a class="anchor" href="#publishing-messages"></a>Publishing Messages</h3>
+<div class="paragraph">
+<p>The simplest way to publish something to a stream is the
+<code>Client#publish(Stream, byte[])</code> method:</p>
+</div>
+<div class="listingblock">
+<div class="title">Publishing a message</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="type">byte</span><span class="type">[]</span> messagePayload = <span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8); <i class="conum" data-value="1"></i><b>(1)</b>
+<span class="type">long</span> publishingId = client.publish(
+        <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
+        messagePayload  <i class="conum" data-value="3"></i><b>(3)</b>
+);</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>The payload of a message is an array of bytes</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>The stream to publish to</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>The content to publish</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The <code>publish</code> method returns a long: it is the publishing identifier
+for the message. This identifier is used to correlate the message
+with a publishing confirmation that the broker sends asynchronously.
+This allows making sure a message made it to the broker and provides
+at-least-once guarantees. Each <code>Client</code> instance can register a callback to react
+to publish confirms when the instance is created:</p>
+</div>
+<div class="listingblock">
+<div class="title">Handling publish confirms</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
+        .confirmListener(publishingId -&gt; { <i class="conum" data-value="1"></i><b>(1)</b>
+            <span class="comment">// map publishing ID with initial outbound message</span>
+        })
+);</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set publish confirm callback on client creation</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The broker also sends notification for messages that it could not
+take into account, for example when the targeted stream does not
+exist or is not available. Just like with publish confirms, set
+up the listener when creating the client instance:</p>
+</div>
+<div class="listingblock">
+<div class="title">Handling publishing errors</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
+        .publishErrorListener((publishingId, errorCode) -&gt; { <i class="conum" data-value="1"></i><b>(1)</b>
+            <span class="comment">// map publishing ID with initial outbound message</span>
+        })
+);</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set publish error callback on client creation</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The <code>PublishErrorListener</code> callback provides the publishing ID as well
+as an error code to figure out the reason of the publishing error.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+The publishing identifier scopes the client instance connection, it
+is not a global identifier for the message.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>It is also possible to publish messages in batch, with the
+<code>publishBinary(List&lt;byte[]&gt;)</code> method. The method returns a
+list of publishing identifiers
+to handle publish confirms. The following snippet shows how to use
+publish messages in batch:</p>
+</div>
+<div class="listingblock">
+<div class="title">Publishing messages in batch</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">List</span>&lt;<span class="type">byte</span><span class="type">[]</span>&gt; messages = IntStream.range(<span class="integer">0</span>, <span class="integer">9</span>)
+        .mapToObj(i -&gt; (<span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span> + i).getBytes(StandardCharsets.UTF_8))
+        .collect(Collectors.toList()); <i class="conum" data-value="1"></i><b>(1)</b>
 
+<span class="predefined-type">List</span>&lt;<span class="predefined-type">Long</span>&gt; publishingIds = client.publishBinary(
+        <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
+        messages  <i class="conum" data-value="3"></i><b>(3)</b>
+);</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Messages are a list of byte arrays</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>The stream to publish to</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>The messages to publish</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+Use batch publishing to improve throughput.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>You may wonder if messages are only made of a byte array payload. They are not.
+They can have fixed and arbitrary headers. We will see how to
+create complex messages in a dedicated section.</p>
+</div>
 </div>
 <div class="sect2">
 <h3 id="consuming-messages"><a class="anchor" href="#consuming-messages"></a>Consuming Messages</h3>
@@ -756,7 +909,7 @@ Therefore you should consider streams as long-lived objects.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-11 08:30:37 UTC
+Last updated 2020-05-11 10:00:09 UTC
 </div>
 </div>
 <style>
