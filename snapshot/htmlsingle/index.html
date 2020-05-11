@@ -455,6 +455,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <ul class="sectlevel2">
 <li><a href="#dependencies">Dependencies</a></li>
 <li><a href="#connecting-to-rabbitmq-stream">Connecting to RabbitMQ Stream</a></li>
+<li><a href="#managing-streams">Managing Streams</a></li>
 <li><a href="#publishing-messages">Publishing Messages</a></li>
 <li><a href="#consuming-messages">Consuming Messages</a></li>
 </ul>
@@ -674,6 +675,74 @@ parameters like host, port, username, and password:</p>
 </div>
 </div>
 <div class="sect2">
+<h3 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h3>
+<div class="paragraph">
+<p>Streams can be created with the <code>Client#create(String)</code> method:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.create(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>); <i class="conum" data-value="1"></i><b>(1)</b>
+<span class="keyword">if</span> (!response.isOk()) { <i class="conum" data-value="2"></i><b>(2)</b>
+    response.getResponseCode(); <i class="conum" data-value="3"></i><b>(3)</b>
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Create the <code>my-stream</code> stream</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Check if creation is OK</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Check response code</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The <code>Constants</code> class can help to make sense of response codes.</p>
+</div>
+<div class="paragraph">
+<p>The deletion of a stream follows the same pattern with the
+<code>Client#delete(String)</code> method:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.delete(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>); <i class="conum" data-value="1"></i><b>(1)</b>
+<span class="keyword">if</span> (!response.isOk()) { <i class="conum" data-value="2"></i><b>(2)</b>
+    response.getResponseCode(); <i class="conum" data-value="3"></i><b>(3)</b>
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Delete the <code>my-stream</code> stream</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Check if deletion is OK</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Check response code</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Note you should avoid stream churn (creating and deleting streams
+repetitively) as their creation and deletion imply
+some significant housekeeping on the server side (interactions
+with the file system, communication between nodes of the cluster).
+Therefore you should consider streams as long-lived objects.</p>
+</div>
+</div>
+<div class="sect2">
 <h3 id="publishing-messages"><a class="anchor" href="#publishing-messages"></a>Publishing Messages</h3>
 
 </div>
@@ -687,7 +756,7 @@ parameters like host, port, username, and password:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-11 07:48:26 UTC
+Last updated 2020-05-11 08:30:37 UTC
 </div>
 </div>
 <style>
