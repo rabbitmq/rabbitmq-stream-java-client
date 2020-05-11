@@ -999,7 +999,7 @@ public class Client implements AutoCloseable {
 
     public interface PublishErrorListener {
 
-        void handle(long publishingId, short responseCode);
+        void handle(long publishingId, short errorCode);
 
     }
 

@@ -134,6 +134,7 @@ The main API of the stream Java client is the `com.rabbitmq.stream.Client`
 class. To connect to a local instance of the RabbitMQ Stream plugin
 with the default user and password, just create an `Client` instance
 
+.Connecting with all the defaults
 [source,java,indent=0]
 --------
 include::{test-examples}/ClientUsage.java[tag=client-creation]
@@ -143,6 +144,7 @@ include::{test-examples}/ClientUsage.java[tag=client-creation]
 A `Client` constructor can take a `ClientParameters` to set
 parameters like host, port, username, and password:
 
+.Connecting with parameters
 [source,java,indent=0]
 --------
 include::{test-examples}/ClientUsage.java[tag=client-creation-with-client-parameters]
@@ -153,6 +155,7 @@ include::{test-examples}/ClientUsage.java[tag=client-creation-with-client-parame
 
 Streams can be created with the `Client#create(String)` method:
 
+.Creating a stream
 [source,java,indent=0]
 --------
 include::{test-examples}/ClientUsage.java[tag=stream-creation]
@@ -166,6 +169,7 @@ The `Constants` class can help to make sense of response codes.
 The deletion of a stream follows the same pattern with the
 `Client#delete(String)` method:
 
+.Deleting a stream
 [source,java,indent=0]
 --------
 include::{test-examples}/ClientUsage.java[tag=stream-deletion]
@@ -182,6 +186,69 @@ Therefore you should consider streams as long-lived objects.
 
 === Publishing Messages
 
+The simplest way to publish something to a stream is the
+`Client#publish(Stream, byte[])` method:
 
+.Publishing a message
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=publish-simple]
+--------
+<1> The payload of a message is an array of bytes
+<2> The stream to publish to
+<3> The content to publish
+
+The `publish` method returns a long: it is the publishing identifier
+for the message. This identifier is used to correlate the message
+with a publishing confirmation that the broker sends asynchronously.
+This allows making sure a message made it to the broker and provides
+at-least-once guarantees. Each `Client` instance can register a callback to react
+to publish confirms when the instance is created:
+
+.Handling publish confirms
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=publish-confirm-callback]
+--------
+<1> Set publish confirm callback on client creation
+
+The broker also sends notification for messages that it could not
+take into account, for example when the targeted stream does not
+exist or is not available. Just like with publish confirms, set
+up the listener when creating the client instance:
+
+.Handling publishing errors
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=publish-error-callback]
+--------
+<1> Set publish error callback on client creation
+
+The `PublishErrorListener` callback provides the publishing ID as well
+as an error code to figure out the reason of the publishing error.
+
+NOTE: The publishing identifier scopes the client instance connection, it
+is not a global identifier for the message.
+
+It is also possible to publish messages in batch, with the
+`publishBinary(List<byte[]>)` method. The method returns a
+list of publishing identifiers
+to handle publish confirms. The following snippet shows how to use
+publish messages in batch:
+
+.Publishing messages in batch
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=publish-multiple]
+--------
+<1> Messages are a list of byte arrays
+<2> The stream to publish to
+<3> The messages to publish
+
+TIP: Use batch publishing to improve throughput.
+
+You may wonder if messages are only made of a byte array payload. They are not.
+They can have fixed and arbitrary headers. We will see how to
+create complex messages in a dedicated section.
 
 === Consuming Messages

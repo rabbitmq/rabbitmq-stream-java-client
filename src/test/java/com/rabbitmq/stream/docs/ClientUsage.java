@@ -16,6 +16,11 @@ package com.rabbitmq.stream.docs;
 
 import com.rabbitmq.stream.Client;
 
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 public class ClientUsage {
 
     void connect() {
@@ -53,6 +58,51 @@ public class ClientUsage {
             response.getResponseCode(); // <3>
         }
         // end::stream-deletion[]
+    }
+
+    void publishSimple() {
+        Client client = new Client();
+        // tag::publish-simple[]
+        byte[] messagePayload = "hello".getBytes(StandardCharsets.UTF_8); // <1>
+        long publishingId = client.publish(
+                "my-stream",  // <2>
+                messagePayload  // <3>
+        );
+        // end::publish-simple[]
+    }
+
+    void publishMultiple() {
+        Client client = new Client();
+        // tag::publish-multiple[]
+        List<byte[]> messages = IntStream.range(0, 9)
+                .mapToObj(i -> ("hello" + i).getBytes(StandardCharsets.UTF_8))
+                .collect(Collectors.toList()); // <1>
+
+        List<Long> publishingIds = client.publishBinary(
+                "my-stream",  // <2>
+                messages  // <3>
+        );
+        // end::publish-multiple[]
+    }
+
+    void publishConfirmCallback() {
+        // tag::publish-confirm-callback[]
+        Client client = new Client(new Client.ClientParameters()
+                .confirmListener(publishingId -> { // <1>
+                    // map publishing ID with initial outbound message
+                })
+        );
+        // end::publish-confirm-callback[]
+    }
+
+    void publishErrorCallback() {
+        // tag::publish-error-callback[]
+        Client client = new Client(new Client.ClientParameters()
+                .publishErrorListener((publishingId, errorCode) -> { // <1>
+                    // map publishing ID with initial outbound message
+                })
+        );
+        // end::publish-error-callback[]
     }
 
 }
