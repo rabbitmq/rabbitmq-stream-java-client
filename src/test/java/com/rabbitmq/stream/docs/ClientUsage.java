@@ -35,4 +35,24 @@ public class ClientUsage {
         // end::client-creation-with-client-parameters[]
     }
 
+    void createStream() {
+        Client client = new Client();
+        // tag::stream-creation[]
+        Client.Response response = client.create("my-stream"); // <1>
+        if (!response.isOk()) { // <2>
+            response.getResponseCode(); // <3>
+        }
+        // end::stream-creation[]
+    }
+
+    void deleteStream() {
+        Client client = new Client();
+        // tag::stream-deletion[]
+        Client.Response response = client.delete("my-stream"); // <1>
+        if (!response.isOk()) { // <2>
+            response.getResponseCode(); // <3>
+        }
+        // end::stream-deletion[]
+    }
+
 }

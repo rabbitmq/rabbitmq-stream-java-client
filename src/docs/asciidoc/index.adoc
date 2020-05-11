@@ -149,6 +149,39 @@ include::{test-examples}/ClientUsage.java[tag=client-creation-with-client-parame
 --------
 <1> Use `ClientParameters` to set connection parameters
 
+=== Managing Streams
+
+Streams can be created with the `Client#create(String)` method:
+
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=stream-creation]
+--------
+<1> Create the `my-stream` stream
+<2> Check if creation is OK
+<3> Check response code
+
+The `Constants` class can help to make sense of response codes.
+
+The deletion of a stream follows the same pattern with the
+`Client#delete(String)` method:
+
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=stream-deletion]
+--------
+<1> Delete the `my-stream` stream
+<2> Check if deletion is OK
+<3> Check response code
+
+Note you should avoid stream churn (creating and deleting streams
+repetitively) as their creation and deletion imply
+some significant housekeeping on the server side (interactions
+with the file system, communication between nodes of the cluster).
+Therefore you should consider streams as long-lived objects.
+
 === Publishing Messages
+
+
 
 === Consuming Messages
