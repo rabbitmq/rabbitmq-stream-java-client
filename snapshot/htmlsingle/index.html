@@ -458,8 +458,10 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#managing-streams">Managing Streams</a></li>
 <li><a href="#publishing-messages">Publishing Messages</a></li>
 <li><a href="#consuming-messages">Consuming Messages</a></li>
+<li><a href="#working-with-complex-messages">Working with Complex Messages</a></li>
 </ul>
 </li>
+<li><a href="#using-the-performance-tool">Using the Performance Tool</a></li>
 </ul>
 </div>
 </div>
@@ -755,7 +757,7 @@ Therefore you should consider streams as long-lived objects.</p>
 <div class="listingblock">
 <div class="title">Publishing a message</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="type">byte</span><span class="type">[]</span> messagePayload = <span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8); <i class="conum" data-value="1"></i><b>(1)</b>
+<pre class="CodeRay highlight"><code data-lang="java"><span class="type">byte</span><span class="type">[]</span> messagePayload = <span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8);  <i class="conum" data-value="1"></i><b>(1)</b>
 <span class="type">long</span> publishingId = client.publish(
         <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
         messagePayload  <i class="conum" data-value="3"></i><b>(3)</b>
@@ -790,7 +792,7 @@ to publish confirms when the instance is created:</p>
 <div class="title">Handling publish confirms</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .confirmListener(publishingId -&gt; { <i class="conum" data-value="1"></i><b>(1)</b>
+        .confirmListener(publishingId -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
             <span class="comment">// map publishing ID with initial outbound message</span>
         })
 );</code></pre>
@@ -814,7 +816,7 @@ up the listener when creating the client instance:</p>
 <div class="title">Handling publishing errors</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .publishErrorListener((publishingId, errorCode) -&gt; { <i class="conum" data-value="1"></i><b>(1)</b>
+        .publishErrorListener((publishingId, errorCode) -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
             <span class="comment">// map publishing ID with initial outbound message</span>
         })
 );</code></pre>
@@ -857,7 +859,7 @@ publish messages in batch:</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">List</span>&lt;<span class="type">byte</span><span class="type">[]</span>&gt; messages = IntStream.range(<span class="integer">0</span>, <span class="integer">9</span>)
         .mapToObj(i -&gt; (<span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span> + i).getBytes(StandardCharsets.UTF_8))
-        .collect(Collectors.toList()); <i class="conum" data-value="1"></i><b>(1)</b>
+        .collect(Collectors.toList());  <i class="conum" data-value="1"></i><b>(1)</b>
 
 <span class="predefined-type">List</span>&lt;<span class="predefined-type">Long</span>&gt; publishingIds = client.publishBinary(
         <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
@@ -901,15 +903,205 @@ create complex messages in a dedicated section.</p>
 </div>
 <div class="sect2">
 <h3 id="consuming-messages"><a class="anchor" href="#consuming-messages"></a>Consuming Messages</h3>
+<div class="paragraph">
+<p>The <code>Client#subscribe</code> method allows subscribing to a stream:</p>
+</div>
+<div class="listingblock">
+<div class="title">Subscribing to a stream</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.subscribe(
+        <span class="integer">1</span>,  <i class="conum" data-value="1"></i><b>(1)</b>
+        <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
+        <span class="integer">0</span>,  <i class="conum" data-value="3"></i><b>(3)</b>
+        <span class="integer">10</span>  <i class="conum" data-value="4"></i><b>(4)</b>
+);
+<span class="keyword">if</span> (!response.isOk()) {  <i class="conum" data-value="5"></i><b>(5)</b>
+    response.getResponseCode();  <i class="conum" data-value="6"></i><b>(6)</b>
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>The identifier of the subscription</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>The stream to consume from</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>The offset to start consuming from</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>The initial number of credits</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Check if response is OK</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Check response code</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Once the subscription is done, the broker will start sending messages.
+We will see how to handle these messages asynchronously in a callback in a moment.
+Let&#8217;s have a further look at the parameters of <code>subscribe</code>:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Identifier of the subscription: this is an arbitrary number to correlate
+the subscription with the inbound messages. The value must be unique within
+the connection.</p>
+</li>
+<li>
+<p>Stream: this is the stream to consume from. It obviously must exist.</p>
+</li>
+<li>
+<p>Offset: this is the offset to start consuming from. 0 means consuming
+from the beginning of the stream (first messages). -1 means consuming
+from the end of the stream at the time of subscription (last messages). The client
+can also specify a number in between, for example the offset where it left off
+in a previous incarnation of the application.</p>
+</li>
+<li>
+<p>Initial number of credits: the number of chunks of messages the broker can
+send immediately after the subscription. This is a way to throttle delivery
+in case the broker send messages faster than the client can process them. We will
+see more about credits later.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The broker delivers messages in chunks (batches). The size of a chunk is not
+fixed, it can vary from a few messages to thousands of them in the same chunk.
+Delivering messages in chunks instead of one by one contributes to the higher throughput
+RabbitMQ Stream can achieve compared to other protocols like AMQP 0-9-1
+(which do use batch at all).</p>
+</div>
+<div class="paragraph">
+<p>The <code>Client</code> provides 2 callbacks to handle inbound messages: one for each
+chunk and another one for each message within a chunk. Here is more information
+about each callback:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>A <code>ChunkListener</code>: this callback is merely technical, it gives
+the application the occasion to ask for more chunks of messages
+or to compute metrics about chunks (number of messages, size in bytes).</p>
+</li>
+<li>
+<p>A <code>MessageListener</code>: this callback should contain the application code
+to process a message.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The 2 callbacks are provided when creating the <code>Client</code> instance:</p>
+</div>
+<div class="listingblock">
+<div class="title">Consuming messages</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Client consumer = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
+        .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
+            client.credit(subscriptionId, <span class="integer">1</span>);  <i class="conum" data-value="2"></i><b>(2)</b>
+        })
+        .messageListener((subscriptionId, offset, message) -&gt; {  <i class="conum" data-value="3"></i><b>(3)</b>
+            message.getBodyAsBinary();  <i class="conum" data-value="4"></i><b>(4)</b>
+        }));</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set chunk listener</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Ask for a new chunk after each chunk delivery</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Set message listener</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Get and process byte array payload</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Asking for a new credit on each chunk is usually a good default, so
+the <code>ChunkListener</code> implementation above can be taken as-is for
+most applications.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">What&#8217;s the deal with credits?</div>
+<div class="paragraph">
+<p>The broker cannot keep sending messages to a client if the latter
+cannot keep up. There must be a way for the client and the server
+to agree on the delivery rate, not too high, but also not to low
+(to keep the client busy). Credits are way to achieve this.</p>
+</div>
+<div class="paragraph">
+<p>When subscribing, the client specifies an initial number of credits. For
+every chunk the broker delivers, it removes a credit from the initial
+count. Once the credit count reaches 0 for the subscription, the broker
+stops sending chunks of messages. The client needs to ask for more credits to see
+more chunks of messages getting sent. This way a client can make
+sure it is not overwhelmed by the flow of incoming message.</p>
+</div>
+<div class="paragraph">
+<p>But the client must be careful in the way it asks for credits.
+It can choose to ask for more
+chunks when its credit count reaches 0, but this is usually not a good strategy:
+during the time the credit request arrives to the broker and a new chunk
+is received, the client remains idle, wasting processing time. This is why
+it is usually preferable to ask for a reasonable amount of initial credits
+(a few, not dozens, remember a chunk can contain thousands of messages)
+and ask for a new credit on every chunk.</p>
+</div>
+<div class="paragraph">
+<p>Inappropriate credit values can be the cause of an unstable consuming rate.
+The recommendation given above is usually a good rule of thumb, but may not
+be appropriate for all workloads.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h3>
 
 </div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="using-the-performance-tool"><a class="anchor" href="#using-the-performance-tool"></a>Using the Performance Tool</h2>
+<div class="sectionbody">
+
 </div>
 </div>
 </div>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-11 10:00:09 UTC
+Last updated 2020-05-11 16:12:00 UTC
 </div>
 </div>
 <style>
