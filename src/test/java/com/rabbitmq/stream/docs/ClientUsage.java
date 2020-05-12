@@ -15,9 +15,11 @@
 package com.rabbitmq.stream.docs;
 
 import com.rabbitmq.stream.Client;
+import com.rabbitmq.stream.Message;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -130,6 +132,21 @@ public class ClientUsage {
                     message.getBodyAsBinary();  // <4>
                 }));
         // end::consume[]
+    }
+
+    void messageCreation() {
+        Client client = new Client();
+        // tag::message-creation[]
+        Message message = client.messageBuilder()  // <1>
+                .properties()  // <2>
+                    .messageId(UUID.randomUUID())
+                    .correlationId(UUID.randomUUID())
+                    .contentType("text/plain")
+                .messageBuilder()  // <3>
+                    .addData("hello".getBytes(StandardCharsets.UTF_8))  // <4>
+                .build();  // <5>
+        long publishingId = client.publish("my-stream", message);  // <6>
+        // end::message-creation[]
     }
 
 }

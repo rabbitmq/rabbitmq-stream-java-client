@@ -348,4 +348,52 @@ be appropriate for all workloads.
 
 === Working with Complex Messages
 
+The publishing and consuming examples showed that messages are made of
+a byte array payload, but they did not go much further. Messages in RabbitMQ Stream
+can actually be more sophisticated, as they comply to the
+https://www.amqp.org/resources/specifications[AMQP 1.0 message format].
+
+In a nutshell, a message in RabbitMQ Stream has the following structure:
+
+* properties: _a defined set of standard properties of the message_ (e.g.
+message ID, correlation ID, content type, etc).
+* application properties: a set of arbitrary key/value pairs.
+* body: typically an array of bytes.
+* message annotations: a set of key/value pairs (aimed at the infrastructure).
+
+The RabbitMQ Stream Java client uses the `Message` interface to abstract
+a message and the recommended way to create `Message` instances is to
+use the `Client#messageBuilder` method. To publish a `Message`, use
+the `Client#publish(String,Message)`:
+
+.Creating a `Message` instance
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=message-creation]
+--------
+<1> Get the message builder from the client
+<2> Get the properties builder and set some properties
+<3> Go back to message builder
+<4> Set byte array payload
+<5> Build the message instance
+<6> Publish the message
+
+[NOTE]
+.Is RabbitMQ Stream based on AMQP 1.0?
+====
+AMQP 1.0 is a standard that defines _an efficient binary peer-to-peer
+protocol for transporting messages between two processes over a network_.
+It also defines _an abstract message format, with concrete standard encoding_.
+This is only the latter part that RabbitMQ Stream uses. The AMQP 1.0 protocol is not used,
+only AMQP 1.0 encoded messages are wrapped into the RabbitMQ Stream binary protocol.
+
+The actual AMQP 1.0 message encoding and decoding happen on the client side, the
+RabbitMQ Stream plugin stores only bytes, it has no idea that AMQP 1.0 message format
+is used.
+
+AMQP 1.0 message format was chosen because of its flexibility and its advanced
+type system. It provides good interoperability, which allows streams
+to be accessed as AMQP 0-9-1 queues, without data loss.
+====
+
 == Using the Performance Tool
