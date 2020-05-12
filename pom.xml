@@ -147,6 +147,7 @@
             <groupId>com.rabbitmq</groupId>
             <artifactId>amqp-client</artifactId>
             <version>5.9.0</version>
+            <scope>test</scope>
         </dependency>
 
     </dependencies>
