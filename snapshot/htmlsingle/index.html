@@ -1087,7 +1087,109 @@ be appropriate for all workloads.</p>
 </div>
 <div class="sect2">
 <h3 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h3>
-
+<div class="paragraph">
+<p>The publishing and consuming examples showed that messages are made of
+a byte array payload, but they did not go much further. Messages in RabbitMQ Stream
+can actually be more sophisticated, as they comply to the
+<a href="https://www.amqp.org/resources/specifications">AMQP 1.0 message format</a>.</p>
+</div>
+<div class="paragraph">
+<p>In a nutshell, a message in RabbitMQ Stream has the following structure:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>properties: <em>a defined set of standard properties of the message</em> (e.g.
+message ID, correlation ID, content type, etc).</p>
+</li>
+<li>
+<p>application properties: a set of arbitrary key/value pairs.</p>
+</li>
+<li>
+<p>body: typically an array of bytes.</p>
+</li>
+<li>
+<p>message annotations: a set of key/value pairs (aimed at the infrastructure).</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The RabbitMQ Stream Java client uses the <code>Message</code> interface to abstract
+a message and the recommended way to create <code>Message</code> instances is to
+use the <code>Client#messageBuilder</code> method. To publish a <code>Message</code>, use
+the <code>Client#publish(String,Message)</code>:</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating a <code>Message</code> instance</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Message message = client.messageBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+        .properties()  <i class="conum" data-value="2"></i><b>(2)</b>
+            .messageId(<span class="predefined-type">UUID</span>.randomUUID())
+            .correlationId(<span class="predefined-type">UUID</span>.randomUUID())
+            .contentType(<span class="string"><span class="delimiter">&quot;</span><span class="content">text/plain</span><span class="delimiter">&quot;</span></span>)
+        .messageBuilder()  <i class="conum" data-value="3"></i><b>(3)</b>
+            .addData(<span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8))  <i class="conum" data-value="4"></i><b>(4)</b>
+        .build();  <i class="conum" data-value="5"></i><b>(5)</b>
+<span class="type">long</span> publishingId = client.publish(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>, message);  <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Get the message builder from the client</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Get the properties builder and set some properties</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Go back to message builder</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Set byte array payload</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Build the message instance</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Publish the message</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Is RabbitMQ Stream based on AMQP 1.0?</div>
+<div class="paragraph">
+<p>AMQP 1.0 is a standard that defines <em>an efficient binary peer-to-peer
+protocol for transporting messages between two processes over a network</em>.
+It also defines <em>an abstract message format, with concrete standard encoding</em>.
+This is only the latter part that RabbitMQ Stream uses. The AMQP 1.0 protocol is not used,
+only AMQP 1.0 encoded messages are wrapped into the RabbitMQ Stream binary protocol.</p>
+</div>
+<div class="paragraph">
+<p>The actual AMQP 1.0 message encoding and decoding happen on the client side, the
+RabbitMQ Stream plugin stores only bytes, it has no idea that AMQP 1.0 message format
+is used.</p>
+</div>
+<div class="paragraph">
+<p>AMQP 1.0 message format was chosen because of its flexibility and its advanced
+type system. It provides good interoperability, which allows streams
+to be accessed as AMQP 0-9-1 queues, without data loss.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
 </div>
 </div>
 </div>
@@ -1101,7 +1203,7 @@ be appropriate for all workloads.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-11 16:12:00 UTC
+Last updated 2020-05-12 07:49:09 UTC
 </div>
 </div>
 <style>
