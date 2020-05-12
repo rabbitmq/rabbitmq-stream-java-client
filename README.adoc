@@ -19,6 +19,10 @@ your whole business on it).
 
 == How to Use
 
+=== Documentation
+
+https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[Reference documentation]
+
 === Pre-requisites
 
 The library requires Java 8 or more.
