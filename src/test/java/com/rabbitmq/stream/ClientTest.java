@@ -721,6 +721,30 @@ public class ClientTest {
     }
 
     @Test
+    void declareAmqpStreamQueueAndUseItAsStream() throws Exception {
+        int messageCount = 10000;
+        String q = UUID.randomUUID().toString();
+        ConnectionFactory cf = new ConnectionFactory();
+        try (Connection amqpConnection = cf.newConnection();
+             Channel c = amqpConnection.createChannel()) {
+            c.queueDeclare(q, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
+            CountDownLatch publishedLatch = new CountDownLatch(messageCount);
+            CountDownLatch consumedLatch = new CountDownLatch(messageCount);
+            Client client = client(new Client.ClientParameters()
+                    .confirmListener(publishingId -> publishedLatch.countDown())
+                    .chunkListener((client1, subscriptionId, offset, messageCount1, dataSize) -> client1.credit(subscriptionId, 1))
+                    .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown())
+            );
+
+            IntStream.range(0, messageCount).forEach(i -> client.publish(q, "hello".getBytes(StandardCharsets.UTF_8)));
+            assertThat(publishedLatch.await(10, SECONDS)).isTrue();
+
+            client.subscribe(1, q, 0, 10);
+            assertThat(consumedLatch.await(10, SECONDS)).isTrue();
+        }
+    }
+
+    @Test
     void shouldReachTailWhenPublisherStopWhileConsumerIsBehind() throws Exception {
         int messageCount = 100000;
         int messageLimit = messageCount * 2;
