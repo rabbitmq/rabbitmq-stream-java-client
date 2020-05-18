@@ -176,43 +176,6 @@ To launch the test suite (requires a local RabbitMQ node with stream plugin enab
 ./mvnw verify
 ----
 
-== Performance Tool
-
-The project contains also a performance tool to test the RabbitMQ Stream plugin.
-It is https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test[downloadable from Bintray]
-as an uber JAR and can be built separately as well.
-
-=== Using the Performance Tool
-
-To launch a run:
-
-----
-java -jar stream-perf-test-{version}.jar
-----
-
-The previous command will start publishing to and consuming from a stream created
-only for the test.
-
-To see the options:
-
-----
-java -jar stream-perf-test-{version}.jar --help
-----
-
-=== Building the Performance Tool
-
-To build the uber JAR:
-
-----
-./mvnw clean package -Dmaven.test.skip -P performance-tool
-----
-
-Then run the tool:
-
-----
-java -jar target/stream-perf-test.jar
-----
-
 == Copyright and License
 
 (c) 2020, VMware Inc or its affiliates.

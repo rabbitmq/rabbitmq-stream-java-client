@@ -430,3 +430,17 @@ To see the options:
 ----
 java -jar stream-perf-test-{version}.jar --help
 ----
+
+=== Building the Performance Tool
+
+To build the uber JAR:
+
+----
+./mvnw clean package -Dmaven.test.skip -P performance-tool
+----
+
+Then run the tool:
+
+----
+java -jar target/stream-perf-test.jar
+----
