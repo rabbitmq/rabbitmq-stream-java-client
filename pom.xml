@@ -211,6 +211,7 @@
                         <protonj-version>${proton-j.version}</protonj-version>
                         <imagesdir>./images</imagesdir>
                         <toc>left</toc>
+                        <toclevels>5</toclevels>
                         <icons>font</icons>
                         <sectanchors>true</sectanchors>
                         <!-- set the idprefix to blank -->

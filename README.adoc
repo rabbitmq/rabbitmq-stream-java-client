@@ -27,66 +27,6 @@ https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[Refe
 
 The library requires Java 8 or more.
 
-A RabbitMQ node with the stream plugin enabled is required:
-
- * Download the https://bintray.com/rabbitmq/all-dev/rabbitmq-stream[latest generic Unix alpha from Bintray].
- * Follow the https://www.rabbitmq.com/install-generic-unix.html[instructions to install the generic Unix package].
- * Enable the plugin `./rabbitmq-plugins enable rabbitmq_stream`.
- * Start the broker `./rabbitmq-server -detached`. This starts the stream listener on port 5555.
-
-=== Dependencies
-
-Use your favorite build management tool to add the client dependencies to your project.
-
-==== Maven
-
-.pom.xml
-[source,xml,subs="attributes,specialcharacters"]
-----
-<dependencies>
-
-  <dependency>
-    <groupId>com.rabbitmq</groupId>
-    <artifactId>stream-client</artifactId>
-    <version>{project-version}</version>
-  </dependency>
-
-  <dependency>
-    <groupId>org.apache.qpid</groupId>
-    <artifactId>proton-j</artifactId>
-    <version>{protonj-version}</version>
-  </dependency>
-
-</dependencies>
-
-<repositories>
-
-  <repository>
-    <id>ossrh</id>
-    <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-    <snapshots><enabled>true</enabled></snapshots>
-    <releases><enabled>false</enabled></releases>
-  </repository>
-
-</repositories>
-----
-
-==== Gradle
-
-.build.gradle
-[source,groovy,subs="attributes,specialcharacters"]
-----
-dependencies {
-  compile "com.rabbitmq:stream-client:{project-version}"
-  compile "org.apache.qpid:proton-j:{protonj-version}"
-}
-
-repositories {
-  maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
-  mavenCentral()
-}
-----
-
 === Sample Application
 
 The next snippet shows a client instance used to publish messages. The body

@@ -61,7 +61,7 @@ you need to use an AMQP 0-9-1 client library.
 RabbitMQ stream provides at-least-once guarantees thanks to the
 publisher confirm mechanism, which is supported by the stream Java client.
 
-== Using the Stream Java Client
+== The Stream Java Client
 
 The library requires Java 8 or more.
 
@@ -128,7 +128,9 @@ repositories {
 }
 ----
 
-=== Connecting to RabbitMQ Stream
+=== Client Reference
+
+==== Connecting to RabbitMQ Stream
 
 The main API of the stream Java client is the `com.rabbitmq.stream.Client`
 class. To connect to a local instance of the RabbitMQ Stream plugin
@@ -151,7 +153,7 @@ include::{test-examples}/ClientUsage.java[tag=client-creation-with-client-parame
 --------
 <1> Use `ClientParameters` to set connection parameters
 
-=== Managing Streams
+==== Managing Streams
 
 Streams can be created with the `Client#create(String)` method:
 
@@ -184,7 +186,7 @@ some significant housekeeping on the server side (interactions
 with the file system, communication between nodes of the cluster).
 Therefore you should consider streams as long-lived objects.
 
-=== Publishing Messages
+==== Publishing Messages
 
 The simplest way to publish something to a stream is the
 `Client#publish(Stream, byte[])` method:
@@ -251,7 +253,7 @@ You may wonder if messages are only made of a byte array payload. They are not.
 They can have fixed and arbitrary headers. We will see how to
 create complex messages in a dedicated section.
 
-=== Consuming Messages
+==== Consuming Messages
 
 The `Client#subscribe` method allows subscribing to a stream:
 
@@ -346,7 +348,7 @@ The recommendation given above is usually a good rule of thumb, but may not
 be appropriate for all workloads.
 ====
 
-=== Working with Complex Messages
+==== Working with Complex Messages
 
 The publishing and consuming examples showed that messages are made of
 a byte array payload, but they did not go much further. Messages in RabbitMQ Stream
@@ -396,11 +398,29 @@ type system. It provides good interoperability, which allows streams
 to be accessed as AMQP 0-9-1 queues, without data loss.
 ====
 
-== Using the Performance Tool
+=== Builing the Client
+
+You need JDK 1.8 or more installed.
+
+To build the JAR file:
+
+----
+./mvnw clean package -DskipITs -DskipTests
+----
+
+To launch the test suite (requires a local RabbitMQ node with stream plugin enabled):
+
+----
+./mvnw verify
+----
+
+== The Performance Tool
 
 The library contains also a performance tool to test the RabbitMQ Stream plugin.
 It is https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test[downloadable from Bintray]
 as an uber JAR and can be built separately as well.
+
+=== Using the Performance Tool
 
 To launch a run:
 
