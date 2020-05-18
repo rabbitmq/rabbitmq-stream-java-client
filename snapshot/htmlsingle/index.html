@@ -451,9 +451,16 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#when-to-use-rabbitmq-stream">When to Use RabbitMQ Stream?</a></li>
 <li><a href="#other-way-to-use-streams-in-rabbitmq">Other Way to Use Streams in RabbitMQ</a></li>
 <li><a href="#guarantees">Guarantees</a></li>
-<li><a href="#using-the-stream-java-client">Using the Stream Java Client</a>
+<li><a href="#the-stream-java-client">The Stream Java Client</a>
 <ul class="sectlevel2">
-<li><a href="#dependencies">Dependencies</a></li>
+<li><a href="#dependencies">Dependencies</a>
+<ul class="sectlevel3">
+<li><a href="#maven">Maven</a></li>
+<li><a href="#gradle">Gradle</a></li>
+</ul>
+</li>
+<li><a href="#client-reference">Client Reference</a>
+<ul class="sectlevel3">
 <li><a href="#connecting-to-rabbitmq-stream">Connecting to RabbitMQ Stream</a></li>
 <li><a href="#managing-streams">Managing Streams</a></li>
 <li><a href="#publishing-messages">Publishing Messages</a></li>
@@ -461,8 +468,12 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#working-with-complex-messages">Working with Complex Messages</a></li>
 </ul>
 </li>
-<li><a href="#using-the-performance-tool">Using the Performance Tool</a>
+<li><a href="#builing-the-client">Builing the Client</a></li>
+</ul>
+</li>
+<li><a href="#the-performance-tool">The Performance Tool</a>
 <ul class="sectlevel2">
+<li><a href="#using-the-performance-tool">Using the Performance Tool</a></li>
 <li><a href="#building-the-performance-tool">Building the Performance Tool</a></li>
 </ul>
 </li>
@@ -552,7 +563,7 @@ publisher confirm mechanism, which is supported by the stream Java client.</p>
 </div>
 </div>
 <div class="sect1">
-<h2 id="using-the-stream-java-client"><a class="anchor" href="#using-the-stream-java-client"></a>Using the Stream Java Client</h2>
+<h2 id="the-stream-java-client"><a class="anchor" href="#the-stream-java-client"></a>The Stream Java Client</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>The library requires Java 8 or more.</p>
@@ -638,7 +649,9 @@ repositories {
 </div>
 </div>
 <div class="sect2">
-<h3 id="connecting-to-rabbitmq-stream"><a class="anchor" href="#connecting-to-rabbitmq-stream"></a>Connecting to RabbitMQ Stream</h3>
+<h3 id="client-reference"><a class="anchor" href="#client-reference"></a>Client Reference</h3>
+<div class="sect3">
+<h4 id="connecting-to-rabbitmq-stream"><a class="anchor" href="#connecting-to-rabbitmq-stream"></a>Connecting to RabbitMQ Stream</h4>
 <div class="paragraph">
 <p>The main API of the stream Java client is the <code>com.rabbitmq.stream.Client</code>
 class. To connect to a local instance of the RabbitMQ Stream plugin
@@ -682,8 +695,8 @@ parameters like host, port, username, and password:</p>
 </table>
 </div>
 </div>
-<div class="sect2">
-<h3 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h3>
+<div class="sect3">
+<h4 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h4>
 <div class="paragraph">
 <p>Streams can be created with the <code>Client#create(String)</code> method:</p>
 </div>
@@ -752,8 +765,8 @@ with the file system, communication between nodes of the cluster).
 Therefore you should consider streams as long-lived objects.</p>
 </div>
 </div>
-<div class="sect2">
-<h3 id="publishing-messages"><a class="anchor" href="#publishing-messages"></a>Publishing Messages</h3>
+<div class="sect3">
+<h4 id="publishing-messages"><a class="anchor" href="#publishing-messages"></a>Publishing Messages</h4>
 <div class="paragraph">
 <p>The simplest way to publish something to a stream is the
 <code>Client#publish(Stream, byte[])</code> method:</p>
@@ -905,8 +918,8 @@ They can have fixed and arbitrary headers. We will see how to
 create complex messages in a dedicated section.</p>
 </div>
 </div>
-<div class="sect2">
-<h3 id="consuming-messages"><a class="anchor" href="#consuming-messages"></a>Consuming Messages</h3>
+<div class="sect3">
+<h4 id="consuming-messages"><a class="anchor" href="#consuming-messages"></a>Consuming Messages</h4>
 <div class="paragraph">
 <p>The <code>Client#subscribe</code> method allows subscribing to a stream:</p>
 </div>
@@ -1089,8 +1102,8 @@ be appropriate for all workloads.</p>
 </table>
 </div>
 </div>
-<div class="sect2">
-<h3 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h3>
+<div class="sect3">
+<h4 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h4>
 <div class="paragraph">
 <p>The publishing and consuming examples showed that messages are made of
 a byte array payload, but they did not go much further. Messages in RabbitMQ Stream
@@ -1196,15 +1209,40 @@ to be accessed as AMQP 0-9-1 queues, without data loss.</p>
 </div>
 </div>
 </div>
+<div class="sect2">
+<h3 id="builing-the-client"><a class="anchor" href="#builing-the-client"></a>Builing the Client</h3>
+<div class="paragraph">
+<p>You need JDK 1.8 or more installed.</p>
+</div>
+<div class="paragraph">
+<p>To build the JAR file:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>./mvnw clean package -DskipITs -DskipTests</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>To launch the test suite (requires a local RabbitMQ node with stream plugin enabled):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>./mvnw verify</pre>
+</div>
+</div>
+</div>
+</div>
 </div>
 <div class="sect1">
-<h2 id="using-the-performance-tool"><a class="anchor" href="#using-the-performance-tool"></a>Using the Performance Tool</h2>
+<h2 id="the-performance-tool"><a class="anchor" href="#the-performance-tool"></a>The Performance Tool</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>The library contains also a performance tool to test the RabbitMQ Stream plugin.
 It is <a href="https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test">downloadable from Bintray</a>
 as an uber JAR and can be built separately as well.</p>
 </div>
+<div class="sect2">
+<h3 id="using-the-performance-tool"><a class="anchor" href="#using-the-performance-tool"></a>Using the Performance Tool</h3>
 <div class="paragraph">
 <p>To launch a run:</p>
 </div>
@@ -1239,6 +1277,7 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <pre>java -jar stream-perf-test-{version}.jar --help</pre>
 </div>
 </div>
+</div>
 <div class="sect2">
 <h3 id="building-the-performance-tool"><a class="anchor" href="#building-the-performance-tool"></a>Building the Performance Tool</h3>
 <div class="paragraph">
@@ -1264,7 +1303,7 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-18 15:17:19 UTC
+Last updated 2020-05-18 15:29:38 UTC
 </div>
 </div>
 <style>
