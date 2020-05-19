@@ -834,7 +834,7 @@ with the default user and password, just create an <code>Client</code> instance<
 </div>
 <div class="paragraph">
 <p>A <code>Client</code> constructor can take a <code>ClientParameters</code> to set
-parameters like host, port, username, and password:</p>
+parameters like host, port, virtual host, username, and password:</p>
 </div>
 <div class="listingblock">
 <div class="title">Connecting with parameters</div>
@@ -842,6 +842,7 @@ parameters like host, port, username, and password:</p>
 <pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters() <i class="conum" data-value="1"></i><b>(1)</b>
         .host(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-rabbitmq-stream</span><span class="delimiter">&quot;</span></span>)
         .port(<span class="integer">1234</span>)
+        .virtualHost(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-virtual-host</span><span class="delimiter">&quot;</span></span>)
         .username(<span class="string"><span class="delimiter">&quot;</span><span class="content">stream-user</span><span class="delimiter">&quot;</span></span>)
         .password(<span class="string"><span class="delimiter">&quot;</span><span class="content">stream-password</span><span class="delimiter">&quot;</span></span>)
 );</code></pre>
@@ -1464,7 +1465,7 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-19 08:11:58 UTC
+Last updated 2020-05-19 09:45:29 UTC
 </div>
 </div>
 <style>
