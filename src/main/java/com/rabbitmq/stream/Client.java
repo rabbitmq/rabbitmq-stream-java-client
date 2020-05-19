@@ -685,7 +685,14 @@ public class Client implements AutoCloseable {
     }
 
     public Response create(String stream) {
-        int length = 2 + 2 + 4 + 2 + stream.length();
+        return create(stream, Collections.emptyMap());
+    }
+
+    public Response create(String stream, Map<String, String> arguments) {
+        int length = 2 + 2 + 4 + 2 + stream.length() + 4;
+        for (Map.Entry<String, String> argument : arguments.entrySet()) {
+            length = length + 2 + argument.getKey().length() + 2 + argument.getValue().length();
+        }
         int correlationId = correlationSequence.incrementAndGet();
         try {
             ByteBuf bb = allocate(length + 4);
@@ -695,6 +702,13 @@ public class Client implements AutoCloseable {
             bb.writeInt(correlationId);
             bb.writeShort(stream.length());
             bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
+            bb.writeInt(arguments.size());
+            for (Map.Entry<String, String> argument : arguments.entrySet()) {
+                bb.writeShort(argument.getKey().length());
+                bb.writeBytes(argument.getKey().getBytes(StandardCharsets.UTF_8));
+                bb.writeShort(argument.getValue().length());
+                bb.writeBytes(argument.getValue().getBytes(StandardCharsets.UTF_8));
+            }
             OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
             outstandingRequests.put(correlationId, request);
             channel.writeAndFlush(bb);
@@ -1022,7 +1036,7 @@ public class Client implements AutoCloseable {
          * @param client         the client instance (e.g. to ask for more credit)
          * @param subscriptionId the subscription ID to correlate with a callback
          * @param offset         the first offset in the chunk
-         * @param messageCount    the total number of messages in the chunk
+         * @param messageCount   the total number of messages in the chunk
          * @param dataSize       the size in bytes of the data in the chunk
          */
         void handle(Client client, int subscriptionId, long offset, long messageCount, long dataSize);
