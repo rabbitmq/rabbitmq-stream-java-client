@@ -214,7 +214,7 @@ include::{test-examples}/ClientUsage.java[tag=client-creation]
 <1> Connect to localhost:5555 with guest / guest
 
 A `Client` constructor can take a `ClientParameters` to set
-parameters like host, port, username, and password:
+parameters like host, port, virtual host, username, and password:
 
 .Connecting with parameters
 [source,java,indent=0]

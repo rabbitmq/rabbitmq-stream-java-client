@@ -36,6 +36,7 @@ public class ClientUsage {
         Client client = new Client(new Client.ClientParameters() // <1>
                 .host("my-rabbitmq-stream")
                 .port(1234)
+                .virtualHost("my-virtual-host")
                 .username("stream-user")
                 .password("stream-password")
         );
