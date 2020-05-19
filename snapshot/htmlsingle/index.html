@@ -459,6 +459,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#gradle">Gradle</a></li>
 </ul>
 </li>
+<li><a href="#sample-application">Sample Application</a></li>
 <li><a href="#client-reference">Client Reference</a>
 <ul class="sectlevel3">
 <li><a href="#connecting-to-rabbitmq-stream">Connecting to RabbitMQ Stream</a></li>
@@ -646,6 +647,166 @@ repositories {
 }</code></pre>
 </div>
 </div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="sample-application"><a class="anchor" href="#sample-application"></a>Sample Application</h3>
+<div class="paragraph">
+<p>This section covers the basics of the stream Java client by building
+a small publish/consume application. This is a good way to get
+an overview of the client. If you want a more comprehensive introduction,
+you can go to the <a href="#client-reference">the reference documentation section</a>.</p>
+</div>
+<div class="paragraph">
+<p>The sample application publishes some messages and then registers
+a consumer to make some computations out of them. The
+<a href="https://github.com/rabbitmq/rabbitmq-stream-java-client/blob/master/src/test/java/com/rabbitmq/stream/docs/SampleApplication.java">source code is available on GitHub</a>.</p>
+</div>
+<div class="paragraph">
+<p>The sample class starts with a few imports:</p>
+</div>
+<div class="listingblock">
+<div class="title">Imports for the sample applications</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="keyword">import</span> <span class="include">com.rabbitmq.stream.Client</span>;
+
+<span class="keyword">import</span> <span class="include">java.util.UUID</span>;
+<span class="keyword">import</span> <span class="include">java.util.concurrent.CountDownLatch</span>;
+<span class="keyword">import</span> <span class="include">java.util.concurrent.TimeUnit</span>;
+<span class="keyword">import</span> <span class="include">java.util.concurrent.atomic.AtomicLong</span>;
+<span class="keyword">import</span> <span class="include">java.util.stream.IntStream</span>;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Then comes the publishing part. The next snippet shows a client instance
+used to publish messages. The body of each message is made of the value
+of a sequence. A count down latch is used to make sure the broker confirmed
+all the messages before closing the publisher connection.</p>
+</div>
+<div class="listingblock">
+<div class="title">Publishing messages</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting publishing...</span><span class="delimiter">&quot;</span></span>);
+<span class="type">int</span> messageCount = <span class="integer">10000</span>;
+<span class="predefined-type">String</span> stream = <span class="predefined-type">UUID</span>.randomUUID().toString();
+<span class="predefined-type">CountDownLatch</span> confirmLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
+Client publisher = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
+        .confirmListener(publishingId -&gt; confirmLatch.countDown()));  <i class="conum" data-value="1"></i><b>(1)</b>
+publisher.create(stream);  <i class="conum" data-value="2"></i><b>(2)</b>
+IntStream.range(<span class="integer">0</span>, messageCount)
+        .forEach(i -&gt; publisher.publish(stream, <span class="predefined-type">String</span>.valueOf(i).getBytes()));  <i class="conum" data-value="3"></i><b>(3)</b>
+confirmLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="4"></i><b>(4)</b>
+publisher.close();  <i class="conum" data-value="5"></i><b>(5)</b>
+<span class="predefined-type">System</span>.out.printf(<span class="string"><span class="delimiter">&quot;</span><span class="content">Published %,d messages%n</span><span class="delimiter">&quot;</span></span>, messageCount);</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Count down on message publishing confirmation</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Create the target stream</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Publish messages in a loop</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Wait for all publishing confirmations to have arrived</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Close the publisher connection</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The next snippet shows how to consume and process the messages published previously.
+It sets up a chunk listener when creating the client instance. The chunk listener is called
+every time the broker delivers a chunk (batch) of messages to the client. It
+asks the broker to deliver another chunk with the <code>credit</code> command. A message listener
+is also set up on client creation. The message listener is called every time a message
+is delivered (as part of a chunk). Once all messages have been received, the sum is output
+to the console, the stream is deleted, and the consumer connection is closed.</p>
+</div>
+<div class="listingblock">
+<div class="title">Consuming messages</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting consuming...</span><span class="delimiter">&quot;</span></span>);
+<span class="predefined-type">AtomicLong</span> sum = <span class="keyword">new</span> <span class="predefined-type">AtomicLong</span>(<span class="integer">0</span>);
+<span class="predefined-type">CountDownLatch</span> consumeLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
+Client consumer = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
+        .chunkListener((client, subscriptionId, offset, messagesInChunk, dataSize) -&gt;
+                client.credit(subscriptionId, <span class="integer">1</span>))  <i class="conum" data-value="1"></i><b>(1)</b>
+        .messageListener((subscriptionId, offset, message) -&gt; {
+            sum.addAndGet(<span class="predefined-type">Long</span>.parseLong(<span class="keyword">new</span> <span class="predefined-type">String</span>(message.getBodyAsBinary())));  <i class="conum" data-value="2"></i><b>(2)</b>
+            consumeLatch.countDown();  <i class="conum" data-value="3"></i><b>(3)</b>
+        }));
+
+consumer.subscribe(<span class="integer">1</span>, stream, <span class="integer">0</span>, <span class="integer">10</span>);  <i class="conum" data-value="4"></i><b>(4)</b>
+consumeLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
+
+<span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Sum: </span><span class="delimiter">&quot;</span></span> + sum.get());  <i class="conum" data-value="6"></i><b>(6)</b>
+
+consumer.delete(stream);  <i class="conum" data-value="7"></i><b>(7)</b>
+consumer.close();  <i class="conum" data-value="8"></i><b>(8)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Ask for a new chunk for each chunk received</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Add the value in the message body to the sum</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Count down on each message</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Start consuming at the beginning of the stream</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Wait for all messages to have arrived</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Output the sum</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="7"></i><b>7</b></td>
+<td>Delete the stream</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="8"></i><b>8</b></td>
+<td>Close the consumer connection</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>You can run the sample application from the root of the project (you need
+a running local RabbitMQ node with the stream plugin enabled):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>$ ./mvnw -q test-compile exec:java
+Starting publishing...
+Published 10000 messages
+Starting consuming...
+Sum: 49995000</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You can remove the <code>-q</code> flag if you want more insight on the execution of the build.</p>
 </div>
 </div>
 <div class="sect2">
@@ -1303,7 +1464,7 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-18 15:29:38 UTC
+Last updated 2020-05-19 08:11:58 UTC
 </div>
 </div>
 <style>
