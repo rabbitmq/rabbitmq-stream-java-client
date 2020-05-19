@@ -1,7 +1,15 @@
-:project-version: 0.1.0-SNAPSHOT
-:protonj-version: 0.33.4
-
 = RabbitMQ Stream Java Client
+
+The RabbitMQ Stream Java Client is a Java library to communicate with
+the https://github.com/rabbitmq/rabbitmq-stream[RabbitMQ Stream Plugin].
+It allows to create and delete streams, as well as to publish to and consume from
+these streams.
+
+The client ships also with a
+https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/#the-performance-tool[performance tool].
+
+Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[documentation]
+to find out more.
 
 == Project Maturity
 
@@ -19,86 +27,13 @@ your whole business on it).
 
 == How to Use
 
-=== Documentation
-
-https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[Reference documentation]
-
 === Pre-requisites
 
 The library requires Java 8 or more.
 
-=== Sample Application
+=== Documentation
 
-The next snippet shows a client instance used to publish messages. The body
-of each message is made of the value of a sequence. A count down latch
-is used to make sure all the messages have been confirmed before closing
-the publisher connection.
-
-[source,java]
-----
-import com.rabbitmq.stream.Client;
-
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.IntStream;
-
-...
-
-int messageCount = 10000;
-String stream = UUID.randomUUID().toString();
-CountDownLatch confirmLatch = new CountDownLatch(messageCount);
-Client publisher = new Client(new Client.ClientParameters()
-  .confirmListener(publishingId -> confirmLatch.countDown()));              // <1>
-publisher.create(stream);                                                   // <2>
-IntStream.range(0, messageCount)
-  .forEach(i -> publisher.publish(stream, String.valueOf(i).getBytes()));   // <3>
-confirmLatch.await(10, TimeUnit.SECONDS);                                   // <4>
-publisher.close();                                                          // <5>
-----
-<1> Count down on message publishing confirmation
-<2> Create the target stream
-<3> Publish a message in a loop
-<4> Wait for all publishing confirmations to have arrived
-<5> Close the publisher connection
-
-The next snippet shows how to consume and process the messages published previously.
-It sets up a chunk listener when creating the client instance. The chunk listener is called
-every time a chunk (batch) of messages is delivered by the server to the client. It
-asks the server to deliver another chunk with the `credit` command. A message listener
-is also set up on client creation. The message listener is called every time a message
-is delivered (as part of a chunk). Once all messages have been received, the sum is output
-to the console, the stream is deleted, and the consumer connection is closed.
-
-[source,java]
-----
-AtomicLong sum = new AtomicLong(0);
-CountDownLatch consumeLatch = new CountDownLatch(messageCount);
-Client consumer = new Client(new Client.ClientParameters()
-  .chunkListener((client, subscriptionId, offset, messageCount, dataSize) ->
-      client.credit(subscriptionId, 1))                                      // <1>
-  .messageListener((subscriptionId, offset, message) -> {
-    sum.addAndGet(Long.parseLong(new String(message.getBodyAsBinary())));    // <2>
-    consumeLatch.countDown();                                                // <3>
-}));
-
-consumer.subscribe(1, stream, 0, 10);                                        // <4>
-consumeLatch.await(10, TimeUnit.SECONDS);                                    // <5>
-
-System.out.println("Sum: " + sum.get());                                     // <6>
-
-consumer.delete(stream);                                                     // <7>
-consumer.close();                                                            // <8>
-----
-<1> Ask for a new chunk for each chunk received
-<2> Add the value in the message body to the sum
-<3> Count down on each message
-<4> Start consuming at the beginning of the stream
-<5> Wait for all messages to have arrived
-<6> Output the sum
-<7> Delete the stream
-<8> Close the consumer connection
+https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[Reference documentation]
 
 == Build Instructions
 

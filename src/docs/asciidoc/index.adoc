@@ -128,6 +128,76 @@ repositories {
 }
 ----
 
+=== Sample Application
+
+This section covers the basics of the stream Java client by building
+a small publish/consume application. This is a good way to get
+an overview of the client. If you want a more comprehensive introduction,
+you can go to the <<client-reference,the reference documentation section>>.
+
+The sample application publishes some messages and then registers
+a consumer to make some computations out of them. The
+https://github.com/rabbitmq/rabbitmq-stream-java-client/blob/master/src/test/java/com/rabbitmq/stream/docs/SampleApplication.java[source code is available on GitHub].
+
+The sample class starts with a few imports:
+
+.Imports for the sample applications
+[source,java,indent=0]
+--------
+include::{test-examples}/SampleApplication.java[tag=sample-imports]
+--------
+
+Then comes the publishing part. The next snippet shows a client instance
+used to publish messages. The body of each message is made of the value
+of a sequence. A count down latch is used to make sure the broker confirmed
+all the messages before closing the publisher connection.
+
+.Publishing messages
+[source,java,indent=0]
+--------
+include::{test-examples}/SampleApplication.java[tag=sample-publisher]
+--------
+<1> Count down on message publishing confirmation
+<2> Create the target stream
+<3> Publish messages in a loop
+<4> Wait for all publishing confirmations to have arrived
+<5> Close the publisher connection
+
+The next snippet shows how to consume and process the messages published previously.
+It sets up a chunk listener when creating the client instance. The chunk listener is called
+every time the broker delivers a chunk (batch) of messages to the client. It
+asks the broker to deliver another chunk with the `credit` command. A message listener
+is also set up on client creation. The message listener is called every time a message
+is delivered (as part of a chunk). Once all messages have been received, the sum is output
+to the console, the stream is deleted, and the consumer connection is closed.
+
+.Consuming messages
+[source,java,indent=0]
+--------
+include::{test-examples}/SampleApplication.java[tag=sample-consumer]
+--------
+<1> Ask for a new chunk for each chunk received
+<2> Add the value in the message body to the sum
+<3> Count down on each message
+<4> Start consuming at the beginning of the stream
+<5> Wait for all messages to have arrived
+<6> Output the sum
+<7> Delete the stream
+<8> Close the consumer connection
+
+You can run the sample application from the root of the project (you need
+a running local RabbitMQ node with the stream plugin enabled):
+
+----
+$ ./mvnw -q test-compile exec:java
+Starting publishing...
+Published 10000 messages
+Starting consuming...
+Sum: 49995000
+----
+
+You can remove the `-q` flag if you want more insight on the execution of the build.
+
 === Client Reference
 
 ==== Connecting to RabbitMQ Stream
