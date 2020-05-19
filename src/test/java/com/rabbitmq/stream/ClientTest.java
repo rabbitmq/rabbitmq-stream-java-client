@@ -30,6 +30,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
@@ -53,6 +55,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class ClientTest {
 
     static EventLoopGroup eventLoopGroup;
+
+    static final Charset UTF8 = StandardCharsets.UTF_8;
 
     String stream;
     int credit = 10;
@@ -498,6 +502,49 @@ public class ClientTest {
         Client publisher = client(new Client.ClientParameters().codec(codec));
         publishConsumeComplexMessage(publisher, codec, i -> publisher.messageBuilder().applicationProperties().entry("id", i)
                 .messageBuilder().addData(("message" + i).getBytes(StandardCharsets.UTF_8)).build());
+    }
+
+    @Test
+    void batchPublishing() throws Exception {
+        int batchCount = 500;
+        int batchSize = 10;
+        int payloadSize = 20;
+        int messageCount = batchCount * batchSize;
+        CountDownLatch publishLatch = new CountDownLatch(messageCount);
+        Client publisher = client(new Client.ClientParameters()
+                .confirmListener(publishingId -> publishLatch.countDown())
+        );
+        AtomicInteger publishingSequence = new AtomicInteger(0);
+        IntStream.range(0, batchCount).forEach(batchIndex -> {
+            publisher.publishBinary(stream, IntStream.range(0, batchSize)
+                    .mapToObj(i -> {
+                        int sequence = publishingSequence.getAndIncrement();
+                        ByteBuffer b = ByteBuffer.allocate(payloadSize);
+                        b.putInt(sequence);
+                        return b.array();
+                    })
+                    .collect(Collectors.toList()));
+        });
+
+        assertThat(publishLatch.await(10, SECONDS)).isTrue();
+
+        Set<Integer> sizes = ConcurrentHashMap.newKeySet(1);
+        Set<Integer> sequences = ConcurrentHashMap.newKeySet(messageCount);
+        CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+        Client consumer = client(new Client.ClientParameters()
+                .chunkListener((client, subscriptionId, offset, messageCount1, dataSize) -> client.credit(subscriptionId, 1))
+                .messageListener((subscriptionId, offset, message) -> {
+                    ByteBuffer bb = ByteBuffer.wrap(message.getBodyAsBinary());
+                    sizes.add(message.getBodyAsBinary().length);
+                    sequences.add(bb.getInt());
+                    consumeLatch.countDown();
+                }));
+
+        consumer.subscribe(1, stream, 0, 10);
+        assertThat(consumeLatch.await(10, SECONDS)).isTrue();
+        assertThat(sizes).hasSize(1).containsOnly(payloadSize);
+        assertThat(sequences).hasSize(messageCount);
+        IntStream.range(0, messageCount).forEach(value -> assertThat(sequences).contains(value));
     }
 
     @Test
