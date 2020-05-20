@@ -1467,6 +1467,11 @@ public class Client implements AutoCloseable {
             return maxSegmentSizeBytes(teraBytes * 1000 * 1000 * 1000 * 1000);
         }
 
+        public StreamParametersBuilder put(String key, String value) {
+            parameters.put(key, value);
+            return this;
+        }
+
         public Map<String, String> build() {
             return parameters;
         }
