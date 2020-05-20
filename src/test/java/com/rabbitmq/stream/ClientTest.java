@@ -507,6 +507,29 @@ public class ClientTest {
     }
 
     @Test
+    void publishConsumeWithSimpleCodec() throws Exception {
+        int messageCount = 1000;
+        Codec codec = new SimpleCodec();
+        Client publisher = client(new Client.ClientParameters().codec(codec));
+        IntStream.range(0, 1000).forEach(i -> publisher.publish(stream, String.valueOf(i).getBytes(UTF8)));
+
+        CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+        Set<String> messageBodies = ConcurrentHashMap.newKeySet(messageCount);
+        Client consumer = client(new Client.ClientParameters()
+                .codec(codec)
+                .chunkListener((client, subscriptionId, offset, messageCount1, dataSize) -> client.credit(subscriptionId, 1))
+                .messageListener((subscriptionId, offset, message) -> {
+                    messageBodies.add(new String(message.getBodyAsBinary()));
+                    consumeLatch.countDown();
+                })
+        );
+
+        consumer.subscribe(1, stream, 0, 10);
+        assertThat(consumeLatch.await(10, SECONDS)).isTrue();
+        IntStream.range(0, messageCount).forEach(i -> assertThat(messageBodies).contains(String.valueOf(i)));
+    }
+
+    @Test
     void batchPublishing() throws Exception {
         int batchCount = 500;
         int batchSize = 10;
@@ -546,7 +569,7 @@ public class ClientTest {
         assertThat(consumeLatch.await(10, SECONDS)).isTrue();
         assertThat(sizes).hasSize(1).containsOnly(payloadSize);
         assertThat(sequences).hasSize(messageCount);
-        IntStream.range(0, messageCount).forEach(value -> assertThat(sequences).contains(value));
+        IntStream.range(0, messageCount + 1).forEach(value -> assertThat(sequences).contains(value));
     }
 
     @Test
