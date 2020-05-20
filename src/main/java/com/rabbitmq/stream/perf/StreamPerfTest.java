@@ -16,10 +16,7 @@ package com.rabbitmq.stream.perf;
 
 import com.codahale.metrics.*;
 import com.google.common.util.concurrent.RateLimiter;
-import com.rabbitmq.stream.Client;
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.QpidProtonCodec;
+import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import org.slf4j.Logger;
@@ -50,7 +47,7 @@ public class StreamPerfTest implements Callable<Integer> {
     private static final Logger LOGGER = LoggerFactory.getLogger(StreamPerfTest.class);
     private final String[] arguments;
     private final EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
-    private final Codec codec = new QpidProtonCodec();
+    private volatile Codec codec;
     @CommandLine.Mixin
     private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
     int addressDispatching = 0;
@@ -66,7 +63,7 @@ public class StreamPerfTest implements Callable<Integer> {
     @CommandLine.Option(names = {"--consumers", "-y"}, description = "number of consumers", defaultValue = "1")
     private int consumers;
     @CommandLine.Option(names = {"--size", "-s"}, description = "size of messages in bytes", defaultValue = "10")
-    private int messageSize;
+    private volatile int messageSize;
     @CommandLine.Option(names = {"--initial-credit", "-icr"},
             description = "initial credit when registering a consumer", defaultValue = "10"
     )
@@ -90,6 +87,13 @@ public class StreamPerfTest implements Callable<Integer> {
     private int rate;
     @CommandLine.Option(names = {"--batch-size", "-bs"}, description = "size of a batch of published messages", defaultValue = "1")
     private int batchSize;
+    @CommandLine.Option(names = {"--codec", "-cc"},
+            description = "class of codec to use. Aliases: qpid, simple.",
+            defaultValue = "qpid"
+    )
+    private String codecClass;
+
+
     private List<Address> addresses;
     @CommandLine.Option(names = {"--version", "-v"}, description = "show version information", defaultValue = "false")
     private boolean version;
@@ -223,6 +227,40 @@ public class StreamPerfTest implements Callable<Integer> {
         System.out.println("\u001B[0m" + info);
     }
 
+    private static final Map<String, String> CODEC_ALIASES = new HashMap<String, String>() {{
+        put("qpid", QpidProtonCodec.class.getName());
+        put("simple", SimpleCodec.class.getName());
+    }};
+
+    private static Codec createCodec(String className) {
+        className = CODEC_ALIASES.getOrDefault(className, className);
+        try {
+            return (Codec) Class.forName(className).getConstructor().newInstance();
+        } catch (Exception e) {
+            throw new ClientException("Exception while creating codec " + className, e);
+        }
+    }
+
+    static void writeLong(byte[] array, long value) {
+        // from Guava Longs
+        for (int i = 7; i >= 0; i--) {
+            array[i] = (byte) (value & 0xffL);
+            value >>= 8;
+        }
+    }
+
+    static long readLong(byte[] array) {
+        // from Guava Longs
+        return (array[0] & 0xFFL) << 56
+                | (array[1] & 0xFFL) << 48
+                | (array[2] & 0xFFL) << 40
+                | (array[3] & 0xFFL) << 32
+                | (array[4] & 0xFFL) << 24
+                | (array[5] & 0xFFL) << 16
+                | (array[6] & 0xFFL) << 8
+                | (array[7] & 0xFFL);
+    }
+
     @Override
     public Integer call() throws Exception {
         if (this.version) {
@@ -230,6 +268,26 @@ public class StreamPerfTest implements Callable<Integer> {
             System.exit(0);
         }
         this.addresses = addresses(this.addrs);
+        this.codec = createCodec(this.codecClass);
+
+        PayloadCreator payloadCreator;
+        MessageProducingCallback messageProducingCallback;
+        CreationTimeExtractor creationTimeExtractor;
+        if ("simple".equals(this.codecClass)) {
+            this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
+            payloadCreator = (size, timestamp) -> {
+                byte[] payload = new byte[size];
+                writeLong(payload, timestamp);
+                return payload;
+            };
+            messageProducingCallback = (payload, timestamp, messageBuilder) -> messageBuilder.addData(payload).build();
+            creationTimeExtractor = message -> readLong(message.getBodyAsBinary());
+        } else {
+            payloadCreator = (size, timestamp) -> new byte[size];
+            messageProducingCallback = (payload, timestamp, messageBuilder) -> messageBuilder.properties().creationTime(timestamp).messageBuilder()
+                    .addData(payload).build();
+            creationTimeExtractor = message -> message.getProperties().getCreationTime();
+        }
 
         ShutdownService shutdownService = new ShutdownService();
 
@@ -304,7 +362,7 @@ public class StreamPerfTest implements Callable<Integer> {
             };
             Client.MessageListener messageListener = (correlationId, offset, data) -> {
                 consumed.mark();
-                latency.update((System.nanoTime() - data.getProperties().getCreationTime()) / 1000L);
+                latency.update((System.nanoTime() - creationTimeExtractor.extract(data)) / 1000L);
             };
 
             Address address = address();
@@ -384,14 +442,14 @@ public class StreamPerfTest implements Callable<Integer> {
                 for (int j = 0; j < this.batchSize; j++) {
                     messages.add(client.messageBuilder().addData(data).build());
                 }
+                final int msgSize = this.messageSize;
                 while (true && !Thread.currentThread().isInterrupted()) {
                     beforePublishingCallback.run();
                     rateLimiterCallback.run();
                     long creationTime = System.nanoTime();
+                    data = payloadCreator.create(msgSize, creationTime);
                     for (int j = 0; j < this.batchSize; j++) {
-                        messages.set(j, client.messageBuilder()
-                                .properties().creationTime(creationTime).messageBuilder()
-                                .addData(data).build());
+                        messages.set(j, messageProducingCallback.create(data, creationTime, client.messageBuilder()));
                     }
                     client.publish(stream, messages);
                     published.mark(this.batchSize);
@@ -472,6 +530,23 @@ public class StreamPerfTest implements Callable<Integer> {
             this.host = host;
             this.port = port;
         }
+    }
+
+    private interface PayloadCreator {
+
+        byte[] create(int size, long timestamp);
+
+    }
+
+    private interface MessageProducingCallback {
+
+        Message create(byte[] payload, long timestamp, MessageBuilder messageBuilder);
+
+    }
+
+    private interface CreationTimeExtractor {
+
+        long extract(Message message);
     }
 
 }
