@@ -1421,6 +1421,58 @@ public class Client implements AutoCloseable {
         }
     }
 
+    public static class StreamParametersBuilder {
+
+        private final Map<String, String> parameters = new HashMap<>();
+
+        public StreamParametersBuilder maxLengthBytes(long bytes) {
+            this.parameters.put("max-length-bytes", String.valueOf(bytes));
+            return this;
+        }
+
+        public StreamParametersBuilder maxLengthKb(long kiloBytes) {
+            return maxLengthBytes(kiloBytes * 1000);
+        }
+
+        public StreamParametersBuilder maxLengthMb(long megaBytes) {
+            return maxLengthBytes(megaBytes * 1000 * 1000);
+        }
+
+        public StreamParametersBuilder maxLengthGb(long gigaBytes) {
+            return maxLengthBytes(gigaBytes * 1000 * 1000 * 1000);
+        }
+
+        public StreamParametersBuilder maxLengthTb(long teraBytes) {
+            return maxLengthBytes(teraBytes * 1000 * 1000 * 1000 * 1000);
+        }
+
+        public StreamParametersBuilder maxSegmentSizeBytes(long bytes) {
+            this.parameters.put("max-segment-size", String.valueOf(bytes));
+            return this;
+        }
+
+        public StreamParametersBuilder maxSegmentSizeKb(long kiloBytes) {
+            return maxSegmentSizeBytes(kiloBytes * 1000);
+        }
+
+        public StreamParametersBuilder maxSegmentSizeMb(long megaBytes) {
+            return maxSegmentSizeBytes(megaBytes * 1000 * 1000);
+        }
+
+        public StreamParametersBuilder maxSegmentSizeGb(long gigaBytes) {
+            return maxSegmentSizeBytes(gigaBytes * 1000 * 1000 * 1000);
+        }
+
+        public StreamParametersBuilder maxSegmentSizeTb(long teraBytes) {
+            return maxSegmentSizeBytes(teraBytes * 1000 * 1000 * 1000 * 1000);
+        }
+
+        public Map<String, String> build() {
+            return parameters;
+        }
+
+    }
+
     private static class Subscriptions {
 
         private final Map<String, List<Integer>> streamsToSubscriptions = new ConcurrentHashMap<>();

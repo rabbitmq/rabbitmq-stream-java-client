@@ -699,12 +699,12 @@ public class ClientTest {
         }
 
         TestConfig[] configurations = new TestConfig[]{
-                new TestConfig(() -> {
-                    Map<String, String> arguments = new HashMap<>();
-                    arguments.put("max-length-bytes", String.valueOf(messageCount * payloadSize / 10));
-                    arguments.put("max-segment-size", String.valueOf(messageCount * payloadSize / 20));
-                    return arguments;
-                }, firstMessageId -> firstMessageId > 0),
+                new TestConfig(
+                        () -> new Client.StreamParametersBuilder()
+                                .maxLengthBytes(messageCount * payloadSize / 10)
+                                .maxSegmentSizeBytes(messageCount * payloadSize / 20)
+                                .build(),
+                        firstMessageId -> firstMessageId > 0),
                 new TestConfig(() -> Collections.emptyMap(), firstMessageId -> firstMessageId == 0)
         };
 
