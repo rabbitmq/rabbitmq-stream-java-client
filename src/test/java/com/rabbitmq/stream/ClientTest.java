@@ -569,7 +569,7 @@ public class ClientTest {
         assertThat(consumeLatch.await(10, SECONDS)).isTrue();
         assertThat(sizes).hasSize(1).containsOnly(payloadSize);
         assertThat(sequences).hasSize(messageCount);
-        IntStream.range(0, messageCount + 1).forEach(value -> assertThat(sequences).contains(value));
+        IntStream.range(0, messageCount).forEach(value -> assertThat(sequences).contains(value));
     }
 
     @Test
