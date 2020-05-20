@@ -705,6 +705,12 @@ public class ClientTest {
                                 .maxSegmentSizeBytes(messageCount * payloadSize / 20)
                                 .build(),
                         firstMessageId -> firstMessageId > 0),
+                new TestConfig(
+                        () -> new Client.StreamParametersBuilder()
+                                .maxLengthBytes(ByteCapacity.B(messageCount * payloadSize / 10))
+                                .maxSegmentSizeBytes(ByteCapacity.B(messageCount * payloadSize / 20))
+                                .build(),
+                        firstMessageId -> firstMessageId > 0),
                 new TestConfig(() -> Collections.emptyMap(), firstMessageId -> firstMessageId == 0)
         };
 

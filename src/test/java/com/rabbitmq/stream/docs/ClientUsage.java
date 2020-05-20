@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.docs;
 
+import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Client;
 import com.rabbitmq.stream.Message;
 
@@ -51,6 +52,28 @@ public class ClientUsage {
             response.getResponseCode(); // <3>
         }
         // end::stream-creation[]
+    }
+
+    void createStreamWithRetention() {
+        Client client = new Client();
+        // tag::stream-creation-retention[]
+        client.create("my-stream", new Client.StreamParametersBuilder()
+                .maxLengthGb(10) // <1>
+                .maxSegmentSizeMb(500) // <2>
+                .build()
+        );
+        // end::stream-creation-retention[]
+    }
+
+    void createStreamWithRetentionAlternative() {
+        Client client = new Client();
+        // tag::stream-creation-retention-alternative[]
+        client.create("my-stream", new Client.StreamParametersBuilder()
+                .maxLengthBytes(ByteCapacity.GB(10)) // <1>
+                .maxSegmentSizeBytes(ByteCapacity.MB(500)) // <2>
+                .build()
+        );
+        // end::stream-creation-retention-alternative[]
     }
 
     void deleteStream() {

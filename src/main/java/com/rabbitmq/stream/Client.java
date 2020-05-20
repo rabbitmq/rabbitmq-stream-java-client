@@ -1430,6 +1430,10 @@ public class Client implements AutoCloseable {
             return this;
         }
 
+        public StreamParametersBuilder maxLengthBytes(ByteCapacity bytes) {
+            return maxLengthBytes(bytes.toBytes());
+        }
+
         public StreamParametersBuilder maxLengthKb(long kiloBytes) {
             return maxLengthBytes(kiloBytes * 1000);
         }
@@ -1449,6 +1453,10 @@ public class Client implements AutoCloseable {
         public StreamParametersBuilder maxSegmentSizeBytes(long bytes) {
             this.parameters.put("max-segment-size", String.valueOf(bytes));
             return this;
+        }
+
+        public StreamParametersBuilder maxSegmentSizeBytes(ByteCapacity bytes) {
+            return maxSegmentSizeBytes(bytes.toBytes());
         }
 
         public StreamParametersBuilder maxSegmentSizeKb(long kiloBytes) {

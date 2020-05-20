@@ -256,6 +256,49 @@ some significant housekeeping on the server side (interactions
 with the file system, communication between nodes of the cluster).
 Therefore you should consider streams as long-lived objects.
 
+==== Limiting the Size of a Stream
+
+A stream is an append-only data structure and reading from
+it does not remove data. This means a stream can grow indefinitely. RabbitMQ Stream
+supports a size-based retention policy: once
+the stream reaches a given size, it is truncated (starting from the beginning).
+
+[IMPORTANT]
+.Limit the size of streams if appropriate!
+====
+Make sure to set up a retention policy on potentially large streams
+if you don't want to saturate the storage devices of your servers. Keep
+in mind that this means some data will be erased!
+====
+
+It is possible to set up the retention policy when creating the stream:
+
+.Setting the retention policy when creating a stream
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=stream-creation-retention]
+--------
+<1> Set the maximum size to 10 GB
+<2> Set the segment size to 500 MB
+
+The previous snippet mentions a segment size. RabbitMQ Stream does not store
+a stream in a big, single file, it uses segment files for technical reasons.
+A stream is truncated by deleting whole segment files (and not part of them),
+so the maximum size of a stream is usually significantly higher than the size
+of segment files. 500 MB is a reasonable segment file size to begin with.
+
+You can also use the `ByteCapacity` class to set up the retention policy,
+it is just a matter of API preference:
+
+.Using `ByteCapacity` to set up the retention policy
+[source,java,indent=0]
+--------
+include::{test-examples}/ClientUsage.java[tag=stream-creation-retention-alternative]
+--------
+<1> Set the maximum size to 10 GB
+<2> Set the segment size to 500 MB
+
+
 ==== Publishing Messages
 
 The simplest way to publish something to a stream is the
