@@ -241,7 +241,7 @@ public class StreamPerfTest implements Callable<Integer> {
         }
     }
 
-    static void writeLong(byte[] array, long value) {
+    public static void writeLong(byte[] array, long value) {
         // from Guava Longs
         for (int i = 7; i >= 0; i--) {
             array[i] = (byte) (value & 0xffL);
@@ -249,7 +249,7 @@ public class StreamPerfTest implements Callable<Integer> {
         }
     }
 
-    static long readLong(byte[] array) {
+    public static long readLong(byte[] array) {
         // from Guava Longs
         return (array[0] & 0xFFL) << 56
                 | (array[1] & 0xFFL) << 48
