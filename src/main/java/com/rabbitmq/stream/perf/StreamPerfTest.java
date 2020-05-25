@@ -270,24 +270,7 @@ public class StreamPerfTest implements Callable<Integer> {
         this.addresses = addresses(this.addrs);
         this.codec = createCodec(this.codecClass);
 
-        PayloadCreator payloadCreator;
-        MessageProducingCallback messageProducingCallback;
-        CreationTimeExtractor creationTimeExtractor;
-        if ("simple".equals(this.codecClass)) {
-            this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
-            payloadCreator = (size, timestamp) -> {
-                byte[] payload = new byte[size];
-                writeLong(payload, timestamp);
-                return payload;
-            };
-            messageProducingCallback = (payload, timestamp, messageBuilder) -> messageBuilder.addData(payload).build();
-            creationTimeExtractor = message -> readLong(message.getBodyAsBinary());
-        } else {
-            payloadCreator = (size, timestamp) -> new byte[size];
-            messageProducingCallback = (payload, timestamp, messageBuilder) -> messageBuilder.properties().creationTime(timestamp).messageBuilder()
-                    .addData(payload).build();
-            creationTimeExtractor = message -> message.getProperties().getCreationTime();
-        }
+        this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
 
         ShutdownService shutdownService = new ShutdownService();
 
@@ -362,7 +345,7 @@ public class StreamPerfTest implements Callable<Integer> {
             };
             Client.MessageListener messageListener = (correlationId, offset, data) -> {
                 consumed.mark();
-                latency.update((System.nanoTime() - creationTimeExtractor.extract(data)) / 1000L);
+                latency.update((System.nanoTime() - readLong(data.getBodyAsBinary())) / 1000L);
             };
 
             Address address = address();
@@ -439,6 +422,7 @@ public class StreamPerfTest implements Callable<Integer> {
                 // FIXME fill the message with some data
                 byte[] data = new byte[this.messageSize];
                 List<Message> messages = new ArrayList<>(this.batchSize);
+                // just a batch to initialize the list
                 for (int j = 0; j < this.batchSize; j++) {
                     messages.add(client.messageBuilder().addData(data).build());
                 }
@@ -447,9 +431,10 @@ public class StreamPerfTest implements Callable<Integer> {
                     beforePublishingCallback.run();
                     rateLimiterCallback.run();
                     long creationTime = System.nanoTime();
-                    data = payloadCreator.create(msgSize, creationTime);
+                    byte[] payload = new byte[msgSize];
+                    writeLong(payload, creationTime);
                     for (int j = 0; j < this.batchSize; j++) {
-                        messages.set(j, messageProducingCallback.create(data, creationTime, client.messageBuilder()));
+                        messages.set(j, codec.messageBuilder().addData(payload).build());
                     }
                     client.publish(stream, messages);
                     published.mark(this.batchSize);
@@ -530,23 +515,6 @@ public class StreamPerfTest implements Callable<Integer> {
             this.host = host;
             this.port = port;
         }
-    }
-
-    private interface PayloadCreator {
-
-        byte[] create(int size, long timestamp);
-
-    }
-
-    private interface MessageProducingCallback {
-
-        Message create(byte[] payload, long timestamp, MessageBuilder messageBuilder);
-
-    }
-
-    private interface CreationTimeExtractor {
-
-        long extract(Message message);
     }
 
 }
