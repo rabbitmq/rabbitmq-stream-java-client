@@ -27,8 +27,8 @@ import java.util.stream.IntStream;
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @State(Scope.Benchmark)
-@Warmup(iterations = 5, time = 5, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 5, time = 5, timeUnit = TimeUnit.SECONDS)
+@Warmup(iterations = 5, time = 5)
+@Measurement(iterations = 5, time = 5)
 @Fork(1)
 @Threads(1)
 public class EncodingDecodingBenchmark {

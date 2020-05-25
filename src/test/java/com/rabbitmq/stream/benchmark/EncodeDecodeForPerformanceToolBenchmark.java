@@ -16,8 +16,6 @@ package com.rabbitmq.stream.benchmark;
 
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.MessageBuilder;
-import com.rabbitmq.stream.SimpleCodec;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
@@ -26,13 +24,14 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 import java.util.concurrent.TimeUnit;
 
+import static com.rabbitmq.stream.perf.StreamPerfTest.readLong;
 import static com.rabbitmq.stream.perf.StreamPerfTest.writeLong;
 
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @State(Scope.Benchmark)
-@Warmup(iterations = 5, time = 5, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 1, time = 5, timeUnit = TimeUnit.SECONDS)
+@Warmup(iterations = 5, time = 5)
+@Measurement(iterations = 1, time = 5)
 @Fork(1)
 @Threads(1)
 public class EncodeDecodeForPerformanceToolBenchmark {
@@ -48,32 +47,26 @@ public class EncodeDecodeForPerformanceToolBenchmark {
 
     Codec codec;
 
-    MessageProducingCallback messageProducingCallback;
     TimestampProvider timestampProvider;
+
+    byte[] messageToDecode;
 
     @Setup
     public void setUp() throws Exception {
         codec = (Codec) Class.forName(codecClass).getConstructor().newInstance();
 
-        if (SimpleCodec.class.getName().equals(codecClass)) {
-            messageProducingCallback = (timestamp, messageBuilder) -> {
-                byte[] payload = new byte[payloadSize];
-                writeLong(payload, timestamp);
-                return messageBuilder.addData(payload).build();
-            };
-        } else {
-            messageProducingCallback = (timestamp, messageBuilder) -> {
-                byte[] payload = new byte[payloadSize];
-                return messageBuilder.properties().creationTime(timestamp).messageBuilder()
-                        .addData(payload).build();
-            };
-        }
         if ("fixed".equals(timestampSource)) {
             long fixedValue = System.nanoTime();
             this.timestampProvider = () -> fixedValue;
         } else {
             this.timestampProvider = () -> System.nanoTime();
         }
+
+        byte[] payload = new byte[payloadSize];
+        writeLong(payload, timestampProvider.get());
+        Codec.EncodedMessage encoded = codec.encode(codec.messageBuilder().addData(payload).build());
+        messageToDecode = new byte[encoded.getSize()];
+        System.arraycopy(encoded.getData(), 0, messageToDecode, 0, encoded.getSize());
     }
 
     @TearDown
@@ -83,7 +76,15 @@ public class EncodeDecodeForPerformanceToolBenchmark {
 
     @Benchmark
     public void encode() {
-        messageProducingCallback.create(timestampProvider.get(), codec.messageBuilder());
+        byte[] payload = new byte[payloadSize];
+        writeLong(payload, timestampProvider.get());
+        codec.messageBuilder().addData(payload).build();
+    }
+
+    @Benchmark
+    public void decode() {
+        Message message = codec.decode(messageToDecode);
+        long latency = timestampProvider.get() - readLong(message.getBodyAsBinary());
     }
 
     public static void main(String[] args) throws RunnerException {
@@ -92,12 +93,6 @@ public class EncodeDecodeForPerformanceToolBenchmark {
                 .build();
 
         new Runner(opt).run();
-    }
-
-    private interface MessageProducingCallback {
-
-        Message create(long timestamp, MessageBuilder messageBuilder);
-
     }
 
     private interface TimestampProvider {
