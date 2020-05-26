@@ -317,7 +317,13 @@ The `publish` method returns a long: it is the publishing identifier
 for the message. This identifier is used to correlate the message
 with a publishing confirmation that the broker sends asynchronously.
 This allows making sure a message made it to the broker and provides
-at-least-once guarantees. Each `Client` instance can register a callback to react
+at-least-once guarantees.
+
+NOTE: The publishing identifier is local to the client instance connection. It
+is neither a global identifier for the message, nor the offset of the message
+in the stream.
+
+Each `Client` instance can register a callback to react
 to publish confirms when the instance is created:
 
 .Handling publish confirms
@@ -341,9 +347,6 @@ include::{test-examples}/ClientUsage.java[tag=publish-error-callback]
 
 The `PublishErrorListener` callback provides the publishing ID as well
 as an error code to figure out the reason of the publishing error.
-
-NOTE: The publishing identifier scopes the client instance connection, it
-is not a global identifier for the message.
 
 It is also possible to publish messages in batch, with the
 `publishBinary(List<byte[]>)` method. The method returns a
