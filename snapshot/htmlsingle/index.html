@@ -453,6 +453,12 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#guarantees">Guarantees</a></li>
 <li><a href="#the-stream-java-client">The Stream Java Client</a>
 <ul class="sectlevel2">
+<li><a href="#setting-up-a-rabbitmq-node-with-the-stream-plugin">Setting up a RabbitMQ Node with the Stream Plugin</a>
+<ul class="sectlevel3">
+<li><a href="#with-docker">With Docker</a></li>
+<li><a href="#with-the-generic-unix-package">With the Generic Unix Package</a></li>
+</ul>
+</li>
 <li><a href="#dependencies">Dependencies</a>
 <ul class="sectlevel3">
 <li><a href="#maven">Maven</a></li>
@@ -570,8 +576,50 @@ publisher confirm mechanism, which is supported by the stream Java client.</p>
 <div class="paragraph">
 <p>The library requires Java 8 or more.</p>
 </div>
+<div class="sect2">
+<h3 id="setting-up-a-rabbitmq-node-with-the-stream-plugin"><a class="anchor" href="#setting-up-a-rabbitmq-node-with-the-stream-plugin"></a>Setting up a RabbitMQ Node with the Stream Plugin</h3>
 <div class="paragraph">
-<p>A RabbitMQ node with the stream plugin enabled is required:</p>
+<p>A RabbitMQ node with the stream plugin enabled is required. The easiest way
+to get up and running is to use Docker. It is also possible to use the
+generic Unix package.</p>
+</div>
+<div class="sect3">
+<h4 id="with-docker"><a class="anchor" href="#with-docker"></a>With Docker</h4>
+<div class="paragraph">
+<p>The following command creates a one-time Docker container to run RabbitMQ
+with the stream plugin enabled:</p>
+</div>
+<div class="listingblock">
+<div class="title">Running the stream plugin with Docker</div>
+<div class="content">
+<pre>docker run -it --rm --name rabbitmq -p 5555:5555 pivotalrabbitmq/rabbitmq-stream</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The previous command exposes only the stream port (5555), you can expose
+ports for other protocols:</p>
+</div>
+<div class="listingblock">
+<div class="title">Exposing the AMQP 0.9.1 and management ports:</div>
+<div class="content">
+<pre>docker run -it --rm --name rabbitmq -p 5555:5555 -p 5672:5672 -p 15672:15672 \
+    pivotalrabbitmq/rabbitmq-stream</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Refer to the official <a href="https://hub.docker.com/_/rabbitmq">RabbitMQ Docker image web page</a>
+to find out more about its usage. Make sure to use the <code>pivotalrabbitmq/rabbitmq-stream</code>
+image in the command line.</p>
+</div>
+<div class="paragraph">
+<p>The <code>pivotalrabbitmq/rabbitmq-stream</code> Docker image is meant for development usage only. It does not
+support all the features of the official Docker image, like TLS.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="with-the-generic-unix-package"><a class="anchor" href="#with-the-generic-unix-package"></a>With the Generic Unix Package</h4>
+<div class="paragraph">
+<p>The generic Unix package requires <a href="https://www.rabbitmq.com/which-erlang.html">Erlang</a> to be installed.</p>
 </div>
 <div class="ulist">
 <ul>
@@ -588,6 +636,8 @@ publisher confirm mechanism, which is supported by the stream Java client.</p>
 <p>Start the broker <code>./rabbitmq-server -detached</code>. This starts the stream listener on port 5555.</p>
 </li>
 </ul>
+</div>
+</div>
 </div>
 <div class="sect2">
 <h3 id="dependencies"><a class="anchor" href="#dependencies"></a>Dependencies</h3>
@@ -1554,7 +1604,7 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-26 08:27:33 UTC
+Last updated 2020-05-26 13:12:49 UTC
 </div>
 </div>
 <style>
