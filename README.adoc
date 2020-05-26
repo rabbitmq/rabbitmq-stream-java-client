@@ -19,7 +19,7 @@ It is not ready for production use. Features and API are subject to change.
 == Support
 
 * For questions: https://groups.google.com/forum/#!forum/rabbitmq-users[RabbitMQ Users]
-* For bugs and feature requests: https://github.com/reactor/reactor-rabbitmq/issues[GitHub Issues]
+* For bugs and feature requests: https://github.com/rabbitmq/rabbitmq-stream-java-client/issues[GitHub Issues]
 
 The project is currently under development, there is no guarantee yet that it will be maintained and supported
 in the future (read: you are welcome to experiment with it and give feedback, but please do not base
