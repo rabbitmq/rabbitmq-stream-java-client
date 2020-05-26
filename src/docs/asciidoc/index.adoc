@@ -65,7 +65,7 @@ publisher confirm mechanism, which is supported by the stream Java client.
 
 The library requires Java 8 or more.
 
-=== Setting up a RabbitMQ Node with the Stream Plugin
+=== Setting up RabbitMQ
 
 A RabbitMQ node with the stream plugin enabled is required. The easiest way
 to get up and running is to use Docker. It is also possible to use the
