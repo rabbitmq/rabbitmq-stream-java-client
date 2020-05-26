@@ -1049,7 +1049,24 @@ it is just a matter of API preference:</p>
 for the message. This identifier is used to correlate the message
 with a publishing confirmation that the broker sends asynchronously.
 This allows making sure a message made it to the broker and provides
-at-least-once guarantees. Each <code>Client</code> instance can register a callback to react
+at-least-once guarantees.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+The publishing identifier is local to the client instance connection. It
+is neither a global identifier for the message, nor the offset of the message
+in the stream.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Each <code>Client</code> instance can register a callback to react
 to publish confirms when the instance is created:</p>
 </div>
 <div class="listingblock">
@@ -1097,19 +1114,6 @@ up the listener when creating the client instance:</p>
 <div class="paragraph">
 <p>The <code>PublishErrorListener</code> callback provides the publishing ID as well
 as an error code to figure out the reason of the publishing error.</p>
-</div>
-<div class="admonitionblock note">
-<table>
-<tr>
-<td class="icon">
-<i class="fa icon-note" title="Note"></i>
-</td>
-<td class="content">
-The publishing identifier scopes the client instance connection, it
-is not a global identifier for the message.
-</td>
-</tr>
-</table>
 </div>
 <div class="paragraph">
 <p>It is also possible to publish messages in batch, with the
@@ -1550,7 +1554,7 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-20 08:57:40 UTC
+Last updated 2020-05-26 08:27:33 UTC
 </div>
 </div>
 <style>
