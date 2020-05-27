@@ -849,7 +849,8 @@ a running local RabbitMQ node with the stream plugin enabled):</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre>$ ./mvnw -q test-compile exec:java
+<pre>$ ./mvnw -q test-compile exec:java -Dexec.classpathScope="test" \
+    -Dexec.mainClass="com.rabbitmq.stream.docs.SampleApplication"
 Starting publishing...
 Published 10000 messages
 Starting consuming...
@@ -1604,7 +1605,7 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-26 13:15:58 UTC
+Last updated 2020-05-27 12:54:29 UTC
 </div>
 </div>
 <style>
