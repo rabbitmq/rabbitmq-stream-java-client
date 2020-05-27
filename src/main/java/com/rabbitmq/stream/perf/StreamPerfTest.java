@@ -93,9 +93,9 @@ public class StreamPerfTest implements Callable<Integer> {
     )
     private String codecClass;
 
-    @CommandLine.Option(names = {"--max-length-size", "-mls"}, description = "max length size of created streams",
+    @CommandLine.Option(names = {"--max-length-bytes", "-mlb"}, description = "max size of created streams",
             defaultValue = "20gb", converter = Utils.ByteCapacityTypeConverter.class)
-    private ByteCapacity maxLengthSize;
+    private ByteCapacity maxLengthBytes;
     @CommandLine.Option(names = {"--max-segment-size", "-mss"}, description = "max size of segments",
             defaultValue = "500mb", converter = Utils.ByteCapacityTypeConverter.class)
     private ByteCapacity maxSegmentSize;
@@ -103,6 +103,10 @@ public class StreamPerfTest implements Callable<Integer> {
     private List<Address> addresses;
     @CommandLine.Option(names = {"--version", "-v"}, description = "show version information", defaultValue = "false")
     private boolean version;
+
+    public StreamPerfTest() {
+        this.arguments = null;
+    }
 
     public StreamPerfTest(String[] arguments) {
         this.arguments = arguments;
@@ -303,7 +307,7 @@ public class StreamPerfTest implements Callable<Integer> {
             );
             for (String stream : streams) {
                 Client.Response response = client.create(stream, new Client.StreamParametersBuilder()
-                        .maxLengthBytes(maxLengthSize).maxSegmentSizeBytes(maxSegmentSize).build());
+                        .maxLengthBytes(maxLengthBytes).maxSegmentSizeBytes(maxSegmentSize).build());
                 if (response.isOk()) {
                     LOGGER.info("Created stream {}", stream);
                 } else {
