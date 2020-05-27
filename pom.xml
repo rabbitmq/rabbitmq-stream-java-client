@@ -20,7 +20,7 @@
         <logback.version>1.2.3</logback.version>
         <netty.version>4.1.50.Final</netty.version>
         <proton-j.version>0.33.4</proton-j.version>
-        <metrics.version>4.1.8</metrics.version>
+        <metrics.version>4.1.9</metrics.version>
         <swiftmq-client.version>12.1.0</swiftmq-client.version>
         <picocli.version>4.3.2</picocli.version>
         <guava.version>29.0-jre</guava.version>
