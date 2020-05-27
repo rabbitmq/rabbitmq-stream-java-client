@@ -1579,6 +1579,20 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <pre>java -jar stream-perf-test-{version}.jar --help</pre>
 </div>
 </div>
+<div class="paragraph">
+<p>The performance tool comes also with a completion script. You can download it and enable it in
+your <code>~/.zshrc</code> file:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>alias stream-perf-test='java -jar target/stream-perf-test.jar'
+source ~/.zsh/stream-perf-test_completion</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Note the activation requires an alias which must be <code>stream-perf-test</code>. The command can be anything
+though.</p>
+</div>
 </div>
 <div class="sect2">
 <h3 id="building-the-performance-tool"><a class="anchor" href="#building-the-performance-tool"></a>Building the Performance Tool</h3>
@@ -1605,7 +1619,7 @@ detailed metrics in a <code>stream-perf-test-current.txt</code> file that get re
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-27 12:54:29 UTC
+Last updated 2020-05-27 13:40:08 UTC
 </div>
 </div>
 <style>
