@@ -93,6 +93,12 @@ public class StreamPerfTest implements Callable<Integer> {
     )
     private String codecClass;
 
+    @CommandLine.Option(names = {"--max-length-size", "-mls"}, description = "max length size of created streams",
+            defaultValue = "20gb", converter = Utils.ByteCapacityTypeConverter.class)
+    private ByteCapacity maxLengthSize;
+    @CommandLine.Option(names = {"--max-segment-size", "-mss"}, description = "max size of segments",
+            defaultValue = "500mb", converter = Utils.ByteCapacityTypeConverter.class)
+    private ByteCapacity maxSegmentSize;
 
     private List<Address> addresses;
     @CommandLine.Option(names = {"--version", "-v"}, description = "show version information", defaultValue = "false")
@@ -283,7 +289,6 @@ public class StreamPerfTest implements Callable<Integer> {
             } catch (Exception e) {
                 LOGGER.info("Could not shut down Netty in {} second(s)", shutdownTimeout);
             }
-
         }));
 
         MetricRegistry metrics = new MetricRegistry();
@@ -297,7 +302,8 @@ public class StreamPerfTest implements Callable<Integer> {
                     .host(address.host).port(address.port)
             );
             for (String stream : streams) {
-                Client.Response response = client.create(stream);
+                Client.Response response = client.create(stream, new Client.StreamParametersBuilder()
+                        .maxLengthBytes(maxLengthSize).maxSegmentSizeBytes(maxSegmentSize).build());
                 if (response.isOk()) {
                     LOGGER.info("Created stream {}", stream);
                 } else {
