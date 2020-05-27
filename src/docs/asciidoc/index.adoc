@@ -602,6 +602,17 @@ To see the options:
 java -jar stream-perf-test-{version}.jar --help
 ----
 
+The performance tool comes also with a completion script. You can download it and enable it in
+your `~/.zshrc` file:
+
+----
+alias stream-perf-test='java -jar target/stream-perf-test.jar'
+source ~/.zsh/stream-perf-test_completion
+----
+
+Note the activation requires an alias which must be `stream-perf-test`. The command can be anything
+though.
+
 === Building the Performance Tool
 
 To build the uber JAR:
