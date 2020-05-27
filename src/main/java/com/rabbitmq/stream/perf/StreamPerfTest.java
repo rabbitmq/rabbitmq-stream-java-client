@@ -104,8 +104,9 @@ public class StreamPerfTest implements Callable<Integer> {
     @CommandLine.Option(names = {"--version", "-v"}, description = "show version information", defaultValue = "false")
     private boolean version;
 
+    // constructor for completion script generation
     public StreamPerfTest() {
-        this.arguments = null;
+        this(null);
     }
 
     public StreamPerfTest(String[] arguments) {

@@ -223,7 +223,8 @@ You can run the sample application from the root of the project (you need
 a running local RabbitMQ node with the stream plugin enabled):
 
 ----
-$ ./mvnw -q test-compile exec:java
+$ ./mvnw -q test-compile exec:java -Dexec.classpathScope="test" \
+    -Dexec.mainClass="com.rabbitmq.stream.docs.SampleApplication"
 Starting publishing...
 Published 10000 messages
 Starting consuming...
