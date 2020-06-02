@@ -428,11 +428,23 @@ Let's have a further look at the parameters of `subscribe`:
 the subscription with the inbound messages. The value must be unique within
 the connection.
 * Stream: this is the stream to consume from. It obviously must exist.
-* Offset: this is the offset to start consuming from. 0 means consuming
-from the beginning of the stream (first messages). -1 means consuming
-from the end of the stream at the time of subscription (last messages). The client
-can also specify a number in between, for example the offset where it left off
+* Offset: this is the offset to start consuming from. There are several ways to
+specify the offset:
+** `OffsetSpecification.first()`: starting from the first available offset. If
+the stream has not been <<limiting-the-size-of-a-stream,truncated>>, this
+means the beginning of the stream (offset 0).
+** `OffsetSpecification.last()`: starting from the end of the stream and returning
+the last chunk of messages immediately (if the stream is not empty).
+** `OffsetSpecification.next()`: starting from the next offset to be written. Contrary
+to `OffsetSpecification.last()`, consuming with `OffsetSpecification.next()`
+will not return anything if no-one is publishing to the stream. The broker will start
+sending messages to the consumer when messages are published to the stream.
+** `OffsetSpecification.offset(offset)`: starting from the specified offset. 0 means consuming
+from the beginning of the stream (first messages). The client
+can also specify any number, for example the offset where it left off
 in a previous incarnation of the application.
+** `OffsetSpecification.timestamp(timestamp)`: starting from the messages stored
+after the specified timestamp.
 * Initial number of credits: the number of chunks of messages the broker can
 send immediately after the subscription. This is a way to throttle delivery
 in case the broker send messages faster than the client can process them. We will

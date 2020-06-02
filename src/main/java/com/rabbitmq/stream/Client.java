@@ -399,7 +399,6 @@ public class Client implements AutoCloseable {
 
         chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
 
-        boolean filter = false;
         long offsetLimit = -1;
         if (!subscriptionOffsets.isEmpty()) {
             Iterator<SubscriptionOffset> iterator = subscriptionOffsets.iterator();
@@ -407,13 +406,13 @@ public class Client implements AutoCloseable {
                 SubscriptionOffset subscriptionOffset = iterator.next();
                 if (subscriptionOffset.subscriptionId == subscriptionId) {
                     subscriptionOffsets.remove(subscriptionOffset);
-                    filter = true;
                     offsetLimit = subscriptionOffset.offset;
                     break;
                 }
             }
         }
 
+        final boolean filter = offsetLimit != -1;
 
         byte[] data;
         while (numRecords != 0) {
@@ -904,17 +903,20 @@ public class Client implements AutoCloseable {
      * can be used as long as some care is taken for some operations. See
      * the <code>unsigned*</code> static methods in {@link Long}.
      *
-     * @param subscriptionId identifier to correlate inbound messages to this subscription
-     * @param stream         the stream to consume from
-     * @param offset         the offset in the stream to consume from (unsigned long)
-     * @param credit         the initial number of credits
+     * @param subscriptionId      identifier to correlate inbound messages to this subscription
+     * @param stream              the stream to consume from
+     * @param offsetSpecification the specification of the offset to consume from
+     * @param credit              the initial number of credits
      * @return the subscription confirmation
      */
-    public Response subscribe(int subscriptionId, String stream, long offset, int credit) {
+    public Response subscribe(int subscriptionId, String stream, OffsetSpecification offsetSpecification, int credit) {
         if (credit < 0 || credit > Short.MAX_VALUE) {
             throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
         }
-        int length = 2 + 2 + 4 + 4 + 2 + stream.length() + 8 + 2;
+        int length = 2 + 2 + 4 + 4 + 2 + stream.length() + 2 + 2; // misses the offset
+        if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
+            length += 8;
+        }
         int correlationId = correlationSequence.getAndIncrement();
         try {
             ByteBuf bb = allocate(length + 4);
@@ -925,12 +927,15 @@ public class Client implements AutoCloseable {
             bb.writeInt(subscriptionId);
             bb.writeShort(stream.length());
             bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-            bb.writeLong(offset);
+            bb.writeShort(offsetSpecification.getType());
+            if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
+                bb.writeLong(offsetSpecification.getOffset());
+            }
             bb.writeShort(credit);
             OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
             outstandingRequests.put(correlationId, request);
-            if (offset > 0) {
-                subscriptionOffsets.add(new SubscriptionOffset(subscriptionId, offset));
+            if (offsetSpecification.isOffset()) {
+                subscriptionOffsets.add(new SubscriptionOffset(subscriptionId, offsetSpecification.getOffset()));
             }
             channel.writeAndFlush(bb);
             request.block();

@@ -458,7 +458,7 @@ public class StreamPerfTest implements Callable<Integer> {
         for (Client consumer : consumers) {
             String stream = stream();
             LOGGER.info("Starting consuming on {}", stream);
-            consumer.subscribe(consumerSequence++, stream, this.offset, this.initialCredit);
+            consumer.subscribe(consumerSequence++, stream, OffsetSpecification.offset(this.offset), this.initialCredit);
         }
 
         ExecutorService executorService;

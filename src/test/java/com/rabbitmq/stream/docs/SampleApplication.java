@@ -15,8 +15,8 @@
 package com.rabbitmq.stream.docs;
 
 // tag::sample-imports[]
-
 import com.rabbitmq.stream.Client;
+import com.rabbitmq.stream.OffsetSpecification;
 
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -55,7 +55,7 @@ public class SampleApplication {
                     consumeLatch.countDown();  // <3>
                 }));
 
-        consumer.subscribe(1, stream, 0, 10);  // <4>
+        consumer.subscribe(1, stream, OffsetSpecification.first(), 10);  // <4>
         consumeLatch.await(10, TimeUnit.SECONDS);  // <5>
 
         System.out.println("Sum: " + sum.get());  // <6>

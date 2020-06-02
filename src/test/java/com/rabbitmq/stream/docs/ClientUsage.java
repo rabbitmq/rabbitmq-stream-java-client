@@ -17,6 +17,7 @@ package com.rabbitmq.stream.docs;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Client;
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.OffsetSpecification;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -137,7 +138,7 @@ public class ClientUsage {
         Client.Response response = client.subscribe(
                 1,  // <1>
                 "my-stream",  // <2>
-                0,  // <3>
+                OffsetSpecification.first(),  // <3>
                 10  // <4>
         );
         if (!response.isOk()) {  // <5>
