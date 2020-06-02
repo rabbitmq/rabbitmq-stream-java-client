@@ -53,6 +53,7 @@ public class DeliveryTest {
                 .writeByte(1) // magic and version
                 .writeShort(nbMessages) // num entries
                 .writeInt(nbMessages) // num messages
+                .writeLong(System.currentTimeMillis())
                 .writeLong(0) // epoch
                 .writeLong(chunkOffset) // offset
                 .writeInt(0) // CRC

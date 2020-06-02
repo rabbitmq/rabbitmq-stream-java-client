@@ -369,6 +369,7 @@ public class Client implements AutoCloseable {
 %%   ProtoVersion:4/unsigned,
 %%   NumEntries:16/unsigned, %% need some kind of limit on chunk sizes 64k is a good start
 %%   NumRecords:32/unsigned, %% total including all sub batch entries
+%%   Timestamp:64/signed, %% millisecond posix (ish) timestamp
 %%   Epoch:64/unsigned,
 %%   ChunkFirstOffset:64/unsigned,
 %%   ChunkCrc:32/integer, %% CRC for the records portion of the data
@@ -385,7 +386,9 @@ public class Client implements AutoCloseable {
         read += 2;
         long numRecords = bb.readUnsignedInt();
         read += 4;
-        long epoch = bb.readLong();
+        long timestamp = bb.readLong();
+        read += 8;
+        long epoch = bb.readLong(); // unsigned long
         read += 8;
         long offset = bb.readLong(); // unsigned long
         read += 8;
