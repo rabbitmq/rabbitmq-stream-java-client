@@ -720,6 +720,7 @@ a consumer to make some computations out of them. The
 <div class="title">Imports for the sample applications</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java"><span class="keyword">import</span> <span class="include">com.rabbitmq.stream.Client</span>;
+<span class="keyword">import</span> <span class="include">com.rabbitmq.stream.OffsetSpecification</span>;
 
 <span class="keyword">import</span> <span class="include">java.util.UUID</span>;
 <span class="keyword">import</span> <span class="include">java.util.concurrent.CountDownLatch</span>;
@@ -798,7 +799,7 @@ Client consumer = <span class="keyword">new</span> Client(<span class="keyword">
             consumeLatch.countDown();  <i class="conum" data-value="3"></i><b>(3)</b>
         }));
 
-consumer.subscribe(<span class="integer">1</span>, stream, <span class="integer">0</span>, <span class="integer">10</span>);  <i class="conum" data-value="4"></i><b>(4)</b>
+consumer.subscribe(<span class="integer">1</span>, stream, OffsetSpecification.first(), <span class="integer">10</span>);  <i class="conum" data-value="4"></i><b>(4)</b>
 consumeLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
 
 <span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Sum: </span><span class="delimiter">&quot;</span></span> + sum.get());  <i class="conum" data-value="6"></i><b>(6)</b>
@@ -1231,7 +1232,7 @@ create complex messages in a dedicated section.</p>
 <pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.subscribe(
         <span class="integer">1</span>,  <i class="conum" data-value="1"></i><b>(1)</b>
         <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
-        <span class="integer">0</span>,  <i class="conum" data-value="3"></i><b>(3)</b>
+        OffsetSpecification.first(),  <i class="conum" data-value="3"></i><b>(3)</b>
         <span class="integer">10</span>  <i class="conum" data-value="4"></i><b>(4)</b>
 );
 <span class="keyword">if</span> (!response.isOk()) {  <i class="conum" data-value="5"></i><b>(5)</b>
@@ -1283,11 +1284,37 @@ the connection.</p>
 <p>Stream: this is the stream to consume from. It obviously must exist.</p>
 </li>
 <li>
-<p>Offset: this is the offset to start consuming from. 0 means consuming
-from the beginning of the stream (first messages). -1 means consuming
-from the end of the stream at the time of subscription (last messages). The client
-can also specify a number in between, for example the offset where it left off
+<p>Offset: this is the offset to start consuming from. There are several ways to
+specify the offset:</p>
+<div class="ulist">
+<ul>
+<li>
+<p><code>OffsetSpecification.first()</code>: starting from the first available offset. If
+the stream has not been <a href="#limiting-the-size-of-a-stream">truncated</a>, this
+means the beginning of the stream (offset 0).</p>
+</li>
+<li>
+<p><code>OffsetSpecification.last()</code>: starting from the end of the stream and returning
+the last chunk of messages immediately (if the stream is not empty).</p>
+</li>
+<li>
+<p><code>OffsetSpecification.next()</code>: starting from the next offset to be written. Contrary
+to <code>OffsetSpecification.last()</code>, consuming with <code>OffsetSpecification.next()</code>
+will not return anything if no-one is publishing to the stream. The broker will start
+sending messages to the consumer when messages are published to the stream.</p>
+</li>
+<li>
+<p><code>OffsetSpecification.offset(offset)</code>: starting from the specified offset. 0 means consuming
+from the beginning of the stream (first messages). The client
+can also specify any number, for example the offset where it left off
 in a previous incarnation of the application.</p>
+</li>
+<li>
+<p><code>OffsetSpecification.timestamp(timestamp)</code>: starting from the messages stored
+after the specified timestamp.</p>
+</li>
+</ul>
+</div>
 </li>
 <li>
 <p>Initial number of credits: the number of chunks of messages the broker can
@@ -1619,7 +1646,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-05-27 13:40:08 UTC
+Last updated 2020-06-02 14:34:09 UTC
 </div>
 </div>
 <style>
