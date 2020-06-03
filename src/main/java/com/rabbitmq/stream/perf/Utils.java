@@ -14,7 +14,16 @@
 package com.rabbitmq.stream.perf;
 
 import com.rabbitmq.stream.ByteCapacity;
+import com.rabbitmq.stream.OffsetSpecification;
 import picocli.CommandLine;
+
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.TemporalAccessor;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 class Utils {
 
@@ -28,6 +37,43 @@ class Utils {
                 throw new CommandLine.TypeConversionException(
                         "'" + value + "' is not valid, valid example values: 100gb, 50mb");
             }
+        }
+    }
+
+    static class OffsetSpecificationTypeConverter implements CommandLine.ITypeConverter<OffsetSpecification> {
+
+        private static final Map<String, OffsetSpecification> SPECS = Collections.unmodifiableMap(new HashMap<String, OffsetSpecification>() {{
+            put("first", OffsetSpecification.first());
+            put("last", OffsetSpecification.last());
+            put("next", OffsetSpecification.next());
+        }});
+
+        @Override
+        public OffsetSpecification convert(String value) throws Exception {
+            if (value == null || value.trim().isEmpty()) {
+                return OffsetSpecification.first();
+            }
+
+            if (SPECS.containsKey(value.toLowerCase())) {
+                return SPECS.get(value.toLowerCase());
+            }
+
+            try {
+                long offset = Long.parseUnsignedLong(value);
+                return OffsetSpecification.offset(offset);
+            } catch (NumberFormatException e) {
+                // trying next
+            }
+
+            try {
+                TemporalAccessor accessor = DateTimeFormatter.ISO_OFFSET_DATE_TIME.parse(value);
+                return OffsetSpecification.timestamp(Instant.from(accessor).toEpochMilli());
+            } catch (DateTimeParseException e) {
+                throw new CommandLine.TypeConversionException(
+                        "'" + value + "' is not a valid offset value, valid values are 'first', 'last', 'next', " +
+                                "an unsigned long, or an ISO 8601 formatted timestamp (eg. 2020-06-03T07:45:54Z)");
+            }
+
         }
     }
 

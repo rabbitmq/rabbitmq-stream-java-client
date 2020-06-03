@@ -45,13 +45,17 @@ import static java.lang.String.format;
 public class StreamPerfTest implements Callable<Integer> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StreamPerfTest.class);
+    private static final Map<String, String> CODEC_ALIASES = new HashMap<String, String>() {{
+        put("qpid", QpidProtonCodec.class.getName());
+        put("simple", SimpleCodec.class.getName());
+    }};
     private final String[] arguments;
     private final EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
-    private volatile Codec codec;
     @CommandLine.Mixin
     private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
     int addressDispatching = 0;
     int streamDispatching = 0;
+    private volatile Codec codec;
     @CommandLine.Option(names = {"--addresses", "-a"},
             description = "servers to connect to, e.g. localhost:5555, separated by commas",
             defaultValue = "localhost:5555",
@@ -79,8 +83,10 @@ public class StreamPerfTest implements Callable<Integer> {
             split = ","
     )
     private List<String> streams;
-    @CommandLine.Option(names = {"--offset", "-o"}, description = "offset to start listening from", defaultValue = "0")
-    private long offset;
+    @CommandLine.Option(names = {"--offset", "-o"}, description = "offset to start listening from. " +
+            "Valid values are 'first', 'last', 'next', an unsigned long, or an ISO 8601 formatted timestamp (eg. 2020-06-03T07:45:54Z).",
+            defaultValue = "first", converter = Utils.OffsetSpecificationTypeConverter.class)
+    private OffsetSpecification offset;
     @CommandLine.Option(names = {"--pre-declared", "-p"}, description = "whether streams are already declared or not", defaultValue = "false")
     private boolean preDeclared;
     @CommandLine.Option(names = {"--rate", "-r"}, description = "maximum rate of published messages", defaultValue = "-1")
@@ -92,14 +98,12 @@ public class StreamPerfTest implements Callable<Integer> {
             defaultValue = "qpid"
     )
     private String codecClass;
-
     @CommandLine.Option(names = {"--max-length-bytes", "-mlb"}, description = "max size of created streams",
             defaultValue = "20gb", converter = Utils.ByteCapacityTypeConverter.class)
     private ByteCapacity maxLengthBytes;
     @CommandLine.Option(names = {"--max-segment-size", "-mss"}, description = "max size of segments",
             defaultValue = "500mb", converter = Utils.ByteCapacityTypeConverter.class)
     private ByteCapacity maxSegmentSize;
-
     private List<Address> addresses;
     @CommandLine.Option(names = {"--version", "-v"}, description = "show version information", defaultValue = "false")
     private boolean version;
@@ -237,11 +241,6 @@ public class StreamPerfTest implements Callable<Integer> {
         System.out.println("\u001B[1m" + version);
         System.out.println("\u001B[0m" + info);
     }
-
-    private static final Map<String, String> CODEC_ALIASES = new HashMap<String, String>() {{
-        put("qpid", QpidProtonCodec.class.getName());
-        put("simple", SimpleCodec.class.getName());
-    }};
 
     private static Codec createCodec(String className) {
         className = CODEC_ALIASES.getOrDefault(className, className);
@@ -458,7 +457,7 @@ public class StreamPerfTest implements Callable<Integer> {
         for (Client consumer : consumers) {
             String stream = stream();
             LOGGER.info("Starting consuming on {}", stream);
-            consumer.subscribe(consumerSequence++, stream, OffsetSpecification.offset(this.offset), this.initialCredit);
+            consumer.subscribe(consumerSequence++, stream, this.offset, this.initialCredit);
         }
 
         ExecutorService executorService;

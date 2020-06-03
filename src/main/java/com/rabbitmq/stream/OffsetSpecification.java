@@ -14,15 +14,21 @@
 
 package com.rabbitmq.stream;
 
+import java.util.Objects;
+
 public class OffsetSpecification {
 
-    private static final short FIRST = 0;
-    private static final short LAST = 1;
-    private static final short NEXT = 2;
-    private static final short OFFSET = 3;
-    private static final short TIMESTAMP = 4;
+    private static final short TYPE_FIRST = 0;
+    private static final short TYPE_LAST = 1;
+    private static final short TYPE_NEXT = 2;
+    private static final short TYPE_OFFSET = 3;
+    private static final short TYPE_TIMESTAMP = 4;
 
     private static final long UNUSED_OFFSET = -1;
+
+    private static final OffsetSpecification FIRST = new OffsetSpecification(TYPE_FIRST, UNUSED_OFFSET);
+    private static final OffsetSpecification LAST = new OffsetSpecification(TYPE_LAST, UNUSED_OFFSET);
+    private static final OffsetSpecification NEXT = new OffsetSpecification(TYPE_NEXT, UNUSED_OFFSET);
 
     private final short type;
     private final long offset;
@@ -33,31 +39,31 @@ public class OffsetSpecification {
     }
 
     public static OffsetSpecification first() {
-        return new OffsetSpecification(FIRST, UNUSED_OFFSET);
+        return FIRST;
     }
 
     public static OffsetSpecification last() {
-        return new OffsetSpecification(LAST, UNUSED_OFFSET);
+        return LAST;
     }
 
     public static OffsetSpecification next() {
-        return new OffsetSpecification(NEXT, UNUSED_OFFSET);
+        return NEXT;
     }
 
     public static OffsetSpecification offset(long offset) {
-        return new OffsetSpecification(OFFSET, offset);
+        return new OffsetSpecification(TYPE_OFFSET, offset);
     }
 
     public static OffsetSpecification timestamp(long timestamp) {
-        return new OffsetSpecification(TIMESTAMP, timestamp);
+        return new OffsetSpecification(TYPE_TIMESTAMP, timestamp);
     }
 
     boolean isOffset() {
-        return this.type == OFFSET;
+        return this.type == TYPE_OFFSET;
     }
 
     boolean isTimestamp() {
-        return this.type == TIMESTAMP;
+        return this.type == TYPE_TIMESTAMP;
     }
 
     short getType() {
@@ -74,5 +80,19 @@ public class OffsetSpecification {
                 "type=" + type +
                 ", offset=" + offset +
                 '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        OffsetSpecification that = (OffsetSpecification) o;
+        return type == that.type &&
+                offset == that.offset;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(type, offset);
     }
 }
