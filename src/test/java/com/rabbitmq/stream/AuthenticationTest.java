@@ -14,45 +14,27 @@
 
 package com.rabbitmq.stream;
 
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
+@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class AuthenticationTest {
 
-    static EventLoopGroup eventLoopGroup;
-
-    @BeforeAll
-    static void initSuite() {
-        eventLoopGroup = new NioEventLoopGroup();
-    }
-
-    @AfterAll
-    static void tearDownSuite() throws Exception {
-        eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
-    }
-
-    Client client(Client.ClientParameters parameters) {
-        Client client = new Client(parameters.eventLoopGroup(eventLoopGroup));
-        return client;
-    }
+    TestUtils.ClientFactory cf;
 
     @Test
     void authenticateShouldPassWithValidCredentials() {
-        client(new Client.ClientParameters());
+        cf.get(new Client.ClientParameters());
     }
 
     @Test
     void authenticateWithJdkSaslConfiguration() {
-        client(new Client.ClientParameters().saslConfiguration(new JdkSaslConfiguration(
+        cf.get(new Client.ClientParameters().saslConfiguration(new JdkSaslConfiguration(
                 new DefaultUsernamePasswordCredentialsProvider("guest", "guest"), () -> "localhost"
         )));
     }
@@ -60,7 +42,7 @@ public class AuthenticationTest {
     @Test
     void authenticateShouldFailWhenUsingBadCredentials() {
         try {
-            client(new Client.ClientParameters().username("bad").password("bad"));
+            cf.get(new Client.ClientParameters().username("bad").password("bad"));
         } catch (AuthenticationFailureException e) {
             assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE)));
         }
@@ -69,7 +51,7 @@ public class AuthenticationTest {
     @Test
     void authenticateShouldFailWhenUsingUnsupportedSaslMechanism() {
         try {
-            client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
+            cf.get(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
                 @Override
                 public String getName() {
                     return "FANCY-SASL";
@@ -88,7 +70,7 @@ public class AuthenticationTest {
     @Test
     void authenticateShouldFailWhenSendingGarbageToSaslChallenge() {
         try {
-            client(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
+            cf.get(new Client.ClientParameters().saslConfiguration(mechanisms -> new SaslMechanism() {
                 @Override
                 public String getName() {
                     return PlainSaslMechanism.INSTANCE.getName();
@@ -107,7 +89,7 @@ public class AuthenticationTest {
     @Test
     void accessToNonExistingVirtualHostShouldFail() {
         try {
-            client(new Client.ClientParameters().virtualHost(UUID.randomUUID().toString()));
+            cf.get(new Client.ClientParameters().virtualHost(UUID.randomUUID().toString()));
         } catch (ClientException e) {
             assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE)));
         }

@@ -416,7 +416,8 @@ public class Client implements AutoCloseable {
 
         byte[] data;
         while (numRecords != 0) {
-                /*
+/*
+%%   Entry Format
 %%   <<0=SimpleEntryType:1,
 %%     Size:31/unsigned,
 %%     Data:Size/binary>> |
@@ -427,7 +428,7 @@ public class Client implements AutoCloseable {
 %%     NumRecords:16/unsigned,
 %%     Size:32/unsigned,
 %%     Data:Size/binary>>
-                 */
+ */
 
             // FIXME deal with other type of entry than simple (first bit = 0)
             int typeAndSize = bb.readInt();

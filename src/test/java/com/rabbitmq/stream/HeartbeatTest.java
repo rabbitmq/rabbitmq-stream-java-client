@@ -14,43 +14,25 @@
 
 package com.rabbitmq.stream;
 
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.traffic.ChannelTrafficShapingHandler;
 import io.netty.handler.traffic.TrafficCounter;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.time.Duration;
 
 import static com.rabbitmq.stream.TestUtils.waitAtMost;
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
+@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class HeartbeatTest {
 
-    static EventLoopGroup eventLoopGroup;
-
-    @BeforeAll
-    static void initSuite() {
-        eventLoopGroup = new NioEventLoopGroup();
-    }
-
-    @AfterAll
-    static void tearDownSuite() throws Exception {
-        eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
-    }
-
-    Client client(Client.ClientParameters parameters) {
-        Client client = new Client(parameters.eventLoopGroup(eventLoopGroup));
-        return client;
-    }
+    TestUtils.ClientFactory cf;
 
     @Test
     void heartbeat() throws Exception {
         ChannelTrafficShapingHandler channelTrafficShapingHandler = new ChannelTrafficShapingHandler(0, 0);
-        try (Client client = client(new Client.ClientParameters()
+        try (Client client = cf.get(new Client.ClientParameters()
                 .requestedHeartbeat(Duration.ofSeconds(2))
                 .channelCustomizer(ch -> ch.pipeline().addFirst(channelTrafficShapingHandler)))) {
             TrafficCounter trafficCounter = channelTrafficShapingHandler.trafficCounter();
