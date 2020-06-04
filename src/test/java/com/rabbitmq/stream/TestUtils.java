@@ -105,7 +105,7 @@ public class TestUtils {
             if (stream != null) {
                 Client client = new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
                 Client.Response response = client.delete(stream);
-                assertThat(response.isOk()).isTrue();
+//                assertThat(response.isOk()).isTrue();
                 client.close();
             }
 
