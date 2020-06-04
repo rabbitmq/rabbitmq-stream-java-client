@@ -68,7 +68,7 @@ public class AmqpInteroperabilityTest {
                     .replyTo("reply to")
                     .timestamp(timestamp)
                     .type("the type")
-//                    .userId("guest") // TODO
+                    .userId("guest")
                     .build();
             for (int i = 0; i < messageCount; i++) {
                 c.basicPublish("", stream, properties, ("amqp " + i).getBytes(UTF8));
@@ -101,6 +101,7 @@ public class AmqpInteroperabilityTest {
         assertThat(message.getProperties().getReplyTo()).isEqualTo("/queue/reply to");
         assertThat(message.getProperties().getCreationTime()).isEqualTo(timestamp.getTime() / 1000);
         assertThat(message.getApplicationProperties().get("x-basic-type")).isEqualTo("the type");
+        assertThat(message.getProperties().getUserId()).isEqualTo("guest".getBytes(UTF8));
     }
 
 }
