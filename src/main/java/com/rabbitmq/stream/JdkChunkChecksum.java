@@ -23,8 +23,8 @@ import java.util.zip.Checksum;
 
 public class JdkChunkChecksum implements ChunkChecksum {
 
-    static final ChunkChecksum CRC32_SINGLETON = new JdkChunkChecksum();
     private static final Supplier<Checksum> CRC32_SUPPLIER = CRC32::new;
+    static final ChunkChecksum CRC32_SINGLETON = new JdkChunkChecksum(CRC32_SUPPLIER);
     private final Supplier<Checksum> checksumSupplier;
 
     public JdkChunkChecksum() {
