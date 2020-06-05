@@ -18,6 +18,7 @@ import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.stream.amqp.UnsignedByte;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,12 +60,12 @@ public class AmqpInteroperabilityTest {
             c.confirmSelect();
             AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
                     .appId("application id")
-                    .clusterId("cluster id") // TODO
+                    .clusterId("cluster id") // deprecated, won't be in the consumed message
                     .contentEncoding("content encoding")
                     .contentType("content type")
                     .correlationId("correlation id")
-                    .deliveryMode(2) // TODO
-                    .expiration(String.valueOf(System.currentTimeMillis() * 2)) // TODO
+                    .deliveryMode(2)
+                    .expiration(String.valueOf(timestamp.getTime() * 2))
                     .messageId("message id")
                     .priority(5)
                     .replyTo("reply to")
@@ -99,12 +100,18 @@ public class AmqpInteroperabilityTest {
         assertThat(message.getProperties().getContentEncoding()).isEqualTo("content encoding");
         assertThat(message.getProperties().getContentType()).isEqualTo("content type");
         assertThat(message.getProperties().getCorrelationIdAsString()).isEqualTo("correlation id");
+        assertThat(message.getMessageAnnotations().get("x-basic-delivery-mode")).isEqualTo(UnsignedByte.valueOf("2"));
+        assertThat(message.getMessageAnnotations().get("x-basic-expiration")).isEqualTo(String.valueOf(timestamp.getTime() * 2));
         assertThat(message.getProperties().getMessageIdAsString()).isEqualTo("message id");
+        assertThat(message.getMessageAnnotations().get("x-basic-priority")).isEqualTo(UnsignedByte.valueOf("5"));
         assertThat(message.getProperties().getReplyTo()).isEqualTo("/queue/reply to");
         assertThat(message.getProperties().getCreationTime())
                 .isEqualTo((timestamp.getTime() / 1000) * 1000); // in seconds in 091, in ms in 1.0, so losing some precision
         assertThat(message.getApplicationProperties().get("x-basic-type")).isEqualTo("the type");
         assertThat(message.getProperties().getUserId()).isEqualTo("guest".getBytes(UTF8));
+
+        assertThat(message.getMessageAnnotations().get("x-exchange")).isEqualTo("");
+        assertThat(message.getMessageAnnotations().get("x-routing-key")).isEqualTo(stream);
     }
 
 }
