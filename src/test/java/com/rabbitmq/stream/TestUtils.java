@@ -19,9 +19,11 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import org.junit.jupiter.api.extension.*;
 
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -45,6 +47,29 @@ public class TestUtils {
             waitedTime += waitTime;
         }
         fail("Waited " + timeoutInSeconds + " second(s), condition never got true");
+    }
+
+    static void publishAndWaitForConfirms(TestUtils.ClientFactory cf, int publishCount, String stream) {
+        publishAndWaitForConfirms(cf, "message", publishCount, stream);
+    }
+
+    static void publishAndWaitForConfirms(TestUtils.ClientFactory cf, String messagePrefix, int publishCount, String stream) {
+        CountDownLatch latchConfirm = new CountDownLatch(publishCount);
+        Client.ConfirmListener confirmListener = correlationId -> latchConfirm.countDown();
+
+        Client client = cf.get(new Client.ClientParameters()
+                .confirmListener(confirmListener));
+
+        for (int i = 1; i <= publishCount; i++) {
+            client.publish(stream, (messagePrefix + i).getBytes(StandardCharsets.UTF_8));
+        }
+
+        try {
+            assertThat(latchConfirm.await(60, SECONDS)).isTrue();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
     }
 
     static class StreamTestInfrastructureExtension implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback {

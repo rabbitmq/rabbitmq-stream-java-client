@@ -23,13 +23,9 @@ import com.rabbitmq.client.ConnectionFactory;
 import io.netty.channel.EventLoopGroup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
-import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -39,18 +35,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.rabbitmq.stream.TestUtils.publishAndWaitForConfirms;
 import static com.rabbitmq.stream.TestUtils.waitAtMost;
-import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -63,30 +57,6 @@ public class ClientTest {
 
     String stream;
     TestUtils.ClientFactory cf;
-    EventLoopGroup eventLoopGroup;
-
-    static void publishAndWaitForConfirms(TestUtils.ClientFactory cf, int publishCount, String stream) {
-        publishAndWaitForConfirms(cf, "message", publishCount, stream);
-    }
-
-    static void publishAndWaitForConfirms(TestUtils.ClientFactory cf, String messagePrefix, int publishCount, String stream) {
-        CountDownLatch latchConfirm = new CountDownLatch(publishCount);
-        Client.ConfirmListener confirmListener = correlationId -> latchConfirm.countDown();
-
-        Client client = cf.get(new Client.ClientParameters()
-                .confirmListener(confirmListener));
-
-        for (int i = 1; i <= publishCount; i++) {
-            client.publish(stream, (messagePrefix + i).getBytes(StandardCharsets.UTF_8));
-        }
-
-        try {
-            assertThat(latchConfirm.await(60, SECONDS)).isTrue();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        }
-    }
 
     static boolean await(CountDownLatch latch, Duration timeout) {
         try {
@@ -94,99 +64,6 @@ public class ClientTest {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    @ValueSource(ints = {1, 2, 3, 4, 5})
-    @ParameterizedTest
-    void metadataExistingStreams(int streamCount) throws Exception {
-        String hostname = InetAddress.getLocalHost().getHostName();
-
-        Client streamClient = cf.get();
-        String[] streams = IntStream.range(0, streamCount).mapToObj(i -> {
-            String t = UUID.randomUUID().toString();
-            streamClient.create(t);
-            return t;
-        }).toArray(String[]::new);
-
-        Client client = cf.get();
-        Map<String, Client.StreamMetadata> metadata = client.metadata(streams);
-        assertThat(metadata).hasSize(streamCount).containsKeys(streams);
-        asList(streams).forEach(t -> {
-            Client.StreamMetadata streamMetadata = metadata.get(t);
-            assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
-            assertThat(streamMetadata.getStream()).isEqualTo(t);
-            assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
-            assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
-            assertThat(streamMetadata.getReplicas()).isEmpty();
-        });
-        asList(streams).forEach(t -> streamClient.delete(t));
-    }
-
-    @Test
-    void metadataOneNonExistingStream() {
-        Client client = cf.get();
-        String nonExistingStream = UUID.randomUUID().toString();
-        Map<String, Client.StreamMetadata> metadata = client.metadata(nonExistingStream);
-        assertThat(metadata).hasSize(1).containsKey(nonExistingStream);
-        Client.StreamMetadata streamMetadata = metadata.get(nonExistingStream);
-        assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
-        assertThat(streamMetadata.getStream()).isEqualTo(nonExistingStream);
-        assertThat(streamMetadata.getLeader()).isNull();
-        assertThat(streamMetadata.getReplicas()).isEmpty();
-    }
-
-    @ParameterizedTest
-    @CsvSource({
-            "1,1",
-            "2,1",
-            "5,1",
-            "1,2",
-            "2,2",
-            "5,2",
-            "1,3",
-            "2,3",
-            "5,3",
-    })
-    void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount) throws Exception {
-        String hostname = InetAddress.getLocalHost().getHostName();
-        Client streamClient = cf.get();
-        List<String> existingStreams = IntStream.range(0, existingCount).mapToObj(i -> {
-            String t = UUID.randomUUID().toString();
-            streamClient.create(t);
-            return t;
-        }).collect(Collectors.toList());
-
-        List<String> nonExistingStreams = IntStream.range(0, nonExistingCount)
-                .mapToObj(i -> UUID.randomUUID().toString())
-                .collect(Collectors.toList());
-
-        List<String> allStreams = new ArrayList<>(existingCount + nonExistingCount);
-        allStreams.addAll(existingStreams);
-        allStreams.addAll(nonExistingStreams);
-        Collections.shuffle(allStreams);
-
-        String[] streams = allStreams.toArray(new String[]{});
-
-
-        Client client = cf.get();
-        Map<String, Client.StreamMetadata> metadata = client.metadata(streams);
-        assertThat(metadata).hasSize(streams.length).containsKeys(streams);
-        metadata.keySet().forEach(t -> {
-            Client.StreamMetadata streamMetadata = metadata.get(t);
-            assertThat(streamMetadata.getStream()).isEqualTo(t);
-            if (existingStreams.contains(t)) {
-                assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
-                assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
-                assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
-                assertThat(streamMetadata.getReplicas()).isEmpty();
-            } else {
-                assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
-                assertThat(streamMetadata.getStream()).isEqualTo(t);
-                assertThat(streamMetadata.getLeader()).isNull();
-                assertThat(streamMetadata.getReplicas()).isEmpty();
-            }
-        });
-        existingStreams.forEach(t -> streamClient.delete(t));
     }
 
     @Test
@@ -619,38 +496,6 @@ public class ClientTest {
     }
 
     @Test
-    void consumeFromTail() throws Exception {
-        int messageCount = 10000;
-        CountDownLatch firstWaveLatch = new CountDownLatch(messageCount);
-        CountDownLatch secondWaveLatch = new CountDownLatch(messageCount * 2);
-        Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> {
-                    firstWaveLatch.countDown();
-                    secondWaveLatch.countDown();
-                }));
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("first wave " + i).getBytes(StandardCharsets.UTF_8)));
-        assertThat(firstWaveLatch.await(10, SECONDS)).isTrue();
-
-        CountDownLatch consumedLatch = new CountDownLatch(messageCount);
-
-        Set<String> consumed = ConcurrentHashMap.newKeySet();
-        Client consumer = cf.get(new Client.ClientParameters()
-                .chunkListener((client, subscriptionId, offset, messageCount1, dataSize) -> client.credit(subscriptionId, 1))
-                .messageListener((subscriptionId, offset, message) -> {
-                    consumed.add(new String(message.getBodyAsBinary(), StandardCharsets.UTF_8));
-                    consumedLatch.countDown();
-                }));
-
-        consumer.subscribe(1, stream, OffsetSpecification.next(), 10);
-
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("second wave " + i).getBytes(StandardCharsets.UTF_8)));
-
-        assertThat(consumedLatch.await(10, SECONDS)).isTrue();
-        assertThat(consumed).hasSize(messageCount);
-        consumed.stream().forEach(v -> assertThat(v).startsWith("second wave").doesNotStartWith("first wave"));
-    }
-
-    @Test
     void deleteNonExistingStreamShouldReturnError() {
         String nonExistingStream = UUID.randomUUID().toString();
         Client.Response response = cf.get().delete(nonExistingStream);
@@ -749,163 +594,6 @@ public class ClientTest {
     }
 
     @Test
-    void offsetTypeFirstShouldStartConsumingFromBeginning() throws Exception {
-        int messageCount = 50000;
-        publishAndWaitForConfirms(cf, messageCount, stream);
-        CountDownLatch latch = new CountDownLatch(messageCount);
-        AtomicLong first = new AtomicLong(-1);
-        AtomicLong last = new AtomicLong();
-        Client client = cf.get(new Client.ClientParameters()
-                .chunkListener((client1, subscriptionId, offset12, messageCount1, dataSize) -> client1.credit(subscriptionId, 1))
-                .messageListener((subscriptionId, offset1, message) -> {
-                    first.compareAndSet(-1, offset1);
-                    last.set(offset1);
-                    latch.countDown();
-                }));
-        client.subscribe(1, stream, OffsetSpecification.first(), 10);
-        assertThat(latch.await(10, SECONDS)).isTrue();
-        assertThat(first.get()).isEqualTo(0);
-        assertThat(last.get()).isEqualTo(messageCount - 1);
-    }
-
-    @Test
-    void offsetTypeLastShouldReturnLastChunk() throws Exception {
-        int messageCount = 50000;
-        long lastOffset = messageCount - 1;
-        publishAndWaitForConfirms(cf, messageCount, stream);
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicLong first = new AtomicLong(-1);
-        AtomicLong last = new AtomicLong();
-        AtomicInteger chunkCount = new AtomicInteger(0);
-        AtomicLong chunkOffset = new AtomicLong(-1);
-        Client client = cf.get(new Client.ClientParameters()
-                .chunkListener((client1, subscriptionId, offset12, messageCount1, dataSize) -> {
-                    client1.credit(subscriptionId, 1);
-                    chunkOffset.compareAndSet(-1, offset12);
-                    chunkCount.incrementAndGet();
-                })
-                .messageListener((subscriptionId, offset1, message) -> {
-                    first.compareAndSet(-1, offset1);
-                    last.set(offset1);
-                    if (offset1 == lastOffset) {
-                        latch.countDown();
-                    }
-                }));
-        client.subscribe(1, stream, OffsetSpecification.last(), 10);
-        assertThat(latch.await(10, SECONDS)).isTrue();
-        assertThat(chunkCount.get()).isEqualTo(1);
-        assertThat(first.get()).isEqualTo(chunkOffset.get());
-        assertThat(last.get()).isEqualTo(lastOffset);
-    }
-
-    @Test
-    void offsetTypeNextShouldReturnNewPublishedMessages() throws Exception {
-        int firstWaveMessageCount = 50000;
-        int secondWaveMessageCount = 20000;
-        int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
-        publishAndWaitForConfirms(cf, firstWaveMessageCount, stream);
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicLong first = new AtomicLong(-1);
-        AtomicLong last = new AtomicLong();
-        Client client = cf.get(new Client.ClientParameters()
-                .chunkListener((client1, subscriptionId, offset, messageCount1, dataSize) -> client1.credit(subscriptionId, 1))
-                .messageListener((subscriptionId, offset1, message) -> {
-                    first.compareAndSet(-1, offset1);
-                    last.set(offset1);
-                    if (offset1 == lastOffset) {
-                        latch.countDown();
-                    }
-                }));
-        client.subscribe(1, stream, OffsetSpecification.next(), 10);
-        assertThat(latch.await(2, SECONDS)).isFalse(); // should not receive anything
-        publishAndWaitForConfirms(cf, secondWaveMessageCount, stream);
-        assertThat(latch.await(10, SECONDS)).isTrue();
-        assertThat(first.get()).isEqualTo(firstWaveMessageCount);
-        assertThat(last.get()).isEqualTo(lastOffset);
-    }
-
-    @Test
-    void offsetTypeOffsetShouldStartConsumingFromOffset() throws Exception {
-        int messageCount = 50000;
-        publishAndWaitForConfirms(cf, messageCount, stream);
-        int offset = messageCount / 10;
-        CountDownLatch latch = new CountDownLatch(messageCount - offset);
-        AtomicLong first = new AtomicLong(-1);
-        AtomicLong last = new AtomicLong();
-        Client client = cf.get(new Client.ClientParameters()
-                .chunkListener((client1, subscriptionId, offset12, messageCount1, dataSize) -> client1.credit(subscriptionId, 1))
-                .messageListener((subscriptionId, offset1, message) -> {
-                    first.compareAndSet(-1, offset1);
-                    last.set(offset1);
-                    latch.countDown();
-                }));
-        client.subscribe(1, stream, OffsetSpecification.offset(offset), 10);
-        assertThat(latch.await(10, SECONDS)).isTrue();
-        assertThat(first.get()).isEqualTo(offset);
-        assertThat(last.get()).isEqualTo(messageCount - 1);
-    }
-
-    @Test
-    void offsetTypeTimestampShouldStartConsumingFromTimestamp() throws Exception {
-        int firstWaveMessageCount = 50000;
-        int secondWaveMessageCount = 20000;
-        int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
-        publishAndWaitForConfirms(cf, "first wave ", firstWaveMessageCount, stream);
-        Thread.sleep(5000);
-        long now = System.currentTimeMillis();
-        publishAndWaitForConfirms(cf, "second wave ", secondWaveMessageCount, stream);
-        long timestampOffset = now - 1000; // one second earlier
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicLong first = new AtomicLong(-1);
-        AtomicLong last = new AtomicLong();
-        Set<String> consumed = ConcurrentHashMap.newKeySet();
-        Client client = cf.get(new Client.ClientParameters()
-                .chunkListener((client1, subscriptionId, offset, messageCount1, dataSize) -> client1.credit(subscriptionId, 1))
-                .messageListener((subscriptionId, offset1, message) -> {
-                    first.compareAndSet(-1, offset1);
-                    last.set(offset1);
-                    consumed.add(new String(message.getBodyAsBinary(), StandardCharsets.UTF_8));
-                    if (offset1 == lastOffset) {
-                        latch.countDown();
-                    }
-                }));
-        client.subscribe(1, stream, OffsetSpecification.timestamp(timestampOffset), 10);
-        assertThat(latch.await(10, SECONDS)).isTrue();
-        assertThat(first.get()).isEqualTo(firstWaveMessageCount);
-        assertThat(last.get()).isEqualTo(lastOffset);
-        consumed.stream().forEach(v -> assertThat(v).startsWith("second wave").doesNotStartWith("first wave"));
-    }
-
-    @Test
-    void filterSmallerOffsets() throws Exception {
-        int messageCount = 50000;
-        publishAndWaitForConfirms(cf, messageCount, stream);
-        for (int i = 0; i < 10; i++) {
-            Map<Integer, Long> firstOffsets = new ConcurrentHashMap<>();
-            Map<Integer, CountDownLatch> latches = new ConcurrentHashMap<>();
-            latches.put(1, new CountDownLatch(1));
-            latches.put(2, new CountDownLatch(1));
-            Client client = new Client(new Client.ClientParameters().messageListener((subscriptionId, offset, message) -> {
-                if (firstOffsets.get(subscriptionId) == null) {
-                    firstOffsets.put(subscriptionId, offset);
-                }
-                if (offset == messageCount - 1) {
-                    latches.get(subscriptionId).countDown();
-                }
-            }).chunkListener((client1, subscriptionId, offset, msgCount, dataSize) -> client1.credit(subscriptionId, 1))
-                    .eventLoopGroup(eventLoopGroup));
-            client.subscribe(1, stream, OffsetSpecification.offset(50), 10);
-            client.subscribe(2, stream, OffsetSpecification.offset(100), 10);
-
-            assertThat(latches.get(1).await(10, SECONDS)).isTrue();
-            assertThat(latches.get(2).await(10, SECONDS)).isTrue();
-            assertThat(firstOffsets.get(1)).isEqualTo(50);
-            assertThat(firstOffsets.get(2)).isEqualTo(100);
-            client.close();
-        }
-    }
-
-    @Test
     void publishToNonExistingStreamTriggersPublishErrorListener() throws Exception {
         int messageCount = 1000;
         AtomicInteger confirms = new AtomicInteger(0);
@@ -986,48 +674,6 @@ public class ClientTest {
     }
 
     @Test
-    void shouldReachTailWhenPublisherStopWhileConsumerIsBehind() throws Exception {
-        int messageCount = 100000;
-        int messageLimit = messageCount * 2;
-        AtomicLong lastConfirmed = new AtomicLong();
-        CountDownLatch consumerStartLatch = new CountDownLatch(messageCount);
-        Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> {
-                    lastConfirmed.set(publishingId);
-                    consumerStartLatch.countDown();
-                }));
-
-        CountDownLatch consumedMessagesLatch = new CountDownLatch(messageLimit);
-        AtomicReference<String> lastConsumedMessage = new AtomicReference<>();
-        Client consumer = cf.get(new Client.ClientParameters()
-                .chunkListener((client, subscriptionId, offset, msgCount, dataSize) -> client.credit(0, 1))
-                .messageListener((subscriptionId, offset, message) -> {
-                    lastConsumedMessage.set(new String(message.getBodyAsBinary()));
-                    consumedMessagesLatch.countDown();
-                }));
-
-        AtomicBoolean publisherHasStopped = new AtomicBoolean(false);
-        new Thread(() -> {
-            int publishedMessageCount = 0;
-            while (true) {
-                publisher.publish(stream, String.valueOf(publishedMessageCount).getBytes());
-                if (++publishedMessageCount == messageLimit) {
-                    break;
-                }
-            }
-            publisherHasStopped.set(true);
-        }).start();
-
-        assertThat(consumerStartLatch.await(10, SECONDS)).isTrue();
-
-        assertThat(consumer.subscribe(0, stream, OffsetSpecification.first(), 10).isOk()).isTrue();
-        assertThat(consumedMessagesLatch.await(10, SECONDS)).isTrue();
-        assertThat(publisherHasStopped).isTrue();
-        assertThat(lastConfirmed).hasValue(messageLimit - 1);
-        assertThat(lastConsumedMessage).hasValue(String.valueOf(messageLimit - 1));
-    }
-
-    @Test
     void serverShouldSendCloseWhenSendingGarbage() throws Exception {
         Client client = cf.get();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -1039,11 +685,4 @@ public class ClientTest {
         waitAtMost(10, () -> client.isOpen() == false);
     }
 
-//    Client client() {
-//        return client(new Client.ClientParameters());
-//    }
-//
-//    Client client(Client.ClientParameters parameters) {
-//        return cf.get(parameters);
-//    }
 }
