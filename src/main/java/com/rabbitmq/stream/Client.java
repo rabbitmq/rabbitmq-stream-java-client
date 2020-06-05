@@ -94,7 +94,7 @@ public class Client implements AutoCloseable {
 
     private final EventLoopGroup eventLoopGroup;
 
-    private final ChunkChecksum chunkChecksum = new JdkChunkChecksum();
+    private final ChunkChecksum chunkChecksum;
 
     private final String NETTY_HANDLER_FLUSH_CONSOLIDATION = FlushConsolidationHandler.class.getSimpleName();
     private final String NETTY_HANDLER_FRAME_DECODER = LengthFieldBasedFrameDecoder.class.getSimpleName();
@@ -114,6 +114,7 @@ public class Client implements AutoCloseable {
         this.codec = parameters.codec == null ? new QpidProtonCodec() : parameters.codec;
         this.saslConfiguration = parameters.saslConfiguration;
         this.credentialsProvider = parameters.credentialsProvider;
+        this.chunkChecksum = parameters.chunkChecksum;
 
         EventLoopGroup eventLoopGroup;
         if (parameters.eventLoopGroup == null) {
@@ -1264,6 +1265,8 @@ public class Client implements AutoCloseable {
         private ChannelCustomizer channelCustomizer = ch -> {
         };
 
+        private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
+
         public ClientParameters host(String host) {
             this.host = host;
             return this;
@@ -1360,6 +1363,11 @@ public class Client implements AutoCloseable {
 
         public ClientParameters channelCustomizer(ChannelCustomizer channelCustomizer) {
             this.channelCustomizer = channelCustomizer;
+            return this;
+        }
+
+        public ClientParameters chunkChecksum(ChunkChecksum chunkChecksum) {
+            this.chunkChecksum = chunkChecksum;
             return this;
         }
     }
