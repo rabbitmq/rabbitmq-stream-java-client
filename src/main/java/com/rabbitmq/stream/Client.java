@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.sasl.*;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;

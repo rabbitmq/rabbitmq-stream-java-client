@@ -422,7 +422,7 @@ public class ClientTest {
 
     @Test
     void consume() throws Exception {
-        int publishCount = 100000;
+        int publishCount = 1000;
         int correlationId = 42;
         publishAndWaitForConfirms(cf, publishCount, stream);
         MetricRegistry metrics = new MetricRegistry();

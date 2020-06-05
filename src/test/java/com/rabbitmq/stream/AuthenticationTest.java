@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.sasl.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 

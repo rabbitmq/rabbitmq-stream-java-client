@@ -12,7 +12,7 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.sasl;
 
 import java.util.List;
 

@@ -12,7 +12,7 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.sasl;
 
 import javax.security.auth.callback.*;
 import javax.security.sasl.Sasl;
@@ -79,7 +79,7 @@ public class JdkSaslConfiguration implements SaslConfiguration {
             try {
                 return client.evaluateChallenge(challenge);
             } catch (SaslException e) {
-                throw new ClientException(e);
+                throw new StreamSaslException(e);
             }
         }
 
@@ -103,11 +103,9 @@ public class JdkSaslConfiguration implements SaslConfiguration {
                 if (callback instanceof NameCallback) {
                     NameCallback nc = (NameCallback) callback;
                     nc.setName(credentialsProvider.getUsername());
-
                 } else if (callback instanceof PasswordCallback) {
                     PasswordCallback pc = (PasswordCallback) callback;
                     pc.setPassword(credentialsProvider.getPassword().toCharArray());
-
                 } else {
                     throw new UnsupportedCallbackException(callback, "Unrecognized Callback");
                 }

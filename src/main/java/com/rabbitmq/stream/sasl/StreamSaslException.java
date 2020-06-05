@@ -12,25 +12,11 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.sasl;
 
-import java.nio.charset.StandardCharsets;
+public class StreamSaslException extends RuntimeException {
 
-/**
- * The <code>EXTERNAL</code> {@link SaslMechanism}.
- */
-public class ExternalSaslMechanism implements SaslMechanism {
-
-    public static final SaslMechanism INSTANCE = new ExternalSaslMechanism();
-
-    @Override
-    public String getName() {
-        return "EXTERNAL";
+    public StreamSaslException(Throwable cause) {
+        super(cause);
     }
-
-    @Override
-    public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
-        return "".getBytes(StandardCharsets.UTF_8);
-    }
-
 }

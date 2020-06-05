@@ -12,28 +12,25 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.sasl;
 
 /**
- * Default implementation of {@link UsernamePasswordCredentialsProvider}.
+ * Contract for credentials based on a username/password pair.
  */
-public class DefaultUsernamePasswordCredentialsProvider implements UsernamePasswordCredentialsProvider {
+public interface UsernamePasswordCredentialsProvider extends CredentialsProvider {
 
-    private final String username;
-    private final String password;
+    /**
+     * The username
+     *
+     * @return
+     */
+    String getUsername();
 
-    public DefaultUsernamePasswordCredentialsProvider(String username, String password) {
-        this.username = username;
-        this.password = password;
-    }
+    /**
+     * The password
+     *
+     * @return
+     */
+    String getPassword();
 
-    @Override
-    public String getUsername() {
-        return username;
-    }
-
-    @Override
-    public String getPassword() {
-        return password;
-    }
 }

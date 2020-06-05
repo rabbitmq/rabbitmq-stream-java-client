@@ -12,25 +12,27 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.sasl;
 
 /**
- * Contract for credentials based on a username/password pair.
+ * Contract to handle SASL challenges sent by a SASL server.
  */
-public interface UsernamePasswordCredentialsProvider extends CredentialsProvider {
+public interface SaslMechanism {
 
     /**
-     * The username
+     * The name of the SASL mechanism.
      *
      * @return
      */
-    String getUsername();
+    String getName();
 
     /**
-     * The password
+     * Handle a challenge from the server
      *
-     * @return
+     * @param challenge           the server challenge
+     * @param credentialsProvider the credentials to use
+     * @return the response to the challenge
      */
-    String getPassword();
+    byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider);
 
 }
