@@ -49,7 +49,7 @@ public class AmqpInteroperabilityTest {
     @ParameterizedTest
     @MethodSource("publishToStreamQueueConsumeFromStreamArguments")
     void publishToStreamQueueConsumeFromStream(Codec codec) throws Exception {
-        int messageCount = 10000;
+        int messageCount = 10_000;
         ConnectionFactory connectionFactory = new ConnectionFactory();
         Date timestamp = new Date();
         try (Connection amqpConnection = connectionFactory.newConnection();
@@ -99,7 +99,8 @@ public class AmqpInteroperabilityTest {
         assertThat(message.getProperties().getCorrelationIdAsString()).isEqualTo("correlation id");
         assertThat(message.getProperties().getMessageIdAsString()).isEqualTo("message id");
         assertThat(message.getProperties().getReplyTo()).isEqualTo("/queue/reply to");
-        assertThat(message.getProperties().getCreationTime()).isEqualTo(timestamp.getTime() / 1000);
+        assertThat(message.getProperties().getCreationTime())
+                .isEqualTo((timestamp.getTime() / 1000) * 1000); // in seconds in 091, in ms in 1.0, so losing some precision
         assertThat(message.getApplicationProperties().get("x-basic-type")).isEqualTo("the type");
         assertThat(message.getProperties().getUserId()).isEqualTo("guest".getBytes(UTF8));
     }
