@@ -33,7 +33,7 @@ import java.util.stream.IntStream;
 @Threads(1)
 public class EncodingDecodingBenchmark {
 
-    @Param({"com.rabbitmq.stream.QpidProtonCodec", "com.rabbitmq.stream.SwiftMqCodec"})
+    @Param({"com.rabbitmq.stream.codec.QpidProtonCodec", "com.rabbitmq.stream.codec.SwiftMqCodec"})
     String codecClass;
 
     @Param({"20"})

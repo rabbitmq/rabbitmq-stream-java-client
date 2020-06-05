@@ -12,8 +12,11 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.codec;
 
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.Properties;
 import com.rabbitmq.stream.amqp.*;
 
 import java.math.BigDecimal;
@@ -22,12 +25,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public class SimpleMessageBuilder implements MessageBuilder {
+public class WrapperMessageBuilder implements MessageBuilder {
 
     private Object body;
-    private SimplePropertiesBuilder propertiesBuilder;
-    private SimpleApplicationPropertiesBuilder applicationPropertiesBuilder;
-    private SimpleMessageAnnotationsBuilder messageAnnotationsBuilder;
+    private WrapperPropertiesBuilder propertiesBuilder;
+    private WrapperApplicationPropertiesBuilder applicationPropertiesBuilder;
+    private WrapperMessageAnnotationsBuilder messageAnnotationsBuilder;
 
     @Override
     public Message build() {
@@ -42,7 +45,7 @@ public class SimpleMessageBuilder implements MessageBuilder {
     @Override
     public PropertiesBuilder properties() {
         if (this.propertiesBuilder == null) {
-            this.propertiesBuilder = new SimplePropertiesBuilder(this);
+            this.propertiesBuilder = new WrapperPropertiesBuilder(this);
         }
         return this.propertiesBuilder;
     }
@@ -50,7 +53,7 @@ public class SimpleMessageBuilder implements MessageBuilder {
     @Override
     public ApplicationPropertiesBuilder applicationProperties() {
         if (this.applicationPropertiesBuilder == null) {
-            this.applicationPropertiesBuilder = new SimpleApplicationPropertiesBuilder(this);
+            this.applicationPropertiesBuilder = new WrapperApplicationPropertiesBuilder(this);
         }
         return this.applicationPropertiesBuilder;
     }
@@ -58,7 +61,7 @@ public class SimpleMessageBuilder implements MessageBuilder {
     @Override
     public MessageAnnotationsBuilder messageAnnotations() {
         if (this.messageAnnotationsBuilder == null) {
-            this.messageAnnotationsBuilder = new SimpleMessageAnnotationsBuilder(this);
+            this.messageAnnotationsBuilder = new WrapperMessageAnnotationsBuilder(this);
         }
         return this.messageAnnotationsBuilder;
     }
@@ -69,12 +72,12 @@ public class SimpleMessageBuilder implements MessageBuilder {
         return this;
     }
 
-    private static class SimpleMessageAnnotationsBuilder implements MessageAnnotationsBuilder {
+    private static class WrapperMessageAnnotationsBuilder implements MessageAnnotationsBuilder {
 
         private final MessageBuilder messageBuilder;
         private final Map<String, Object> messageAnnotations = new LinkedHashMap<>();
 
-        private SimpleMessageAnnotationsBuilder(MessageBuilder messageBuilder) {
+        private WrapperMessageAnnotationsBuilder(MessageBuilder messageBuilder) {
             this.messageBuilder = messageBuilder;
         }
 
@@ -195,12 +198,12 @@ public class SimpleMessageBuilder implements MessageBuilder {
         }
     }
 
-    private static class SimplePropertiesBuilder implements PropertiesBuilder {
+    private static class WrapperPropertiesBuilder implements PropertiesBuilder {
 
         private final MessageBuilder messageBuilder;
         private final SimpleProperties properties = new SimpleProperties();
 
-        private SimplePropertiesBuilder(MessageBuilder messageBuilder) {
+        private WrapperPropertiesBuilder(MessageBuilder messageBuilder) {
             this.messageBuilder = messageBuilder;
         }
 
@@ -324,12 +327,12 @@ public class SimpleMessageBuilder implements MessageBuilder {
         }
     }
 
-    private static class SimpleApplicationPropertiesBuilder implements ApplicationPropertiesBuilder {
+    private static class WrapperApplicationPropertiesBuilder implements ApplicationPropertiesBuilder {
 
         private final MessageBuilder messageBuilder;
         private final Map<String, Object> applicationProperties = new LinkedHashMap<>();
 
-        private SimpleApplicationPropertiesBuilder(MessageBuilder messageBuilder) {
+        private WrapperApplicationPropertiesBuilder(MessageBuilder messageBuilder) {
             this.messageBuilder = messageBuilder;
         }
 

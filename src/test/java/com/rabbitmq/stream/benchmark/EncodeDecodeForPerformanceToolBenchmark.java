@@ -36,7 +36,7 @@ import static com.rabbitmq.stream.perf.StreamPerfTest.writeLong;
 @Threads(1)
 public class EncodeDecodeForPerformanceToolBenchmark {
 
-    @Param({"com.rabbitmq.stream.QpidProtonCodec", "com.rabbitmq.stream.SwiftMqCodec", "com.rabbitmq.stream.SimpleCodec"})
+    @Param({"com.rabbitmq.stream.codec.QpidProtonCodec", "com.rabbitmq.stream.codec.SwiftMqCodec", "com.rabbitmq.stream.codec.SimpleCodec"})
     String codecClass;
 
     @Param({"20"})

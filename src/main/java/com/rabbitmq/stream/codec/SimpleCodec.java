@@ -12,7 +12,12 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.codec;
+
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.Properties;
 
 import java.util.Map;
 

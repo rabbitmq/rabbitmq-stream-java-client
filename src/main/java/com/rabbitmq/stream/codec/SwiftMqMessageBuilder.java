@@ -12,8 +12,11 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.codec;
 
+import com.rabbitmq.stream.ClientException;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
 import com.swiftmq.amqp.v100.generated.transport.definitions.SequenceNo;
 import com.swiftmq.amqp.v100.messaging.AMQPMessage;
@@ -26,7 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 
-public class SwiftMqMessageBuilder implements MessageBuilder {
+class SwiftMqMessageBuilder implements MessageBuilder {
 
     private final AMQPMessage outboundMessage = new AMQPMessage();
 

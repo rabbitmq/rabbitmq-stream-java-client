@@ -12,8 +12,12 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.codec;
 
+import com.rabbitmq.stream.ClientException;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.amqp.*;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
 import com.swiftmq.amqp.v100.generated.transport.definitions.SequenceNo;
@@ -42,7 +46,7 @@ public class SwiftMqCodec implements Codec {
         } else {
             outboundMessage = new AMQPMessage();
             if (message.getProperties() != null) {
-                Properties headers = message.getProperties();
+                com.rabbitmq.stream.Properties headers = message.getProperties();
                 com.swiftmq.amqp.v100.generated.messaging.message_format.Properties properties = new com.swiftmq.amqp.v100.generated.messaging.message_format.Properties();
                 boolean propertiesSet = false;
                 if (headers.getMessageId() != null) {
@@ -280,7 +284,7 @@ public class SwiftMqCodec implements Codec {
         return body;
     }
 
-    protected Properties createProperties(AMQPMessage amqpMessage) {
+    protected com.rabbitmq.stream.Properties createProperties(AMQPMessage amqpMessage) {
         if (amqpMessage.getProperties() != null) {
             return new SwiftMqProperties(amqpMessage.getProperties());
         } else {
@@ -339,7 +343,7 @@ public class SwiftMqCodec implements Codec {
 
         Object body = extractBody(amqpMessage);
 
-        Properties properties = createProperties(amqpMessage);
+        com.rabbitmq.stream.Properties properties = createProperties(amqpMessage);
 
         Map<String, Object> applicationProperties = createApplicationProperties(amqpMessage);
         Map<String, Object> messageAnnotations = createMessageAnnotations(amqpMessage);
@@ -350,12 +354,12 @@ public class SwiftMqCodec implements Codec {
 
         private final AMQPMessage amqpMessage;
         private final Object body;
-        private final Properties properties;
+        private final com.rabbitmq.stream.Properties properties;
         private final Map<String, Object> applicationProperties;
         private final Map<String, Object> messageAnnotations;
 
 
-        private SwiftMqMessage(AMQPMessage amqpMessage, Object body, Properties properties,
+        private SwiftMqMessage(AMQPMessage amqpMessage, Object body, com.rabbitmq.stream.Properties properties,
                                Map<String, Object> applicationProperties,
                                Map<String, Object> messageAnnotations) {
             this.amqpMessage = amqpMessage;
@@ -376,7 +380,7 @@ public class SwiftMqCodec implements Codec {
         }
 
         @Override
-        public Properties getProperties() {
+        public com.rabbitmq.stream.Properties getProperties() {
             return properties;
         }
 
@@ -391,7 +395,7 @@ public class SwiftMqCodec implements Codec {
         }
     }
 
-    private static final class SwiftMqProperties implements Properties {
+    private static final class SwiftMqProperties implements com.rabbitmq.stream.Properties {
 
         private static final long NULL_GROUP_SEQUENCE = -1;
         private final com.swiftmq.amqp.v100.generated.messaging.message_format.Properties amqpProperties;
@@ -525,7 +529,7 @@ public class SwiftMqCodec implements Codec {
         }
 
         @Override
-        public Properties getProperties() {
+        public com.rabbitmq.stream.Properties getProperties() {
             throw new UnsupportedOperationException();
         }
 

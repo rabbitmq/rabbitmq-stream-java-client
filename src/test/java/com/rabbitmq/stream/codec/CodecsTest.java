@@ -12,12 +12,16 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.codec;
 
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.amqp.UnsignedByte;
 import com.rabbitmq.stream.amqp.UnsignedInteger;
 import com.rabbitmq.stream.amqp.UnsignedLong;
 import com.rabbitmq.stream.amqp.UnsignedShort;
+import org.assertj.core.api.Assertions;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -48,7 +52,7 @@ public class CodecsTest {
         for (Codec serializer : codecs) {
             for (Codec deserializer : codecs) {
                 couples.add(new CodecCouple(serializer, deserializer, () -> serializer.messageBuilder()));
-                couples.add(new CodecCouple(serializer, deserializer, () -> new SimpleMessageBuilder()));
+                couples.add(new CodecCouple(serializer, deserializer, () -> new WrapperMessageBuilder()));
             }
         }
         return couples;
@@ -58,7 +62,7 @@ public class CodecsTest {
         return Arrays.asList(
                 new MessageBuilderCreator(QpidProtonMessageBuilder.class),
                 new MessageBuilderCreator(SwiftMqMessageBuilder.class),
-                new MessageBuilderCreator(SimpleMessageBuilder.class)
+                new MessageBuilderCreator(WrapperMessageBuilder.class)
         );
     }
 
@@ -71,47 +75,47 @@ public class CodecsTest {
         Stream<MessageTestConfiguration> messageOperations = Stream.of(
                 test(
                         builder -> builder.properties().messageId(42).messageBuilder(),
-                        message -> assertThat(message.getProperties().getMessageIdAsLong()).isEqualTo(42)
+                        message -> Assertions.assertThat(message.getProperties().getMessageIdAsLong()).isEqualTo(42)
                 ),
                 test(
                         builder -> builder.properties().messageId("foo").messageBuilder(),
-                        message -> assertThat(message.getProperties().getMessageIdAsString()).isEqualTo("foo")
+                        message -> Assertions.assertThat(message.getProperties().getMessageIdAsString()).isEqualTo("foo")
                 ),
                 test(
                         builder -> builder.properties().messageId("bar".getBytes(CHARSET)).messageBuilder(),
-                        message -> assertThat(message.getProperties().getMessageIdAsBinary()).isEqualTo("bar".getBytes(CHARSET))
+                        message -> Assertions.assertThat(message.getProperties().getMessageIdAsBinary()).isEqualTo("bar".getBytes(CHARSET))
                 ),
                 test(
                         builder -> builder.properties().messageId(TEST_UUID).messageBuilder(),
-                        message -> assertThat(message.getProperties().getMessageIdAsUuid()).isEqualTo(TEST_UUID)
+                        message -> Assertions.assertThat(message.getProperties().getMessageIdAsUuid()).isEqualTo(TEST_UUID)
                 ),
                 test(
                         builder -> builder.properties().correlationId(42 + 10).messageBuilder(),
-                        message -> assertThat(message.getProperties().getCorrelationIdAsLong()).isEqualTo(42 + 10)
+                        message -> Assertions.assertThat(message.getProperties().getCorrelationIdAsLong()).isEqualTo(42 + 10)
                 ),
                 test(
                         builder -> builder.properties().correlationId("correlation foo").messageBuilder(),
-                        message -> assertThat(message.getProperties().getCorrelationIdAsString()).isEqualTo("correlation foo")
+                        message -> Assertions.assertThat(message.getProperties().getCorrelationIdAsString()).isEqualTo("correlation foo")
                 ),
                 test(
                         builder -> builder.properties().correlationId("correlation bar".getBytes(CHARSET)).messageBuilder(),
-                        message -> assertThat(message.getProperties().getCorrelationIdAsBinary()).isEqualTo("correlation bar".getBytes(CHARSET))
+                        message -> Assertions.assertThat(message.getProperties().getCorrelationIdAsBinary()).isEqualTo("correlation bar".getBytes(CHARSET))
                 ),
                 test(
                         builder -> builder.properties().correlationId(TEST_UUID).messageBuilder(),
-                        message -> assertThat(message.getProperties().getCorrelationIdAsUuid()).isEqualTo(TEST_UUID)
+                        message -> Assertions.assertThat(message.getProperties().getCorrelationIdAsUuid()).isEqualTo(TEST_UUID)
                 ),
                 test(
                         builder -> builder,
-                        message -> assertThat(message.getProperties().getGroupSequence()).isEqualTo(-1)
+                        message -> Assertions.assertThat(message.getProperties().getGroupSequence()).isEqualTo(-1)
                 ),
                 test(
                         builder -> builder.properties().groupSequence(10).messageBuilder(),
-                        message -> assertThat(message.getProperties().getGroupSequence()).isEqualTo(10)
+                        message -> Assertions.assertThat(message.getProperties().getGroupSequence()).isEqualTo(10)
                 ),
                 test(
                         builder -> builder.properties().groupSequence((long) Integer.MAX_VALUE + 10).messageBuilder(),
-                        message -> assertThat(message.getProperties().getGroupSequence()).isEqualTo((long) Integer.MAX_VALUE + 10)
+                        message -> Assertions.assertThat(message.getProperties().getGroupSequence()).isEqualTo((long) Integer.MAX_VALUE + 10)
                 )
         );
 
@@ -373,7 +377,7 @@ public class CodecsTest {
         MessageBuilderCreator(Class<? extends MessageBuilder> clazz) {
             supplier = () -> {
                 try {
-                    return clazz.getConstructor().newInstance();
+                    return clazz.getDeclaredConstructor().newInstance();
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }

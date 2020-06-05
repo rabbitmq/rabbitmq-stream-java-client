@@ -20,7 +20,9 @@ import com.codahale.metrics.MetricRegistry;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
-import io.netty.channel.EventLoopGroup;
+import com.rabbitmq.stream.codec.QpidProtonCodec;
+import com.rabbitmq.stream.codec.SimpleCodec;
+import com.rabbitmq.stream.codec.SwiftMqCodec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -422,7 +424,7 @@ public class ClientTest {
 
     @Test
     void consume() throws Exception {
-        int publishCount = 1000;
+        int publishCount = 100000;
         int correlationId = 42;
         publishAndWaitForConfirms(cf, publishCount, stream);
         MetricRegistry metrics = new MetricRegistry();

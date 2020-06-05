@@ -112,7 +112,7 @@ public class Client implements AutoCloseable {
         this.chunkListener = parameters.chunkListener;
         this.messageListener = parameters.messageListener;
         this.subscriptionListener = parameters.subscriptionListener;
-        this.codec = parameters.codec == null ? new QpidProtonCodec() : parameters.codec;
+        this.codec = parameters.codec == null ? Codecs.DEFAULT : parameters.codec;
         this.saslConfiguration = parameters.saslConfiguration;
         this.credentialsProvider = parameters.credentialsProvider;
         this.chunkChecksum = parameters.chunkChecksum;

@@ -12,8 +12,10 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.codec;
 
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
 import org.apache.qpid.proton.amqp.*;
 import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
 import org.apache.qpid.proton.amqp.messaging.Data;
@@ -25,7 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public class QpidProtonMessageBuilder implements MessageBuilder {
+class QpidProtonMessageBuilder implements MessageBuilder {
 
     private final org.apache.qpid.proton.message.Message message = org.apache.qpid.proton.message.Message.Factory.create();
 

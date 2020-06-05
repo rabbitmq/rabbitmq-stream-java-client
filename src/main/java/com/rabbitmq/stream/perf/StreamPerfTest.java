@@ -17,6 +17,8 @@ package com.rabbitmq.stream.perf;
 import com.codahale.metrics.*;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.codec.QpidProtonCodec;
+import com.rabbitmq.stream.codec.SimpleCodec;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import org.slf4j.Logger;
