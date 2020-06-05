@@ -59,11 +59,6 @@ public class EncodingDecodingBenchmark {
         System.arraycopy(encoded.getData(), 0, messageToDecode, 0, encoded.getSize());
     }
 
-    @TearDown
-    public void tearDown() {
-
-    }
-
     @Benchmark
     public void encode() {
         codec.encode(codec.messageBuilder()

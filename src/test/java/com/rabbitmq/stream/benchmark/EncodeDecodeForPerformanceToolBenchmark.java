@@ -69,11 +69,6 @@ public class EncodeDecodeForPerformanceToolBenchmark {
         System.arraycopy(encoded.getData(), 0, messageToDecode, 0, encoded.getSize());
     }
 
-    @TearDown
-    public void tearDown() {
-
-    }
-
     @Benchmark
     public void encode() {
         byte[] payload = new byte[payloadSize];

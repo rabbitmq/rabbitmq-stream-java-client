@@ -87,7 +87,8 @@ public class DeliveryTest {
     @Test
     void handleDeliveryShouldFilterMessagesBeforeSubscriptionOffsetAndCallCallbacks() {
         class TestConfig {
-            long chunkOffset, subscriptionOffset;
+            final long chunkOffset;
+            final long subscriptionOffset;
 
             public TestConfig(long chunkOffset, long subscriptionOffset) {
                 this.chunkOffset = chunkOffset;
@@ -128,7 +129,7 @@ public class DeliveryTest {
                         chunkCountInCallback.incrementAndGet();
                     },
                     (subscriptionId, offset, message) -> messageCountInCallback.incrementAndGet(),
-                    frameSize, NO_OP_CODEC, subscriptionOffsets);
+                    frameSize, NO_OP_CODEC, subscriptionOffsets, ChunkChecksum.NO_OP);
 
             assertThat(chunkCountInCallback).hasValue(1);
             assertThat(messageCountInCallback).hasValue(nbMessages - (subscriptionOffset - chunkOffset));

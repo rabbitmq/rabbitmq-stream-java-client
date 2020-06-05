@@ -94,6 +94,8 @@ public class Client implements AutoCloseable {
 
     private final EventLoopGroup eventLoopGroup;
 
+    private final ChunkChecksum chunkChecksum = new JdkChunkChecksum();
+
     private final String NETTY_HANDLER_FLUSH_CONSOLIDATION = FlushConsolidationHandler.class.getSimpleName();
     private final String NETTY_HANDLER_FRAME_DECODER = LengthFieldBasedFrameDecoder.class.getSimpleName();
     private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
@@ -359,7 +361,8 @@ public class Client implements AutoCloseable {
         return string;
     }
 
-    static void handleDeliver(ByteBuf bb, Client client, ChunkListener chunkListener, MessageListener messageListener, int frameSize, Codec codec, List<SubscriptionOffset> subscriptionOffsets) {
+    static void handleDeliver(ByteBuf bb, Client client, ChunkListener chunkListener, MessageListener messageListener,
+                              int frameSize, Codec codec, List<SubscriptionOffset> subscriptionOffsets, ChunkChecksum chunkChecksum) {
         int read = 2 + 2; // already read the command id and version
         int subscriptionId = bb.readInt();
         read += 4;
@@ -392,7 +395,7 @@ public class Client implements AutoCloseable {
         read += 8;
         long offset = bb.readLong(); // unsigned long
         read += 8;
-        int crc = bb.readInt();
+        long crc = bb.readUnsignedInt();
         read += 4;
         long dataLength = bb.readUnsignedInt();
         read += 4;
@@ -413,6 +416,9 @@ public class Client implements AutoCloseable {
         }
 
         final boolean filter = offsetLimit != -1;
+
+        // TODO handle exception in exception handler
+        chunkChecksum.checksum(bb, dataLength, crc);
 
         byte[] data;
         while (numRecords != 0) {
@@ -1556,7 +1562,7 @@ public class Client implements AutoCloseable {
                 if (commandId == COMMAND_PUBLISH_CONFIRM) {
                     task = () -> handleConfirm(m, confirmListener, frameSize);
                 } else if (commandId == COMMAND_DELIVER) {
-                    task = () -> handleDeliver(m, Client.this, chunkListener, messageListener, frameSize, codec, subscriptionOffsets);
+                    task = () -> handleDeliver(m, Client.this, chunkListener, messageListener, frameSize, codec, subscriptionOffsets, chunkChecksum);
                 } else if (commandId == COMMAND_PUBLISH_ERROR) {
                     task = () -> handlePublishError(m, publishErrorListener, frameSize);
                 } else if (commandId == COMMAND_METADATA_UPDATE) {
