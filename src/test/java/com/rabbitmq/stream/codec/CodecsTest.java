@@ -151,6 +151,7 @@ public class CodecsTest {
                     .replyToGroupId(replyToGroupId)
                     .messageBuilder()
                     .applicationProperties()
+                    .entry("boolean", Boolean.FALSE)
                     .entry("byte", (byte) 1)
                     .entry("short", (short) 2)
                     .entry("int", 3)
@@ -173,6 +174,7 @@ public class CodecsTest {
                     .entrySymbol("symbol", symbol)
                     .messageBuilder()
                     .messageAnnotations()
+                    .entry("annotations.boolean", Boolean.FALSE)
                     .entry("annotations.byte", (byte) 1)
                     .entry("annotations.short", (short) 2)
                     .entry("annotations.int", 3)
@@ -217,6 +219,8 @@ public class CodecsTest {
             assertThat(inboundMessage.getProperties().getReplyToGroupId()).isEqualTo(replyToGroupId);
 
             // application properties
+            assertThat(inboundMessage.getApplicationProperties().get("boolean"))
+                    .isNotNull().isInstanceOf(Boolean.class).isEqualTo(Boolean.FALSE);
             assertThat(inboundMessage.getApplicationProperties().get("byte"))
                     .isNotNull().isInstanceOf(Byte.class).isEqualTo(Byte.valueOf((byte) 1));
             assertThat(inboundMessage.getApplicationProperties().get("short"))
@@ -270,6 +274,8 @@ public class CodecsTest {
                     .isNotNull().isInstanceOf(String.class).isEqualTo(symbol);
 
             // message annotations
+            assertThat(inboundMessage.getMessageAnnotations().get("annotations.boolean"))
+                    .isNotNull().isInstanceOf(Boolean.class).isEqualTo(Boolean.FALSE);
             assertThat(inboundMessage.getMessageAnnotations().get("annotations.byte"))
                     .isNotNull().isInstanceOf(Byte.class).isEqualTo(Byte.valueOf((byte) 1));
             assertThat(inboundMessage.getMessageAnnotations().get("annotations.short"))

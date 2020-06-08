@@ -31,6 +31,8 @@ public interface MessageBuilder {
 
     interface ApplicationPropertiesBuilder {
 
+        ApplicationPropertiesBuilder entry(String key, boolean value);
+
         ApplicationPropertiesBuilder entry(String key, byte value);
 
         ApplicationPropertiesBuilder entry(String key, short value);
@@ -74,6 +76,8 @@ public interface MessageBuilder {
     }
 
     interface MessageAnnotationsBuilder {
+
+        MessageAnnotationsBuilder entry(String key, boolean value);
 
         MessageAnnotationsBuilder entry(String key, byte value);
 

@@ -221,6 +221,12 @@ class QpidProtonMessageBuilder implements MessageBuilder {
         }
 
         @Override
+        public MessageAnnotationsBuilder entry(String key, boolean value) {
+            messageAnnotations.put(Symbol.getSymbol(key), value);
+            return this;
+        }
+
+        @Override
         public MessageAnnotationsBuilder entry(String key, byte value) {
             messageAnnotations.put(Symbol.getSymbol(key), value);
             return this;
@@ -345,6 +351,12 @@ class QpidProtonMessageBuilder implements MessageBuilder {
 
         private QpidProtonjApplicationPropertiesBuilder(MessageBuilder messageBuilder) {
             this.messageBuilder = messageBuilder;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entry(String key, boolean value) {
+            applicationProperties.put(key, value);
+            return this;
         }
 
         @Override

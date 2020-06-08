@@ -229,6 +229,10 @@ class SwiftMqMessageBuilder implements MessageBuilder {
             this.keyMaker = keyMaker;
         }
 
+        protected void addEntry(String key, boolean value) {
+            map.put(keyMaker.apply(key), new AMQPBoolean(value));
+        }
+
         protected void addEntry(String key, byte value) {
             map.put(keyMaker.apply(key), new AMQPByte(value));
         }
@@ -303,6 +307,12 @@ class SwiftMqMessageBuilder implements MessageBuilder {
         private SwiftMqApplicationPropertiesBuilder(MessageBuilder messageBuilder) {
             super(KEY_MAKER);
             this.messageBuilder = messageBuilder;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entry(String key, boolean value) {
+            addEntry(key, value);
+            return this;
         }
 
         @Override
@@ -431,6 +441,12 @@ class SwiftMqMessageBuilder implements MessageBuilder {
         private SwiftMqMessageAnnotationsBuilder(MessageBuilder messageBuilder) {
             super(KEY_MAKER);
             this.messageBuilder = messageBuilder;
+        }
+
+        @Override
+        public MessageAnnotationsBuilder entry(String key, boolean value) {
+            addEntry(key, value);
+            return this;
         }
 
         @Override

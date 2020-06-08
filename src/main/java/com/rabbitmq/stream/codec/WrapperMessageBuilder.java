@@ -82,6 +82,12 @@ public class WrapperMessageBuilder implements MessageBuilder {
         }
 
         @Override
+        public MessageAnnotationsBuilder entry(String key, boolean value) {
+            messageAnnotations.put(key, value);
+            return this;
+        }
+
+        @Override
         public MessageAnnotationsBuilder entry(String key, byte value) {
             messageAnnotations.put(key, value);
             return this;
@@ -334,6 +340,12 @@ public class WrapperMessageBuilder implements MessageBuilder {
 
         private WrapperApplicationPropertiesBuilder(MessageBuilder messageBuilder) {
             this.messageBuilder = messageBuilder;
+        }
+
+        @Override
+        public ApplicationPropertiesBuilder entry(String key, boolean value) {
+            applicationProperties.put(key, value);
+            return this;
         }
 
         @Override
