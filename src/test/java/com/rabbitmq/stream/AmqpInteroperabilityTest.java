@@ -14,24 +14,19 @@
 
 package com.rabbitmq.stream;
 
-import com.rabbitmq.client.AMQP;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.*;
 import com.rabbitmq.client.impl.LongStringHelper;
 import com.rabbitmq.stream.amqp.UnsignedByte;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
@@ -50,7 +45,7 @@ public class AmqpInteroperabilityTest {
     String stream;
     TestUtils.ClientFactory cf;
 
-    static Stream<Codec> publishToStreamQueueConsumeFromStreamArguments() {
+    static Stream<Codec> codecs() {
         return Stream.of(new QpidProtonCodec(), new SwiftMqCodec());
     }
 
@@ -64,10 +59,14 @@ public class AmqpInteroperabilityTest {
         return new PropertiesTestConfiguration(builder, assertion);
     }
 
+    static MessageOperation mo(Consumer<MessageBuilder> messageBuilderConsumer, Consumer<Delivery> deliveryConsumer) {
+        return new MessageOperation(messageBuilderConsumer, deliveryConsumer);
+    }
+
     @ParameterizedTest
-    @MethodSource("publishToStreamQueueConsumeFromStreamArguments")
+    @MethodSource("codecs")
     void publishToStreamQueueConsumeFromStream(Codec codec) throws Exception {
-        int messageCount = 10;
+        int messageCount = 10_000;
         ConnectionFactory connectionFactory = new ConnectionFactory();
         Date timestamp = new Date();
 
@@ -82,7 +81,7 @@ public class AmqpInteroperabilityTest {
                 ptc(b -> b.priority(5), m -> assertThat(m.getMessageAnnotations().get("x-basic-priority")).isEqualTo(UnsignedByte.valueOf("5"))),
                 ptc(b -> b.replyTo("reply to"), m -> assertThat(m.getProperties().getReplyTo()).isEqualTo("/queue/reply to")),
                 ptc(b -> b.timestamp(timestamp), m -> assertThat(m.getProperties().getCreationTime())
-                    .isEqualTo((timestamp.getTime() / 1000) * 1000)), // in seconds in 091, in ms in 1.0, so losing some precision
+                        .isEqualTo((timestamp.getTime() / 1000) * 1000)), // in seconds in 091, in ms in 1.0, so losing some precision
                 ptc(b -> b.type("the type"), m -> assertThat(m.getApplicationProperties().get("x-basic-type")).isEqualTo("the type")),
                 ptc(b -> b.userId("guest"), m -> assertThat(m.getProperties().getUserId()).isEqualTo("guest".getBytes(UTF8)))
         );
@@ -173,6 +172,212 @@ public class AmqpInteroperabilityTest {
         headerApplicationPropertiesTestConfigurations.get().forEach(c -> c.assertion.accept(message.getApplicationProperties()));
     }
 
+    @ParameterizedTest
+    @MethodSource("codecs")
+    void publishToStreamConsumeFromStreamQueue(Codec codec) throws Exception {
+        int messageCount = 10;
+        ConnectionFactory connectionFactory = new ConnectionFactory();
+        Date timestamp = new Date();
+
+        UUID messageIdUuid = UUID.randomUUID();
+        UUID correlationIdUuid = UUID.randomUUID();
+        Supplier<Stream<MessageOperation>> testMessageOperations = () -> Stream.of(
+                mo(
+                        mb -> {
+                            mb.properties().messageId("the message ID");
+                            mb.properties().correlationId("the correlation ID");
+                        },
+                        d -> {
+                            assertThat(d.getProperties().getMessageId()).isEqualTo("the message ID");
+                            assertThat(d.getProperties().getCorrelationId()).isEqualTo("the correlation ID");
+                        }
+                ),
+                mo(
+                        mb -> {
+                            mb.properties().messageId(StringUtils.repeat("*", 300)); // larger than 091 shortstr
+                            mb.properties().correlationId(StringUtils.repeat("*", 300)); // larger than 091 shortstr
+                        },
+                        d -> {
+                            assertThat(d.getProperties().getMessageId()).isNull();
+                            assertThat(d.getProperties().getCorrelationId()).isNull();
+                            assertThat(d.getProperties().getHeaders())
+                                    .containsEntry("x-message-id", LongStringHelper.asLongString(StringUtils.repeat("*", 300)))
+                                    .containsEntry("x-correlation-id", LongStringHelper.asLongString(StringUtils.repeat("*", 300)));
+                        }
+                ),
+                mo(
+                        mb -> {
+                            mb.properties().messageId(messageIdUuid);
+                            mb.properties().correlationId(correlationIdUuid);
+                        },
+                        d -> {
+                            assertThat(d.getProperties().getMessageId()).isEqualTo(messageIdUuid.toString());
+                            assertThat(d.getProperties().getCorrelationId()).isEqualTo(correlationIdUuid.toString());
+                            assertThat(d.getProperties().getHeaders())
+                                    .containsEntry("x-message-id-type", LongStringHelper.asLongString("uuid"))
+                                    .containsEntry("x-correlation-id-type", LongStringHelper.asLongString("uuid"));
+                        }
+                ),
+                mo(
+                        mb -> {
+                            mb.properties().messageId(10);
+                            mb.properties().correlationId(20);
+                        },
+                        d -> {
+                            assertThat(d.getProperties().getMessageId()).isEqualTo("10");
+                            assertThat(d.getProperties().getCorrelationId()).isEqualTo("20");
+                            assertThat(d.getProperties().getHeaders())
+                                    .containsEntry("x-message-id-type", LongStringHelper.asLongString("ulong"))
+                                    .containsEntry("x-correlation-id-type", LongStringHelper.asLongString("ulong"));
+                        }
+                ),
+                mo(
+                        mb -> {
+                            mb.properties().messageId("the message ID".getBytes(UTF8));
+                            mb.properties().correlationId("the correlation ID".getBytes(UTF8));
+                        },
+                        d -> {
+                            assertThat(Base64.getDecoder().decode(d.getProperties().getMessageId()))
+                                    .isEqualTo("the message ID".getBytes(UTF8));
+                            assertThat(Base64.getDecoder().decode(d.getProperties().getCorrelationId()))
+                                    .isEqualTo("the correlation ID".getBytes(UTF8));
+                            assertThat(d.getProperties().getHeaders())
+                                    .containsEntry("x-message-id-type", LongStringHelper.asLongString("binary"))
+                                    .containsEntry("x-correlation-id-type", LongStringHelper.asLongString("binary"));
+                        }
+                ),
+                mo(
+                        mb -> {
+                            mb.properties().messageId(StringUtils.repeat("a", 300).getBytes(UTF8)); // larger than 091 shortstr
+                            mb.properties().correlationId(StringUtils.repeat("b", 300).getBytes(UTF8)); // larger than 091 shortstr
+                        },
+                        d -> {
+                            assertThat(d.getProperties().getMessageId()).isNull();
+                            assertThat(d.getProperties().getCorrelationId()).isNull();
+                            assertThat(d.getProperties().getHeaders())
+                                    .containsEntry("x-message-id",
+                                            LongStringHelper.asLongString(Base64.getEncoder().encodeToString(StringUtils.repeat("a", 300).getBytes(UTF8))))
+                                    .containsEntry("x-correlation-id",
+                                            LongStringHelper.asLongString(Base64.getEncoder().encodeToString(StringUtils.repeat("b", 300).getBytes(UTF8))));
+                        }
+                )
+        );
+
+        testMessageOperations.get().forEach(testMessageOperation -> {
+            CountDownLatch confirmLatch = new CountDownLatch(messageCount);
+            Client client = cf.get(new Client.ClientParameters().codec(codec).confirmListener(publishingId -> confirmLatch.countDown()));
+
+            String s = UUID.randomUUID().toString();
+            Client.Response response = client.create(s);
+            assertThat(response.isOk()).isTrue();
+
+            Supplier<Stream<MessageOperation>> messageOperations = () -> Stream.of(
+                    mo(
+                            mb -> mb.properties().userId("the user ID".getBytes(UTF8)),
+                            d -> assertThat(d.getProperties().getUserId()).isEqualTo("the user ID")
+                    ),
+                    mo(
+                            mb -> mb.properties().to("the to address"), d -> {
+                            }
+                    ),
+                    mo(
+                            mb -> mb.properties().subject("the subject"), d -> {
+                            }
+                    ),
+                    mo(
+                            mb -> mb.properties().replyTo("the reply to address"),
+                            d -> assertThat(d.getProperties().getReplyTo()).isEqualTo("the reply to address")
+                    ),
+                    mo(
+                            mb -> mb.properties().contentType("the content type"),
+                            d -> assertThat(d.getProperties().getContentType()).isEqualTo("the content type")
+                    ),
+                    mo(
+                            mb -> mb.properties().contentEncoding("the content encoding"),
+                            d -> assertThat(d.getProperties().getContentEncoding()).isEqualTo("the content encoding")
+                    ),
+                    mo(
+                            mb -> mb.properties().absoluteExpiryTime(timestamp.getTime() + 1000), d -> {
+                            }
+                    ),
+                    mo(
+                            mb -> mb.properties().creationTime(timestamp.getTime()),
+                            d -> assertThat(d.getProperties().getTimestamp().getTime()).isEqualTo((timestamp.getTime() / 1000) * 1000) // in seconds in 091, in ms in 1.0, so losing some precision
+                    ),
+                    mo(
+                            mb -> mb.properties().groupId("the group ID"), d -> {
+                            }
+                    ),
+                    mo(
+                            mb -> mb.properties().groupSequence(10), d -> {
+                            }
+                    ),
+                    mo(
+                            mb -> mb.properties().replyToGroupId("the reply to group ID"), d -> {
+                            }
+                    )
+            );
+
+            IntStream.range(0, messageCount).forEach(i -> {
+                MessageBuilder messageBuilder = client.messageBuilder();
+                messageBuilder.addData(("stream " + i).getBytes(UTF8));
+
+                testMessageOperation.messageBuilderConsumer.accept(messageBuilder);
+
+                messageOperations.get().forEach(messageOperation -> messageOperation.messageBuilderConsumer.accept(messageBuilder));
+
+
+                client.publish(s, messageBuilder.build());
+            });
+
+            try {
+                assertThat(confirmLatch.await(10, SECONDS)).isTrue();
+
+                Connection c = connectionFactory.newConnection();
+                Channel ch = c.createChannel();
+                ch.basicQos(200);
+                CountDownLatch consumedLatch = new CountDownLatch(messageCount);
+                Set<String> messageBodies = ConcurrentHashMap.newKeySet(messageCount);
+                Set<Delivery> messages = ConcurrentHashMap.newKeySet(messageCount);
+
+                ch.basicConsume(s, false, Collections.singletonMap("x-stream-offset", 0),
+                        (consumerTag, message) -> {
+                            messages.add(message);
+                            messageBodies.add(new String(message.getBody(), UTF8));
+                            consumedLatch.countDown();
+                            ch.basicAck(message.getEnvelope().getDeliveryTag(), false);
+                        }, consumerTag -> {
+
+                        });
+
+                assertThat(consumedLatch.await(10, SECONDS)).isTrue();
+                assertThat(messageBodies).hasSize(messageCount);
+                IntStream.range(0, messageCount).forEach(i -> assertThat(messageBodies.contains("stream " + i)).isTrue());
+                Delivery message = messages.iterator().next();
+
+                assertThat(message.getEnvelope().getExchange()).isEmpty();
+                assertThat(message.getEnvelope().getRoutingKey()).isEqualTo(s);
+                assertThat(message.getProperties().getHeaders()).containsKey("x-stream-offset");
+
+                testMessageOperation.deliveryConsumer.accept(message);
+
+                messageOperations.get().forEach(messageOperation -> messageOperation.deliveryConsumer.accept(message));
+
+                try {
+                    c.close(1000);
+                } catch (Exception e) {
+
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            response = client.delete(s);
+            assertThat(response.isOk()).isTrue();
+        });
+
+
+    }
+
     private static class PropertiesTestConfiguration {
         final Consumer<AMQP.BasicProperties.Builder> builder;
         final Consumer<Message> assertion;
@@ -190,6 +395,16 @@ public class AmqpInteroperabilityTest {
         HeaderTestConfiguration(Consumer<Map<String, Object>> headerValue, Consumer<Map<String, Object>> assertion) {
             this.headerValue = headerValue;
             this.assertion = assertion;
+        }
+    }
+
+    private static class MessageOperation {
+        final Consumer<MessageBuilder> messageBuilderConsumer;
+        final Consumer<Delivery> deliveryConsumer;
+
+        MessageOperation(Consumer<MessageBuilder> messageBuilderConsumer, Consumer<Delivery> deliveryConsumer) {
+            this.messageBuilderConsumer = messageBuilderConsumer;
+            this.deliveryConsumer = deliveryConsumer;
         }
     }
 
