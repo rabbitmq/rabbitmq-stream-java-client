@@ -315,6 +315,34 @@ public class AmqpInteroperabilityTest {
                     mo(
                             mb -> mb.properties().replyToGroupId("the reply to group ID"), d -> {
                             }
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entry("byte", Byte.MAX_VALUE),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("byte", Byte.MAX_VALUE)
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entry("short", Short.MAX_VALUE),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("short", Short.MAX_VALUE)
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entry("integer", Integer.MAX_VALUE),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("integer", Integer.MAX_VALUE)
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entry("long", Long.MAX_VALUE),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("long", Long.MAX_VALUE)
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entry("string", "a string"),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("string", LongStringHelper.asLongString("a string"))
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entryTimestamp("timestamp", timestamp.getTime()),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("timestamp", new Date((timestamp.getTime() / 1000) * 1000))
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entry("aboolean", Boolean.TRUE),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("aboolean", Boolean.TRUE)
                     )
             );
 
