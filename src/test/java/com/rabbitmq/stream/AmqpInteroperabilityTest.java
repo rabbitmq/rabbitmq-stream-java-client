@@ -256,9 +256,9 @@ public class AmqpInteroperabilityTest {
                             assertThat(d.getProperties().getCorrelationId()).isNull();
                             assertThat(d.getProperties().getHeaders())
                                     .containsEntry("x-message-id",
-                                            LongStringHelper.asLongString(Base64.getEncoder().encodeToString(StringUtils.repeat("a", 300).getBytes(UTF8))))
+                                            LongStringHelper.asLongString(StringUtils.repeat("a", 300).getBytes(UTF8)))
                                     .containsEntry("x-correlation-id",
-                                            LongStringHelper.asLongString(Base64.getEncoder().encodeToString(StringUtils.repeat("b", 300).getBytes(UTF8))));
+                                            LongStringHelper.asLongString(StringUtils.repeat("b", 300).getBytes(UTF8)));
                         }
                 )
         );
