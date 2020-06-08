@@ -341,8 +341,8 @@ public class AmqpInteroperabilityTest {
                             d -> assertThat(d.getProperties().getHeaders()).containsEntry("timestamp", new Date((timestamp.getTime() / 1000) * 1000))
                     ),
                     mo(
-                            mb -> mb.applicationProperties().entry("aboolean", Boolean.TRUE),
-                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("aboolean", Boolean.TRUE)
+                            mb -> mb.applicationProperties().entry("boolean", Boolean.TRUE),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("boolean", Boolean.TRUE)
                     )
             );
 
