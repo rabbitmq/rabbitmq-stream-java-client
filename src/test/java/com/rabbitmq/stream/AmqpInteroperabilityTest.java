@@ -343,6 +343,14 @@ public class AmqpInteroperabilityTest {
                     mo(
                             mb -> mb.applicationProperties().entry("boolean", Boolean.TRUE),
                             d -> assertThat(d.getProperties().getHeaders()).containsEntry("boolean", Boolean.TRUE)
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entry("float", 3.14f),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("float", 3.14f)
+                    ),
+                    mo(
+                            mb -> mb.applicationProperties().entry("binary", "hello".getBytes(UTF8)),
+                            d -> assertThat(d.getProperties().getHeaders()).containsEntry("binary", "hello".getBytes(UTF8))
                     )
             );
 
