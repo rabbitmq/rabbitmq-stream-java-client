@@ -174,8 +174,8 @@ public class AmqpInteroperabilityTest {
 
     @ParameterizedTest
     @MethodSource("codecs")
-    void publishToStreamConsumeFromStreamQueue(Codec codec) throws Exception {
-        int messageCount = 10;
+    void publishToStreamConsumeFromStreamQueue(Codec codec) {
+        int messageCount = 1_000;
         ConnectionFactory connectionFactory = new ConnectionFactory();
         Date timestamp = new Date();
 
@@ -366,10 +366,9 @@ public class AmqpInteroperabilityTest {
                 client.publish(s, messageBuilder.build());
             });
 
-            try {
+            try (Connection c = connectionFactory.newConnection()) {
                 assertThat(confirmLatch.await(10, SECONDS)).isTrue();
 
-                Connection c = connectionFactory.newConnection();
                 Channel ch = c.createChannel();
                 ch.basicQos(200);
                 CountDownLatch consumedLatch = new CountDownLatch(messageCount);
@@ -399,11 +398,6 @@ public class AmqpInteroperabilityTest {
 
                 messageOperations.get().forEach(messageOperation -> messageOperation.deliveryConsumer.accept(message));
 
-                try {
-                    c.close(1000);
-                } catch (Exception e) {
-
-                }
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
