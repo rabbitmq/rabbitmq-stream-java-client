@@ -1,7 +1,7 @@
 // Copyright (c) 2020 VMware, Inc. or its affiliates.  All rights reserved.
 //
-// This software, the RabbitMQ Java client library, is dual-licensed under the
-// Mozilla Public License 1.1 ("MPL"), and the Apache License version 2 ("ASL").
+// This software, the RabbitMQ Stream Java client library, is dual-licensed under the
+// Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
 // For the MPL, please see LICENSE-MPL-RabbitMQ. For the ASL,
 // please see LICENSE-APACHE2.
 //

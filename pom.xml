@@ -8,6 +8,32 @@
     <artifactId>stream-client</artifactId>
     <version>0.1.0-SNAPSHOT</version>
 
+    <name>RabbitMQ Stream Java Client</name>
+    <description>The RabbitMQ Stream Java client library allows Java applications to interface with RabbitMQ Stream.</description>
+    <url>https://www.rabbitmq.com</url>
+
+    <licenses>
+        <license>
+            <name>ASL 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.html</url>
+            <distribution>repo</distribution>
+        </license>
+        <license>
+            <name>MPL 2.0</name>
+            <url>https://www.mozilla.org/en-US/MPL/2.0/</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <email>info@rabbitmq.com</email>
+            <name>Team RabbitMQ</name>
+            <organization>VMware, Inc. or its affiliates.</organization>
+            <organizationUrl>https://rabbitmq.com</organizationUrl>
+        </developer>
+    </developers>
+
     <scm>
         <url>https://github.com/rabbitmq/rabbitmq-stream-java-client</url>
         <connection>scm:git:git://github.com/rabbitmq/rabbitmq-stream-java-client.git</connection>

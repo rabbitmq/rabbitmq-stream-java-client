@@ -55,4 +55,4 @@ To launch the test suite (requires a local RabbitMQ node with stream plugin enab
 
 (c) 2020, VMware Inc or its affiliates.
 
-Double licensed under the ASL2 and MPL1.1. See link:LICENSE[LICENSE] for details.
+Double licensed under the MPL2.0 and ASL2. See link:LICENSE[LICENSE] for details.
