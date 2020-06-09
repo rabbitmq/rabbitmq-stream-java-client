@@ -97,6 +97,8 @@ public class Client implements AutoCloseable {
 
     private final ChunkChecksum chunkChecksum;
 
+    private final Map<String, String> clientProperties;
+
     private final String NETTY_HANDLER_FLUSH_CONSOLIDATION = FlushConsolidationHandler.class.getSimpleName();
     private final String NETTY_HANDLER_FRAME_DECODER = LengthFieldBasedFrameDecoder.class.getSimpleName();
     private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
@@ -154,6 +156,7 @@ public class Client implements AutoCloseable {
 
         this.channel = f.channel();
         this.tuneState = new TuneState(parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
+        this.clientProperties = clientProperties(parameters.clientProperties);
         authenticate();
         this.tuneState.await(Duration.ofSeconds(10));
         this.maxFrameSize = this.tuneState.getMaxFrameSize();
@@ -161,6 +164,13 @@ public class Client implements AutoCloseable {
         this.heartbeat = this.tuneState.getHeartbeat();
         LOGGER.debug("Connection tuned with max frame size {} and heartbeat {}", this.maxFrameSize, this.heartbeat);
         open(parameters.virtualHost);
+    }
+
+    private static Map<String, String> clientProperties(Map<String, String> fromParameters) {
+        fromParameters = fromParameters == null ? Collections.emptyMap() : fromParameters;
+        Map<String, String> clientProperties = new HashMap<>(fromParameters);
+        clientProperties.putAll(ClientProperties.DEFAULT_CLIENT_PROPERTIES);
+        return Collections.unmodifiableMap(clientProperties);
     }
 
     static void handleMetadataUpdate(ByteBuf bb, int frameSize, Subscriptions subscriptions, SubscriptionListener subscriptionListener) {
@@ -573,7 +583,7 @@ public class Client implements AutoCloseable {
         boolean authDone = false;
         while (!authDone) {
             byte[] saslResponse = saslMechanism.handleChallenge(challenge, this.credentialsProvider);
-            SaslAuthenticateResponse saslAuthenticateResponse = sendSaslAuthenticate(saslMechanism, saslResponse);
+            SaslAuthenticateResponse saslAuthenticateResponse = sendSaslAuthenticate(this.clientProperties, saslMechanism, saslResponse);
             if (saslAuthenticateResponse.isOk()) {
                 authDone = true;
             } else if (saslAuthenticateResponse.isChallenge()) {
@@ -586,8 +596,14 @@ public class Client implements AutoCloseable {
         }
     }
 
-    private SaslAuthenticateResponse sendSaslAuthenticate(SaslMechanism saslMechanism, byte[] challengeResponse) {
-        int length = 2 + 2 + 4 + 2 + saslMechanism.getName().length() +
+    private SaslAuthenticateResponse sendSaslAuthenticate(Map<String, String> clientProperties, SaslMechanism saslMechanism, byte[] challengeResponse) {
+        int clientPropertiesSize = 4; // size of the map, always there
+        if (!clientProperties.isEmpty()) {
+            for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
+                clientPropertiesSize += 2 + entry.getKey().length() + 2 + entry.getValue().length();
+            }
+        }
+        int length = 2 + 2 + 4 + +clientPropertiesSize + 2 + saslMechanism.getName().length() +
                 4 + (challengeResponse == null ? 0 : challengeResponse.length);
         int correlationId = correlationSequence.incrementAndGet();
         try {
@@ -596,6 +612,11 @@ public class Client implements AutoCloseable {
             bb.writeShort(COMMAND_SASL_AUTHENTICATE);
             bb.writeShort(VERSION_0);
             bb.writeInt(correlationId);
+            bb.writeInt(clientProperties.size());
+            for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
+                bb.writeShort(entry.getKey().length()).writeBytes(entry.getKey().getBytes(StandardCharsets.UTF_8))
+                        .writeShort(entry.getValue().length()).writeBytes(entry.getValue().getBytes(StandardCharsets.UTF_8));
+            }
             bb.writeShort(saslMechanism.getName().length());
             bb.writeBytes(saslMechanism.getName().getBytes(StandardCharsets.UTF_8));
             if (challengeResponse == null) {
@@ -1268,6 +1289,8 @@ public class Client implements AutoCloseable {
 
         private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
 
+        private final Map<String, String> clientProperties = new HashMap<>();
+
         public ClientParameters host(String host) {
             this.host = host;
             return this;
@@ -1369,6 +1392,16 @@ public class Client implements AutoCloseable {
 
         public ClientParameters chunkChecksum(ChunkChecksum chunkChecksum) {
             this.chunkChecksum = chunkChecksum;
+            return this;
+        }
+
+        public ClientParameters clientProperties(Map<String, String> clientProperties) {
+            this.clientProperties.putAll(clientProperties);
+            return this;
+        }
+
+        public ClientParameters clientProperty(String key, String value) {
+            this.clientProperties.put(key, value);
             return this;
         }
     }

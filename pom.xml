@@ -179,6 +179,14 @@
 
     <build>
 
+        <!-- We store the client version in a Java properties file. -->
+        <resources>
+            <resource>
+                <directory>${basedir}/src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+
         <plugins>
 
             <plugin>
