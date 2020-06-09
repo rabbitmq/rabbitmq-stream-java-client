@@ -125,13 +125,18 @@ public class TestUtils {
         }
 
         @Override
-        public void afterEach(ExtensionContext context) {
-            String stream = (String) store(context).get("testMethodStream");
-            if (stream != null) {
+        public void afterEach(ExtensionContext context) throws Exception {
+            try {
+                Field streamField = context.getTestInstance().get().getClass().getDeclaredField("stream");
+                streamField.setAccessible(true);
+                String stream = (String) streamField.get(context.getTestInstance().get());
                 Client client = new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
                 Client.Response response = client.delete(stream);
-//                assertThat(response.isOk()).isTrue();
+                assertThat(response.isOk()).isTrue();
                 client.close();
+                store(context).remove("testMethodStream");
+            } catch (NoSuchFieldException e) {
+
             }
 
             ClientFactory clientFactory = (ClientFactory) store(context).get("testClientFactory");
