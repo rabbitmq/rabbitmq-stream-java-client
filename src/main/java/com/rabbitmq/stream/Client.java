@@ -99,6 +99,8 @@ public class Client implements AutoCloseable {
 
     private final Map<String, String> clientProperties;
 
+    private final Map<String, String> serverProperties;
+
     private final String NETTY_HANDLER_FLUSH_CONSOLIDATION = FlushConsolidationHandler.class.getSimpleName();
     private final String NETTY_HANDLER_FRAME_DECODER = LengthFieldBasedFrameDecoder.class.getSimpleName();
     private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
@@ -157,6 +159,7 @@ public class Client implements AutoCloseable {
         this.channel = f.channel();
         this.tuneState = new TuneState(parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
         this.clientProperties = clientProperties(parameters.clientProperties);
+        this.serverProperties = peerProperties();
         authenticate();
         this.tuneState.await(Duration.ofSeconds(10));
         this.maxFrameSize = this.tuneState.getMaxFrameSize();
@@ -207,6 +210,47 @@ public class Client implements AutoCloseable {
         } else {
             Response response = new Response(responseCode);
             outstandingRequest.response.set(response);
+            outstandingRequest.latch.countDown();
+        }
+
+        if (read != frameSize) {
+            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
+    static void handlePeerProperties(ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+        int read = 2 + 2; // already read the command id and version
+        int correlationId = bb.readInt();
+        read += 4;
+
+        short responseCode = bb.readShort();
+        read += 2;
+        if (responseCode != RESPONSE_CODE_OK) {
+            if (read != frameSize) {
+                bb.readBytes(new byte[frameSize - read]);
+            }
+            // FIXME: should we unlock the request and notify that there's something wrong?
+            throw new ClientException("Unexpected response code for SASL handshake response: " + responseCode);
+        }
+
+        int serverPropertiesCount = bb.readInt();
+        read += 4;
+        Map<String, String> serverProperties = new LinkedHashMap<>(serverPropertiesCount);
+
+        for (int i = 0; i < serverPropertiesCount; i++) {
+            String key = readString(bb);
+            read += 2 + key.length();
+            String value = readString(bb);
+            read += 2 + value.length();
+            serverProperties.put(key, value);
+        }
+
+        OutstandingRequest<Map<String, String>> outstandingRequest = remove(outstandingRequests, correlationId, new ParameterizedTypeReference<Map<String, String>>() {
+        });
+        if (outstandingRequest == null) {
+            LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        } else {
+            outstandingRequest.response.set(Collections.unmodifiableMap(serverProperties));
             outstandingRequest.latch.countDown();
         }
 
@@ -575,6 +619,37 @@ public class Client implements AutoCloseable {
         }
     }
 
+    private Map<String, String> peerProperties() {
+        int clientPropertiesSize = 4; // size of the map, always there
+        if (!clientProperties.isEmpty()) {
+            for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
+                clientPropertiesSize += 2 + entry.getKey().length() + 2 + entry.getValue().length();
+            }
+        }
+        int length = 2 + 2 + 4 + clientPropertiesSize;
+        int correlationId = correlationSequence.incrementAndGet();
+        try {
+            ByteBuf bb = allocateNoCheck(length + 4);
+            bb.writeInt(length);
+            bb.writeShort(COMMAND_PEER_PROPERTIES);
+            bb.writeShort(VERSION_0);
+            bb.writeInt(correlationId);
+            bb.writeInt(clientProperties.size());
+            for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
+                bb.writeShort(entry.getKey().length()).writeBytes(entry.getKey().getBytes(StandardCharsets.UTF_8))
+                        .writeShort(entry.getValue().length()).writeBytes(entry.getValue().getBytes(StandardCharsets.UTF_8));
+            }
+            OutstandingRequest<Map<String, String>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+            outstandingRequests.put(correlationId, request);
+            channel.writeAndFlush(bb);
+            request.block();
+            return request.response.get();
+        } catch (RuntimeException e) {
+            outstandingRequests.remove(correlationId);
+            throw new ClientException(e);
+        }
+    }
+
     private void authenticate() {
         List<String> saslMechanisms = getSaslMechanisms();
         SaslMechanism saslMechanism = this.saslConfiguration.getSaslMechanism(saslMechanisms);
@@ -583,7 +658,7 @@ public class Client implements AutoCloseable {
         boolean authDone = false;
         while (!authDone) {
             byte[] saslResponse = saslMechanism.handleChallenge(challenge, this.credentialsProvider);
-            SaslAuthenticateResponse saslAuthenticateResponse = sendSaslAuthenticate(this.clientProperties, saslMechanism, saslResponse);
+            SaslAuthenticateResponse saslAuthenticateResponse = sendSaslAuthenticate(saslMechanism, saslResponse);
             if (saslAuthenticateResponse.isOk()) {
                 authDone = true;
             } else if (saslAuthenticateResponse.isChallenge()) {
@@ -596,14 +671,8 @@ public class Client implements AutoCloseable {
         }
     }
 
-    private SaslAuthenticateResponse sendSaslAuthenticate(Map<String, String> clientProperties, SaslMechanism saslMechanism, byte[] challengeResponse) {
-        int clientPropertiesSize = 4; // size of the map, always there
-        if (!clientProperties.isEmpty()) {
-            for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
-                clientPropertiesSize += 2 + entry.getKey().length() + 2 + entry.getValue().length();
-            }
-        }
-        int length = 2 + 2 + 4 + +clientPropertiesSize + 2 + saslMechanism.getName().length() +
+    private SaslAuthenticateResponse sendSaslAuthenticate(SaslMechanism saslMechanism, byte[] challengeResponse) {
+        int length = 2 + 2 + 4 + 2 + saslMechanism.getName().length() +
                 4 + (challengeResponse == null ? 0 : challengeResponse.length);
         int correlationId = correlationSequence.incrementAndGet();
         try {
@@ -612,11 +681,6 @@ public class Client implements AutoCloseable {
             bb.writeShort(COMMAND_SASL_AUTHENTICATE);
             bb.writeShort(VERSION_0);
             bb.writeInt(correlationId);
-            bb.writeInt(clientProperties.size());
-            for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
-                bb.writeShort(entry.getKey().length()).writeBytes(entry.getKey().getBytes(StandardCharsets.UTF_8))
-                        .writeShort(entry.getValue().length()).writeBytes(entry.getValue().getBytes(StandardCharsets.UTF_8));
-            }
             bb.writeShort(saslMechanism.getName().length());
             bb.writeBytes(saslMechanism.getName().getBytes(StandardCharsets.UTF_8));
             if (challengeResponse == null) {
@@ -1249,47 +1313,35 @@ public class Client implements AutoCloseable {
 
     public static class ClientParameters {
 
+        private final Map<String, String> clientProperties = new HashMap<>();
         private String host = "localhost";
         private int port = DEFAULT_PORT;
         private String virtualHost = "/";
         private Duration requestedHeartbeat = Duration.ofSeconds(60);
         private int requestedMaxFrameSize = 131072;
-
         private ConfirmListener confirmListener = (publishingId) -> {
 
         };
-
         private PublishErrorListener publishErrorListener = (publishingId, responseCode) -> {
 
         };
-
         private ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> {
 
         };
-
         private MessageListener messageListener = (correlationId, offset, message) -> {
 
         };
-
         private SubscriptionListener subscriptionListener = (subscriptionId, stream, reason) -> {
 
         };
-
         private Codec codec;
-
         // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
         private EventLoopGroup eventLoopGroup;
-
         private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
-
         private CredentialsProvider credentialsProvider = new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
-
         private ChannelCustomizer channelCustomizer = ch -> {
         };
-
         private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
-
-        private final Map<String, String> clientProperties = new HashMap<>();
 
         public ClientParameters host(String host) {
             this.host = host;
@@ -1621,6 +1673,8 @@ public class Client implements AutoCloseable {
                     task = () -> handleClose(m, frameSize, ctx);
                 } else if (commandId == COMMAND_HEARTBEAT) {
                     task = () -> handleHeartbeat(frameSize);
+                } else if (commandId == COMMAND_PEER_PROPERTIES) {
+                    task = () -> handlePeerProperties(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
                         || commandId == COMMAND_CREATE_STREAM || commandId == COMMAND_DELETE_STREAM
                         || commandId == COMMAND_OPEN) {
