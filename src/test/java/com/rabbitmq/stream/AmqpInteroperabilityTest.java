@@ -79,7 +79,7 @@ public class AmqpInteroperabilityTest {
                 ptc(b -> b.expiration(String.valueOf(timestamp.getTime() * 2)), m -> assertThat(m.getMessageAnnotations().get("x-basic-expiration")).isEqualTo(String.valueOf(timestamp.getTime() * 2))),
                 ptc(b -> b.messageId("message id"), m -> assertThat(m.getProperties().getMessageIdAsString()).isEqualTo("message id")),
                 ptc(b -> b.priority(5), m -> assertThat(m.getMessageAnnotations().get("x-basic-priority")).isEqualTo(UnsignedByte.valueOf("5"))),
-                ptc(b -> b.replyTo("reply to"), m -> assertThat(m.getProperties().getReplyTo()).isEqualTo("/queue/reply to")),
+                ptc(b -> b.replyTo("reply to"), m -> assertThat(m.getProperties().getReplyTo()).isEqualTo("reply to")),
                 ptc(b -> b.timestamp(timestamp), m -> assertThat(m.getProperties().getCreationTime())
                         .isEqualTo((timestamp.getTime() / 1000) * 1000)), // in seconds in 091, in ms in 1.0, so losing some precision
                 ptc(b -> b.type("the type"), m -> assertThat(m.getApplicationProperties().get("x-basic-type")).isEqualTo("the type")),
