@@ -379,7 +379,7 @@ public class Client implements AutoCloseable {
             read += 2;
             int replicasCount = bb.readInt();
             read += 4;
-            Collection<Broker> replicas;
+            List<Broker> replicas;
             if (replicasCount == 0) {
                 replicas = Collections.emptyList();
             } else {
@@ -1247,9 +1247,9 @@ public class Client implements AutoCloseable {
 
         private final Broker leader;
 
-        private final Collection<Broker> replicas;
+        private final List<Broker> replicas;
 
-        public StreamMetadata(String stream, short responseCode, Broker leader, Collection<Broker> replicas) {
+        public StreamMetadata(String stream, short responseCode, Broker leader, List<Broker> replicas) {
             this.stream = stream;
             this.responseCode = responseCode;
             this.leader = leader;
@@ -1264,7 +1264,7 @@ public class Client implements AutoCloseable {
             return leader;
         }
 
-        public Collection<Broker> getReplicas() {
+        public List<Broker> getReplicas() {
             return replicas;
         }
 

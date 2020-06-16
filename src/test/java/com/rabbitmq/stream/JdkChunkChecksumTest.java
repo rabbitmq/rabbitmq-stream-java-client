@@ -29,6 +29,8 @@ import java.util.zip.Adler32;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 public class JdkChunkChecksumTest {
 
     static Charset UTF8 = StandardCharsets.UTF_8;
@@ -52,6 +54,7 @@ public class JdkChunkChecksumTest {
             byte[] content = "hello".getBytes(UTF8);
             bb.writeBytes(content);
             chunkChecksum.checksum(bb, content.length, crc32(algorithm, content));
+            bb.release();
         });
     }
 
@@ -63,8 +66,9 @@ public class JdkChunkChecksumTest {
         Stream.of(allocator.directBuffer(), allocator.heapBuffer()).forEach(bb -> {
             byte[] content = "hello".getBytes(UTF8);
             bb.writeBytes(content);
-            Assertions.assertThatThrownBy(() -> chunkChecksum.checksum(bb, content.length, crc32(algorithm, content) + 1))
+            assertThatThrownBy(() -> chunkChecksum.checksum(bb, content.length, crc32(algorithm, content) + 1))
                     .isInstanceOf(ChunkChecksumValidationException.class);
+            bb.release();
         });
     }
 

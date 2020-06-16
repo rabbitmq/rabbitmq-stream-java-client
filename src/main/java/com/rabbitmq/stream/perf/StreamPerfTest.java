@@ -58,6 +58,10 @@ public class StreamPerfTest implements Callable<Integer> {
     int addressDispatching = 0;
     int streamDispatching = 0;
     private volatile Codec codec;
+    @CommandLine.Option(names = {"--username", "-u"}, description = "username to use for connecting", defaultValue = "guest")
+    private String username;
+    @CommandLine.Option(names = {"--password", "-pw"}, description = "password to use for connecting", defaultValue = "guest")
+    private String password;
     @CommandLine.Option(names = {"--addresses", "-a"},
             description = "servers to connect to, e.g. localhost:5555, separated by commas",
             defaultValue = "localhost:5555",
@@ -302,79 +306,53 @@ public class StreamPerfTest implements Callable<Integer> {
         Histogram chunkSize = metrics.histogram("chunk.size");
         Histogram latency = metrics.histogram("latency");
 
+        BrokerLocator configurationBrokerLocator = new RoundRobinAddressLocator(addresses);
+
         if (!preDeclared) {
-            Address address = addresses.get(0);
-            Client client = client(new Client.ClientParameters()
-                    .host(address.host).port(address.port)
-            );
             for (String stream : streams) {
-                Client.Response response = client.create(stream, new Client.StreamParametersBuilder()
-                        .maxLengthBytes(maxLengthBytes).maxSegmentSizeBytes(maxSegmentSize).build());
-                if (response.isOk()) {
-                    LOGGER.info("Created stream {}", stream);
-                } else {
-                    throw new IllegalStateException("Could not create " + stream + ", response code is " + response.getResponseCode());
+                Address address = configurationBrokerLocator.get(null);
+                try (Client client = client(new Client.ClientParameters().host(address.host).port(address.port))) {
+                    Client.Response response = client.create(stream, new Client.StreamParametersBuilder()
+                            .maxLengthBytes(maxLengthBytes).maxSegmentSizeBytes(maxSegmentSize).build());
+
+                    if (response.isOk()) {
+                        LOGGER.info("Created stream {}", stream);
+                    } else {
+                        throw new IllegalStateException("Could not create " + stream + ", response code is " + response.getResponseCode());
+                    }
                 }
             }
-            client.close();
             shutdownService.wrap(closeStep("Deleting stream(s)", () -> {
                 if (!preDeclared) {
-                    Address addr = addresses.get(0);
-                    Client c = client(new Client.ClientParameters()
-                            .host(address.host).port(addr.port)
-                    );
-                    for (String stream : streams) {
-                        LOGGER.debug("Deleting {}", stream);
-                        Client.Response response = c.delete(stream);
-                        if (!response.isOk()) {
-                            LOGGER.warn("Could not delete stream {}, response code was {}", stream, response.getResponseCode());
+                    Address address = configurationBrokerLocator.get(null);
+                    try (Client c = client(new Client.ClientParameters().host(address.host).port(address.port))) {
+                        for (String stream : streams) {
+                            LOGGER.debug("Deleting {}", stream);
+                            Client.Response response = c.delete(stream);
+                            if (!response.isOk()) {
+                                LOGGER.warn("Could not delete stream {}, response code was {}", stream, response.getResponseCode());
+                            }
+                            LOGGER.debug("Deleted {}", stream);
                         }
-                        LOGGER.debug("Deleted {}", stream);
                     }
-                    c.close();
                 }
             }));
         }
 
+        Map<String, Client.StreamMetadata> metadataMap = new ConcurrentHashMap<>();
+        Address address = configurationBrokerLocator.get(null);
+        try (Client c = client(new Client.ClientParameters().host(address.host).port(address.port))) {
+            Map<String, Client.StreamMetadata> metadata = c.metadata(streams.toArray(new String[0]));
+            metadataMap.putAll(metadata);
+        }
+
+        Topology topology = new MapTopology(metadataMap);
+
+        BrokerLocator publisherBrokerLocator = new LeaderOnlyBrokerLocator(topology);
+        BrokerLocator consumerBrokerLocator = new RoundRobinReplicaBrokerLocator(topology);
+
         // FIXME handle metadata update for consumers and publishers
         // they should at least issue a warning that their stream has been deleted and that they're now useless
-
-        List<Client> consumers = Collections.synchronizedList(IntStream.range(0, this.consumers).mapToObj(i -> {
-            BooleanSupplier creditRequestCondition;
-            if (this.ack == 1) {
-                creditRequestCondition = () -> true;
-            } else {
-                AtomicInteger chunkCount = new AtomicInteger(0);
-                int ackEvery = this.ack;
-                creditRequestCondition = () -> chunkCount.incrementAndGet() % ackEvery == 0;
-            }
-            int creditToAsk = this.credit;
-            Client.ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> {
-                chunkSize.update(messageCount);
-                if (creditRequestCondition.getAsBoolean()) {
-                    client.credit(correlationId, creditToAsk);
-                }
-            };
-            Client.MessageListener messageListener = (correlationId, offset, data) -> {
-                consumed.mark();
-                latency.update((System.nanoTime() - readLong(data.getBodyAsBinary())) / 1000L);
-            };
-
-            Address address = address();
-            Client client = client(new Client.ClientParameters()
-                    .host(address.host).port(address.port)
-                    .chunkListener(chunkListener)
-                    .messageListener(messageListener)
-            );
-
-            return client;
-        }).collect(Collectors.toList()));
-
-        shutdownService.wrap(closeStep("Closing consumers", () -> {
-            for (Client consumer : consumers) {
-                consumer.close();
-            }
-        }));
 
         Meter published = metrics.meter("published");
         Meter confirmed = metrics.meter("confirmed");
@@ -415,11 +393,12 @@ public class StreamPerfTest implements Callable<Integer> {
                 };
             }
 
-            Address address = address();
+            String stream = stream();
+            Address publisherAddress = publisherBrokerLocator.get(stream);
             Client client = client(new Client.ClientParameters()
-                    .host(address.host).port(address.port)
-                    .confirmListener(confirmListener)
-            );
+                    .host(publisherAddress.host).port(publisherAddress.port)
+                    .confirmListener(confirmListener));
+
             producers.add(client);
 
             shutdownService.wrap(closeStep("Closing producers", () -> {
@@ -427,11 +406,8 @@ public class StreamPerfTest implements Callable<Integer> {
                     producer.close();
                 }
             }));
-
-            String stream = stream();
-            LOGGER.info("Producer will stream {}", stream);
+            LOGGER.info("Connecting to {} to publish to {}", publisherAddress, stream);
             return (Runnable) () -> {
-                // FIXME fill the message with some data
                 byte[] data = new byte[this.messageSize];
                 List<Message> messages = new ArrayList<>(this.batchSize);
                 // just a batch to initialize the list
@@ -455,12 +431,46 @@ public class StreamPerfTest implements Callable<Integer> {
 
         }).collect(Collectors.toList());
 
-        int consumerSequence = 0;
-        for (Client consumer : consumers) {
+        AtomicInteger consumerSequence = new AtomicInteger(0);
+        List<Client> consumers = Collections.synchronizedList(IntStream.range(0, this.consumers).mapToObj(i -> {
+            BooleanSupplier creditRequestCondition;
+            if (this.ack == 1) {
+                creditRequestCondition = () -> true;
+            } else {
+                AtomicInteger chunkCount = new AtomicInteger(0);
+                int ackEvery = this.ack;
+                creditRequestCondition = () -> chunkCount.incrementAndGet() % ackEvery == 0;
+            }
+            int creditToAsk = this.credit;
+            Client.ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> {
+                chunkSize.update(messageCount);
+                if (creditRequestCondition.getAsBoolean()) {
+                    client.credit(correlationId, creditToAsk);
+                }
+            };
+            Client.MessageListener messageListener = (correlationId, offset, data) -> {
+                consumed.mark();
+                latency.update((System.nanoTime() - readLong(data.getBodyAsBinary())) / 1000L);
+            };
+
             String stream = stream();
-            LOGGER.info("Starting consuming on {}", stream);
-            consumer.subscribe(consumerSequence++, stream, this.offset, this.initialCredit);
-        }
+            Address consumerAddress = consumerBrokerLocator.get(stream);
+            Client consumer = client(new Client.ClientParameters()
+                    .host(consumerAddress.host).port(consumerAddress.port)
+                    .chunkListener(chunkListener)
+                    .messageListener(messageListener));
+
+            LOGGER.info("Connecting to {} to consume from {}", consumerAddress, stream);
+            consumer.subscribe(consumerSequence.getAndIncrement(), stream, this.offset, this.initialCredit);
+
+            return consumer;
+        }).collect(Collectors.toList()));
+
+        shutdownService.wrap(closeStep("Closing consumers", () -> {
+            for (Client consumer : consumers) {
+                consumer.close();
+            }
+        }));
 
         ExecutorService executorService;
         if (this.producers > 0) {
@@ -507,7 +517,9 @@ public class StreamPerfTest implements Callable<Integer> {
     }
 
     private Client client(Client.ClientParameters parameters) {
-        return new Client(parameters.eventLoopGroup(this.eventLoopGroup).codec(codec));
+        return new Client(parameters.eventLoopGroup(this.eventLoopGroup).codec(codec)
+                .username(this.username).password(this.password)
+        );
     }
 
     private String stream() {
@@ -518,14 +530,132 @@ public class StreamPerfTest implements Callable<Integer> {
         return addresses.get(addressDispatching++ % addresses.size());
     }
 
-    private static class Address {
+    interface BrokerLocator {
+
+        Address get(String hint);
+
+    }
+
+    interface Topology {
+
+        Client.StreamMetadata getMetadata(String stream);
+
+    }
+
+    static class Address {
 
         final String host;
         final int port;
 
-        private Address(String host, int port) {
+        Address(String host, int port) {
+            Objects.requireNonNull(host, "host argument cannot be null");
             this.host = host;
             this.port = port;
+        }
+
+        @Override
+        public String toString() {
+            return host + ":" + port;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Address address = (Address) o;
+            return port == address.port &&
+                    host.equals(address.host);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(host, port);
+        }
+    }
+
+    static class RoundRobinAddressLocator implements BrokerLocator {
+
+        private final List<Address> addresses;
+        private final AtomicInteger sequence = new AtomicInteger(0);
+
+        RoundRobinAddressLocator(List<Address> addresses) {
+            this.addresses = addresses;
+        }
+
+        @Override
+        public Address get(String hintIgnored) {
+            return addresses.get(sequence.getAndIncrement() % addresses.size());
+        }
+    }
+
+    static class LeaderOnlyBrokerLocator implements BrokerLocator {
+
+        private final Topology topology;
+
+        LeaderOnlyBrokerLocator(Topology topology) {
+            this.topology = topology;
+        }
+
+        @Override
+        public Address get(String hint) {
+            Client.StreamMetadata metadata = topology.getMetadata(hint);
+            if (metadata == null || metadata.getResponseCode() != Constants.RESPONSE_CODE_OK) {
+                throw new IllegalArgumentException("Could not find metadata for stream: " + hint);
+            }
+            return new Address(metadata.getLeader().getHost(), metadata.getLeader().getPort());
+        }
+    }
+
+    static class RoundRobinReplicaBrokerLocator implements BrokerLocator {
+
+        private final Topology topology;
+        private final Map<String, AtomicInteger> sequences = new HashMap<>();
+
+        RoundRobinReplicaBrokerLocator(Topology topology) {
+            this.topology = topology;
+        }
+
+
+        @Override
+        public Address get(String hint) {
+            Client.StreamMetadata metadata = topology.getMetadata(hint);
+            if (metadata == null || metadata.getResponseCode() != Constants.RESPONSE_CODE_OK) {
+                throw new IllegalArgumentException("Could not find metadata for stream: " + hint);
+            }
+            if (metadata.getReplicas() == null || metadata.getReplicas().isEmpty()) {
+                return new Address(metadata.getLeader().getHost(), metadata.getLeader().getPort());
+            } else {
+                AtomicInteger sequence = sequences.computeIfAbsent(hint, s -> new AtomicInteger(0));
+                Client.Broker replica = metadata.getReplicas().get(sequence.getAndIncrement() % metadata.getReplicas().size());
+                return new Address(replica.getHost(), replica.getPort());
+            }
+        }
+    }
+
+    static class MapTopology implements Topology {
+
+        private static final Comparator<Client.Broker> BROKER_COMPARATOR = Comparator.comparing(Client.Broker::getHost)
+                .thenComparingInt(Client.Broker::getPort);
+
+        private final Map<String, Client.StreamMetadata> metadata;
+
+        MapTopology(Map<String, Client.StreamMetadata> metadata) {
+            for (Map.Entry<String, Client.StreamMetadata> entry : metadata.entrySet()) {
+                ArrayList<Client.Broker> replicas = new ArrayList<>(entry.getValue().getReplicas());
+                Collections.sort(replicas, BROKER_COMPARATOR);
+                entry.setValue(new Client.StreamMetadata(
+                        entry.getValue().getStream(), entry.getValue().getResponseCode(),
+                        entry.getValue().getLeader(),
+                        replicas
+                ));
+            }
+
+            this.metadata = metadata;
+        }
+
+        @Override
+        public Client.StreamMetadata getMetadata(String stream) {
+            return metadata.get(stream);
         }
     }
 

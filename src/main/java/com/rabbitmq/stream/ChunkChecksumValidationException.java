@@ -21,6 +21,7 @@ public class ChunkChecksumValidationException extends ClientException {
 
 
     public ChunkChecksumValidationException(long expected, long computed) {
+        super("Expecting " + expected + ", got " + computed);
         this.expected = expected;
         this.computed = computed;
     }
