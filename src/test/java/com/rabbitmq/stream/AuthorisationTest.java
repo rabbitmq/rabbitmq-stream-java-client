@@ -47,8 +47,8 @@ public class AuthorisationTest {
     }
 
     @Test
-    void createStreamWithAuthorisedNameShouldSucceed() throws Exception {
-        Client deletionClient = cf.get(new Client.ClientParameters().virtualHost(VH));
+    void createStreamWithAuthorisedNameShouldSucceed() {
+        Client deletionClient = configurationClient();
         Client client = client();
         IntStream.range(0, 30).forEach(i -> {
             String stream = "stream-authorized" + i;
@@ -74,7 +74,7 @@ public class AuthorisationTest {
 
     @Test
     void deleteStreamWithAuthorisedNameShouldSucceed() {
-        Client creationClient = cf.get(new Client.ClientParameters().virtualHost(VH));
+        Client creationClient = configurationClient();
         Client client = client();
         IntStream.range(0, 30).forEach(i -> {
             String stream = "stream-authorized" + i;
@@ -90,7 +90,7 @@ public class AuthorisationTest {
 
     @Test
     void deleteStreamWithUnauthorisedNameShouldFail() {
-        Client creationClient = cf.get(new Client.ClientParameters().virtualHost(VH));
+        Client creationClient = configurationClient();
         Client client = client();
         IntStream.range(0, 30).forEach(i -> {
             String stream = "not-authorized" + i;
@@ -101,7 +101,55 @@ public class AuthorisationTest {
             response = client.delete(stream);
             assertThat(response.isOk()).isFalse();
             assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_ACCESS_REFUSED);
+
+            response = creationClient.delete(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
         });
+    }
+
+    @Test
+    void subscribeToAuthorisedStreamShouldSucceed() {
+        Client configurationClient = configurationClient();
+        Client client = client();
+        IntStream.range(0, 30).forEach(i -> {
+            String stream = "stream-authorized" + i;
+            Client.Response response = configurationClient.create(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+
+            response = client.subscribe(1, stream, OffsetSpecification.first(), 10);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+
+            response = configurationClient.delete(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+        });
+    }
+
+    @Test
+    void subscribeToUnauthorisedStreamShouldFail() {
+        Client configurationClient = configurationClient();
+        Client client = client();
+        IntStream.range(0, 30).forEach(i -> {
+            String stream = "not-authorized" + i;
+            Client.Response response = configurationClient.create(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+
+            response = client.subscribe(1, stream, OffsetSpecification.first(), 10);
+            assertThat(response.isOk()).isFalse();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_ACCESS_REFUSED);
+
+            response = configurationClient.delete(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+        });
+    }
+
+    Client configurationClient() {
+        return cf.get(new Client.ClientParameters().virtualHost(VH));
     }
 
     Client client() {
