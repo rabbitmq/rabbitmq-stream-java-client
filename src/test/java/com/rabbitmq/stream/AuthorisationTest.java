@@ -19,8 +19,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -44,6 +48,14 @@ public class AuthorisationTest {
     static void tearDown() throws Exception {
         Host.rabbitmqctl("delete_user stream");
         Host.rabbitmqctl("delete_vhost test_stream");
+    }
+
+    static boolean await(CountDownLatch latch) {
+        try {
+            return latch.await(10, SECONDS);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test
@@ -148,12 +160,72 @@ public class AuthorisationTest {
         });
     }
 
+    @Test
+    void publishToAuthorisedStreamShouldSucceed() {
+        Client configurationClient = configurationClient();
+
+        IntStream.range(0, 30).forEach(i -> {
+            String stream = "stream-authorized" + i;
+            Client.Response response = configurationClient.create(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+
+            int messageCount = 1000;
+            CountDownLatch publishConfirmLatch = new CountDownLatch(messageCount);
+            AtomicInteger publishErrorCount = new AtomicInteger(0);
+            Client client = client(new Client.ClientParameters()
+                    .confirmListener(publishingId -> publishConfirmLatch.countDown())
+                    .publishErrorListener((publishingId, errorCode) -> publishErrorCount.incrementAndGet()));
+
+            IntStream.range(0, messageCount).forEach(j -> client.publish(stream, "hello".getBytes(StandardCharsets.UTF_8)));
+
+            assertThat(await(publishConfirmLatch)).isTrue();
+            assertThat(publishErrorCount.get()).isZero();
+
+            response = configurationClient.delete(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+        });
+    }
+
+    @Test
+    void publishToUnauthorisedStreamShouldFail() {
+        Client configurationClient = configurationClient();
+
+        IntStream.range(0, 30).forEach(i -> {
+            String stream = "not-authorized" + i;
+            Client.Response response = configurationClient.create(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+
+            int messageCount = 1000;
+            CountDownLatch publishErrorLatch = new CountDownLatch(messageCount);
+            AtomicInteger publishConfirmCount = new AtomicInteger(0);
+            Client client = client(new Client.ClientParameters()
+                    .confirmListener(publishingId -> publishConfirmCount.incrementAndGet())
+                    .publishErrorListener((publishingId, errorCode) -> publishErrorLatch.countDown()));
+
+            IntStream.range(0, messageCount).forEach(j -> client.publish(stream, "hello".getBytes(StandardCharsets.UTF_8)));
+
+            assertThat(await(publishErrorLatch)).isTrue();
+            assertThat(publishConfirmCount.get()).isZero();
+
+            response = configurationClient.delete(stream);
+            assertThat(response.isOk()).isTrue();
+            assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+        });
+    }
+
     Client configurationClient() {
         return cf.get(new Client.ClientParameters().virtualHost(VH));
     }
 
     Client client() {
-        return cf.get(new Client.ClientParameters().virtualHost(VH).username(USERNAME).password(PASSWORD));
+        return client(new Client.ClientParameters());
+    }
+
+    Client client(Client.ClientParameters parameters) {
+        return cf.get(parameters.virtualHost(VH).username(USERNAME).password(PASSWORD));
     }
 
 }
