@@ -69,6 +69,34 @@ public class ClientTest {
     }
 
     @Test
+    void subscriptionListenerIsCalledWhenStreamIsDeletedWithAmqp() throws Exception {
+        int subscriptionCount = 1;
+        String t = UUID.randomUUID().toString();
+        CountDownLatch subscriptionListenerLatch = new CountDownLatch(subscriptionCount);
+        List<Integer> cancelledSubscriptions = new CopyOnWriteArrayList<>();
+        Client subscriptionClient = cf.get(new Client.ClientParameters().subscriptionListener((subscriptionId, deletedStream, reason) -> {
+            if (t.equals(deletedStream) && reason == Constants.RESPONSE_CODE_STREAM_DELETED) {
+                cancelledSubscriptions.add(subscriptionId);
+                subscriptionListenerLatch.countDown();
+            }
+        }));
+
+        try (Connection c = new ConnectionFactory().newConnection()) {
+            Channel ch = c.createChannel();
+            ch.queueDeclare(t, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
+
+            IntStream.range(0, subscriptionCount).forEach(i -> subscriptionClient.subscribe(i, t, OffsetSpecification.first(), 10));
+
+            ch.queueDelete(t);
+
+            assertThat(subscriptionListenerLatch.await(5, SECONDS)).isTrue();
+            assertThat(cancelledSubscriptions).hasSize(subscriptionCount).containsAll(
+                    IntStream.range(0, subscriptionCount).boxed().collect(Collectors.toList())
+            );
+        }
+    }
+
+    @Test
     void subscriptionListenerIsCalledWhenStreamIsDeleted() throws Exception {
         class TestParameters {
             final boolean sameClient;
@@ -616,6 +644,7 @@ public class ClientTest {
         IntStream.range(0, messageCount).forEach(i -> publishingIds.add(client.publish(nonExistingStream, ("" + i).getBytes())));
 
         assertThat(latch.await(10, SECONDS)).isTrue();
+        assertThat(confirms.get()).isZero();
         assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
         assertThat(publishingIdErrors).hasSameSizeAs(publishingIds).hasSameElementsAs(publishingIdErrors);
     }
@@ -646,6 +675,7 @@ public class ClientTest {
             IntStream.range(0, messageCount).forEach(i -> publishingIds.add(client.publish(nonStreamQueue, ("" + i).getBytes())));
 
             assertThat(latch.await(10, SECONDS)).isTrue();
+            assertThat(confirms.get()).isZero();
             assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
             assertThat(publishingIdErrors).hasSameSizeAs(publishingIds).hasSameElementsAs(publishingIdErrors);
         }
@@ -673,6 +703,50 @@ public class ClientTest {
             client.subscribe(1, q, OffsetSpecification.first(), 10);
             assertThat(consumedLatch.await(10, SECONDS)).isTrue();
         }
+    }
+
+    @Test
+    void publishThenDeleteStreamShouldTriggerPublishErrorListenerWhenPublisherAgain() throws Exception {
+        String s = UUID.randomUUID().toString();
+        Client configurer = cf.get();
+        Client.Response response = configurer.create(s);
+        assertThat(response.isOk()).isTrue();
+        int messageCount = 10;
+        AtomicInteger confirms = new AtomicInteger(0);
+        Set<Short> responseCodes = ConcurrentHashMap.newKeySet(1);
+        Set<Long> publishingIdErrors = ConcurrentHashMap.newKeySet(messageCount);
+        CountDownLatch confirmLatch = new CountDownLatch(messageCount);
+        CountDownLatch publishErrorLatch = new CountDownLatch(messageCount);
+        Client publisher = cf.get(new Client.ClientParameters()
+                .confirmListener(publishingId -> {
+                    confirms.incrementAndGet();
+                    confirmLatch.countDown();
+                })
+                .publishErrorListener((publishingId, responseCode) -> {
+                    publishingIdErrors.add(publishingId);
+                    responseCodes.add(responseCode);
+                    publishErrorLatch.countDown();
+                })
+        );
+
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(s, ("first wave" + i).getBytes()));
+
+        assertThat(confirmLatch.await(10, SECONDS)).isTrue();
+        assertThat(confirms.get()).isEqualTo(messageCount);
+
+        response = configurer.delete(s);
+        assertThat(response.isOk()).isTrue();
+
+        // let the event some time to propagate
+        Thread.sleep(1000);
+
+        Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
+        IntStream.range(0, messageCount).forEach(i -> publishingIds.add(publisher.publish(s, ("second wave" + i).getBytes())));
+
+        assertThat(publishErrorLatch.await(10, SECONDS)).isTrue();
+        assertThat(confirms.get()).isEqualTo(messageCount);
+        assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+        assertThat(publishingIdErrors).hasSameSizeAs(publishingIds).hasSameElementsAs(publishingIdErrors);
     }
 
     @Test
