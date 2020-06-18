@@ -16,8 +16,10 @@ package com.rabbitmq.stream;
 
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import org.apiguardian.api.API;
 import org.junit.jupiter.api.extension.*;
 
+import java.lang.annotation.*;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
@@ -27,6 +29,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.apiguardian.api.API.Status.STABLE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -70,6 +73,16 @@ public class TestUtils {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
+    }
+
+    @Target({ElementType.TYPE, ElementType.METHOD})
+    @Retention(RetentionPolicy.RUNTIME)
+    @Documented
+    @ExtendWith(DisabledIfRabbitMqCtlNotSetCondition.class)
+    @API(status = STABLE, since = "5.1")
+    public @interface DisabledIfRabbitMqCtlNotSet {
+
+
     }
 
     static class StreamTestInfrastructureExtension implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback {
@@ -180,4 +193,15 @@ public class TestUtils {
         }
     }
 
+    static class DisabledIfRabbitMqCtlNotSetCondition implements ExecutionCondition {
+
+        @Override
+        public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+            if (Host.rabbitmqctlCommand() == null) {
+                return ConditionEvaluationResult.disabled("rabbitmqctl.bin system property not set");
+            } else {
+                return ConditionEvaluationResult.enabled("rabbitmqctl.bin system property is set");
+            }
+        }
+    }
 }
