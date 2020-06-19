@@ -39,6 +39,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -276,6 +277,32 @@ public class ClientTest {
         response = client.subscribe(1, stream, OffsetSpecification.first(), 20);
         assertThat(response.isOk()).isFalse();
         assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS);
+    }
+
+    @Test
+    void creditToUnknownSubscriptionShouldTriggerCreditNotification() throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicInteger creditNotificationCount = new AtomicInteger(0);
+        AtomicInteger caughtSubscriptionId = new AtomicInteger(0);
+        AtomicReference<Short> caughtResponseCode = new AtomicReference<>();
+        Client client = cf.get(new Client.ClientParameters()
+                .creditNotification((subscriptionId, responseCode) -> {
+                    creditNotificationCount.incrementAndGet();
+                    caughtSubscriptionId.set(subscriptionId);
+                    caughtResponseCode.set(responseCode);
+                    latch.countDown();
+                }));
+        Client.Response response = client.subscribe(1, stream, OffsetSpecification.first(), 20);
+        assertThat(response.isOk()).isTrue();
+        assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+
+        client.credit(1, 1);
+        client.credit(42, credit);
+
+        assertThat(latch.await(10, SECONDS)).isTrue();
+        assertThat(creditNotificationCount.get()).isEqualTo(1);
+        assertThat(caughtSubscriptionId.get()).isEqualTo(42);
+        assertThat(caughtResponseCode.get()).isEqualTo(Constants.RESPONSE_CODE_SUBSCRIPTION_ID_DOES_NOT_EXIST);
     }
 
     @Test

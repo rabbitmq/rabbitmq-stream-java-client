@@ -61,6 +61,8 @@ public class Client implements AutoCloseable {
 
     private final SubscriptionListener subscriptionListener;
 
+    private final CreditNotification creditNotification;
+
     private final Codec codec;
 
     private final Channel channel;
@@ -116,6 +118,7 @@ public class Client implements AutoCloseable {
         this.chunkListener = parameters.chunkListener;
         this.messageListener = parameters.messageListener;
         this.subscriptionListener = parameters.subscriptionListener;
+        this.creditNotification = parameters.creditNotification;
         this.codec = parameters.codec == null ? Codecs.DEFAULT : parameters.codec;
         this.saslConfiguration = parameters.saslConfiguration;
         this.credentialsProvider = parameters.credentialsProvider;
@@ -218,6 +221,21 @@ public class Client implements AutoCloseable {
         }
     }
 
+    static void handleCreditNotification(ByteBuf bb, int frameSize, CreditNotification creditNotification) {
+        int read = 2 + 2; // already read the command id and version
+
+        short responseCode = bb.readShort();
+        read += 2;
+        int subscriptionId = bb.readInt();
+        read += 4;
+
+        creditNotification.handle(subscriptionId, responseCode);
+
+        if (read != frameSize) {
+            throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+        }
+    }
+
     static void handlePeerProperties(ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
         int read = 2 + 2; // already read the command id and version
         int correlationId = bb.readInt();
@@ -229,7 +247,7 @@ public class Client implements AutoCloseable {
             if (read != frameSize) {
                 bb.readBytes(new byte[frameSize - read]);
             }
-            // FIXME: should we unlock the request and notify that there's something wrong?
+            // FIXME: should we unblock the request and notify that there's something wrong?
             throw new ClientException("Unexpected response code for SASL handshake response: " + responseCode);
         }
 
@@ -1151,6 +1169,12 @@ public class Client implements AutoCloseable {
 
     }
 
+    public interface CreditNotification {
+
+        void handle(int subscriptionId, short responseCode);
+
+    }
+
     private static class TuneState {
 
         private final CountDownLatch latch = new CountDownLatch(1);
@@ -1334,6 +1358,8 @@ public class Client implements AutoCloseable {
         private SubscriptionListener subscriptionListener = (subscriptionId, stream, reason) -> {
 
         };
+        private CreditNotification creditNotification = (subscriptionId, responseCode) -> LOGGER.warn("Received notification for subscription {}: {}", subscriptionId, responseCode);
+
         private Codec codec;
         // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
         private EventLoopGroup eventLoopGroup;
@@ -1375,6 +1401,11 @@ public class Client implements AutoCloseable {
 
         public ClientParameters subscriptionListener(SubscriptionListener subscriptionListener) {
             this.subscriptionListener = subscriptionListener;
+            return this;
+        }
+
+        public ClientParameters creditNotification(CreditNotification creditNotification) {
+            this.creditNotification = creditNotification;
             return this;
         }
 
@@ -1675,6 +1706,8 @@ public class Client implements AutoCloseable {
                     task = () -> handleHeartbeat(frameSize);
                 } else if (commandId == COMMAND_PEER_PROPERTIES) {
                     task = () -> handlePeerProperties(m, frameSize, outstandingRequests);
+                } else if (commandId == COMMAND_CREDIT) {
+                    task = () -> handleCreditNotification(m, frameSize, creditNotification);
                 } else if (commandId == COMMAND_SUBSCRIBE || commandId == COMMAND_UNSUBSCRIBE
                         || commandId == COMMAND_CREATE_STREAM || commandId == COMMAND_DELETE_STREAM
                         || commandId == COMMAND_OPEN) {
