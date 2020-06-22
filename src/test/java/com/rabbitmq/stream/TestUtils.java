@@ -139,6 +139,11 @@ public class TestUtils {
 
         @Override
         public void afterEach(ExtensionContext context) throws Exception {
+            ClientFactory clientFactory = (ClientFactory) store(context).get("testClientFactory");
+            if (clientFactory != null) {
+                clientFactory.close();
+            }
+
             try {
                 Field streamField = context.getTestInstance().get().getClass().getDeclaredField("stream");
                 streamField.setAccessible(true);
@@ -150,11 +155,6 @@ public class TestUtils {
                 store(context).remove("testMethodStream");
             } catch (NoSuchFieldException e) {
 
-            }
-
-            ClientFactory clientFactory = (ClientFactory) store(context).get("testClientFactory");
-            if (clientFactory != null) {
-                clientFactory.close();
             }
         }
 
