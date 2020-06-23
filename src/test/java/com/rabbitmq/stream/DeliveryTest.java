@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import org.junit.jupiter.api.Test;
@@ -129,7 +130,7 @@ public class DeliveryTest {
                         chunkCountInCallback.incrementAndGet();
                     },
                     (subscriptionId, offset, message) -> messageCountInCallback.incrementAndGet(),
-                    frameSize, NO_OP_CODEC, subscriptionOffsets, ChunkChecksum.NO_OP);
+                    frameSize, NO_OP_CODEC, subscriptionOffsets, ChunkChecksum.NO_OP, NoOpMetricsCollector.SINGLETON);
 
             assertThat(chunkCountInCallback).hasValue(1);
             assertThat(messageCountInCallback).hasValue(nbMessages - (subscriptionOffset - chunkOffset));

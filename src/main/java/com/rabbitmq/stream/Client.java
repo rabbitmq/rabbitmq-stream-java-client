@@ -14,6 +14,8 @@
 
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.metrics.MetricsCollector;
+import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import com.rabbitmq.stream.sasl.*;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
@@ -103,6 +105,8 @@ public class Client implements AutoCloseable {
 
     private final Map<String, String> serverProperties;
 
+    private final MetricsCollector metricsCollector;
+
     private final String NETTY_HANDLER_FLUSH_CONSOLIDATION = FlushConsolidationHandler.class.getSimpleName();
     private final String NETTY_HANDLER_FRAME_DECODER = LengthFieldBasedFrameDecoder.class.getSimpleName();
     private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
@@ -123,6 +127,7 @@ public class Client implements AutoCloseable {
         this.saslConfiguration = parameters.saslConfiguration;
         this.credentialsProvider = parameters.credentialsProvider;
         this.chunkChecksum = parameters.chunkChecksum;
+        this.metricsCollector = parameters.metricsCollector;
 
         EventLoopGroup eventLoopGroup;
         if (parameters.eventLoopGroup == null) {
@@ -436,7 +441,8 @@ public class Client implements AutoCloseable {
     }
 
     static void handleDeliver(ByteBuf bb, Client client, ChunkListener chunkListener, MessageListener messageListener,
-                              int frameSize, Codec codec, List<SubscriptionOffset> subscriptionOffsets, ChunkChecksum chunkChecksum) {
+                              int frameSize, Codec codec, List<SubscriptionOffset> subscriptionOffsets, ChunkChecksum chunkChecksum,
+                              MetricsCollector metricsCollector) {
         int read = 2 + 2; // already read the command id and version
         int subscriptionId = bb.readInt();
         read += 4;
@@ -494,6 +500,9 @@ public class Client implements AutoCloseable {
         // TODO handle exception in exception handler
         chunkChecksum.checksum(bb, dataLength, crc);
 
+        metricsCollector.chunk(numEntries);
+        metricsCollector.consume(numEntries);
+
         byte[] data;
         while (numRecords != 0) {
 /*
@@ -532,10 +541,11 @@ public class Client implements AutoCloseable {
         }
     }
 
-    static void handleConfirm(ByteBuf bb, ConfirmListener confirmListener, int frameSize) {
+    static void handleConfirm(ByteBuf bb, ConfirmListener confirmListener, int frameSize, MetricsCollector metricsCollector) {
         int read = 4; // already read the command id and version
         int publishingIdCount = bb.readInt();
         read += 4;
+        metricsCollector.publishConfirm(publishingIdCount);
         long publishingId = -1;
         while (publishingIdCount != 0) {
             publishingId = bb.readLong();
@@ -548,10 +558,11 @@ public class Client implements AutoCloseable {
         }
     }
 
-    static void handlePublishError(ByteBuf bb, PublishErrorListener publishErrorListener, int frameSize) {
+    static void handlePublishError(ByteBuf bb, PublishErrorListener publishErrorListener, int frameSize, MetricsCollector metricsCollector) {
         int read = 4; // already read the command id and version
-        long publishingErrorCount = bb.readInt();
+        int publishingErrorCount = bb.readInt();
         read += 4;
+        metricsCollector.publishError(publishingErrorCount);
         long publishingId = -1;
         short code = -1;
         while (publishingErrorCount != 0) {
@@ -977,6 +988,8 @@ public class Client implements AutoCloseable {
         out.writeShort(VERSION_0);
         out.writeShort(stream.length());
         out.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
+        int messageCount = toExcluded - fromIncluded;
+        metricsCollector.publish(messageCount);
         out.writeInt(toExcluded - fromIncluded);
         for (int i = fromIncluded; i < toExcluded; i++) {
             Codec.EncodedMessage messageToPublish = messages.get(i);
@@ -1368,6 +1381,7 @@ public class Client implements AutoCloseable {
         private ChannelCustomizer channelCustomizer = ch -> {
         };
         private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
+        private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
 
         public ClientParameters host(String host) {
             this.host = host;
@@ -1485,6 +1499,11 @@ public class Client implements AutoCloseable {
 
         public ClientParameters clientProperty(String key, String value) {
             this.clientProperties.put(key, value);
+            return this;
+        }
+
+        public ClientParameters metricsCollector(MetricsCollector metricsCollector) {
+            this.metricsCollector = metricsCollector;
             return this;
         }
     }
@@ -1685,11 +1704,12 @@ public class Client implements AutoCloseable {
                 }
             } else {
                 if (commandId == COMMAND_PUBLISH_CONFIRM) {
-                    task = () -> handleConfirm(m, confirmListener, frameSize);
+                    task = () -> handleConfirm(m, confirmListener, frameSize, metricsCollector);
                 } else if (commandId == COMMAND_DELIVER) {
-                    task = () -> handleDeliver(m, Client.this, chunkListener, messageListener, frameSize, codec, subscriptionOffsets, chunkChecksum);
+                    task = () -> handleDeliver(m, Client.this, chunkListener, messageListener,
+                            frameSize, codec, subscriptionOffsets, chunkChecksum, metricsCollector);
                 } else if (commandId == COMMAND_PUBLISH_ERROR) {
-                    task = () -> handlePublishError(m, publishErrorListener, frameSize);
+                    task = () -> handlePublishError(m, publishErrorListener, frameSize, metricsCollector);
                 } else if (commandId == COMMAND_METADATA_UPDATE) {
                     task = () -> handleMetadataUpdate(m, frameSize, subscriptions, subscriptionListener);
                 } else if (commandId == COMMAND_METADATA) {

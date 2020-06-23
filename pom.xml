@@ -47,6 +47,7 @@
         <netty.version>4.1.50.Final</netty.version>
         <proton-j.version>0.33.5</proton-j.version>
         <metrics.version>4.1.9</metrics.version>
+        <micrometer.version>1.5.1</micrometer.version>
         <swiftmq-client.version>12.1.0</swiftmq-client.version>
         <picocli.version>4.3.2</picocli.version>
         <guava.version>29.0-jre</guava.version>
@@ -127,6 +128,13 @@
             <groupId>io.dropwizard.metrics</groupId>
             <artifactId>metrics-core</artifactId>
             <version>${metrics.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <version>${micrometer.version}</version>
             <scope>compile</scope>
         </dependency>
 
