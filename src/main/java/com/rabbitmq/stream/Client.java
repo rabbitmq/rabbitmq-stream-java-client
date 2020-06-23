@@ -183,13 +183,13 @@ public class Client implements AutoCloseable {
         int read = 2 + 2; // already read the command id and version
         short code = bb.readShort();
         read += 2;
-        if (code == RESPONSE_CODE_STREAM_DELETED) {
+        if (code == RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
             String stream = readString(bb);
             read += (2 + stream.length());
             LOGGER.debug("Stream {} has been deleted", stream);
             List<Integer> subscriptionIds = subscriptions.removeSubscriptionsFor(stream);
             for (Integer subscriptionId : subscriptionIds) {
-                subscriptionListener.subscriptionCancelled(subscriptionId, stream, RESPONSE_CODE_STREAM_DELETED);
+                subscriptionListener.subscriptionCancelled(subscriptionId, stream, RESPONSE_CODE_STREAM_NOT_AVAILABLE);
             }
 
         } else {

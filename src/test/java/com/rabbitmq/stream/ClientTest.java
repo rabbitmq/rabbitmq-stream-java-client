@@ -76,7 +76,7 @@ public class ClientTest {
         CountDownLatch subscriptionListenerLatch = new CountDownLatch(subscriptionCount);
         List<Integer> cancelledSubscriptions = new CopyOnWriteArrayList<>();
         Client subscriptionClient = cf.get(new Client.ClientParameters().subscriptionListener((subscriptionId, deletedStream, reason) -> {
-            if (t.equals(deletedStream) && reason == Constants.RESPONSE_CODE_STREAM_DELETED) {
+            if (t.equals(deletedStream) && reason == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
                 cancelledSubscriptions.add(subscriptionId);
                 subscriptionListenerLatch.countDown();
             }
@@ -121,7 +121,7 @@ public class ClientTest {
             CountDownLatch subscriptionListenerLatch = new CountDownLatch(testParameter.subscriptionCount);
             List<Integer> cancelledSubscriptions = new CopyOnWriteArrayList<>();
             Client subscriptionClient = cf.get(new Client.ClientParameters().subscriptionListener((subscriptionId, deletedStream, reason) -> {
-                if (t.equals(deletedStream) && reason == Constants.RESPONSE_CODE_STREAM_DELETED) {
+                if (t.equals(deletedStream) && reason == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
                     cancelledSubscriptions.add(subscriptionId);
                     subscriptionListenerLatch.countDown();
                 }
