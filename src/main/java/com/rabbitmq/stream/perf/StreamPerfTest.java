@@ -14,35 +14,24 @@
 
 package com.rabbitmq.stream.perf;
 
-import com.codahale.metrics.*;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
-import io.micrometer.core.instrument.Timer;
-import io.micrometer.core.instrument.dropwizard.DropwizardConfig;
-import io.micrometer.core.instrument.dropwizard.DropwizardMeterRegistry;
-import io.micrometer.core.instrument.util.HierarchicalNameMapper;
+import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
-import java.io.*;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -120,8 +109,11 @@ public class StreamPerfTest implements Callable<Integer> {
     private List<Address> addresses;
     @CommandLine.Option(names = {"--version", "-v"}, description = "show version information", defaultValue = "false")
     private boolean version;
+    @CommandLine.Option(names = {"--summary-file", "-sf"}, description = "generate a summary file with metrics", defaultValue = "false")
+    private boolean summaryFile;
 
     private MetricsCollector metricsCollector;
+    private PerformanceMetrics performanceMetrics;
 
     // constructor for completion script generation
     public StreamPerfTest() {
@@ -142,120 +134,6 @@ public class StreamPerfTest implements Callable<Integer> {
             String[] hostPort = address.split(":");
             return new Address(hostPort[0], Integer.parseInt(hostPort[1]));
         }).collect(Collectors.toList());
-    }
-
-    private static Closeable startMetricsReporting(String header, MetricRegistry metrics) throws IOException {
-        String currentFilename = "stream-perf-test-current.txt";
-        String finalFilename = "stream-perf-test-" + new SimpleDateFormat("yyyy-MM-dd-HHmmss").format(new Date()) + ".txt";
-        Path currentFile = Paths.get(currentFilename);
-        if (Files.exists(currentFile)) {
-            if (!Files.deleteIfExists(Paths.get(currentFilename))) {
-                LOGGER.warn("Could not delete file {}", currentFilename);
-            }
-        }
-        OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(currentFilename));
-        PrintStream printStream = new PrintStream(outputStream);
-        if (header != null && !header.trim().isEmpty()) {
-            printStream.println(header);
-        }
-
-        ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
-
-        String metricPublished = "rabbitmqStreamPublished";
-        String metricConfirmed = "rabbitmqStreamConfirmed";
-        String metricConsumed = "rabbitmqStreamConsumed";
-        String metricChunkSize = "rabbitmqStreamChunk_size";
-        String metricLatency = "rabbitmqStreamLatency";
-
-        Set<String> allMetrics = new HashSet<>(Arrays.asList(metricPublished, metricConfirmed, metricConsumed,
-                metricChunkSize, metricLatency));
-
-        Map<String, String> metersNamesAndLabels = new LinkedHashMap<>();
-        metersNamesAndLabels.put(metricPublished, "published");
-        metersNamesAndLabels.put(metricConfirmed, "confirmed");
-        metersNamesAndLabels.put(metricConsumed, "consumed");
-
-        ConsoleReporter fileReporter = ConsoleReporter.forRegistry(metrics)
-                .filter((name, metric) -> allMetrics.contains(name))
-                .convertRatesTo(TimeUnit.SECONDS)
-                .convertDurationsTo(TimeUnit.MILLISECONDS)
-                .outputTo(printStream)
-                .scheduleOn(scheduledExecutorService)
-                .shutdownExecutorOnStop(false)
-                .build();
-
-        SortedMap<String, Meter> registryMeters = metrics.getMeters();
-
-        Map<String, Meter> meters = new LinkedHashMap<>(metersNamesAndLabels.size());
-        metersNamesAndLabels.entrySet().forEach(entry -> meters.put(entry.getValue(), registryMeters.get(entry.getKey())));
-        Function<Map.Entry<String, Meter>, String> formatMeter = entry ->
-                String.format("%s %.0f msg/s, ", entry.getKey(), entry.getValue().getMeanRate()
-                );
-
-        Histogram chunkSize = metrics.getHistograms().get(metricChunkSize);
-        Function<Histogram, String> formatChunkSize = histogram -> String.format("chunk size %.0f", histogram.getSnapshot().getMean());
-
-        com.codahale.metrics.Timer latency = metrics.getTimers().get(metricLatency);
-
-        Function<Number, Number> convertDuration = in -> in instanceof Long ? in.longValue() / 1000 : in.doubleValue() / 1000;
-        Function<com.codahale.metrics.Timer, String> formatLatency = timer -> {
-            Snapshot snapshot = timer.getSnapshot();
-            return String.format(
-                    "latency min/median/75th/95th/99th %.0f/%.0f/%.0f/%.0f/%.0f µs",
-                    convertDuration.apply(snapshot.getMin()), convertDuration.apply(snapshot.getMedian()),
-                    convertDuration.apply(snapshot.get75thPercentile()),
-                    convertDuration.apply(snapshot.get95thPercentile()), convertDuration.apply(snapshot.get99thPercentile())
-            );
-        };
-
-        fileReporter.start(1, TimeUnit.SECONDS);
-
-        AtomicInteger reportCount = new AtomicInteger(1);
-        ScheduledFuture<?> consoleReportingTask = scheduledExecutorService.scheduleAtFixedRate(() -> {
-            try {
-                StringBuilder builder = new StringBuilder();
-                builder.append(reportCount.get()).append(", ");
-                meters.entrySet().forEach(entry -> builder.append(formatMeter.apply(entry)));
-                builder.append(formatLatency.apply(latency)).append(", ");
-                builder.append(formatChunkSize.apply(chunkSize));
-                System.out.println(builder);
-                reportCount.incrementAndGet();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }, 1, 1, TimeUnit.SECONDS);
-
-        long start = System.currentTimeMillis();
-
-        return () -> {
-            consoleReportingTask.cancel(true);
-            fileReporter.stop();
-            printStream.close();
-
-            Files.move(currentFile, currentFile.resolveSibling(finalFilename));
-
-            scheduledExecutorService.shutdownNow();
-
-            long duration = System.currentTimeMillis() - start;
-
-            Function<Map.Entry<String, Meter>, String> formatMeterSummary = entry -> String.format("%s %d msg/s, ",
-                    entry.getKey(),
-                    entry.getValue().getCount() * 1000 / duration);
-
-            Function<com.codahale.metrics.Timer, String> formatLatencySummary = histogram -> String.format(
-                    "latency 95th %.0f µs",
-                    convertDuration.apply(latency.getSnapshot().get95thPercentile())
-            );
-
-            StringBuilder builder = new StringBuilder("Summary: ");
-            meters.entrySet().forEach(entry -> builder.append(formatMeterSummary.apply(entry)));
-            builder.append(formatLatencySummary.apply(latency)).append(", ");
-            builder.append(formatChunkSize.apply(chunkSize));
-            System.out.println();
-            System.out.println(builder);
-
-        };
-
     }
 
     private static void versionInformation() {
@@ -316,28 +194,11 @@ public class StreamPerfTest implements Callable<Integer> {
         this.addresses = addresses(this.addrs);
         this.codec = createCodec(this.codecClass);
 
-        DropwizardConfig dropwizardConfig = new DropwizardConfig() {
-            @Override
-            public String prefix() {
-                return "";
-            }
-
-            @Override
-            public String get(String key) {
-                return null;
-            }
-        };
-        MetricRegistry metrics = new MetricRegistry();
-        DropwizardMeterRegistry meterRegistry = new DropwizardMeterRegistry(dropwizardConfig, metrics,
-                HierarchicalNameMapper.DEFAULT, io.micrometer.core.instrument.Clock.SYSTEM) {
-            @Override
-            protected Double nullGaugeValue() {
-                return null;
-            }
-        };
-
+        CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
         String metricsPrefix = "rabbitmq.stream";
         this.metricsCollector = new MicrometerMetricsCollector(meterRegistry, metricsPrefix);
+
+        this.performanceMetrics = new DefaultPerformanceMetrics(meterRegistry, metricsPrefix, this.summaryFile);
 
         this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
 
@@ -353,14 +214,6 @@ public class StreamPerfTest implements Callable<Integer> {
                 LOGGER.info("Could not shut down Netty in {} second(s)", shutdownTimeout);
             }
         }));
-
-        Timer latency = Timer
-                .builder(metricsPrefix + ".latency")
-                .description("message latency")
-                .publishPercentiles(0.5, 0.75, 0.95, 0.99)
-                .distributionStatisticExpiry(Duration.ofSeconds(1))
-                .serviceLevelObjectives()
-                .register(meterRegistry);
 
         // FIXME add confirm latency
 
@@ -502,8 +355,9 @@ public class StreamPerfTest implements Callable<Integer> {
                     client.credit(correlationId, creditToAsk);
                 }
             };
+            final PerformanceMetrics metrics = this.performanceMetrics;
             Client.MessageListener messageListener = (correlationId, offset, data) -> {
-                latency.record(System.nanoTime() - readLong(data.getBodyAsBinary()), TimeUnit.NANOSECONDS);
+                metrics.latency(System.nanoTime() - readLong(data.getBodyAsBinary()), TimeUnit.NANOSECONDS);
             };
 
             String stream = stream();
@@ -544,10 +398,8 @@ public class StreamPerfTest implements Callable<Integer> {
 
         String metricsHeader = "Arguments: " + String.join(" ", arguments);
 
-        Closeable metricsReporting = startMetricsReporting(metricsHeader, metrics);
-        shutdownService.wrap(closeStep("Closing metrics", () -> {
-            metricsReporting.close();
-        }));
+        this.performanceMetrics.start(metricsHeader);
+        shutdownService.wrap(closeStep("Closing metrics", () -> this.performanceMetrics.close()));
 
         CountDownLatch latch = new CountDownLatch(1);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> latch.countDown()));
