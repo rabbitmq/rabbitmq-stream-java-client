@@ -362,7 +362,6 @@ public class AmqpInteroperabilityTest {
 
                 messageOperations.get().forEach(messageOperation -> messageOperation.messageBuilderConsumer.accept(messageBuilder));
 
-
                 client.publish(s, messageBuilder.build());
             });
 

@@ -196,7 +196,6 @@ public class Client implements AutoCloseable {
             for (Integer subscriptionId : subscriptionIds) {
                 subscriptionListener.subscriptionCancelled(subscriptionId, stream, RESPONSE_CODE_STREAM_NOT_AVAILABLE);
             }
-
         } else {
             throw new IllegalArgumentException("Unsupported metadata update code " + code);
         }
@@ -376,7 +375,6 @@ public class Client implements AutoCloseable {
         int read = 2 + 2; // already read the command id and version
         int correlationId = bb.readInt();
         read += 4;
-
         Map<Short, Broker> brokers = new HashMap<>();
         int brokersCount = bb.readInt();
         read += 4;
@@ -1345,6 +1343,20 @@ public class Client implements AutoCloseable {
                     "host='" + host + '\'' +
                     ", port=" + port +
                     '}';
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Broker broker = (Broker) o;
+            return port == broker.port &&
+                    host.equals(broker.host);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(host, port);
         }
     }
 
