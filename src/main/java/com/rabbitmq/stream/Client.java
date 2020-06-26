@@ -65,6 +65,8 @@ public class Client implements AutoCloseable {
 
     private final CreditNotification creditNotification;
 
+    private final MetadataListener metadataListener;
+
     private final Codec codec;
 
     private final Channel channel;
@@ -128,6 +130,7 @@ public class Client implements AutoCloseable {
         this.credentialsProvider = parameters.credentialsProvider;
         this.chunkChecksum = parameters.chunkChecksum;
         this.metricsCollector = parameters.metricsCollector;
+        this.metadataListener = parameters.metadataListener;
 
         EventLoopGroup eventLoopGroup;
         if (parameters.eventLoopGroup == null) {
@@ -184,14 +187,15 @@ public class Client implements AutoCloseable {
         return Collections.unmodifiableMap(clientProperties);
     }
 
-    static void handleMetadataUpdate(ByteBuf bb, int frameSize, Subscriptions subscriptions, SubscriptionListener subscriptionListener) {
+    static void handleMetadataUpdate(ByteBuf bb, int frameSize, Subscriptions subscriptions, SubscriptionListener subscriptionListener, MetadataListener metadataListener) {
         int read = 2 + 2; // already read the command id and version
         short code = bb.readShort();
         read += 2;
         if (code == RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
             String stream = readString(bb);
             read += (2 + stream.length());
-            LOGGER.debug("Stream {} has been deleted", stream);
+            metadataListener.handle(stream, code);
+            LOGGER.debug("Stream {} is no longer available", stream);
             List<Integer> subscriptionIds = subscriptions.removeSubscriptionsFor(stream);
             for (Integer subscriptionId : subscriptionIds) {
                 subscriptionListener.subscriptionCancelled(subscriptionId, stream, RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -577,7 +581,6 @@ public class Client implements AutoCloseable {
     }
 
     private void handleHeartbeat(int frameSize) {
-        // FIXME handle heartbeat
         LOGGER.debug("Received heartbeat frame");
         int read = 2 + 2; // already read the command id and version
         if (read != frameSize) {
@@ -1155,6 +1158,12 @@ public class Client implements AutoCloseable {
 
     }
 
+    public interface MetadataListener {
+
+        void handle(String stream, short code);
+
+    }
+
     public interface ChunkListener {
 
         /**
@@ -1383,6 +1392,9 @@ public class Client implements AutoCloseable {
         private SubscriptionListener subscriptionListener = (subscriptionId, stream, reason) -> {
 
         };
+        private MetadataListener metadataListener = (stream, code) -> {
+
+        };
         private CreditNotification creditNotification = (subscriptionId, responseCode) -> LOGGER.warn("Received notification for subscription {}: {}", subscriptionId, responseCode);
 
         private Codec codec;
@@ -1516,6 +1528,11 @@ public class Client implements AutoCloseable {
 
         public ClientParameters metricsCollector(MetricsCollector metricsCollector) {
             this.metricsCollector = metricsCollector;
+            return this;
+        }
+
+        public ClientParameters metadataListener(MetadataListener metadataListener) {
+            this.metadataListener = metadataListener;
             return this;
         }
     }
@@ -1723,7 +1740,7 @@ public class Client implements AutoCloseable {
                 } else if (commandId == COMMAND_PUBLISH_ERROR) {
                     task = () -> handlePublishError(m, publishErrorListener, frameSize, metricsCollector);
                 } else if (commandId == COMMAND_METADATA_UPDATE) {
-                    task = () -> handleMetadataUpdate(m, frameSize, subscriptions, subscriptionListener);
+                    task = () -> handleMetadataUpdate(m, frameSize, subscriptions, subscriptionListener, metadataListener);
                 } else if (commandId == COMMAND_METADATA) {
                     task = () -> handleMetadata(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_SASL_HANDSHAKE) {

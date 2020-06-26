@@ -98,6 +98,77 @@ public class ClientTest {
     }
 
     @Test
+    void publisherIsNotifiedAndReceivesPublishErrorIfStreamIsDeleted() throws Exception {
+        String s = UUID.randomUUID().toString();
+        Client client = cf.get();
+        Client.Response response = client.create(s);
+        assertThat(response.isOk()).isTrue();
+
+        CountDownLatch publishLatch = new CountDownLatch(1);
+        CountDownLatch metadataLatch = new CountDownLatch(1);
+        CountDownLatch errorLatch = new CountDownLatch(1);
+        AtomicInteger receivedCode = new AtomicInteger(-1);
+        AtomicReference<String> receivedStream = new AtomicReference<>();
+        Client publisher = cf.get(new Client.ClientParameters()
+                .confirmListener(publishingId -> publishLatch.countDown())
+                .metadataListener((stream, code) -> {
+                    receivedStream.set(stream);
+                    receivedCode.set(code);
+                    metadataLatch.countDown();
+                })
+                .publishErrorListener((publishingId, errorCode) -> errorLatch.countDown()));
+
+        publisher.publish(s, "".getBytes());
+
+        assertThat(publishLatch.await(10, SECONDS)).isTrue();
+
+        response = cf.get().delete(s);
+        assertThat(response.isOk()).isTrue();
+
+        assertThat(metadataLatch.await(10, SECONDS)).isTrue();
+        assertThat(receivedStream.get()).isEqualTo(s);
+        assertThat(receivedCode.get()).isEqualTo(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+        publisher.publish(s, "".getBytes());
+        assertThat(errorLatch.await(10, SECONDS)).isTrue();
+    }
+
+    @Test
+    void consumerIsNotifiedIfStreamIsDeleted() throws Exception {
+        String s = UUID.randomUUID().toString();
+        CountDownLatch publishLatch = new CountDownLatch(1);
+        Client publisher = cf.get(new Client.ClientParameters()
+                .confirmListener(publishingId -> publishLatch.countDown()));
+        Client.Response response = publisher.create(s);
+        assertThat(response.isOk()).isTrue();
+        publisher.publish(s, "".getBytes());
+
+        assertThat(publishLatch.await(10, SECONDS)).isTrue();
+
+        CountDownLatch consumeLatch = new CountDownLatch(1);
+        CountDownLatch metadataLatch = new CountDownLatch(1);
+        AtomicInteger receivedCode = new AtomicInteger(-1);
+        AtomicReference<String> receivedStream = new AtomicReference<>();
+        Client consumer = cf.get(new Client.ClientParameters()
+                .messageListener((subscriptionId, offset, message) -> consumeLatch.countDown())
+                .metadataListener((stream, code) -> {
+                    receivedStream.set(stream);
+                    receivedCode.set(code);
+                    metadataLatch.countDown();
+                }));
+
+        consumer.subscribe(1, s, OffsetSpecification.first(), 10);
+        assertThat(consumeLatch.await(10, SECONDS)).isTrue();
+
+        response = cf.get().delete(s);
+        assertThat(response.isOk()).isTrue();
+
+        assertThat(metadataLatch.await(10, SECONDS)).isTrue();
+        assertThat(receivedStream.get()).isEqualTo(s);
+        assertThat(receivedCode.get()).isEqualTo(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+    }
+
+    @Test
     void subscriptionListenerIsCalledWhenStreamIsDeleted() throws Exception {
         class TestParameters {
             final boolean sameClient;
@@ -198,7 +269,6 @@ public class ClientTest {
             assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
         }
     }
-
 
     @Test
     void unsubscribeShouldNotReceiveMoreMessageAfterUnsubscribe() throws Exception {
