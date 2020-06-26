@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static com.rabbitmq.stream.Constants.*;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -67,6 +68,8 @@ public class Client implements AutoCloseable {
 
     private final MetadataListener metadataListener;
 
+    private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
+
     private final Codec codec;
 
     private final Channel channel;
@@ -83,6 +86,8 @@ public class Client implements AutoCloseable {
 
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
+    private final Runnable executorServiceClosing;
+
     private final SaslConfiguration saslConfiguration;
 
     private final CredentialsProvider credentialsProvider;
@@ -91,7 +96,7 @@ public class Client implements AutoCloseable {
 
     private final AtomicBoolean closing = new AtomicBoolean(false);
 
-    private final AtomicBoolean nettyClosing = new AtomicBoolean(false);
+    private final Runnable nettyClosing;
 
     private final int maxFrameSize;
 
@@ -131,6 +136,19 @@ public class Client implements AutoCloseable {
         this.chunkChecksum = parameters.chunkChecksum;
         this.metricsCollector = parameters.metricsCollector;
         this.metadataListener = parameters.metadataListener;
+        final ShutdownListener shutdownListener = parameters.shutdownListener;
+        this.shutdownListenerCallback = Utils.makeIdempotent(new Consumer<ShutdownContext.ShutdownReason>() {
+            @Override
+            public void accept(ShutdownContext.ShutdownReason shutdownReason) {
+                shutdownListener.handle(new ShutdownContext(shutdownReason));
+            }
+        });
+
+        this.executorServiceClosing = Utils.makeIdempotent(() -> {
+            if (this.executorService != null) {
+                this.executorService.shutdownNow();
+            }
+        });
 
         EventLoopGroup eventLoopGroup;
         if (parameters.eventLoopGroup == null) {
@@ -168,6 +186,7 @@ public class Client implements AutoCloseable {
         }
 
         this.channel = f.channel();
+        this.nettyClosing = Utils.makeIdempotent(() -> closeNetty());
         this.tuneState = new TuneState(parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
         this.clientProperties = clientProperties(parameters.clientProperties);
         this.serverProperties = peerProperties();
@@ -638,11 +657,12 @@ public class Client implements AutoCloseable {
         byteBuf.writeInt(length)
                 .writeShort(COMMAND_CLOSE).writeShort(VERSION_0)
                 .writeInt(correlationId).writeShort(RESPONSE_CODE_OK);
-        ctx.writeAndFlush(byteBuf);
 
-        if (closing.compareAndSet(false, true)) {
-            closeNetty();
-        }
+        ctx.writeAndFlush(byteBuf).addListener(future -> {
+            if (closing.compareAndSet(false, true)) {
+                executorService.submit(() -> closingSequence(ShutdownContext.ShutdownReason.SERVER_CLOSE));
+            }
+        });
 
         if (read != frameSize) {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
@@ -1103,35 +1123,47 @@ public class Client implements AutoCloseable {
 
             sendClose(RESPONSE_CODE_OK, "OK");
 
-            closeNetty();
-
-            if (this.executorService != null) {
-                this.executorService.shutdownNow();
-            }
+            closingSequence(ShutdownContext.ShutdownReason.CLIENT_CLOSE);
 
             LOGGER.debug("Client closed");
         }
     }
 
+    private void closingSequence(ShutdownContext.ShutdownReason reason) {
+        this.nettyClosing.run();
+        this.shutdownListenerCallback.accept(reason);
+        this.executorServiceClosing.run();
+    }
+
     private void closeNetty() {
-        if (this.nettyClosing.compareAndSet(false, true)) {
-            try {
-                if (this.channel.isOpen()) {
-                    LOGGER.debug("Closing Netty channel");
-                    this.channel.close().get(10, TimeUnit.SECONDS);
-                }
-                if (this.eventLoopGroup != null && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
-                    LOGGER.debug("Closing Netty event loop group");
-                    this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
-                }
-            } catch (InterruptedException e) {
-                LOGGER.info("Channel closing has been interrupted");
-                Thread.currentThread().interrupt();
-            } catch (ExecutionException e) {
-                LOGGER.info("Channel closing failed", e);
-            } catch (TimeoutException e) {
-                LOGGER.info("Could not close channel in 10 seconds");
+        try {
+            if (this.channel.isOpen()) {
+                LOGGER.debug("Closing Netty channel");
+                this.channel.close().get(10, TimeUnit.SECONDS);
             }
+        } catch (InterruptedException e) {
+            LOGGER.info("Channel closing has been interrupted");
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException e) {
+            LOGGER.info("Channel closing failed", e);
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+            LOGGER.info("Could not close channel in 10 seconds");
+        }
+
+        try {
+            if (this.eventLoopGroup != null && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
+                LOGGER.debug("Closing Netty event loop group");
+                this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+            }
+        } catch (InterruptedException e) {
+            LOGGER.info("Event loop group closing has been interrupted");
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException e) {
+            LOGGER.info("Event loop group closing failed", e);
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+            LOGGER.info("Could not close event loop group in 10 seconds");
         }
     }
 
@@ -1193,6 +1225,30 @@ public class Client implements AutoCloseable {
 
         void handle(int subscriptionId, short responseCode);
 
+    }
+
+    public interface ShutdownListener {
+
+        void handle(ShutdownContext shutdownContext);
+
+    }
+
+    public static class ShutdownContext {
+
+        private final ShutdownReason shutdownReason;
+
+        ShutdownContext(ShutdownReason shutdownReason) {
+            this.shutdownReason = shutdownReason;
+        }
+
+        public ShutdownReason getShutdownReason() {
+            return shutdownReason;
+        }
+
+        public enum ShutdownReason {
+            CLIENT_CLOSE, SERVER_CLOSE, HEARTBEAT_FAILURE,
+            UNKNOWN
+        }
     }
 
     private static class TuneState {
@@ -1396,6 +1452,9 @@ public class Client implements AutoCloseable {
 
         };
         private CreditNotification creditNotification = (subscriptionId, responseCode) -> LOGGER.warn("Received notification for subscription {}: {}", subscriptionId, responseCode);
+        private ShutdownListener shutdownListener = shutdownContext -> {
+
+        };
 
         private Codec codec;
         // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
@@ -1533,6 +1592,11 @@ public class Client implements AutoCloseable {
 
         public ClientParameters metadataListener(MetadataListener metadataListener) {
             this.metadataListener = metadataListener;
+            return this;
+        }
+
+        public ClientParameters shutdownListener(ShutdownListener shutdownListener) {
+            this.shutdownListener = shutdownListener;
             return this;
         }
     }
@@ -1781,9 +1845,10 @@ public class Client implements AutoCloseable {
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-            LOGGER.debug("Netty channel became inactive", closing.get());
-            closing.set(true);
-            closeNetty();
+            LOGGER.debug("Netty channel became inactive");
+            if (closing.compareAndSet(false, true)) {
+                executorService.submit(() -> closingSequence(ShutdownContext.ShutdownReason.UNKNOWN));
+            }
         }
 
         @Override
@@ -1793,7 +1858,7 @@ public class Client implements AutoCloseable {
                 if (e.state() == IdleState.READER_IDLE) {
                     LOGGER.info("Closing connection because it's been idle for too long");
                     closing.set(true);
-                    closeNetty();
+                    closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE);
                 } else if (e.state() == IdleState.WRITER_IDLE) {
                     LOGGER.debug("Sending heartbeat frame");
                     ByteBuf bb = allocate(ctx.alloc(), 4 + 2 + 2);
