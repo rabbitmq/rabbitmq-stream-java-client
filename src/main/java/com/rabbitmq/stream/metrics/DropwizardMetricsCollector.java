@@ -73,7 +73,7 @@ public class DropwizardMetricsCollector implements MetricsCollector {
     }
 
     @Override
-    public void consume(int count) {
+    public void consume(long count) {
         consume.mark(count);
     }
 }

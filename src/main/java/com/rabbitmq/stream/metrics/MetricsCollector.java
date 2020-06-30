@@ -26,6 +26,6 @@ public interface MetricsCollector {
 
     void chunk(int entriesCount);
 
-    void consume(int count);
+    void consume(long count);
 
 }

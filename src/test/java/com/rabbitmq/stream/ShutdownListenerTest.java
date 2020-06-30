@@ -24,7 +24,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-//@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class ShutdownListenerTest {
 
     @Test

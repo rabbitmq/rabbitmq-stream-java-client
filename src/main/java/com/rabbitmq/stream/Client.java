@@ -53,67 +53,38 @@ public class Client implements AutoCloseable {
     private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(10);
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
-
+    private static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK = new OutboundMessageWriteCallback();
+    private static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK = new OutboundMessageBatchWriteCallback();
     private final ConfirmListener confirmListener;
-
     private final PublishErrorListener publishErrorListener;
-
     private final ChunkListener chunkListener;
-
     private final MessageListener messageListener;
-
     private final SubscriptionListener subscriptionListener;
-
     private final CreditNotification creditNotification;
-
     private final MetadataListener metadataListener;
-
     private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
-
     private final Codec codec;
-
     private final Channel channel;
-
     private final AtomicLong publishSequence = new AtomicLong(0);
-
     private final AtomicInteger correlationSequence = new AtomicInteger(0);
-
     private final ConcurrentMap<Integer, OutstandingRequest> outstandingRequests = new ConcurrentHashMap<>();
-
     private final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
-
     private final Subscriptions subscriptions = new Subscriptions();
-
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
-
     private final Runnable executorServiceClosing;
-
     private final SaslConfiguration saslConfiguration;
-
     private final CredentialsProvider credentialsProvider;
-
     private final TuneState tuneState;
-
     private final AtomicBoolean closing = new AtomicBoolean(false);
-
     private final Runnable nettyClosing;
-
     private final int maxFrameSize;
-
     private final int heartbeat;
-
     private final boolean frameSizeCopped;
-
     private final EventLoopGroup eventLoopGroup;
-
     private final ChunkChecksum chunkChecksum;
-
     private final Map<String, String> clientProperties;
-
     private final Map<String, String> serverProperties;
-
     private final MetricsCollector metricsCollector;
-
     private final String NETTY_HANDLER_FLUSH_CONSOLIDATION = FlushConsolidationHandler.class.getSimpleName();
     private final String NETTY_HANDLER_FRAME_DECODER = LengthFieldBasedFrameDecoder.class.getSimpleName();
     private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
@@ -485,7 +456,6 @@ public class Client implements AutoCloseable {
         byte magicAndVersion = bb.readByte();
         read += 1;
 
-        // FIXME handle unsigned
         int numEntries = bb.readUnsignedShort();
         read += 2;
         long numRecords = bb.readUnsignedInt();
@@ -522,16 +492,22 @@ public class Client implements AutoCloseable {
         chunkChecksum.checksum(bb, dataLength, crc);
 
         metricsCollector.chunk(numEntries);
-        metricsCollector.consume(numEntries);
+        metricsCollector.consume(numRecords);
 
-        byte[] data;
         while (numRecords != 0) {
+            byte entryType = bb.readByte();
+            if ((entryType & 0x80) == 0) {
 /*
-%%   Entry Format
 %%   <<0=SimpleEntryType:1,
 %%     Size:31/unsigned,
-%%     Data:Size/binary>> |
-%%
+%%     Data:Size/binary>>
+ */
+                bb.readerIndex(bb.readerIndex() - 1);
+                read = handleMessage(bb, read, filter, offset, offsetLimit, codec, messageListener, subscriptionId);
+                numRecords--;
+                offset++; // works even for unsigned long
+            } else {
+/*
 %%   <<1=SubBatchEntryType:1,
 %%     CompressionType:3,
 %%     Reserved:4,
@@ -539,27 +515,44 @@ public class Client implements AutoCloseable {
 %%     Size:32/unsigned,
 %%     Data:Size/binary>>
  */
+                byte compression = (byte) ((entryType & 0x70) >> 4);
+                read++;
+                // compression not used yet, just making sure we get something
+                MessageBatch.Compression.get(compression);
+                int numRecordsInBatch = bb.readUnsignedShort();
+                read += 2;
+                bb.readInt(); // batch size, does not need it
+                read += 4;
 
-            // FIXME deal with other type of entry than simple (first bit = 0)
-            int typeAndSize = bb.readInt();
-            read += 4;
+                numRecords -= numRecordsInBatch;
 
-            data = new byte[typeAndSize];
-            bb.readBytes(data);
-            read += typeAndSize;
-
-            if (filter && Long.compareUnsigned(offset, offsetLimit) < 0) {
-                // filter
-            } else {
-                Message message = codec.decode(data);
-                messageListener.handle(subscriptionId, offset, message);
+                while (numRecordsInBatch != 0) {
+                    read = handleMessage(bb, read, filter, offset, offsetLimit, codec, messageListener, subscriptionId);
+                    numRecordsInBatch--;
+                    offset++; // works even for unsigned long
+                }
             }
-            numRecords--;
-            offset++; // works even for unsigned long
         }
         if (read != frameSize) {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
         }
+    }
+
+    static int handleMessage(ByteBuf bb, int read, boolean filter, long offset, long offsetLimit,
+                             Codec codec, MessageListener messageListener, int subscriptionId) {
+        int entrySize = bb.readInt();
+        read += 4;
+        byte[] data = new byte[entrySize];
+        bb.readBytes(data);
+        read += entrySize;
+
+        if (filter && Long.compareUnsigned(offset, offsetLimit) < 0) {
+            // filter
+        } else {
+            Message message = codec.decode(data);
+            messageListener.handle(subscriptionId, offset, message);
+        }
+        return read;
     }
 
     static void handleConfirm(ByteBuf bb, ConfirmListener confirmListener, int frameSize, MetricsCollector metricsCollector) {
@@ -940,29 +933,29 @@ public class Client implements AutoCloseable {
     }
 
     public List<Long> publish(String stream, List<Message> messages) {
-        List<Codec.EncodedMessage> encodedMessages = new ArrayList<>(messages.size());
+        List<Object> encodedMessages = new ArrayList<>(messages.size());
         for (Message message : messages) {
             Codec.EncodedMessage encodedMessage = codec.encode(message);
             checkMessageFitsInFrame(stream, encodedMessage);
             encodedMessages.add(encodedMessage);
         }
-        return publishInternal(this.channel, stream, encodedMessages);
+        return publishInternal(this.channel, stream, encodedMessages, OUTBOUND_MESSAGE_WRITE_CALLBACK);
     }
 
     public long publish(String stream, Message message) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
         checkMessageFitsInFrame(stream, encodedMessage);
-        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage)).get(0);
+        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage), OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
     }
 
     public List<Long> publishBinary(String stream, List<byte[]> messages) {
-        List<Codec.EncodedMessage> encodedMessages = new ArrayList<>(messages.size());
+        List<Object> encodedMessages = new ArrayList<>(messages.size());
         for (byte[] message : messages) {
             Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(message));
             checkMessageFitsInFrame(stream, encodedMessage);
             encodedMessages.add(encodedMessage);
         }
-        return publishInternal(this.channel, stream, encodedMessages);
+        return publishInternal(this.channel, stream, encodedMessages, OUTBOUND_MESSAGE_WRITE_CALLBACK);
     }
 
     private void checkMessageFitsInFrame(String stream, Codec.EncodedMessage encodedMessage) {
@@ -972,36 +965,65 @@ public class Client implements AutoCloseable {
         }
     }
 
+    private void checkMessageBatchFitsInFrame(String stream, EncodedMessageBatch encodedMessageBatch) {
+        int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8
+                + 1 + 2 // byte with entry type and compression, short with number of messages in batch
+                + 4 + encodedMessageBatch.size;
+        if (frameBeginning > this.maxFrameSize) {
+            throw new IllegalArgumentException("Message batch too big to fit in one frame: " + encodedMessageBatch.size);
+        }
+    }
+
     public long publish(String stream, byte[] data) {
         Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(data));
         checkMessageFitsInFrame(stream, encodedMessage);
-        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage)).get(0);
+        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage), OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
     }
 
-    List<Long> publishInternal(Channel ch, String stream, List<Codec.EncodedMessage> encodedMessages) {
+    public List<Long> publishBatches(String stream, List<MessageBatch> messageBatches) {
+        List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
+        for (MessageBatch batch : messageBatches) {
+            EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
+            for (Message message : batch.messages) {
+                Codec.EncodedMessage encodedMessage = codec.encode(message);
+                checkMessageFitsInFrame(stream, encodedMessage);
+                encodedMessageBatch.add(encodedMessage);
+            }
+            checkMessageBatchFitsInFrame(stream, encodedMessageBatch);
+            encodedMessageBatches.add(encodedMessageBatch);
+        }
+        return publishInternal(this.channel, stream, encodedMessageBatches, OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK);
+    }
+
+    List<Long> publishInternal(Channel ch, String stream, List<Object> encodedEntities) {
+        return this.publishInternal(ch, stream, encodedEntities, OUTBOUND_MESSAGE_WRITE_CALLBACK);
+    }
+
+    List<Long> publishInternal(Channel ch, String stream, List<Object> encodedEntities, OutboundEntityWriteCallback callback) {
         int frameHeaderLength = 2 + 2 + 2 + stream.length() + 4;
 
-        List<Long> sequences = new ArrayList<>(encodedMessages.size());
+        List<Long> sequences = new ArrayList<>(encodedEntities.size());
         int length = frameHeaderLength;
         int currentIndex = 0;
         int startIndex = 0;
-        for (Codec.EncodedMessage encodedMessage : encodedMessages) {
-            length += (8 + 4 + encodedMessage.getSize()); // publish ID + message size
+        for (Object encodedEntity : encodedEntities) {
+            length += callback.fragmentLength(encodedEntity);
             if (length > this.maxFrameSize) {
-                // the current message does not fit, we're sending the batch
-                int frameLength = length - (12 + encodedMessage.getSize());
-                sendMessageBatch(ch, frameLength, stream, startIndex, currentIndex, encodedMessages, sequences);
-                length = frameHeaderLength + (8 + 4 + encodedMessage.getSize()); // publish ID + message size
+                // the current message/batch does not fit, we're sending the batch
+                int frameLength = length - callback.fragmentLength(encodedEntity);
+                sendEntityBatch(ch, frameLength, stream, startIndex, currentIndex, encodedEntities, callback, sequences);
+                length = frameHeaderLength + callback.fragmentLength(encodedEntity);
                 startIndex = currentIndex;
             }
             currentIndex++;
         }
-        sendMessageBatch(ch, length, stream, startIndex, currentIndex, encodedMessages, sequences);
+        sendEntityBatch(ch, length, stream, startIndex, currentIndex, encodedEntities, callback, sequences);
 
         return sequences;
     }
 
-    private void sendMessageBatch(Channel ch, int frameLength, String stream, int fromIncluded, int toExcluded, List<Codec.EncodedMessage> messages, List<Long> sequences) {
+    private void sendEntityBatch(Channel ch, int frameLength, String stream, int fromIncluded, int toExcluded,
+                                 List<Object> messages, OutboundEntityWriteCallback callback, List<Long> sequences) {
         // no check because it's been done already
         ByteBuf out = allocateNoCheck(ch.alloc(), frameLength + 4);
         out.writeInt(frameLength);
@@ -1009,18 +1031,16 @@ public class Client implements AutoCloseable {
         out.writeShort(VERSION_0);
         out.writeShort(stream.length());
         out.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-        int messageCount = toExcluded - fromIncluded;
-        metricsCollector.publish(messageCount);
+        int messageCount = 0;
         out.writeInt(toExcluded - fromIncluded);
         for (int i = fromIncluded; i < toExcluded; i++) {
-            Codec.EncodedMessage messageToPublish = messages.get(i);
             long sequence = publishSequence.getAndIncrement();
             out.writeLong(sequence);
-            out.writeInt(messageToPublish.getSize());
-            out.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
+            messageCount += callback.write(out, messages.get(i));
             sequences.add(sequence);
         }
         ch.writeAndFlush(out);
+        metricsCollector.publish(messageCount);
     }
 
     public MessageBuilder messageBuilder() {
@@ -1171,6 +1191,14 @@ public class Client implements AutoCloseable {
         return !closing.get();
     }
 
+    private interface OutboundEntityWriteCallback {
+
+        int write(ByteBuf bb, Object entity);
+
+        int fragmentLength(Object entity);
+
+    }
+
     public interface ConfirmListener {
 
         void handle(long publishingId);
@@ -1182,7 +1210,6 @@ public class Client implements AutoCloseable {
         void handle(long publishingId, short errorCode);
 
     }
-
 
     public interface SubscriptionListener {
 
@@ -1215,6 +1242,7 @@ public class Client implements AutoCloseable {
 
     }
 
+
     public interface MessageListener {
 
         void handle(int subscriptionId, long offset, Message message);
@@ -1230,6 +1258,59 @@ public class Client implements AutoCloseable {
     public interface ShutdownListener {
 
         void handle(ShutdownContext shutdownContext);
+
+    }
+
+    private static class EncodedMessageBatch {
+
+        private final MessageBatch.Compression compression;
+        private final List<Codec.EncodedMessage> messages = new ArrayList<>();
+        private int size;
+
+        private EncodedMessageBatch(MessageBatch.Compression compression) {
+            this.compression = compression;
+        }
+
+        void add(Codec.EncodedMessage encodedMessage) {
+            this.messages.add(encodedMessage);
+            size += (4 + encodedMessage.getSize());
+        }
+    }
+
+    private static class OutboundMessageWriteCallback implements OutboundEntityWriteCallback {
+
+        @Override
+        public int write(ByteBuf bb, Object entity) {
+            Codec.EncodedMessage messageToPublish = (Codec.EncodedMessage) entity;
+            bb.writeInt(messageToPublish.getSize());
+            bb.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
+            return 1;
+        }
+
+        @Override
+        public int fragmentLength(Object entity) {
+            return 8 + 4 + ((Codec.EncodedMessage) entity).getSize(); // publish ID + message size
+        }
+    }
+
+    private static class OutboundMessageBatchWriteCallback implements OutboundEntityWriteCallback {
+
+        @Override
+        public int write(ByteBuf bb, Object entity) {
+            EncodedMessageBatch batchToPublish = (EncodedMessageBatch) entity;
+            bb.writeByte(0x80 | batchToPublish.compression.code << 4); // 1=SubBatchEntryType:1,CompressionType:3,Reserved:4,
+            bb.writeShort(batchToPublish.messages.size());
+            bb.writeInt(batchToPublish.size);
+            for (Codec.EncodedMessage message : batchToPublish.messages) {
+                bb.writeInt(message.getSize()).writeBytes(message.getData(), 0, message.getSize());
+            }
+            return batchToPublish.size;
+        }
+
+        @Override
+        public int fragmentLength(Object entity) {
+            return (8 + 1 + 2 + 4 + ((EncodedMessageBatch) entity).size); // publish ID + info byte + message count + data size
+        }
 
     }
 
@@ -1601,11 +1682,11 @@ public class Client implements AutoCloseable {
         }
     }
 
-    private static final class BinaryOnlyMessage implements Message {
+    static final class BinaryOnlyMessage implements Message {
 
         private final byte[] body;
 
-        private BinaryOnlyMessage(byte[] body) {
+        BinaryOnlyMessage(byte[] body) {
             this.body = body;
         }
 

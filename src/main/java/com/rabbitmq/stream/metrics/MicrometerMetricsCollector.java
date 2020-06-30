@@ -77,7 +77,7 @@ public class MicrometerMetricsCollector implements MetricsCollector {
     }
 
     @Override
-    public void consume(int count) {
+    public void consume(long count) {
         consume.increment(count);
     }
 }
