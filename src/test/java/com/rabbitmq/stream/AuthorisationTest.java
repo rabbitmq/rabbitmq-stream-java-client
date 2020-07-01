@@ -174,7 +174,7 @@ public class AuthorisationTest {
             CountDownLatch publishConfirmLatch = new CountDownLatch(messageCount);
             AtomicInteger publishErrorCount = new AtomicInteger(0);
             Client client = client(new Client.ClientParameters()
-                    .confirmListener(publishingId -> publishConfirmLatch.countDown())
+                    .publishConfirmListener(publishingId -> publishConfirmLatch.countDown())
                     .publishErrorListener((publishingId, errorCode) -> publishErrorCount.incrementAndGet()));
 
             IntStream.range(0, messageCount).forEach(j -> client.publish(stream, "hello".getBytes(StandardCharsets.UTF_8)));
@@ -202,7 +202,7 @@ public class AuthorisationTest {
             CountDownLatch publishErrorLatch = new CountDownLatch(messageCount);
             AtomicInteger publishConfirmCount = new AtomicInteger(0);
             Client client = client(new Client.ClientParameters()
-                    .confirmListener(publishingId -> publishConfirmCount.incrementAndGet())
+                    .publishConfirmListener(publishingId -> publishConfirmCount.incrementAndGet())
                     .publishErrorListener((publishingId, errorCode) -> publishErrorLatch.countDown()));
 
             IntStream.range(0, messageCount).forEach(j -> client.publish(stream, "hello".getBytes(StandardCharsets.UTF_8)));

@@ -32,13 +32,13 @@ public class SampleApplication {
         System.out.println("Starting publishing...");
         int messageCount = 10000;
         String stream = UUID.randomUUID().toString();
-        CountDownLatch confirmLatch = new CountDownLatch(messageCount);
+        CountDownLatch publishConfirmLatch = new CountDownLatch(messageCount);
         Client publisher = new Client(new Client.ClientParameters()
-                .confirmListener(publishingId -> confirmLatch.countDown()));  // <1>
+                .publishConfirmListener(publishingId -> publishConfirmLatch.countDown()));  // <1>
         publisher.create(stream);  // <2>
         IntStream.range(0, messageCount)
                 .forEach(i -> publisher.publish(stream, String.valueOf(i).getBytes()));  // <3>
-        confirmLatch.await(10, TimeUnit.SECONDS);  // <4>
+        publishConfirmLatch.await(10, TimeUnit.SECONDS);  // <4>
         publisher.close();  // <5>
         System.out.printf("Published %,d messages%n", messageCount);
         // end::sample-publisher[]

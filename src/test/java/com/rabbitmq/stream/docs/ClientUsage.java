@@ -115,7 +115,7 @@ public class ClientUsage {
     void publishConfirmCallback() {
         // tag::publish-confirm-callback[]
         Client client = new Client(new Client.ClientParameters()
-                .confirmListener(publishingId -> {  // <1>
+                .publishConfirmListener(publishingId -> {  // <1>
                     // map publishing ID with initial outbound message
                 })
         );

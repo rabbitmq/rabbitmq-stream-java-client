@@ -73,7 +73,7 @@ public class NotificationTest {
         AtomicInteger receivedCode = new AtomicInteger(-1);
         AtomicReference<String> receivedStream = new AtomicReference<>();
         Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> publishLatch.countDown())
+                .publishConfirmListener(publishingId -> publishLatch.countDown())
                 .metadataListener((stream, code) -> {
                     receivedStream.set(stream);
                     receivedCode.set(code);
@@ -101,7 +101,7 @@ public class NotificationTest {
         String s = UUID.randomUUID().toString();
         CountDownLatch publishLatch = new CountDownLatch(1);
         Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> publishLatch.countDown()));
+                .publishConfirmListener(publishingId -> publishLatch.countDown()));
         Client.Response response = publisher.create(s);
         assertThat(response.isOk()).isTrue();
         publisher.publish(s, "".getBytes());

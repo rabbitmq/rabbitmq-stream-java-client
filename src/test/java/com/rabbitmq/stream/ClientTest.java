@@ -99,14 +99,14 @@ public class ClientTest {
 
         Set<Long> confirmedIds = ConcurrentHashMap.newKeySet(publishCount);
         CountDownLatch latchConfirm = new CountDownLatch(1);
-        Client.ConfirmListener confirmListener = correlationId -> {
+        Client.PublishConfirmListener publishConfirmListener = correlationId -> {
             confirmedIds.add(correlationId);
             if (confirmedIds.size() == publishCount) {
                 latchConfirm.countDown();
             }
         };
 
-        Client client = cf.get(new Client.ClientParameters().confirmListener(confirmListener));
+        Client client = cf.get(new Client.ClientParameters().publishConfirmListener(publishConfirmListener));
 
         Set<Long> correlationIds = new HashSet<>(publishCount);
         for (int i = 1; i <= publishCount; i++) {
@@ -230,7 +230,7 @@ public class ClientTest {
         int messageCount = batchCount * batchSize;
         CountDownLatch publishLatch = new CountDownLatch(messageCount);
         Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> publishLatch.countDown())
+                .publishConfirmListener(publishingId -> publishLatch.countDown())
         );
         AtomicInteger publishingSequence = new AtomicInteger(0);
         IntStream.range(0, batchCount).forEach(batchIndex -> {
@@ -325,7 +325,7 @@ public class ClientTest {
         CountDownLatch confirmedLatch = new CountDownLatch(publishCount);
         new Thread(() -> {
             Client publisher = cf.get(new Client.ClientParameters()
-                    .confirmListener(correlationId -> confirmedLatch.countDown())
+                    .publishConfirmListener(correlationId -> confirmedLatch.countDown())
             );
             int messageId = 0;
             while (messageId < publishCount) {
@@ -402,7 +402,7 @@ public class ClientTest {
             String testStream = UUID.randomUUID().toString();
             CountDownLatch publishingLatch = new CountDownLatch(messageCount);
             Client publisher = cf.get(new Client.ClientParameters()
-                    .confirmListener(publishingId -> publishingLatch.countDown())
+                    .publishConfirmListener(publishingId -> publishingLatch.countDown())
             );
 
             Map<String, String> arguments = configuration.arguments.get();
@@ -446,7 +446,7 @@ public class ClientTest {
         Set<Long> publishingIdErrors = ConcurrentHashMap.newKeySet(messageCount);
         CountDownLatch latch = new CountDownLatch(messageCount);
         Client client = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> confirms.incrementAndGet())
+                .publishConfirmListener(publishingId -> confirms.incrementAndGet())
                 .publishErrorListener((publishingId, responseCode) -> {
                     publishingIdErrors.add(publishingId);
                     responseCodes.add(responseCode);
@@ -478,7 +478,7 @@ public class ClientTest {
             Set<Long> publishingIdErrors = ConcurrentHashMap.newKeySet(messageCount);
             CountDownLatch latch = new CountDownLatch(messageCount);
             Client client = cf.get(new Client.ClientParameters()
-                    .confirmListener(publishingId -> confirms.incrementAndGet())
+                    .publishConfirmListener(publishingId -> confirms.incrementAndGet())
                     .publishErrorListener((publishingId, responseCode) -> {
                         publishingIdErrors.add(publishingId);
                         responseCodes.add(responseCode);
@@ -507,7 +507,7 @@ public class ClientTest {
             CountDownLatch publishedLatch = new CountDownLatch(messageCount);
             CountDownLatch consumedLatch = new CountDownLatch(messageCount);
             Client client = cf.get(new Client.ClientParameters()
-                    .confirmListener(publishingId -> publishedLatch.countDown())
+                    .publishConfirmListener(publishingId -> publishedLatch.countDown())
                     .chunkListener((client1, subscriptionId, offset, messageCount1, dataSize) -> client1.credit(subscriptionId, 1))
                     .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown())
             );
@@ -533,7 +533,7 @@ public class ClientTest {
         CountDownLatch confirmLatch = new CountDownLatch(messageCount);
         CountDownLatch publishErrorLatch = new CountDownLatch(messageCount);
         Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> {
+                .publishConfirmListener(publishingId -> {
                     confirms.incrementAndGet();
                     confirmLatch.countDown();
                 })

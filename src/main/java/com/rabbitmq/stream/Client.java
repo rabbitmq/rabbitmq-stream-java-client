@@ -55,7 +55,7 @@ public class Client implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
     private static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK = new OutboundMessageWriteCallback();
     private static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK = new OutboundMessageBatchWriteCallback();
-    private final ConfirmListener confirmListener;
+    private final PublishConfirmListener publishConfirmListener;
     private final PublishErrorListener publishErrorListener;
     private final ChunkListener chunkListener;
     private final MessageListener messageListener;
@@ -93,7 +93,7 @@ public class Client implements AutoCloseable {
     }
 
     public Client(ClientParameters parameters) {
-        this.confirmListener = parameters.confirmListener;
+        this.publishConfirmListener = parameters.publishConfirmListener;
         this.publishErrorListener = parameters.publishErrorListener;
         this.chunkListener = parameters.chunkListener;
         this.messageListener = parameters.messageListener;
@@ -548,7 +548,7 @@ public class Client implements AutoCloseable {
         return read;
     }
 
-    static void handleConfirm(ByteBuf bb, ConfirmListener confirmListener, int frameSize, MetricsCollector metricsCollector) {
+    static void handleConfirm(ByteBuf bb, PublishConfirmListener publishConfirmListener, int frameSize, MetricsCollector metricsCollector) {
         int read = 4; // already read the command id and version
         int publishingIdCount = bb.readInt();
         read += 4;
@@ -557,7 +557,7 @@ public class Client implements AutoCloseable {
         while (publishingIdCount != 0) {
             publishingId = bb.readLong();
             read += 8;
-            confirmListener.handle(publishingId);
+            publishConfirmListener.handle(publishingId);
             publishingIdCount--;
         }
         if (read != frameSize) {
@@ -1190,7 +1190,7 @@ public class Client implements AutoCloseable {
 
     }
 
-    public interface ConfirmListener {
+    public interface PublishConfirmListener {
 
         void handle(long publishingId);
 
@@ -1499,7 +1499,7 @@ public class Client implements AutoCloseable {
         private String virtualHost = "/";
         private Duration requestedHeartbeat = Duration.ofSeconds(60);
         private int requestedMaxFrameSize = 131072;
-        private ConfirmListener confirmListener = (publishingId) -> {
+        private PublishConfirmListener publishConfirmListener = (publishingId) -> {
 
         };
         private PublishErrorListener publishErrorListener = (publishingId, responseCode) -> {
@@ -1539,8 +1539,8 @@ public class Client implements AutoCloseable {
             return this;
         }
 
-        public ClientParameters confirmListener(ConfirmListener confirmListener) {
-            this.confirmListener = confirmListener;
+        public ClientParameters publishConfirmListener(PublishConfirmListener publishConfirmListener) {
+            this.publishConfirmListener = publishConfirmListener;
             return this;
         }
 
@@ -1825,7 +1825,7 @@ public class Client implements AutoCloseable {
                 }
             } else {
                 if (commandId == COMMAND_PUBLISH_CONFIRM) {
-                    task = () -> handleConfirm(m, confirmListener, frameSize, metricsCollector);
+                    task = () -> handleConfirm(m, publishConfirmListener, frameSize, metricsCollector);
                 } else if (commandId == COMMAND_DELIVER) {
                     task = () -> handleDeliver(m, Client.this, chunkListener, messageListener,
                             frameSize, codec, subscriptionOffsets, chunkChecksum, metricsCollector);

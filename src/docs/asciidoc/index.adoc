@@ -175,7 +175,7 @@ https://github.com/rabbitmq/rabbitmq-stream-java-client/blob/master/src/test/jav
 
 The sample class starts with a few imports:
 
-.Imports for the sample applications
+.Imports for the sample application
 [source,java,indent=0]
 --------
 include::{test-examples}/SampleApplication.java[tag=sample-imports]

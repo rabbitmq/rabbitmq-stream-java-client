@@ -203,7 +203,7 @@ public class OffsetTest {
         CountDownLatch firstWaveLatch = new CountDownLatch(messageCount);
         CountDownLatch secondWaveLatch = new CountDownLatch(messageCount * 2);
         Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> {
+                .publishConfirmListener(publishingId -> {
                     firstWaveLatch.countDown();
                     secondWaveLatch.countDown();
                 }));
@@ -236,7 +236,7 @@ public class OffsetTest {
         AtomicLong lastConfirmed = new AtomicLong();
         CountDownLatch consumerStartLatch = new CountDownLatch(messageCount);
         Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> {
+                .publishConfirmListener(publishingId -> {
                     lastConfirmed.set(publishingId);
                     consumerStartLatch.countDown();
                 }));

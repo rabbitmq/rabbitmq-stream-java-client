@@ -42,7 +42,7 @@ public class BatchEntryTest {
         int messagesInBatch = 30;
         CountDownLatch publishLatch = new CountDownLatch(batchCount);
         Client publisher = cf.get(new Client.ClientParameters()
-                .confirmListener(publishingId -> publishLatch.countDown()));
+                .publishConfirmListener(publishingId -> publishLatch.countDown()));
 
         IntStream.range(0, batchCount).forEach(batchIndex -> {
             MessageBatch messageBatch = new MessageBatch(MessageBatch.Compression.NONE);

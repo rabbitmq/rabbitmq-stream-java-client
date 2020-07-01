@@ -268,7 +268,7 @@ public class StreamPerfTest implements Callable<Integer> {
         List<Client> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
         List<Runnable> producerRunnables = IntStream.range(0, this.producers).mapToObj(i -> {
             Runnable beforePublishingCallback;
-            Client.ConfirmListener confirmListener;
+            Client.PublishConfirmListener publishConfirmListener;
             if (this.confirms > 0) {
                 Semaphore confirmsSemaphore = new Semaphore(this.confirms);
                 beforePublishingCallback = () -> {
@@ -281,13 +281,13 @@ public class StreamPerfTest implements Callable<Integer> {
                         Thread.currentThread().interrupt();
                     }
                 };
-                confirmListener = correlationId -> {
+                publishConfirmListener = correlationId -> {
                     confirmsSemaphore.release();
                 };
             } else {
                 beforePublishingCallback = () -> {
                 };
-                confirmListener = correlationId -> {
+                publishConfirmListener = correlationId -> {
                 };
             }
 
@@ -306,7 +306,7 @@ public class StreamPerfTest implements Callable<Integer> {
             Address publisherAddress = publisherBrokerLocator.get(stream);
             Client client = client(new Client.ClientParameters()
                     .host(publisherAddress.host).port(publisherAddress.port)
-                    .confirmListener(confirmListener));
+                    .publishConfirmListener(publishConfirmListener));
 
             producers.add(client);
 

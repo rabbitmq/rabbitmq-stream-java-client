@@ -265,7 +265,7 @@ public class AmqpInteroperabilityTest {
 
         testMessageOperations.get().forEach(testMessageOperation -> {
             CountDownLatch confirmLatch = new CountDownLatch(messageCount);
-            Client client = cf.get(new Client.ClientParameters().codec(codec).confirmListener(publishingId -> confirmLatch.countDown()));
+            Client client = cf.get(new Client.ClientParameters().codec(codec).publishConfirmListener(publishingId -> confirmLatch.countDown()));
 
             String s = UUID.randomUUID().toString();
             Client.Response response = client.create(s);
