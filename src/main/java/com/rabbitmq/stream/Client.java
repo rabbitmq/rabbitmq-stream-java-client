@@ -59,7 +59,6 @@ public class Client implements AutoCloseable {
     private final PublishErrorListener publishErrorListener;
     private final ChunkListener chunkListener;
     private final MessageListener messageListener;
-    private final SubscriptionListener subscriptionListener;
     private final CreditNotification creditNotification;
     private final MetadataListener metadataListener;
     private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
@@ -69,7 +68,6 @@ public class Client implements AutoCloseable {
     private final AtomicInteger correlationSequence = new AtomicInteger(0);
     private final ConcurrentMap<Integer, OutstandingRequest> outstandingRequests = new ConcurrentHashMap<>();
     private final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
-    private final Subscriptions subscriptions = new Subscriptions();
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
     private final Runnable executorServiceClosing;
     private final SaslConfiguration saslConfiguration;
@@ -99,7 +97,6 @@ public class Client implements AutoCloseable {
         this.publishErrorListener = parameters.publishErrorListener;
         this.chunkListener = parameters.chunkListener;
         this.messageListener = parameters.messageListener;
-        this.subscriptionListener = parameters.subscriptionListener;
         this.creditNotification = parameters.creditNotification;
         this.codec = parameters.codec == null ? Codecs.DEFAULT : parameters.codec;
         this.saslConfiguration = parameters.saslConfiguration;
@@ -177,19 +174,15 @@ public class Client implements AutoCloseable {
         return Collections.unmodifiableMap(clientProperties);
     }
 
-    static void handleMetadataUpdate(ByteBuf bb, int frameSize, Subscriptions subscriptions, SubscriptionListener subscriptionListener, MetadataListener metadataListener) {
+    static void handleMetadataUpdate(ByteBuf bb, int frameSize, MetadataListener metadataListener) {
         int read = 2 + 2; // already read the command id and version
         short code = bb.readShort();
         read += 2;
         if (code == RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
             String stream = readString(bb);
+            LOGGER.debug("Stream {} is no longer available", stream);
             read += (2 + stream.length());
             metadataListener.handle(stream, code);
-            LOGGER.debug("Stream {} is no longer available", stream);
-            List<Integer> subscriptionIds = subscriptions.removeSubscriptionsFor(stream);
-            for (Integer subscriptionId : subscriptionIds) {
-                subscriptionListener.subscriptionCancelled(subscriptionId, stream, RESPONSE_CODE_STREAM_NOT_AVAILABLE);
-            }
         } else {
             throw new IllegalArgumentException("Unsupported metadata update code " + code);
         }
@@ -1105,7 +1098,6 @@ public class Client implements AutoCloseable {
             }
             channel.writeAndFlush(bb);
             request.block();
-            subscriptions.add(stream, subscriptionId);
             return request.response.get();
         } catch (RuntimeException e) {
             outstandingRequests.remove(correlationId);
@@ -1127,7 +1119,6 @@ public class Client implements AutoCloseable {
             outstandingRequests.put(correlationId, request);
             channel.writeAndFlush(bb);
             request.block();
-            subscriptions.remove(subscriptionId);
             return request.response.get();
         } catch (RuntimeException e) {
             outstandingRequests.remove(correlationId);
@@ -1208,12 +1199,6 @@ public class Client implements AutoCloseable {
     public interface PublishErrorListener {
 
         void handle(long publishingId, short errorCode);
-
-    }
-
-    public interface SubscriptionListener {
-
-        void subscriptionCancelled(int subscriptionId, String stream, short reason);
 
     }
 
@@ -1526,9 +1511,6 @@ public class Client implements AutoCloseable {
         private MessageListener messageListener = (correlationId, offset, message) -> {
 
         };
-        private SubscriptionListener subscriptionListener = (subscriptionId, stream, reason) -> {
-
-        };
         private MetadataListener metadataListener = (stream, code) -> {
 
         };
@@ -1574,11 +1556,6 @@ public class Client implements AutoCloseable {
 
         public ClientParameters messageListener(MessageListener messageListener) {
             this.messageListener = messageListener;
-            return this;
-        }
-
-        public ClientParameters subscriptionListener(SubscriptionListener subscriptionListener) {
-            this.subscriptionListener = subscriptionListener;
             return this;
         }
 
@@ -1819,36 +1796,6 @@ public class Client implements AutoCloseable {
 
     }
 
-    private static class Subscriptions {
-
-        private final Map<String, List<Integer>> streamsToSubscriptions = new ConcurrentHashMap<>();
-
-        void add(String stream, int subscriptionId) {
-            List<Integer> subscriptionIds = streamsToSubscriptions.compute(stream, (k, v) -> v == null ? new CopyOnWriteArrayList<>() : v);
-            subscriptionIds.add(subscriptionId);
-        }
-
-        void remove(int subscriptionId) {
-            Iterator<Map.Entry<String, List<Integer>>> iterator = streamsToSubscriptions.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, List<Integer>> entry = iterator.next();
-                boolean removed = entry.getValue().remove((Object) subscriptionId);
-                if (removed) {
-                    if (entry.getValue().isEmpty()) {
-                        iterator.remove();
-                        break;
-                    }
-                }
-            }
-        }
-
-        List<Integer> removeSubscriptionsFor(String stream) {
-            List<Integer> subscriptionIds = streamsToSubscriptions.remove(stream);
-            return subscriptionIds == null ? Collections.emptyList() : subscriptionIds;
-        }
-
-    }
-
     private class StreamHandler extends ChannelInboundHandlerAdapter {
 
         @Override
@@ -1885,7 +1832,7 @@ public class Client implements AutoCloseable {
                 } else if (commandId == COMMAND_PUBLISH_ERROR) {
                     task = () -> handlePublishError(m, publishErrorListener, frameSize, metricsCollector);
                 } else if (commandId == COMMAND_METADATA_UPDATE) {
-                    task = () -> handleMetadataUpdate(m, frameSize, subscriptions, subscriptionListener, metadataListener);
+                    task = () -> handleMetadataUpdate(m, frameSize, metadataListener);
                 } else if (commandId == COMMAND_METADATA) {
                     task = () -> handleMetadata(m, frameSize, outstandingRequests);
                 } else if (commandId == COMMAND_SASL_HANDSHAKE) {

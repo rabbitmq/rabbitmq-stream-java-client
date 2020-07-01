@@ -21,13 +21,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.Collections;
-import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -39,17 +36,17 @@ public class NotificationTest {
     TestUtils.ClientFactory cf;
 
     @Test
-    void subscriptionListenerIsCalledWhenStreamIsDeletedWithAmqp() throws Exception {
+    void metadataListenerIsCalledWhenStreamIsDeletedWithAmqp() throws Exception {
         int subscriptionCount = 1;
         String t = UUID.randomUUID().toString();
         CountDownLatch subscriptionListenerLatch = new CountDownLatch(subscriptionCount);
-        List<Integer> cancelledSubscriptions = new CopyOnWriteArrayList<>();
-        Client subscriptionClient = cf.get(new Client.ClientParameters().subscriptionListener((subscriptionId, deletedStream, reason) -> {
-            if (t.equals(deletedStream) && reason == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
-                cancelledSubscriptions.add(subscriptionId);
-                subscriptionListenerLatch.countDown();
-            }
-        }));
+        Client subscriptionClient = cf.get(new Client.ClientParameters()
+                .metadataListener((stream, code) -> {
+                    if (t.equals(stream) && code == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
+                        subscriptionListenerLatch.countDown();
+                    }
+                })
+        );
 
         try (Connection c = new ConnectionFactory().newConnection()) {
             Channel ch = c.createChannel();
@@ -60,9 +57,6 @@ public class NotificationTest {
             ch.queueDelete(t);
 
             assertThat(subscriptionListenerLatch.await(5, SECONDS)).isTrue();
-            assertThat(cancelledSubscriptions).hasSize(subscriptionCount).containsAll(
-                    IntStream.range(0, subscriptionCount).boxed().collect(Collectors.toList())
-            );
         }
     }
 
@@ -162,7 +156,7 @@ public class NotificationTest {
     }
 
     @Test
-    void subscriptionListenerIsCalledWhenStreamIsDeleted() throws Exception {
+    void metadataListenerIsCalledWhenStreamIsDeleted() throws Exception {
         class TestParameters {
             final boolean sameClient;
             final int subscriptionCount;
@@ -182,14 +176,15 @@ public class NotificationTest {
 
         for (TestParameters testParameter : testParameters) {
             String t = UUID.randomUUID().toString();
-            CountDownLatch subscriptionListenerLatch = new CountDownLatch(testParameter.subscriptionCount);
-            List<Integer> cancelledSubscriptions = new CopyOnWriteArrayList<>();
-            Client subscriptionClient = cf.get(new Client.ClientParameters().subscriptionListener((subscriptionId, deletedStream, reason) -> {
-                if (t.equals(deletedStream) && reason == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
-                    cancelledSubscriptions.add(subscriptionId);
-                    subscriptionListenerLatch.countDown();
-                }
-            }));
+            AtomicInteger metadataListenerCalls = new AtomicInteger(0);
+            CountDownLatch subscriptionListenerLatch = new CountDownLatch(1);
+            Client subscriptionClient = cf.get(new Client.ClientParameters()
+                    .metadataListener((stream, code) -> {
+                        if (t.equals(stream) && code == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
+                            metadataListenerCalls.incrementAndGet();
+                            subscriptionListenerLatch.countDown();
+                        }
+                    }));
 
             Client createDeleteClient;
             if (testParameter.sameClient) {
@@ -205,9 +200,7 @@ public class NotificationTest {
             createDeleteClient.delete(t);
 
             assertThat(subscriptionListenerLatch.await(5, SECONDS)).isTrue();
-            assertThat(cancelledSubscriptions).hasSize(testParameter.subscriptionCount).containsAll(
-                    IntStream.range(0, testParameter.subscriptionCount).boxed().collect(Collectors.toList())
-            );
+            assertThat(metadataListenerCalls.get()).isEqualTo(1);
         }
 
     }
