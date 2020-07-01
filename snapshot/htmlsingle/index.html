@@ -717,7 +717,7 @@ a consumer to make some computations out of them. The
 <p>The sample class starts with a few imports:</p>
 </div>
 <div class="listingblock">
-<div class="title">Imports for the sample applications</div>
+<div class="title">Imports for the sample application</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java"><span class="keyword">import</span> <span class="include">com.rabbitmq.stream.Client</span>;
 <span class="keyword">import</span> <span class="include">com.rabbitmq.stream.OffsetSpecification</span>;
@@ -741,13 +741,13 @@ all the messages before closing the publisher connection.</p>
 <pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting publishing...</span><span class="delimiter">&quot;</span></span>);
 <span class="type">int</span> messageCount = <span class="integer">10000</span>;
 <span class="predefined-type">String</span> stream = <span class="predefined-type">UUID</span>.randomUUID().toString();
-<span class="predefined-type">CountDownLatch</span> confirmLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
+<span class="predefined-type">CountDownLatch</span> publishConfirmLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
 Client publisher = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .confirmListener(publishingId -&gt; confirmLatch.countDown()));  <i class="conum" data-value="1"></i><b>(1)</b>
+        .publishConfirmListener(publishingId -&gt; publishConfirmLatch.countDown()));  <i class="conum" data-value="1"></i><b>(1)</b>
 publisher.create(stream);  <i class="conum" data-value="2"></i><b>(2)</b>
 IntStream.range(<span class="integer">0</span>, messageCount)
         .forEach(i -&gt; publisher.publish(stream, <span class="predefined-type">String</span>.valueOf(i).getBytes()));  <i class="conum" data-value="3"></i><b>(3)</b>
-confirmLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="4"></i><b>(4)</b>
+publishConfirmLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="4"></i><b>(4)</b>
 publisher.close();  <i class="conum" data-value="5"></i><b>(5)</b>
 <span class="predefined-type">System</span>.out.printf(<span class="string"><span class="delimiter">&quot;</span><span class="content">Published %,d messages%n</span><span class="delimiter">&quot;</span></span>, messageCount);</code></pre>
 </div>
@@ -1125,7 +1125,7 @@ to publish confirms when the instance is created:</p>
 <div class="title">Handling publish confirms</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .confirmListener(publishingId -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
+        .publishConfirmListener(publishingId -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
             <span class="comment">// map publishing ID with initial outbound message</span>
         })
 );</code></pre>
@@ -1646,7 +1646,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-06-09 16:21:18 UTC
+Last updated 2020-07-01 17:18:59 +0200
 </div>
 </div>
 <style>
