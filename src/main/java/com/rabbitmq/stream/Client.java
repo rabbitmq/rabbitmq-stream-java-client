@@ -951,26 +951,14 @@ public class Client implements AutoCloseable {
         return publishInternal(this.channel, stream, encodedMessages, OUTBOUND_MESSAGE_WRITE_CALLBACK);
     }
 
-    private void checkMessageFitsInFrame(String stream, Codec.EncodedMessage encodedMessage) {
-        int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8 + 4 + encodedMessage.getSize();
-        if (frameBeginning > this.maxFrameSize) {
-            throw new IllegalArgumentException("Message too big to fit in one frame: " + encodedMessage.getSize());
-        }
-    }
-
-    private void checkMessageBatchFitsInFrame(String stream, EncodedMessageBatch encodedMessageBatch) {
-        int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8
-                + 1 + 2 // byte with entry type and compression, short with number of messages in batch
-                + 4 + encodedMessageBatch.size;
-        if (frameBeginning > this.maxFrameSize) {
-            throw new IllegalArgumentException("Message batch too big to fit in one frame: " + encodedMessageBatch.size);
-        }
-    }
-
     public long publish(String stream, byte[] data) {
         Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(data));
         checkMessageFitsInFrame(stream, encodedMessage);
         return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage), OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
+    }
+
+    public long publishBatch(String stream, MessageBatch messageBatch) {
+        return publishBatches(stream, Collections.singletonList(messageBatch)).get(0);
     }
 
     public List<Long> publishBatches(String stream, List<MessageBatch> messageBatches) {
@@ -986,6 +974,22 @@ public class Client implements AutoCloseable {
             encodedMessageBatches.add(encodedMessageBatch);
         }
         return publishInternal(this.channel, stream, encodedMessageBatches, OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK);
+    }
+
+    private void checkMessageFitsInFrame(String stream, Codec.EncodedMessage encodedMessage) {
+        int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8 + 4 + encodedMessage.getSize();
+        if (frameBeginning > this.maxFrameSize) {
+            throw new IllegalArgumentException("Message too big to fit in one frame: " + encodedMessage.getSize());
+        }
+    }
+
+    private void checkMessageBatchFitsInFrame(String stream, EncodedMessageBatch encodedMessageBatch) {
+        int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8
+                + 1 + 2 // byte with entry type and compression, short with number of messages in batch
+                + 4 + encodedMessageBatch.size;
+        if (frameBeginning > this.maxFrameSize) {
+            throw new IllegalArgumentException("Message batch too big to fit in one frame: " + encodedMessageBatch.size);
+        }
     }
 
     List<Long> publishInternal(Channel ch, String stream, List<Object> encodedEntities) {
@@ -1289,7 +1293,7 @@ public class Client implements AutoCloseable {
             for (Codec.EncodedMessage message : batchToPublish.messages) {
                 bb.writeInt(message.getSize()).writeBytes(message.getData(), 0, message.getSize());
             }
-            return batchToPublish.size;
+            return batchToPublish.messages.size();
         }
 
         @Override

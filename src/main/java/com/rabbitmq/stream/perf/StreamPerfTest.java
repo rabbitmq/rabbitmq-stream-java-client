@@ -95,6 +95,8 @@ public class StreamPerfTest implements Callable<Integer> {
     private int rate;
     @CommandLine.Option(names = {"--batch-size", "-bs"}, description = "size of a batch of published messages", defaultValue = "1")
     private int batchSize;
+    @CommandLine.Option(names = {"--sub-entry-size", "-ses"}, description = "number of messages packed into a normal message entry", defaultValue = "1")
+    private int subEntrySize;
     @CommandLine.Option(names = {"--codec", "-cc"},
             description = "class of codec to use. Aliases: qpid, simple.",
             defaultValue = "qpid"
@@ -294,9 +296,8 @@ public class StreamPerfTest implements Callable<Integer> {
             Runnable rateLimiterCallback;
             if (this.rate > 0) {
                 RateLimiter rateLimiter = com.google.common.util.concurrent.RateLimiter.create(this.rate);
-                rateLimiterCallback = () -> {
-                    rateLimiter.acquire(this.batchSize);
-                };
+                int messageCountInFrame = this.batchSize * this.subEntrySize;
+                rateLimiterCallback = () -> rateLimiter.acquire(messageCountInFrame);
             } else {
                 rateLimiterCallback = () -> {
                 };
@@ -317,23 +318,42 @@ public class StreamPerfTest implements Callable<Integer> {
             }));
             LOGGER.info("Connecting to {} to publish to {}", publisherAddress, stream);
             return (Runnable) () -> {
-                byte[] data = new byte[this.messageSize];
-                List<Message> messages = new ArrayList<>(this.batchSize);
-                // just a batch to initialize the list
-                for (int j = 0; j < this.batchSize; j++) {
-                    messages.add(client.messageBuilder().addData(data).build());
-                }
                 final int msgSize = this.messageSize;
+                Runnable publishCallback;
+                if (this.subEntrySize == 1) {
+                    List<Message> messages = new ArrayList<>(this.batchSize);
+                    IntStream.range(0, this.batchSize).forEach(unused -> messages.add(null));
+                    publishCallback = () -> {
+                        long creationTime = System.nanoTime();
+                        byte[] payload = new byte[msgSize];
+                        writeLong(payload, creationTime);
+                        for (int j = 0; j < this.batchSize; j++) {
+                            messages.set(j, codec.messageBuilder().addData(payload).build());
+                        }
+                        client.publish(stream, messages);
+                    };
+                } else {
+                    List<MessageBatch> messageBatches = new ArrayList<>(this.batchSize);
+                    IntStream.range(0, this.batchSize).forEach(unused -> messageBatches.add(null));
+                    List<Message> messages = new ArrayList<>(this.subEntrySize);
+                    IntStream.range(0, this.subEntrySize).forEach(unused -> messages.add(null));
+                    publishCallback = () -> {
+                        long creationTime = System.nanoTime();
+                        byte[] payload = new byte[msgSize];
+                        writeLong(payload, creationTime);
+                        for (int j = 0; j < this.subEntrySize; j++) {
+                            messages.set(j, codec.messageBuilder().addData(payload).build());
+                        }
+                        for (int j = 0; j < this.batchSize; j++) {
+                            messageBatches.set(j, new MessageBatch(MessageBatch.Compression.NONE, messages));
+                        }
+                        client.publishBatches(stream, messageBatches);
+                    };
+                }
                 while (true && !Thread.currentThread().isInterrupted()) {
                     beforePublishingCallback.run();
                     rateLimiterCallback.run();
-                    long creationTime = System.nanoTime();
-                    byte[] payload = new byte[msgSize];
-                    writeLong(payload, creationTime);
-                    for (int j = 0; j < this.batchSize; j++) {
-                        messages.set(j, codec.messageBuilder().addData(payload).build());
-                    }
-                    client.publish(stream, messages);
+                    publishCallback.run();
                 }
             };
 
