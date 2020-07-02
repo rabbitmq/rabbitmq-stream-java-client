@@ -64,19 +64,24 @@ public class StreamPerfTest implements Callable<Integer> {
             split = ","
     )
     private List<String> addrs;
-    @CommandLine.Option(names = {"--producers", "-x"}, description = "number of producers", defaultValue = "1")
+    @CommandLine.Option(names = {"--producers", "-x"}, description = "number of producers", defaultValue = "1",
+            converter = Utils.NotNegativeIntegerTypeConverter.class)
     private int producers;
-    @CommandLine.Option(names = {"--consumers", "-y"}, description = "number of consumers", defaultValue = "1")
+    @CommandLine.Option(names = {"--consumers", "-y"}, description = "number of consumers", defaultValue = "1",
+            converter = Utils.NotNegativeIntegerTypeConverter.class)
     private int consumers;
-    @CommandLine.Option(names = {"--size", "-s"}, description = "size of messages in bytes", defaultValue = "10")
+    @CommandLine.Option(names = {"--size", "-s"}, description = "size of messages in bytes", defaultValue = "10",
+            converter = Utils.NotNegativeIntegerTypeConverter.class)
     private volatile int messageSize;
     @CommandLine.Option(names = {"--initial-credit", "-icr"},
-            description = "initial credit when registering a consumer", defaultValue = "10"
-    )
+            description = "initial credit when registering a consumer", defaultValue = "10",
+            converter = Utils.NotNegativeIntegerTypeConverter.class)
     private int initialCredit;
-    @CommandLine.Option(names = {"--credit", "-cr"}, description = "credit requested on acknowledgment", defaultValue = "1")
+    @CommandLine.Option(names = {"--credit", "-cr"}, description = "credit requested on acknowledgment", defaultValue = "1",
+            converter = Utils.PositiveIntegerTypeConverter.class)
     private int credit;
-    @CommandLine.Option(names = {"--ack", "-ac"}, description = "ack (request credit) every x chunk(s)", defaultValue = "1")
+    @CommandLine.Option(names = {"--ack", "-ac"}, description = "ack (request credit) every x chunk(s)", defaultValue = "1",
+            converter = Utils.PositiveIntegerTypeConverter.class)
     private int ack;
     @CommandLine.Option(names = {"--confirms", "-c"}, description = "outstanding confirms", defaultValue = "-1")
     private int confirms;
@@ -93,9 +98,11 @@ public class StreamPerfTest implements Callable<Integer> {
     private boolean preDeclared;
     @CommandLine.Option(names = {"--rate", "-r"}, description = "maximum rate of published messages", defaultValue = "-1")
     private int rate;
-    @CommandLine.Option(names = {"--batch-size", "-bs"}, description = "size of a batch of published messages", defaultValue = "1")
+    @CommandLine.Option(names = {"--batch-size", "-bs"}, description = "size of a batch of published messages", defaultValue = "1",
+            converter = Utils.PositiveIntegerTypeConverter.class)
     private int batchSize;
-    @CommandLine.Option(names = {"--sub-entry-size", "-ses"}, description = "number of messages packed into a normal message entry", defaultValue = "1")
+    @CommandLine.Option(names = {"--sub-entry-size", "-ses"}, description = "number of messages packed into a normal message entry", defaultValue = "1",
+            converter = Utils.PositiveIntegerTypeConverter.class)
     private int subEntrySize;
     @CommandLine.Option(names = {"--codec", "-cc"},
             description = "class of codec to use. Aliases: qpid, simple.",
@@ -450,10 +457,6 @@ public class StreamPerfTest implements Callable<Integer> {
 
     private String stream() {
         return streams.get(streamDispatching++ % streams.size());
-    }
-
-    private Address address() {
-        return addresses.get(addressDispatching++ % addresses.size());
     }
 
     interface BrokerLocator {

@@ -77,4 +77,36 @@ class Utils {
         }
     }
 
+    static class PositiveIntegerTypeConverter implements CommandLine.ITypeConverter<Integer> {
+
+        @Override
+        public Integer convert(String input) {
+            try {
+                Integer value = Integer.valueOf(input);
+                if (value <= 0) {
+                    throw new IllegalArgumentException();
+                }
+                return value;
+            } catch (Exception e) {
+                throw new CommandLine.TypeConversionException(input + " is not a positive integer");
+            }
+        }
+    }
+
+    static class NotNegativeIntegerTypeConverter implements CommandLine.ITypeConverter<Integer> {
+
+        @Override
+        public Integer convert(String input) {
+            try {
+                Integer value = Integer.valueOf(input);
+                if (value < 0) {
+                    throw new IllegalArgumentException();
+                }
+                return value;
+            } catch (Exception e) {
+                throw new CommandLine.TypeConversionException(input + " is not a non-negative integer");
+            }
+        }
+    }
+
 }
