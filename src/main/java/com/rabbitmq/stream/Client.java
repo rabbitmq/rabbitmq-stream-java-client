@@ -30,6 +30,8 @@ import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.GenericFutureListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1036,8 +1038,13 @@ public class Client implements AutoCloseable {
             messageCount += callback.write(out, messages.get(i));
             sequences.add(sequence);
         }
-        ch.writeAndFlush(out);
-        metricsCollector.publish(messageCount);
+        int msgCount = messageCount;
+        ch.writeAndFlush(out).addListener(future -> {
+            if (future.isSuccess()) {
+                metricsCollector.publish(msgCount);
+            }
+        });
+
     }
 
     public MessageBuilder messageBuilder() {
