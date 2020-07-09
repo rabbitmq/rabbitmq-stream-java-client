@@ -20,6 +20,7 @@ import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -207,6 +208,8 @@ public class StreamPerfTest implements Callable<Integer> {
         String metricsPrefix = "rabbitmq.stream";
         this.metricsCollector = new MicrometerMetricsCollector(meterRegistry, metricsPrefix);
 
+        Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
+
         this.performanceMetrics = new DefaultPerformanceMetrics(meterRegistry, metricsPrefix, this.summaryFile);
 
         this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
@@ -318,6 +321,10 @@ public class StreamPerfTest implements Callable<Integer> {
 
             producers.add(client);
 
+            ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(this.producers);
+
+            shutdownService.wrap(closeStep("Closing scheduled executor service", () -> scheduledExecutorService.shutdownNow()));
+
             shutdownService.wrap(closeStep("Closing producers", () -> {
                 for (Client producer : producers) {
                     producer.close();
@@ -357,10 +364,24 @@ public class StreamPerfTest implements Callable<Integer> {
                         client.publishBatches(stream, messageBatches);
                     };
                 }
+                Producer producer = new ProducerBuilder().client(client)
+                        .batchSize(this.batchSize).stream(stream)
+                        .scheduledExecutorService(scheduledExecutorService)
+                        .build();
+                ConfirmationHandler confirmationHandler = new ConfirmationHandler() {
+                    @Override
+                    public void handle(ConfirmationStatus confirmationStatus) {
+                        producerConfirm.increment();
+                    }
+                };
                 while (true && !Thread.currentThread().isInterrupted()) {
                     beforePublishingCallback.run();
                     rateLimiterCallback.run();
-                    publishCallback.run();
+                    long creationTime = System.nanoTime();
+                    byte[] payload = new byte[msgSize];
+                    writeLong(payload, creationTime);
+//                    publishCallback.run();
+                    producer.send(producer.messageBuilder().addData(payload).build(), confirmationHandler);
                 }
             };
 

@@ -30,8 +30,6 @@ import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
-import io.netty.util.concurrent.Future;
-import io.netty.util.concurrent.GenericFutureListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import static com.rabbitmq.stream.Constants.*;
@@ -54,10 +53,15 @@ public class Client implements AutoCloseable {
 
     private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(10);
 
+    private static final PublishConfirmListener NO_OP_PUBLISH_CONFIRM_LISTENER = publishingId -> {
+
+    };
+
     private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
-    private static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK = new OutboundMessageWriteCallback();
+    static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK = new OutboundMessageWriteCallback();
     private static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK = new OutboundMessageBatchWriteCallback();
-    private final PublishConfirmListener publishConfirmListener;
+//    private final PublishConfirmListener publishConfirmListener;
+    private final List<PublishConfirmListener> publishConfirmListeners = new CopyOnWriteArrayList<>();
     private final PublishErrorListener publishErrorListener;
     private final ChunkListener chunkListener;
     private final MessageListener messageListener;
@@ -95,7 +99,9 @@ public class Client implements AutoCloseable {
     }
 
     public Client(ClientParameters parameters) {
-        this.publishConfirmListener = parameters.publishConfirmListener;
+        if (parameters.publishConfirmListener != NO_OP_PUBLISH_CONFIRM_LISTENER) {
+            this.publishConfirmListeners.add(parameters.publishConfirmListener);
+        }
         this.publishErrorListener = parameters.publishErrorListener;
         this.chunkListener = parameters.chunkListener;
         this.messageListener = parameters.messageListener;
@@ -107,12 +113,7 @@ public class Client implements AutoCloseable {
         this.metricsCollector = parameters.metricsCollector;
         this.metadataListener = parameters.metadataListener;
         final ShutdownListener shutdownListener = parameters.shutdownListener;
-        this.shutdownListenerCallback = Utils.makeIdempotent(new Consumer<ShutdownContext.ShutdownReason>() {
-            @Override
-            public void accept(ShutdownContext.ShutdownReason shutdownReason) {
-                shutdownListener.handle(new ShutdownContext(shutdownReason));
-            }
-        });
+        this.shutdownListenerCallback = Utils.makeIdempotent(shutdownReason -> shutdownListener.handle(new ShutdownContext(shutdownReason)));
 
         this.executorServiceClosing = Utils.makeIdempotent(() -> {
             if (this.executorService != null) {
@@ -167,6 +168,10 @@ public class Client implements AutoCloseable {
         this.heartbeat = this.tuneState.getHeartbeat();
         LOGGER.debug("Connection tuned with max frame size {} and heartbeat {}", this.maxFrameSize, this.heartbeat);
         open(parameters.virtualHost);
+    }
+
+    void addPublisherConfirmListener(PublishConfirmListener publishConfirmListener) {
+        this.publishConfirmListeners.add(publishConfirmListener);
     }
 
     private static Map<String, String> clientProperties(Map<String, String> fromParameters) {
@@ -550,7 +555,7 @@ public class Client implements AutoCloseable {
         return read;
     }
 
-    static void handleConfirm(ByteBuf bb, PublishConfirmListener publishConfirmListener, int frameSize, MetricsCollector metricsCollector) {
+    static void handleConfirm(ByteBuf bb, List<PublishConfirmListener> publishConfirmListeners, int frameSize, MetricsCollector metricsCollector) {
         int read = 4; // already read the command id and version
         int publishingIdCount = bb.readInt();
         read += 4;
@@ -559,7 +564,9 @@ public class Client implements AutoCloseable {
         while (publishingIdCount != 0) {
             publishingId = bb.readLong();
             read += 8;
-            publishConfirmListener.handle(publishingId);
+            for (PublishConfirmListener publishConfirmListener : publishConfirmListeners) {
+                publishConfirmListener.handle(publishingId);
+            }
             publishingIdCount--;
         }
         if (read != frameSize) {
@@ -940,7 +947,8 @@ public class Client implements AutoCloseable {
     public long publish(String stream, Message message) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
         checkMessageFitsInFrame(stream, encodedMessage);
-        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage), OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
+        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage),
+                OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
     }
 
     public List<Long> publishBinary(String stream, List<byte[]> messages) {
@@ -953,10 +961,17 @@ public class Client implements AutoCloseable {
         return publishInternal(this.channel, stream, encodedMessages, OUTBOUND_MESSAGE_WRITE_CALLBACK);
     }
 
+    Codec.EncodedMessage encode(String stream, Message message) {
+        Codec.EncodedMessage encodedMessage = this.codec.encode(message);
+        checkMessageFitsInFrame(stream, encodedMessage);
+        return encodedMessage;
+    }
+
     public long publish(String stream, byte[] data) {
         Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(data));
         checkMessageFitsInFrame(stream, encodedMessage);
-        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage), OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
+        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage),
+                OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
     }
 
     public long publishBatch(String stream, MessageBatch messageBatch) {
@@ -994,11 +1009,13 @@ public class Client implements AutoCloseable {
         }
     }
 
-    List<Long> publishInternal(Channel ch, String stream, List<Object> encodedEntities) {
-        return this.publishInternal(ch, stream, encodedEntities, OUTBOUND_MESSAGE_WRITE_CALLBACK);
+    List<Long> publishInternal(String stream, List<Object> encodedEntities,
+                               OutboundEntityWriteCallback callback) {
+        return this.publishInternal(this.channel, stream, encodedEntities, callback);
     }
 
-    List<Long> publishInternal(Channel ch, String stream, List<Object> encodedEntities, OutboundEntityWriteCallback callback) {
+    List<Long> publishInternal(Channel ch, String stream, List<Object> encodedEntities,
+                               OutboundEntityWriteCallback callback) {
         int frameHeaderLength = 2 + 2 + 2 + stream.length() + 4;
 
         List<Long> sequences = new ArrayList<>(encodedEntities.size());
@@ -1035,7 +1052,7 @@ public class Client implements AutoCloseable {
         for (int i = fromIncluded; i < toExcluded; i++) {
             long sequence = publishSequence.getAndIncrement();
             out.writeLong(sequence);
-            messageCount += callback.write(out, messages.get(i));
+            messageCount += callback.write(out, messages.get(i), sequence);
             sequences.add(sequence);
         }
         int msgCount = messageCount;
@@ -1193,9 +1210,9 @@ public class Client implements AutoCloseable {
         return !closing.get();
     }
 
-    private interface OutboundEntityWriteCallback {
+    interface OutboundEntityWriteCallback {
 
-        int write(ByteBuf bb, Object entity);
+        int write(ByteBuf bb, Object entity, long publishingId);
 
         int fragmentLength(Object entity);
 
@@ -1276,7 +1293,7 @@ public class Client implements AutoCloseable {
     private static class OutboundMessageWriteCallback implements OutboundEntityWriteCallback {
 
         @Override
-        public int write(ByteBuf bb, Object entity) {
+        public int write(ByteBuf bb, Object entity, long publishingId) {
             Codec.EncodedMessage messageToPublish = (Codec.EncodedMessage) entity;
             bb.writeInt(messageToPublish.getSize());
             bb.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
@@ -1292,7 +1309,7 @@ public class Client implements AutoCloseable {
     private static class OutboundMessageBatchWriteCallback implements OutboundEntityWriteCallback {
 
         @Override
-        public int write(ByteBuf bb, Object entity) {
+        public int write(ByteBuf bb, Object entity, long publishingId) {
             EncodedMessageBatch batchToPublish = (EncodedMessageBatch) entity;
             bb.writeByte(0x80 | batchToPublish.compression.code << 4); // 1=SubBatchEntryType:1,CompressionType:3,Reserved:4,
             bb.writeShort(batchToPublish.messages.size());
@@ -1836,7 +1853,7 @@ public class Client implements AutoCloseable {
                 }
             } else {
                 if (commandId == COMMAND_PUBLISH_CONFIRM) {
-                    task = () -> handleConfirm(m, publishConfirmListener, frameSize, metricsCollector);
+                    task = () -> handleConfirm(m, publishConfirmListeners, frameSize, metricsCollector);
                 } else if (commandId == COMMAND_DELIVER) {
                     task = () -> handleDeliver(m, Client.this, chunkListener, messageListener,
                             frameSize, codec, subscriptionOffsets, chunkChecksum, metricsCollector);
