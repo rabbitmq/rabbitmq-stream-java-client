@@ -18,11 +18,8 @@ import io.netty.buffer.ByteBuf;
 
 public interface ChunkChecksum {
 
-    ChunkChecksum NO_OP = new ChunkChecksum() {
-        @Override
-        public void checksum(ByteBuf byteBuf, long dataLength, long expected) {
+    ChunkChecksum NO_OP = (byteBuf, dataLength, expected) -> {
 
-        }
     };
 
     void checksum(ByteBuf byteBuf, long dataLength, long expected);

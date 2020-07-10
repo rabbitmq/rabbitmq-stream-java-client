@@ -488,8 +488,15 @@ public class Client implements AutoCloseable {
 
         final boolean filter = offsetLimit != -1;
 
-        // TODO handle exception in exception handler
-        chunkChecksum.checksum(bb, dataLength, crc);
+        try {
+            // TODO handle exception in exception handler
+            chunkChecksum.checksum(bb, dataLength, crc);
+        } catch (ChunkChecksumValidationException e) {
+            LOGGER.warn("Checksum failure at offset {}, expecting {}, got {}",
+                    offset, e.getExpected(), e.getComputed()
+            );
+            throw e;
+        }
 
         metricsCollector.chunk(numEntries);
         metricsCollector.consume(numRecords);
@@ -1834,6 +1841,7 @@ public class Client implements AutoCloseable {
             short commandId = m.readShort();
             short version = m.readShort();
             if (version != VERSION_0) {
+                m.release();
                 throw new ClientException("Unsupported version " + version + " for command " + commandId);
             }
             Runnable task;
@@ -1882,6 +1890,7 @@ public class Client implements AutoCloseable {
                         || commandId == COMMAND_OPEN) {
                     task = () -> handleResponse(m, frameSize, outstandingRequests);
                 } else {
+                    m.release();
                     throw new ClientException("Unsupported command " + commandId);
                 }
             }
