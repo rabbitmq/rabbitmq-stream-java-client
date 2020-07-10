@@ -17,6 +17,7 @@ package com.rabbitmq.stream;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -121,6 +122,7 @@ public class FrameTest {
             tests.forEach(test -> {
                 Channel channel = Mockito.mock(Channel.class);
                 Mockito.when(channel.alloc()).thenReturn(ByteBufAllocator.DEFAULT);
+                Mockito.when(channel.writeAndFlush(Mockito.any())).thenReturn(Mockito.mock(ChannelFuture.class));
 
                 client.publishInternal(channel, "stream", test.sizes.stream()
                         .map(size -> new Codec.EncodedMessage(size, new byte[size])).collect(Collectors.toList()));
