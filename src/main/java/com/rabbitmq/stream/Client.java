@@ -33,6 +33,7 @@ import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
@@ -41,7 +42,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import static com.rabbitmq.stream.Constants.*;
@@ -50,17 +50,14 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 public class Client implements AutoCloseable {
 
     public static final int DEFAULT_PORT = 5555;
-
+    static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK = new OutboundMessageWriteCallback();
     private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(10);
-
     private static final PublishConfirmListener NO_OP_PUBLISH_CONFIRM_LISTENER = publishingId -> {
 
     };
-
     private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
-    static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK = new OutboundMessageWriteCallback();
     private static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK = new OutboundMessageBatchWriteCallback();
-//    private final PublishConfirmListener publishConfirmListener;
+    //    private final PublishConfirmListener publishConfirmListener;
     private final List<PublishConfirmListener> publishConfirmListeners = new CopyOnWriteArrayList<>();
     private final PublishErrorListener publishErrorListener;
     private final ChunkListener chunkListener;
@@ -168,10 +165,6 @@ public class Client implements AutoCloseable {
         this.heartbeat = this.tuneState.getHeartbeat();
         LOGGER.debug("Connection tuned with max frame size {} and heartbeat {}", this.maxFrameSize, this.heartbeat);
         open(parameters.virtualHost);
-    }
-
-    void addPublisherConfirmListener(PublishConfirmListener publishConfirmListener) {
-        this.publishConfirmListeners.add(publishConfirmListener);
     }
 
     private static Map<String, String> clientProperties(Map<String, String> fromParameters) {
@@ -599,6 +592,10 @@ public class Client implements AutoCloseable {
         if (read != frameSize) {
             throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
         }
+    }
+
+    void addPublisherConfirmListener(PublishConfirmListener publishConfirmListener) {
+        this.publishConfirmListeners.add(publishConfirmListener);
     }
 
     private void handleHeartbeat(int frameSize) {
@@ -1208,7 +1205,6 @@ public class Client implements AutoCloseable {
         } catch (ExecutionException e) {
             LOGGER.info("Event loop group closing failed", e);
         } catch (TimeoutException e) {
-            e.printStackTrace();
             LOGGER.info("Could not close event loop group in 10 seconds");
         }
     }
@@ -1461,6 +1457,10 @@ public class Client implements AutoCloseable {
             return responseCode;
         }
 
+        public boolean isResponseOk() {
+            return responseCode == RESPONSE_CODE_OK;
+        }
+
         public Broker getLeader() {
             return leader;
         }
@@ -1529,11 +1529,13 @@ public class Client implements AutoCloseable {
     public static class ClientParameters {
 
         private final Map<String, String> clientProperties = new HashMap<>();
+        // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
+        EventLoopGroup eventLoopGroup;
         private String host = "localhost";
         private int port = DEFAULT_PORT;
         private String virtualHost = "/";
         private Duration requestedHeartbeat = Duration.ofSeconds(60);
-        private int requestedMaxFrameSize = 131072;
+        private int requestedMaxFrameSize = 1048576;
         private PublishConfirmListener publishConfirmListener = (publishingId) -> {
 
         };
@@ -1553,10 +1555,7 @@ public class Client implements AutoCloseable {
         private ShutdownListener shutdownListener = shutdownContext -> {
 
         };
-
         private Codec codec;
-        // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
-        private EventLoopGroup eventLoopGroup;
         private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
         private CredentialsProvider credentialsProvider = new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
         private ChannelCustomizer channelCustomizer = ch -> {
@@ -1691,6 +1690,19 @@ public class Client implements AutoCloseable {
         public ClientParameters shutdownListener(ShutdownListener shutdownListener) {
             this.shutdownListener = shutdownListener;
             return this;
+        }
+
+        ClientParameters duplicate() {
+            ClientParameters duplicate = new ClientParameters();
+            for (Field field : ClientParameters.class.getDeclaredFields()) {
+                field.setAccessible(true);
+                try {
+                    field.set(duplicate, field.get(this));
+                } catch (IllegalAccessException e) {
+                    throw new ClientException("Error while duplicating client parameters", e);
+                }
+            }
+            return duplicate;
         }
     }
 

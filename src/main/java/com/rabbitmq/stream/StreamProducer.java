@@ -21,12 +21,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class StreamProducer implements Producer {
+class StreamProducer implements Producer {
 
     private final Client client;
 
@@ -41,8 +39,8 @@ public class StreamProducer implements Producer {
 
     private final Client.OutboundEntityWriteCallback writeCallback;
 
-    StreamProducer(Client client, String stream, int batchSize, Duration batchPublishingDelay, ScheduledExecutorService executorService) {
-        this.client = client;
+    StreamProducer(String stream, int batchSize, Duration batchPublishingDelay, StreamEnvironment environment) {
+        this.client = environment.getClientForPublisher(stream);
         this.stream = stream;
         this.accumulator = new MessageAccumulator(batchSize);
         this.batchSize = batchSize;
@@ -62,16 +60,15 @@ public class StreamProducer implements Producer {
             }
         };
         if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
-            // FIXME get executor from external environment
-            AtomicReference<Runnable> taskRerence = new AtomicReference<>();
+            AtomicReference<Runnable> taskReference = new AtomicReference<>();
             Runnable task = () -> {
                 synchronized (StreamProducer.this) {
                     publishBatch();
                 }
-                executorService.schedule(taskRerence.get(), batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
+                environment.getScheduledExecutorService().schedule(taskReference.get(), batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
             };
-            taskRerence.set(task);
-            executorService.schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
+            taskReference.set(task);
+            environment.getScheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
         this.client.addPublisherConfirmListener(publishingId -> {
             PendingMessage pendingMessage = unconfirmedMessages.remove(publishingId);
@@ -97,6 +94,11 @@ public class StreamProducer implements Producer {
                 accumulator.add(accumulatedMessage);
             }
         }
+    }
+
+    @Override
+    public void close() {
+        // FIXME remove from environment
     }
 
     private void publishBatch() {

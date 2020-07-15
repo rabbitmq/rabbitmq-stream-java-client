@@ -14,16 +14,12 @@
 
 package com.rabbitmq.stream;
 
-import java.time.Duration;
+public interface Environment extends AutoCloseable {
 
-public interface ProducerBuilder {
+    static EnvironmentBuilder builder() {
+        return new StreamEnvironmentBuilder();
+    }
 
-    ProducerBuilder stream(String stream);
-
-    ProducerBuilder batchSize(int batchSize);
-
-    ProducerBuilder batchPublishingDelay(Duration batchPublishingDelay);
-
-    Producer build();
+    ProducerBuilder producerBuilder();
 
 }

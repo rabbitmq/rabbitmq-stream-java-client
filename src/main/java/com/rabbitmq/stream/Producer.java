@@ -14,7 +14,7 @@
 
 package com.rabbitmq.stream;
 
-public interface Producer {
+public interface Producer extends AutoCloseable {
 
     MessageBuilder messageBuilder();
 

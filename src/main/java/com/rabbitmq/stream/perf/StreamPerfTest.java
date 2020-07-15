@@ -364,7 +364,8 @@ public class StreamPerfTest implements Callable<Integer> {
                         client.publishBatches(stream, messageBatches);
                     };
                 }
-                Producer producer = new ProducerBuilder().client(client)
+                /*
+                Producer producer = new StreamProducerBuilder().client(client)
                         .batchSize(this.batchSize).stream(stream)
                         .scheduledExecutorService(scheduledExecutorService)
                         .build();
@@ -383,6 +384,8 @@ public class StreamPerfTest implements Callable<Integer> {
 //                    publishCallback.run();
                     producer.send(producer.messageBuilder().addData(payload).build(), confirmationHandler);
                 }
+
+                 */
             };
 
         }).collect(Collectors.toList());

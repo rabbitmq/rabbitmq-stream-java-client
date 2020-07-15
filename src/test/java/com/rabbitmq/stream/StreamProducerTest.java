@@ -14,14 +14,13 @@
 
 package com.rabbitmq.stream;
 
+import io.netty.channel.EventLoopGroup;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
@@ -31,18 +30,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class StreamProducerTest {
 
     String stream;
-    TestUtils.ClientFactory cf;
+    EventLoopGroup eventLoopGroup;
 
-    ScheduledExecutorService scheduledExecutorService;
+    Environment environment;
 
     @BeforeEach
     void init() {
-        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        environment = Environment.builder()
+                .eventLoopGroup(eventLoopGroup)
+                .build();
     }
 
     @AfterEach
-    void tearDown() {
-        scheduledExecutorService.shutdownNow();
+    void tearDown() throws Exception {
+        environment.close();
     }
 
     @Test
@@ -50,12 +51,10 @@ public class StreamProducerTest {
         int batchSize = 100;
         int messageCount = 10_000 * batchSize + 1; // don't want a multiple of batch size
         CountDownLatch publishLatch = new CountDownLatch(messageCount);
-        Client client = cf.get();
-        Producer producer = new ProducerBuilder()
-                .batchSize(100)
-                .client(client)
+        Producer producer = environment.producerBuilder()
                 .stream(stream)
-                .scheduledExecutorService(scheduledExecutorService).build();
+                .batchSize(100)
+                .build();
         IntStream.range(0, messageCount).forEach(i -> {
             producer.send(producer.messageBuilder().addData("".getBytes()).build(), confirmationStatus -> {
                 publishLatch.countDown();
