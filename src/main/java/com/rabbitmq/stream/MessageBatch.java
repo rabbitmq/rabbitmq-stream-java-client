@@ -39,7 +39,7 @@ public final class MessageBatch {
         this.messages = messages;
     }
 
-    public MessageBatch add(byte [] binary) {
+    public MessageBatch add(byte[] binary) {
         this.messages.add(new Client.BinaryOnlyMessage(binary));
         return this;
     }
@@ -49,17 +49,20 @@ public final class MessageBatch {
         return this;
     }
 
+    public List<Message> getMessages() {
+        return messages;
+    }
+
     public enum Compression {
 
         NONE((byte) 0);
 
+        private static final Compression[] COMPRESSIONS = new Compression[]{NONE};
         byte code;
 
         Compression(byte code) {
             this.code = code;
         }
-
-        private static Compression [] COMPRESSIONS = new Compression[] {NONE};
 
         public static Compression get(byte code) {
             return COMPRESSIONS[code];
