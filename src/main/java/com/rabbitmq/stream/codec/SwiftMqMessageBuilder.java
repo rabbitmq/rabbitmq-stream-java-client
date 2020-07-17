@@ -14,7 +14,7 @@
 
 package com.rabbitmq.stream.codec;
 
-import com.rabbitmq.stream.ClientException;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
@@ -45,7 +45,7 @@ class SwiftMqMessageBuilder implements MessageBuilder {
             try {
                 outboundMessage.setMessageAnnotations(new MessageAnnotations(messageAnnotationsBuilder.map));
             } catch (IOException e) {
-                throw new ClientException("Error while setting message annotations", e);
+                throw new StreamException("Error while setting message annotations", e);
             }
         }
         if (propertiesBuilder != null) {
@@ -55,7 +55,7 @@ class SwiftMqMessageBuilder implements MessageBuilder {
             try {
                 outboundMessage.setApplicationProperties(new ApplicationProperties(applicationPropertiesBuilder.map));
             } catch (IOException e) {
-                throw new ClientException("Error while setting application properties", e);
+                throw new StreamException("Error while setting application properties", e);
             }
         }
         return new SwiftMqCodec.SwiftMqAmqpMessageWrapper(outboundMessage);

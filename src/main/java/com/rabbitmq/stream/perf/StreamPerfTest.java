@@ -18,6 +18,8 @@ import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
+import com.rabbitmq.stream.impl.Client;
+import com.rabbitmq.stream.impl.MessageBatch;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
 import io.micrometer.core.instrument.Counter;
@@ -171,7 +173,7 @@ public class StreamPerfTest implements Callable<Integer> {
         try {
             return (Codec) Class.forName(className).getConstructor().newInstance();
         } catch (Exception e) {
-            throw new ClientException("Exception while creating codec " + className, e);
+            throw new StreamException("Exception while creating codec " + className, e);
         }
     }
 

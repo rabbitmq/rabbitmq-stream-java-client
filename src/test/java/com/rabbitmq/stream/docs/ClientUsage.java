@@ -15,7 +15,7 @@
 package com.rabbitmq.stream.docs;
 
 import com.rabbitmq.stream.ByteCapacity;
-import com.rabbitmq.stream.Client;
+import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.OffsetSpecification;
 

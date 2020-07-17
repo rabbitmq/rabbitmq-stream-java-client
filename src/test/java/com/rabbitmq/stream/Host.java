@@ -81,7 +81,7 @@ public class Host {
     }
 
 
-    static String rabbitmqctlCommand() {
+    public static String rabbitmqctlCommand() {
         return System.getProperty("rabbitmqctl.bin");
     }
 

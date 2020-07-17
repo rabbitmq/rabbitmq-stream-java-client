@@ -15,7 +15,7 @@
 package com.rabbitmq.stream.docs;
 
 // tag::sample-imports[]
-import com.rabbitmq.stream.Client;
+import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.OffsetSpecification;
 
 import java.util.Collections;

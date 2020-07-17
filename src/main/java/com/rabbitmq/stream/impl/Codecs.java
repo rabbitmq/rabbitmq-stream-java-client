@@ -12,18 +12,29 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-public interface Environment extends AutoCloseable {
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.Codec;
 
-    static EnvironmentBuilder builder() {
+final class Codecs {
+
+    private Codecs() {
+
+    }
+
+    static final Codec DEFAULT;
+
+    static {
+        DEFAULT = instanciateDefault();
+    }
+
+    private static Codec instanciateDefault() {
         try {
-            return (EnvironmentBuilder) Class.forName("com.rabbitmq.stream.impl.StreamEnvironmentBuilder").getConstructor().newInstance();
+            return (Codec) Class.forName("com.rabbitmq.stream.codec.QpidProtonCodec").getConstructor().newInstance();
         } catch (Exception e) {
             throw new StreamException(e);
         }
     }
-
-    ProducerBuilder producerBuilder();
 
 }

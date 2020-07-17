@@ -14,16 +14,24 @@
 
 package com.rabbitmq.stream;
 
-public interface Environment extends AutoCloseable {
+public class StreamException extends RuntimeException {
 
-    static EnvironmentBuilder builder() {
-        try {
-            return (EnvironmentBuilder) Class.forName("com.rabbitmq.stream.impl.StreamEnvironmentBuilder").getConstructor().newInstance();
-        } catch (Exception e) {
-            throw new StreamException(e);
-        }
+    public StreamException() {
     }
 
-    ProducerBuilder producerBuilder();
+    public StreamException(String message) {
+        super(message);
+    }
 
+    public StreamException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public StreamException(Throwable cause) {
+        super(cause);
+    }
+
+    public StreamException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
+        super(message, cause, enableSuppression, writableStackTrace);
+    }
 }

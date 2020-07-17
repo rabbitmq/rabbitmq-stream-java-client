@@ -12,18 +12,21 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-public interface Environment extends AutoCloseable {
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 
-    static EnvironmentBuilder builder() {
-        try {
-            return (EnvironmentBuilder) Class.forName("com.rabbitmq.stream.impl.StreamEnvironmentBuilder").getConstructor().newInstance();
-        } catch (Exception e) {
-            throw new StreamException(e);
-        }
+class MessageAccumulator {
+
+    final BlockingQueue<StreamProducer.AccumulatedMessage> messages;
+
+    MessageAccumulator(int capacity) {
+        this.messages = new LinkedBlockingDeque<>(capacity);
     }
 
-    ProducerBuilder producerBuilder();
+    boolean add(StreamProducer.AccumulatedMessage message) {
+        return messages.offer(message);
+    }
 
 }

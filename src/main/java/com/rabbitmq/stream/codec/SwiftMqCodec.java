@@ -14,7 +14,7 @@
 
 package com.rabbitmq.stream.codec;
 
-import com.rabbitmq.stream.ClientException;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
@@ -147,7 +147,7 @@ public class SwiftMqCodec implements Codec {
                 try {
                     outboundMessage.setApplicationProperties(new ApplicationProperties(applicationProperties));
                 } catch (IOException e) {
-                    throw new ClientException("Error while setting application properties", e);
+                    throw new StreamException("Error while setting application properties", e);
                 }
             }
 
@@ -159,7 +159,7 @@ public class SwiftMqCodec implements Codec {
                 try {
                     outboundMessage.setMessageAnnotations(new MessageAnnotations(messageAnnotations));
                 } catch (IOException e) {
-                    throw new ClientException("Error while setting message annotations", e);
+                    throw new StreamException("Error while setting message annotations", e);
                 }
             }
 
@@ -181,7 +181,7 @@ public class SwiftMqCodec implements Codec {
             outboundMessage.writeContent(output);
             return new EncodedMessage(output.getCount(), output.getBuffer());
         } catch (IOException e) {
-            throw new ClientException("Error while writing AMQP 1.0 message to output stream");
+            throw new StreamException("Error while writing AMQP 1.0 message to output stream");
         }
     }
 
@@ -298,7 +298,7 @@ public class SwiftMqCodec implements Codec {
             try {
                 applicationProperties = amqpMessage.getApplicationProperties().getValue();
             } catch (IOException e) {
-                throw new ClientException("Error while reading application properties", e);
+                throw new StreamException("Error while reading application properties", e);
             }
             return createMapFromAmqpMap(applicationProperties);
         } else {
@@ -312,7 +312,7 @@ public class SwiftMqCodec implements Codec {
             try {
                 messageAnnotations = amqpMessage.getMessageAnnotations().getValue();
             } catch (IOException e) {
-                throw new ClientException("Error while reading message annotations", e);
+                throw new StreamException("Error while reading message annotations", e);
             }
             return createMapFromAmqpMap(messageAnnotations);
         } else {
@@ -338,7 +338,7 @@ public class SwiftMqCodec implements Codec {
         try {
             amqpMessage = new AMQPMessage(data);
         } catch (Exception e) {
-            throw new ClientException("Error while decoding AMQP 1.0 message");
+            throw new StreamException("Error while decoding AMQP 1.0 message");
         }
 
         Object body = extractBody(amqpMessage);

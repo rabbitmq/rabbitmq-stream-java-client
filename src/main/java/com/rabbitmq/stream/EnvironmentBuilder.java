@@ -28,41 +28,41 @@ public interface EnvironmentBuilder {
 
     // FIXME add urls parameters for the locator
 
-    StreamEnvironmentBuilder uri(String uri);
+    EnvironmentBuilder uri(String uri);
 
-    StreamEnvironmentBuilder uris(List<String> uris);
+    EnvironmentBuilder uris(List<String> uris);
 
-    StreamEnvironmentBuilder host(String host);
+    EnvironmentBuilder host(String host);
 
-    StreamEnvironmentBuilder port(int port);
+    EnvironmentBuilder port(int port);
 
-    StreamEnvironmentBuilder codec(Codec codec);
+    EnvironmentBuilder codec(Codec codec);
 
     EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
 
-    StreamEnvironmentBuilder saslConfiguration(SaslConfiguration saslConfiguration);
+    EnvironmentBuilder saslConfiguration(SaslConfiguration saslConfiguration);
 
-    StreamEnvironmentBuilder credentialsProvider(CredentialsProvider credentialsProvider);
+    EnvironmentBuilder credentialsProvider(CredentialsProvider credentialsProvider);
 
-    StreamEnvironmentBuilder username(String username);
+    EnvironmentBuilder username(String username);
 
-    StreamEnvironmentBuilder password(String password);
+    EnvironmentBuilder password(String password);
 
-    StreamEnvironmentBuilder virtualHost(String virtualHost);
+    EnvironmentBuilder virtualHost(String virtualHost);
 
-    StreamEnvironmentBuilder requestedHeartbeat(Duration requestedHeartbeat);
+    EnvironmentBuilder requestedHeartbeat(Duration requestedHeartbeat);
 
-    StreamEnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
+    EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
 
-    StreamEnvironmentBuilder channelCustomizer(ChannelCustomizer channelCustomizer);
+    EnvironmentBuilder channelCustomizer(ChannelCustomizer channelCustomizer);
 
-    StreamEnvironmentBuilder chunkChecksum(ChunkChecksum chunkChecksum);
+    EnvironmentBuilder chunkChecksum(ChunkChecksum chunkChecksum);
 
-    StreamEnvironmentBuilder clientProperties(Map<String, String> clientProperties);
+    EnvironmentBuilder clientProperties(Map<String, String> clientProperties);
 
-    StreamEnvironmentBuilder clientProperty(String key, String value);
+    EnvironmentBuilder clientProperty(String key, String value);
 
-    StreamEnvironmentBuilder metricsCollector(MetricsCollector metricsCollector);
+    EnvironmentBuilder metricsCollector(MetricsCollector metricsCollector);
 
     EnvironmentBuilder scheduledExecutorService(ScheduledExecutorService scheduledExecutorService);
 
