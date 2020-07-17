@@ -81,7 +81,7 @@ public class NotificationTest {
                 })
                 .publishErrorListener((publishingId, errorCode) -> errorLatch.countDown()));
 
-        publisher.publish(s, "".getBytes());
+        publisher.publish(s, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
 
         assertThat(publishLatch.await(10, SECONDS)).isTrue();
 
@@ -92,7 +92,7 @@ public class NotificationTest {
         assertThat(receivedStream.get()).isEqualTo(s);
         assertThat(receivedCode.get()).isEqualTo(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-        publisher.publish(s, "".getBytes());
+        publisher.publish(s, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
         assertThat(errorLatch.await(10, SECONDS)).isTrue();
     }
 
@@ -104,7 +104,7 @@ public class NotificationTest {
                 .publishConfirmListener(publishingId -> publishLatch.countDown()));
         Client.Response response = publisher.create(s);
         assertThat(response.isOk()).isTrue();
-        publisher.publish(s, "".getBytes());
+        publisher.publish(s, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
 
         assertThat(publishLatch.await(10, SECONDS)).isTrue();
 

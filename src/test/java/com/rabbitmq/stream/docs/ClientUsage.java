@@ -20,6 +20,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.OffsetSpecification;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -91,9 +92,9 @@ public class ClientUsage {
         Client client = new Client();
         // tag::publish-simple[]
         byte[] messagePayload = "hello".getBytes(StandardCharsets.UTF_8);  // <1>
-        long publishingId = client.publish(
+        List<Long> publishingIds = client.publish(
                 "my-stream",  // <2>
-                messagePayload  // <3>
+                Collections.singletonList(client.messageBuilder().addData(messagePayload).build())  // <3>
         );
         // end::publish-simple[]
     }
@@ -101,11 +102,12 @@ public class ClientUsage {
     void publishMultiple() {
         Client client = new Client();
         // tag::publish-multiple[]
-        List<byte[]> messages = IntStream.range(0, 9)
+        List<Message> messages = IntStream.range(0, 9)
                 .mapToObj(i -> ("hello" + i).getBytes(StandardCharsets.UTF_8))
+                .map(body -> client.messageBuilder().addData(body).build())
                 .collect(Collectors.toList());  // <1>
 
-        List<Long> publishingIds = client.publishBinary(
+        List<Long> publishingIds = client.publish(
                 "my-stream",  // <2>
                 messages  // <3>
         );
@@ -170,7 +172,7 @@ public class ClientUsage {
                 .messageBuilder()  // <3>
                     .addData("hello".getBytes(StandardCharsets.UTF_8))  // <4>
                 .build();  // <5>
-        long publishingId = client.publish("my-stream", message);  // <6>
+        List<Long> publishingId = client.publish("my-stream", Collections.singletonList(message));  // <6>
         // end::message-creation[]
     }
 

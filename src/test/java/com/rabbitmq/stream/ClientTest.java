@@ -110,8 +110,9 @@ public class ClientTest {
 
         Set<Long> correlationIds = new HashSet<>(publishCount);
         for (int i = 1; i <= publishCount; i++) {
-            long sequenceId = client.publish(stream, ("message" + i).getBytes(StandardCharsets.UTF_8));
-            correlationIds.add(sequenceId);
+            List<Long> sequenceId = client.publish(stream,
+                    Collections.singletonList(client.messageBuilder().addData(("message" + i).getBytes(StandardCharsets.UTF_8)).build()));
+            correlationIds.add(sequenceId.get(0));
         }
 
         assertThat(latchConfirm.await(60, SECONDS)).isTrue();
@@ -122,7 +123,7 @@ public class ClientTest {
     void publishConsumeComplexMessage(Client publisher, Codec codec, Function<Integer, Message> messageFactory) {
         int publishCount = 1000;
         for (int i = 1; i <= publishCount; i++) {
-            publisher.publish(stream, messageFactory.apply(i));
+            publisher.publish(stream, Collections.singletonList(messageFactory.apply(i)));
         }
 
         CountDownLatch latch = new CountDownLatch(publishCount);
@@ -204,7 +205,8 @@ public class ClientTest {
         int messageCount = 1000;
         Codec codec = new SimpleCodec();
         Client publisher = cf.get(new Client.ClientParameters().codec(codec));
-        IntStream.range(0, 1000).forEach(i -> publisher.publish(stream, String.valueOf(i).getBytes(UTF8)));
+        IntStream.range(0, 1000).forEach(i -> publisher.publish(stream,
+                Collections.singletonList(publisher.messageBuilder().addData(String.valueOf(i).getBytes(UTF8)).build())));
 
         CountDownLatch consumeLatch = new CountDownLatch(messageCount);
         Set<String> messageBodies = ConcurrentHashMap.newKeySet(messageCount);
@@ -234,13 +236,14 @@ public class ClientTest {
         );
         AtomicInteger publishingSequence = new AtomicInteger(0);
         IntStream.range(0, batchCount).forEach(batchIndex -> {
-            publisher.publishBinary(stream, IntStream.range(0, batchSize)
+            publisher.publish(stream, IntStream.range(0, batchSize)
                     .mapToObj(i -> {
                         int sequence = publishingSequence.getAndIncrement();
                         ByteBuffer b = ByteBuffer.allocate(payloadSize);
                         b.putInt(sequence);
                         return b.array();
                     })
+                    .map(body -> publisher.messageBuilder().addData(body).build())
                     .collect(Collectors.toList()));
         });
 
@@ -330,7 +333,8 @@ public class ClientTest {
             int messageId = 0;
             while (messageId < publishCount) {
                 messageId++;
-                publisher.publish(stream, ("message" + messageId).getBytes(StandardCharsets.UTF_8));
+                publisher.publish(stream,
+                        Collections.singletonList(publisher.messageBuilder().addData(("message" + messageId).getBytes(StandardCharsets.UTF_8)).build()));
                 published.mark();
             }
         }).start();
@@ -411,8 +415,8 @@ public class ClientTest {
                 AtomicLong publishSequence = new AtomicLong(0);
                 byte[] payload = new byte[payloadSize];
                 IntStream.range(0, messageCount).forEach(i -> publisher.publish(testStream,
-                        publisher.messageBuilder().properties().messageId(publishSequence.getAndIncrement())
-                                .messageBuilder().addData(payload).build())
+                        Collections.singletonList(publisher.messageBuilder().properties().messageId(publishSequence.getAndIncrement())
+                                .messageBuilder().addData(payload).build()))
                 );
                 assertThat(publishingLatch.await(10, SECONDS)).isTrue();
 
@@ -456,7 +460,8 @@ public class ClientTest {
 
         String nonExistingStream = UUID.randomUUID().toString();
         Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-        IntStream.range(0, messageCount).forEach(i -> publishingIds.add(client.publish(nonExistingStream, ("" + i).getBytes())));
+        IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(client.publish(nonExistingStream,
+                Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build()))));
 
         assertThat(latch.await(10, SECONDS)).isTrue();
         assertThat(confirms.get()).isZero();
@@ -487,7 +492,8 @@ public class ClientTest {
             );
 
             Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-            IntStream.range(0, messageCount).forEach(i -> publishingIds.add(client.publish(nonStreamQueue, ("" + i).getBytes())));
+            IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(client.publish(nonStreamQueue,
+                    Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build()))));
 
             assertThat(latch.await(10, SECONDS)).isTrue();
             assertThat(confirms.get()).isZero();
@@ -512,7 +518,8 @@ public class ClientTest {
                     .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown())
             );
 
-            IntStream.range(0, messageCount).forEach(i -> client.publish(q, "hello".getBytes(StandardCharsets.UTF_8)));
+            IntStream.range(0, messageCount).forEach(i -> client.publish(q,
+                    Collections.singletonList(client.messageBuilder().addData("hello".getBytes(StandardCharsets.UTF_8)).build())));
             assertThat(publishedLatch.await(10, SECONDS)).isTrue();
 
             client.subscribe(1, q, OffsetSpecification.first(), 10);
@@ -544,7 +551,8 @@ public class ClientTest {
                 })
         );
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(s, ("first wave" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(s,
+                Collections.singletonList(publisher.messageBuilder().addData(("first wave" + i).getBytes()).build())));
 
         assertThat(confirmLatch.await(10, SECONDS)).isTrue();
         assertThat(confirms.get()).isEqualTo(messageCount);
@@ -556,7 +564,8 @@ public class ClientTest {
         Thread.sleep(1000);
 
         Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-        IntStream.range(0, messageCount).forEach(i -> publishingIds.add(publisher.publish(s, ("second wave" + i).getBytes())));
+        IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(publisher.publish(s,
+                Collections.singletonList(publisher.messageBuilder().addData(("second wave" + i).getBytes()).build()))));
 
         assertThat(publishErrorLatch.await(10, SECONDS)).isTrue();
         assertThat(confirms.get()).isEqualTo(messageCount);

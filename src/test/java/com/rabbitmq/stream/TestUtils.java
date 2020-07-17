@@ -22,6 +22,7 @@ import org.junit.jupiter.api.extension.*;
 import java.lang.annotation.*;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,7 +65,7 @@ public class TestUtils {
                 .publishConfirmListener(publishConfirmListener));
 
         for (int i = 1; i <= publishCount; i++) {
-            client.publish(stream, (messagePrefix + i).getBytes(StandardCharsets.UTF_8));
+            client.publish(stream, Collections.singletonList(client.messageBuilder().addData((messagePrefix + i).getBytes(StandardCharsets.UTF_8)).build()));
         }
 
         try {

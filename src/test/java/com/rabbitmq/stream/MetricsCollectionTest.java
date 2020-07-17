@@ -49,7 +49,8 @@ public class MetricsCollectionTest {
                 .metricsCollector(metricsCollector)
                 .publishConfirmListener(publishingId -> publishLatch.countDown()));
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, "".getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
+                Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build())));
 
         assertThat(publishLatch.await(10, TimeUnit.SECONDS));
         assertThat(metricsCollector.publish.get()).isEqualTo(messageCount);
@@ -81,7 +82,9 @@ public class MetricsCollectionTest {
                 .publishErrorListener((publishingId, errorCode) -> publishErrorLatch.countDown()));
 
         String nonExistingStream = UUID.randomUUID().toString();
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(nonExistingStream, "".getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(nonExistingStream,
+                Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build())
+        ));
 
         assertThat(publishErrorLatch.await(10, TimeUnit.SECONDS));
         assertThat(metricsCollector.confirm.get()).isZero();

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -207,7 +208,8 @@ public class OffsetTest {
                     firstWaveLatch.countDown();
                     secondWaveLatch.countDown();
                 }));
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("first wave " + i).getBytes(StandardCharsets.UTF_8)));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
+                Collections.singletonList(publisher.messageBuilder().addData(("first wave " + i).getBytes(StandardCharsets.UTF_8)).build())));
         assertThat(firstWaveLatch.await(10, SECONDS)).isTrue();
 
         CountDownLatch consumedLatch = new CountDownLatch(messageCount);
@@ -222,7 +224,8 @@ public class OffsetTest {
 
         consumer.subscribe(1, stream, OffsetSpecification.next(), 10);
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("second wave " + i).getBytes(StandardCharsets.UTF_8)));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
+                Collections.singletonList(publisher.messageBuilder().addData(("second wave " + i).getBytes(StandardCharsets.UTF_8)).build())));
 
         assertThat(consumedLatch.await(10, SECONDS)).isTrue();
         assertThat(consumed).hasSize(messageCount);
@@ -254,7 +257,8 @@ public class OffsetTest {
         new Thread(() -> {
             int publishedMessageCount = 0;
             while (true) {
-                publisher.publish(stream, String.valueOf(publishedMessageCount).getBytes());
+                publisher.publish(stream,
+                        Collections.singletonList(publisher.messageBuilder().addData(String.valueOf(publishedMessageCount).getBytes()).build()));
                 if (++publishedMessageCount == messageLimit) {
                     break;
                 }

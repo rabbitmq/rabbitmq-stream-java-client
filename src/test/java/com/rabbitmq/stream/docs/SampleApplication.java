@@ -18,6 +18,7 @@ package com.rabbitmq.stream.docs;
 import com.rabbitmq.stream.Client;
 import com.rabbitmq.stream.OffsetSpecification;
 
+import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +38,8 @@ public class SampleApplication {
                 .publishConfirmListener(publishingId -> publishConfirmLatch.countDown()));  // <1>
         publisher.create(stream);  // <2>
         IntStream.range(0, messageCount)
-                .forEach(i -> publisher.publish(stream, String.valueOf(i).getBytes()));  // <3>
+                .forEach(i -> publisher.publish(stream,
+                        Collections.singletonList(publisher.messageBuilder().addData(String.valueOf(i).getBytes()).build())));  // <3>
         publishConfirmLatch.await(10, TimeUnit.SECONDS);  // <4>
         publisher.close();  // <5>
         System.out.printf("Published %,d messages%n", messageCount);

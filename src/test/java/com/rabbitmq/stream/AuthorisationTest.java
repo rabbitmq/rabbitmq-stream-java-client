@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
@@ -177,7 +178,8 @@ public class AuthorisationTest {
                     .publishConfirmListener(publishingId -> publishConfirmLatch.countDown())
                     .publishErrorListener((publishingId, errorCode) -> publishErrorCount.incrementAndGet()));
 
-            IntStream.range(0, messageCount).forEach(j -> client.publish(stream, "hello".getBytes(StandardCharsets.UTF_8)));
+            IntStream.range(0, messageCount).forEach(j -> client.publish(stream,
+                    Collections.singletonList(client.messageBuilder().addData("hello".getBytes(StandardCharsets.UTF_8)).build())));
 
             assertThat(await(publishConfirmLatch)).isTrue();
             assertThat(publishErrorCount.get()).isZero();
@@ -205,7 +207,8 @@ public class AuthorisationTest {
                     .publishConfirmListener(publishingId -> publishConfirmCount.incrementAndGet())
                     .publishErrorListener((publishingId, errorCode) -> publishErrorLatch.countDown()));
 
-            IntStream.range(0, messageCount).forEach(j -> client.publish(stream, "hello".getBytes(StandardCharsets.UTF_8)));
+            IntStream.range(0, messageCount).forEach(j -> client.publish(stream,
+                    Collections.singletonList(client.messageBuilder().addData(("hello".getBytes(StandardCharsets.UTF_8))).build())));
 
             assertThat(await(publishErrorLatch)).isTrue();
             assertThat(publishConfirmCount.get()).isZero();

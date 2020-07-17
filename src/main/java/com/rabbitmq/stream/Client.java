@@ -941,6 +941,12 @@ public class Client implements AutoCloseable {
         }
     }
 
+    Codec.EncodedMessage encode(String stream, Message message) {
+        Codec.EncodedMessage encodedMessage = this.codec.encode(message);
+        checkMessageFitsInFrame(stream, encodedMessage);
+        return encodedMessage;
+    }
+
     public List<Long> publish(String stream, List<Message> messages) {
         List<Object> encodedMessages = new ArrayList<>(messages.size());
         for (Message message : messages) {
@@ -961,74 +967,6 @@ public class Client implements AutoCloseable {
         }
         return publishInternal(this.channel, stream, encodedMessages,
                 new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK));
-    }
-
-    public long publish(String stream, Message message) {
-        Codec.EncodedMessage encodedMessage = codec.encode(message);
-        checkMessageFitsInFrame(stream, encodedMessage);
-        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage),
-                OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
-    }
-
-    public long publish(String stream, Message message, OutboundEntityMappingCallback mappingCallback) {
-        Codec.EncodedMessage encodedMessage = codec.encode(message);
-        checkMessageFitsInFrame(stream, encodedMessage);
-        OriginalAndEncodedOutboundEntity wrapper = new OriginalAndEncodedOutboundEntity(message, encodedMessage);
-        return publishInternal(this.channel, stream, Collections.singletonList(wrapper),
-                new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK)).get(0);
-    }
-
-    public List<Long> publishBinary(String stream, List<byte[]> messages) {
-        List<Object> encodedMessages = new ArrayList<>(messages.size());
-        for (byte[] message : messages) {
-            Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(message));
-            checkMessageFitsInFrame(stream, encodedMessage);
-            encodedMessages.add(encodedMessage);
-        }
-        return publishInternal(this.channel, stream, encodedMessages, OUTBOUND_MESSAGE_WRITE_CALLBACK);
-    }
-
-    Codec.EncodedMessage encode(String stream, Message message) {
-        Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-        checkMessageFitsInFrame(stream, encodedMessage);
-        return encodedMessage;
-    }
-
-    public List<Long> publishBinary(String stream, List<byte[]> messages, OutboundEntityMappingCallback mappingCallback) {
-        List<Object> encodedMessages = new ArrayList<>(messages.size());
-        for (byte[] message : messages) {
-            Message originalMessage = new BinaryOnlyMessage(message);
-            Codec.EncodedMessage encodedMessage = codec.encode(originalMessage);
-            checkMessageFitsInFrame(stream, encodedMessage);
-            OriginalAndEncodedOutboundEntity wrapper = new OriginalAndEncodedOutboundEntity(originalMessage, encodedMessage);
-            encodedMessages.add(wrapper);
-        }
-        return publishInternal(this.channel, stream, encodedMessages,
-                new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK));
-    }
-
-    public long publish(String stream, byte[] data) {
-        Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(data));
-        checkMessageFitsInFrame(stream, encodedMessage);
-        return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage),
-                OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
-    }
-
-    public long publish(String stream, byte[] data, OutboundEntityMappingCallback mappingCallback) {
-        Message message = new BinaryOnlyMessage(data);
-        Codec.EncodedMessage encodedMessage = codec.encode(message);
-        checkMessageFitsInFrame(stream, encodedMessage);
-        OriginalAndEncodedOutboundEntity wrapper = new OriginalAndEncodedOutboundEntity(message, encodedMessage);
-        return publishInternal(this.channel, stream, Collections.singletonList(wrapper),
-                new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK)).get(0);
-    }
-
-    public long publishBatch(String stream, MessageBatch messageBatch) {
-        return publishBatches(stream, Collections.singletonList(messageBatch)).get(0);
-    }
-
-    public long publishBatch(String stream, MessageBatch messageBatch, OutboundEntityMappingCallback mappingCallback) {
-        return publishBatches(stream, Collections.singletonList(messageBatch), mappingCallback).get(0);
     }
 
     public List<Long> publishBatches(String stream, List<MessageBatch> messageBatches) {

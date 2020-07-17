@@ -362,7 +362,7 @@ public class AmqpInteroperabilityTest {
 
                 messageOperations.get().forEach(messageOperation -> messageOperation.messageBuilderConsumer.accept(messageBuilder));
 
-                client.publish(s, messageBuilder.build());
+                client.publish(s, Collections.singletonList(messageBuilder.build()));
             });
 
             try (Connection c = connectionFactory.newConnection()) {

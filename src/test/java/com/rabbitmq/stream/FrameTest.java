@@ -74,9 +74,6 @@ public class FrameTest {
                 }
             };
             List<ThrowableAssert.ThrowingCallable> publishCalls = Arrays.asList(
-                    () -> client.publish("", binary),
-                    () -> client.publishBinary("", Arrays.asList(binary)),
-                    () -> client.publish("", message),
                     () -> client.publish("", Arrays.asList(message))
             );
             publishCalls.forEach(callable -> assertThatThrownBy(callable).isInstanceOf(IllegalArgumentException.class));
@@ -125,7 +122,7 @@ public class FrameTest {
                 Mockito.when(channel.writeAndFlush(Mockito.any())).thenReturn(Mockito.mock(ChannelFuture.class));
 
                 client.publishInternal(channel, "stream", test.sizes.stream()
-                        .map(size -> new Codec.EncodedMessage(size, new byte[size])).collect(Collectors.toList()),
+                                .map(size -> new Codec.EncodedMessage(size, new byte[size])).collect(Collectors.toList()),
                         Client.OUTBOUND_MESSAGE_WRITE_CALLBACK);
 
                 ArgumentCaptor<ByteBuf> bbCaptor = ArgumentCaptor.forClass(ByteBuf.class);

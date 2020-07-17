@@ -20,6 +20,7 @@ import com.rabbitmq.client.ConnectionFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -54,13 +55,15 @@ public class SubscriptionTest {
 
         consumer.subscribe(1, stream, OffsetSpecification.first(), messageCount * 2);
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
+                Collections.singletonList(publisher.messageBuilder().addData(("" + i).getBytes()).build())));
 
         waitAtMost(5, () -> messageCounts.computeIfAbsent(1, k -> new AtomicInteger(0)).get() == messageCount);
 
         consumer.subscribe(2, stream, OffsetSpecification.first(), messageCount * 2);
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
+                Collections.singletonList(publisher.messageBuilder().addData(("" + i).getBytes()).build())));
 
         assertThat(latches.get(1).await(5, SECONDS)).isTrue();
         assertThat(latches.get(2).await(5, SECONDS)).isTrue();
@@ -99,7 +102,8 @@ public class SubscriptionTest {
         }));
         Client.Response response = client.subscribe(1, stream, OffsetSpecification.first(), messageCount * 100);
         assertThat(response.isOk()).isTrue();
-        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
+                Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
         assertThat(latch.await(10, SECONDS)).isTrue();
         response = client.unsubscribe(1);
         assertThat(response.isOk()).isTrue();
@@ -107,7 +111,8 @@ public class SubscriptionTest {
         CountDownLatch latch2 = new CountDownLatch(messageCount);
         Client client2 = cf.get(new Client.ClientParameters().messageListener((correlationId, offset, message) -> latch2.countDown()));
         client2.subscribe(1, stream, OffsetSpecification.first(), messageCount * 100);
-        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
+                Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
         assertThat(latch2.await(10, SECONDS)).isTrue();
         Thread.sleep(1000L);
         assertThat(receivedMessageCount).hasValue(messageCount);
@@ -130,13 +135,15 @@ public class SubscriptionTest {
         response = client.subscribe(2, stream, OffsetSpecification.first(), messageCount * 100);
         assertThat(response.isOk()).isTrue();
 
-        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
+                Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
         assertThat(latches.get(1).await(10, SECONDS)).isTrue();
 
         response = client.unsubscribe(1);
         assertThat(response.isOk()).isTrue();
 
-        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, ("" + i).getBytes()));
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
+                Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
         assertThat(latches.get(2).await(10, SECONDS)).isTrue();
         assertThat(messageCounts.get(2)).hasValue(messageCount * 2);
         assertThat(messageCounts.get(1)).hasValue(messageCount);
