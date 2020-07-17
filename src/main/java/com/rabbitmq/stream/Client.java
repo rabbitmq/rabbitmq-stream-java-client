@@ -951,11 +951,31 @@ public class Client implements AutoCloseable {
         return publishInternal(this.channel, stream, encodedMessages, OUTBOUND_MESSAGE_WRITE_CALLBACK);
     }
 
+    public List<Long> publish(String stream, List<Message> messages, OutboundEntityMappingCallback mappingCallback) {
+        List<Object> encodedMessages = new ArrayList<>(messages.size());
+        for (Message message : messages) {
+            Codec.EncodedMessage encodedMessage = codec.encode(message);
+            checkMessageFitsInFrame(stream, encodedMessage);
+            OriginalAndEncodedOutboundEntity wrapper = new OriginalAndEncodedOutboundEntity(message, encodedMessage);
+            encodedMessages.add(wrapper);
+        }
+        return publishInternal(this.channel, stream, encodedMessages,
+                new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK));
+    }
+
     public long publish(String stream, Message message) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
         checkMessageFitsInFrame(stream, encodedMessage);
         return publishInternal(this.channel, stream, Collections.singletonList(encodedMessage),
                 OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
+    }
+
+    public long publish(String stream, Message message, OutboundEntityMappingCallback mappingCallback) {
+        Codec.EncodedMessage encodedMessage = codec.encode(message);
+        checkMessageFitsInFrame(stream, encodedMessage);
+        OriginalAndEncodedOutboundEntity wrapper = new OriginalAndEncodedOutboundEntity(message, encodedMessage);
+        return publishInternal(this.channel, stream, Collections.singletonList(wrapper),
+                new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK)).get(0);
     }
 
     public List<Long> publishBinary(String stream, List<byte[]> messages) {
@@ -974,6 +994,19 @@ public class Client implements AutoCloseable {
         return encodedMessage;
     }
 
+    public List<Long> publishBinary(String stream, List<byte[]> messages, OutboundEntityMappingCallback mappingCallback) {
+        List<Object> encodedMessages = new ArrayList<>(messages.size());
+        for (byte[] message : messages) {
+            Message originalMessage = new BinaryOnlyMessage(message);
+            Codec.EncodedMessage encodedMessage = codec.encode(originalMessage);
+            checkMessageFitsInFrame(stream, encodedMessage);
+            OriginalAndEncodedOutboundEntity wrapper = new OriginalAndEncodedOutboundEntity(originalMessage, encodedMessage);
+            encodedMessages.add(wrapper);
+        }
+        return publishInternal(this.channel, stream, encodedMessages,
+                new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK));
+    }
+
     public long publish(String stream, byte[] data) {
         Codec.EncodedMessage encodedMessage = codec.encode(new BinaryOnlyMessage(data));
         checkMessageFitsInFrame(stream, encodedMessage);
@@ -981,8 +1014,21 @@ public class Client implements AutoCloseable {
                 OUTBOUND_MESSAGE_WRITE_CALLBACK).get(0);
     }
 
+    public long publish(String stream, byte[] data, OutboundEntityMappingCallback mappingCallback) {
+        Message message = new BinaryOnlyMessage(data);
+        Codec.EncodedMessage encodedMessage = codec.encode(message);
+        checkMessageFitsInFrame(stream, encodedMessage);
+        OriginalAndEncodedOutboundEntity wrapper = new OriginalAndEncodedOutboundEntity(message, encodedMessage);
+        return publishInternal(this.channel, stream, Collections.singletonList(wrapper),
+                new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK)).get(0);
+    }
+
     public long publishBatch(String stream, MessageBatch messageBatch) {
         return publishBatches(stream, Collections.singletonList(messageBatch)).get(0);
+    }
+
+    public long publishBatch(String stream, MessageBatch messageBatch, OutboundEntityMappingCallback mappingCallback) {
+        return publishBatches(stream, Collections.singletonList(messageBatch), mappingCallback).get(0);
     }
 
     public List<Long> publishBatches(String stream, List<MessageBatch> messageBatches) {
@@ -998,6 +1044,23 @@ public class Client implements AutoCloseable {
             encodedMessageBatches.add(encodedMessageBatch);
         }
         return publishInternal(this.channel, stream, encodedMessageBatches, OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK);
+    }
+
+    public List<Long> publishBatches(String stream, List<MessageBatch> messageBatches, OutboundEntityMappingCallback mappingCallback) {
+        List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
+        for (MessageBatch batch : messageBatches) {
+            EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
+            for (Message message : batch.messages) {
+                Codec.EncodedMessage encodedMessage = codec.encode(message);
+                checkMessageFitsInFrame(stream, encodedMessage);
+                encodedMessageBatch.add(encodedMessage);
+            }
+            checkMessageBatchFitsInFrame(stream, encodedMessageBatch);
+            OriginalAndEncodedOutboundEntity wrapper = new OriginalAndEncodedOutboundEntity(batch, encodedMessageBatch);
+            encodedMessageBatches.add(wrapper);
+        }
+        return publishInternal(this.channel, stream, encodedMessageBatches,
+                new OriginalEncodedEntityOutboundEntityWriteCallback(mappingCallback, OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK));
     }
 
     private void checkMessageFitsInFrame(String stream, Codec.EncodedMessage encodedMessage) {
@@ -1216,6 +1279,12 @@ public class Client implements AutoCloseable {
         return !closing.get();
     }
 
+    public interface OutboundEntityMappingCallback {
+
+        void handle(long publishingId, Object originalMessageOrBatch);
+
+    }
+
     interface OutboundEntityWriteCallback {
 
         int write(ByteBuf bb, Object entity, long publishingId);
@@ -1261,7 +1330,6 @@ public class Client implements AutoCloseable {
 
     }
 
-
     public interface MessageListener {
 
         void handle(int subscriptionId, long offset, Message message);
@@ -1274,10 +1342,45 @@ public class Client implements AutoCloseable {
 
     }
 
+
     public interface ShutdownListener {
 
         void handle(ShutdownContext shutdownContext);
 
+    }
+
+    private static final class OriginalAndEncodedOutboundEntity {
+
+        private final Object original, encoded;
+
+        private OriginalAndEncodedOutboundEntity(Object original, Object encoded) {
+            this.original = original;
+            this.encoded = encoded;
+        }
+    }
+
+    private static final class OriginalEncodedEntityOutboundEntityWriteCallback implements OutboundEntityWriteCallback {
+
+        private final OutboundEntityMappingCallback callback;
+        private final OutboundEntityWriteCallback delegate;
+
+        private OriginalEncodedEntityOutboundEntityWriteCallback(OutboundEntityMappingCallback callback, OutboundEntityWriteCallback delegate) {
+            this.callback = callback;
+            this.delegate = delegate;
+        }
+
+        @Override
+        public int write(ByteBuf bb, Object entity, long publishingId) {
+            OriginalAndEncodedOutboundEntity wrapper = (OriginalAndEncodedOutboundEntity) entity;
+            callback.handle(publishingId, wrapper.original);
+            return delegate.write(bb, wrapper.encoded, publishingId);
+        }
+
+        @Override
+        public int fragmentLength(Object entity) {
+            OriginalAndEncodedOutboundEntity wrapper = (OriginalAndEncodedOutboundEntity) entity;
+            return delegate.fragmentLength(wrapper.encoded);
+        }
     }
 
     private static class EncodedMessageBatch {
