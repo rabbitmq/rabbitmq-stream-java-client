@@ -19,14 +19,45 @@ import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
 import io.netty.channel.EventLoopGroup;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.stream.Collectors;
 
 class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
     private final Client.ClientParameters clientParameters = new Client.ClientParameters();
     private ScheduledExecutorService scheduledExecutorService;
+    private List<URI> uris = Collections.emptyList();
+
+    @Override
+    public StreamEnvironmentBuilder uri(String uri) {
+        try {
+            this.uris = Collections.singletonList(new URI(uri));
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Invalid URI: " + uri, e);
+        }
+        return this;
+    }
+
+    @Override
+    public StreamEnvironmentBuilder uris(List<String> uris) {
+        if (uris == null) {
+            throw new IllegalArgumentException("URIs parameter cannot be null");
+        }
+        this.uris = uris.stream().map(uriString -> {
+            try {
+                return new URI(uriString);
+            } catch (URISyntaxException e) {
+                throw new IllegalArgumentException("Invalid URI: " + uriString, e);
+            }
+        }).collect(Collectors.toList());
+        return this;
+    }
 
     public StreamEnvironmentBuilder host(String host) {
         this.clientParameters.host(host);
@@ -115,6 +146,6 @@ class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
     @Override
     public Environment build() {
-        return new StreamEnvironment(scheduledExecutorService, clientParameters);
+        return new StreamEnvironment(scheduledExecutorService, clientParameters, uris);
     }
 }

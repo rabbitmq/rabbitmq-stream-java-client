@@ -766,6 +766,9 @@ public class Client implements AutoCloseable {
             if (!request.response.get().isOk()) {
                 throw new ClientException("Unexpected response code when connecting to virtual host: " + request.response.get().getResponseCode());
             }
+        } catch (ClientException e) {
+            outstandingRequests.remove(correlationId);
+            throw e;
         } catch (RuntimeException e) {
             outstandingRequests.remove(correlationId);
             throw new ClientException(e);

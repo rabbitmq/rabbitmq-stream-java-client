@@ -20,12 +20,17 @@ import com.rabbitmq.stream.sasl.SaslConfiguration;
 import io.netty.channel.EventLoopGroup;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 
 public interface EnvironmentBuilder {
 
     // FIXME add urls parameters for the locator
+
+    StreamEnvironmentBuilder uri(String uri);
+
+    StreamEnvironmentBuilder uris(List<String> uris);
 
     StreamEnvironmentBuilder host(String host);
 

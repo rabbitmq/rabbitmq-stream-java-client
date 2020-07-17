@@ -19,9 +19,13 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -33,11 +37,21 @@ class StreamEnvironment implements Environment {
     private final ScheduledExecutorService scheduledExecutorService;
     private final boolean privateScheduleExecutorService;
     private final Client.ClientParameters clientParametersPrototype;
+    private final List<Address> addresses;
     private final Client locator;
     private final Map<String, Client> clientPool = new ConcurrentHashMap<>();
     private final List<Producer> producers = new CopyOnWriteArrayList<>();
 
-    StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype) {
+    StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
+                      List<URI> uris) {
+
+        clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
+
+        this.addresses = uris.stream().map(uriItem -> new Address(
+                uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
+                uriItem.getPort() == -1 ? Client.DEFAULT_PORT : uriItem.getPort())
+        ).collect(Collectors.toList());
+
         if (clientParametersPrototype.eventLoopGroup == null) {
             this.eventLoopGroup = new NioEventLoopGroup();
             this.clientParametersPrototype = clientParametersPrototype
@@ -54,8 +68,60 @@ class StreamEnvironment implements Environment {
             this.scheduledExecutorService = scheduledExecutorService;
             this.privateScheduleExecutorService = false;
         }
+
         // FIXME plug shutdown listener to reconnect in case of disconnection
+        // use the addresses array to reconnect to another node
         this.locator = new Client(clientParametersPrototype.duplicate());
+    }
+
+    private static String uriDecode(String s) {
+        try {
+            // URLDecode decodes '+' to a space, as for
+            // form encoding.  So protect plus signs.
+            return URLDecoder.decode(s.replace("+", "%2B"), "US-ASCII");
+        } catch (IOException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
+    Client.ClientParameters maybeSetUpClientParametersFromUris(List<URI> uris, Client.ClientParameters clientParametersPrototype) {
+        if (uris.isEmpty()) {
+            return clientParametersPrototype;
+        } else {
+            URI uri = uris.get(0);
+            clientParametersPrototype = clientParametersPrototype.duplicate();
+            String host = uri.getHost();
+            if (host != null) {
+                clientParametersPrototype.host(host);
+            }
+
+            int port = uri.getPort();
+            if (port != -1) {
+                clientParametersPrototype.port(port);
+            }
+
+            String userInfo = uri.getRawUserInfo();
+            if (userInfo != null) {
+                String[] userPassword = userInfo.split(":");
+                if (userPassword.length > 2) {
+                    throw new IllegalArgumentException("Bad user info in URI " + userInfo);
+                }
+
+                clientParametersPrototype.username(uriDecode(userPassword[0]));
+                if (userPassword.length == 2) {
+                    clientParametersPrototype.password(uriDecode(userPassword[1]));
+                }
+            }
+
+            String path = uri.getRawPath();
+            if (path != null && path.length() > 0) {
+                if (path.indexOf('/', 1) != -1) {
+                    throw new IllegalArgumentException("Multiple segments in path of URI: " + path);
+                }
+                clientParametersPrototype.virtualHost(uriDecode(uri.getPath().substring(1)));
+            }
+            return clientParametersPrototype;
+        }
     }
 
     @Override
@@ -88,6 +154,12 @@ class StreamEnvironment implements Environment {
             } catch (Exception e) {
                 LOGGER.warn("Error while closing client, moving on to the next client", e);
             }
+        }
+
+        try {
+            this.locator.close();
+        } catch (Exception e) {
+            LOGGER.warn("Error while closing locator client", e);
         }
 
         try {
@@ -139,5 +211,31 @@ class StreamEnvironment implements Environment {
                             .port(leader.getPort())
             );
         });
+    }
+
+    private static final class Address {
+
+        private final String host;
+        private final int port;
+
+        private Address(URI uri) {
+            this(
+                    uri.getHost() == null ? "localhost" : uri.getHost(),
+                    uri.getPort() == -1 ? Client.DEFAULT_PORT : uri.getPort()
+            );
+        }
+
+        private Address(String host, int port) {
+            this.host = host;
+            this.port = port;
+        }
+
+        @Override
+        public String toString() {
+            return "Address{" +
+                    "host='" + host + '\'' +
+                    ", port=" + port +
+                    '}';
+        }
     }
 }
