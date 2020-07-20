@@ -16,22 +16,29 @@ package com.rabbitmq.stream;
 
 public class StreamException extends RuntimeException {
 
-    public StreamException() {
-    }
+    private final short code;
 
     public StreamException(String message) {
         super(message);
+        this.code = -1;
+    }
+
+    public StreamException(String message, short code) {
+        super(message);
+        this.code = code;
+    }
+
+    public StreamException(Throwable cause) {
+        super(null, cause);
+        this.code = -1;
     }
 
     public StreamException(String message, Throwable cause) {
         super(message, cause);
+        this.code = -1;
     }
 
-    public StreamException(Throwable cause) {
-        super(cause);
-    }
-
-    public StreamException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public short getCode() {
+        return code;
     }
 }

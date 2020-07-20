@@ -132,6 +132,19 @@ class StreamEnvironment implements Environment {
     }
 
     @Override
+    public StreamCreator streamCreator() {
+        return new StreamStreamCreator(this);
+    }
+
+    @Override
+    public void deleteStream(String stream) {
+        Client.Response response = this.getLocator().delete(stream);
+        if (!response.isOk()) {
+            throw new StreamException("Error while deleting stream " + stream, response.getResponseCode());
+        }
+    }
+
+    @Override
     public ProducerBuilder producerBuilder() {
         return new StreamProducerBuilder(this);
     }
@@ -167,6 +180,8 @@ class StreamEnvironment implements Environment {
                 LOGGER.warn("Error while closing client, moving on to the next client", e);
             }
         }
+
+        // FIXME close consumers
 
         try {
             this.locator.close();
@@ -279,6 +294,10 @@ class StreamEnvironment implements Environment {
             Runnable closingConsumerCallback = clientSubscriptionState.addHandler(stream, offsetSpecification, messageHandler);
             return closingConsumerCallback;
         }
+    }
+
+    Client getLocator() {
+        return locator;
     }
 
     private static final class ClientSubscriptionState {

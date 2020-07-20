@@ -22,7 +22,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
+
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class StreamEnvironmentTest {
@@ -68,6 +71,22 @@ public class StreamEnvironmentTest {
                 .uri("rabbitmq-stream://guest:guest@localhost:5555/%2f")
                 .build()
                 .close();
+    }
+
+    @Test
+    void createDelete() throws Exception {
+        try (Environment environment = environmentBuilder.build();
+             Client client = new Client()) {
+
+            String s = UUID.randomUUID().toString();
+            environment.streamCreator().stream(s).create();
+            Client.StreamMetadata metadata = client.metadata(s).get(s);
+            assertThat(metadata.isResponseOk()).isTrue();
+            environment.deleteStream(s);
+            metadata = client.metadata(s).get(s);
+            assertThat(metadata.isResponseOk()).isFalse();
+            assertThat(metadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+        }
     }
 
 }
