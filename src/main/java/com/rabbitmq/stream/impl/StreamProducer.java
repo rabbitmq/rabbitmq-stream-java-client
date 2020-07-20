@@ -63,7 +63,7 @@ class StreamProducer implements Producer {
         if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
             AtomicReference<Runnable> taskReference = new AtomicReference<>();
             Runnable task = () -> {
-                synchronized (StreamProducer.this) {
+                synchronized (this) {
                     publishBatch();
                 }
                 environment.getScheduledExecutorService().schedule(taskReference.get(), batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
@@ -71,11 +71,16 @@ class StreamProducer implements Producer {
             taskReference.set(task);
             environment.getScheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
-        // FIXME deal with publish error
-        this.client.addPublisherConfirmListener(publishingId -> {
+        this.client.addPublishConfirmListener(publishingId -> {
             PendingMessage pendingMessage = unconfirmedMessages.remove(publishingId);
             if (pendingMessage != null) {
-                pendingMessage.confirmationHandler.handle(new ConfirmationStatus(pendingMessage.message, true, null));
+                pendingMessage.confirmationHandler.handle(new ConfirmationStatus(pendingMessage.message, true, Constants.RESPONSE_CODE_OK));
+            }
+        });
+        this.client.addPublishErrorListener((publishingId, errorCode) -> {
+            PendingMessage pendingMessage = unconfirmedMessages.remove(publishingId);
+            if (pendingMessage != null) {
+                pendingMessage.confirmationHandler.handle(new ConfirmationStatus(pendingMessage.message, false, errorCode));
             }
         });
     }

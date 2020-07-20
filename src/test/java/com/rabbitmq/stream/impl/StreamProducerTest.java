@@ -14,6 +14,8 @@
 
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Producer;
 import io.netty.channel.EventLoopGroup;
@@ -22,8 +24,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +39,8 @@ public class StreamProducerTest {
     EventLoopGroup eventLoopGroup;
 
     Environment environment;
+
+    TestUtils.ClientFactory cf;
 
     @BeforeEach
     void init() {
@@ -64,6 +70,33 @@ public class StreamProducerTest {
         });
         boolean completed = publishLatch.await(10, TimeUnit.SECONDS);
         assertThat(completed).isTrue();
+    }
+
+    @Test
+    void sendToNonExistingStreamShouldReturnUnconfirmedStatus() throws Exception {
+        Client client = cf.get();
+        String s = UUID.randomUUID().toString();
+        Client.Response response = client.create(s);
+        assertThat(response.isOk()).isTrue();
+
+        Producer producer = environment.producerBuilder()
+                .stream(s)
+                .build();
+
+        response = client.delete(s);
+        assertThat(response.isOk()).isTrue();
+
+        CountDownLatch confirmationLatch = new CountDownLatch(1);
+        AtomicReference<ConfirmationStatus> confirmationStatusReference = new AtomicReference<>();
+        producer.send(producer.messageBuilder().addData("".getBytes()).build(), confirmationStatus -> {
+            confirmationStatusReference.set(confirmationStatus);
+            confirmationLatch.countDown();
+        });
+
+        assertThat(confirmationLatch.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(confirmationStatusReference.get()).isNotNull();
+        assertThat(confirmationStatusReference.get().isConfirmed()).isFalse();
+        assertThat(confirmationStatusReference.get().getCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
     }
 
 }

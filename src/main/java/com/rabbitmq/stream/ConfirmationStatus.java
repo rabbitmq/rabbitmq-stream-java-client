@@ -20,11 +20,23 @@ public class ConfirmationStatus {
 
     private final boolean confirmed;
 
-    private final String reason;
+    private final short code;
 
-    public ConfirmationStatus(Message message, boolean confirmed, String reason) {
+    public ConfirmationStatus(Message message, boolean confirmed, short code) {
         this.message = message;
         this.confirmed = confirmed;
-        this.reason = reason;
+        this.code = code;
+    }
+
+    public Message getMessage() {
+        return message;
+    }
+
+    public boolean isConfirmed() {
+        return confirmed;
+    }
+
+    public short getCode() {
+        return code;
     }
 }
