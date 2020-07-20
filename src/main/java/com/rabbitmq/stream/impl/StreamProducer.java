@@ -71,6 +71,7 @@ class StreamProducer implements Producer {
             taskReference.set(task);
             environment.getScheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
+        // FIXME deal with publish error
         this.client.addPublisherConfirmListener(publishingId -> {
             PendingMessage pendingMessage = unconfirmedMessages.remove(publishingId);
             if (pendingMessage != null) {
@@ -100,6 +101,7 @@ class StreamProducer implements Producer {
     @Override
     public void close() {
         // FIXME remove from environment
+        // FIXME remove publish confirm callback from environment
     }
 
     private void publishBatch() {

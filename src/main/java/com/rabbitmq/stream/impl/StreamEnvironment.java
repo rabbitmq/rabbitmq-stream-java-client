@@ -14,9 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.ProducerBuilder;
+import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import org.slf4j.Logger;
@@ -27,7 +25,10 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -36,13 +37,17 @@ class StreamEnvironment implements Environment {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StreamEnvironment.class);
 
+    private final Random random = new Random();
+
     private final EventLoopGroup eventLoopGroup;
     private final ScheduledExecutorService scheduledExecutorService;
     private final boolean privateScheduleExecutorService;
     private final Client.ClientParameters clientParametersPrototype;
     private final List<Address> addresses;
     private final Client locator;
-    private final Map<String, Client> clientPool = new ConcurrentHashMap<>();
+    private final Map<String, Client> publishingClientPool = new ConcurrentHashMap<>();
+    private final Map<String, Client> consumingClientPool = new ConcurrentHashMap<>();
+    private final Map<String, ClientSubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
     private final List<Producer> producers = new CopyOnWriteArrayList<>();
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
@@ -50,10 +55,9 @@ class StreamEnvironment implements Environment {
 
         clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
-        this.addresses = uris.stream().map(uriItem -> new Address(
-                uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
-                uriItem.getPort() == -1 ? Client.DEFAULT_PORT : uriItem.getPort())
-        ).collect(Collectors.toList());
+        this.addresses = uris.stream()
+                .map(uriItem -> new Address(uriItem))
+                .collect(Collectors.toList());
 
         if (clientParametersPrototype.eventLoopGroup == null) {
             this.eventLoopGroup = new NioEventLoopGroup();
@@ -137,6 +141,11 @@ class StreamEnvironment implements Environment {
     }
 
     @Override
+    public ConsumerBuilder consumerBuilder() {
+        return new StreamConsumerBuilder(this);
+    }
+
+    @Override
     public void close() {
         if (privateScheduleExecutorService) {
             this.scheduledExecutorService.shutdownNow();
@@ -151,7 +160,7 @@ class StreamEnvironment implements Environment {
         }
 
 
-        for (Client client : clientPool.values()) {
+        for (Client client : publishingClientPool.values()) {
             try {
                 client.close();
             } catch (Exception e) {
@@ -185,7 +194,7 @@ class StreamEnvironment implements Environment {
         return this.scheduledExecutorService;
     }
 
-    public Client getClientForPublisher(String stream) {
+    Client getClientForPublisher(String stream) {
         Map<String, Client.StreamMetadata> metadata = this.locator.metadata(stream);
         if (metadata.size() == 0 || metadata.get(stream) == null) {
             throw new IllegalArgumentException("Stream does not exist: " + stream);
@@ -205,7 +214,7 @@ class StreamEnvironment implements Environment {
         // FIXME make sure this is a reasonable key for brokers
         String key = leader.getHost() + ":" + leader.getPort();
 
-        return clientPool.computeIfAbsent(key, s -> {
+        return publishingClientPool.computeIfAbsent(key, s -> {
             // FIXME add shutdown listener to client for publisher
             // this should notify the affected publishers/consumers
             return new Client(
@@ -214,6 +223,95 @@ class StreamEnvironment implements Environment {
                             .port(leader.getPort())
             );
         });
+    }
+
+    Runnable registerConsumer(String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler) {
+        Map<String, Client.StreamMetadata> metadata = this.locator.metadata(stream);
+        if (metadata.size() == 0 || metadata.get(stream) == null) {
+            throw new IllegalArgumentException("Stream does not exist: " + stream);
+        }
+
+        Client.StreamMetadata streamMetadata = metadata.get(stream);
+        if (!streamMetadata.isResponseOk()) {
+            throw new IllegalArgumentException("Could not get stream metadata, response code: " + streamMetadata.getResponseCode());
+        }
+
+        List<Client.Broker> replicas = streamMetadata.getReplicas();
+        if ((replicas == null || replicas.isEmpty()) && streamMetadata.getLeader() == null) {
+            throw new IllegalStateException("Not node available to consume from stream " + stream);
+        }
+
+        Client.Broker broker;
+        if (replicas == null || replicas.isEmpty()) {
+            broker = streamMetadata.getLeader();
+            LOGGER.debug("Consuming from {} on leader node {}", stream, broker);
+        } else if (replicas.size() == 1) {
+            broker = replicas.get(0);
+        } else {
+            LOGGER.debug("Replicas for consuming from {}: {}", stream, replicas);
+            broker = replicas.get(random.nextInt(replicas.size()));
+        }
+
+        LOGGER.debug("Consuming from {} on node {}", stream, broker);
+
+        // FIXME make sure this is a reasonable key for brokers
+        String key = broker.getHost() + ":" + broker.getPort();
+
+        synchronized (this) {
+            // FIXME both client and subscription state could be in the same class
+            ClientSubscriptionState clientSubscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new ClientSubscriptionState());
+
+
+            Client consumingClient = consumingClientPool.computeIfAbsent(key, s -> {
+                // FIXME add shutdown listener to client for consumers
+                // this should notify the affected publishers/consumers
+                return new Client(
+                        clientParametersPrototype.duplicate()
+                                .host(broker.getHost())
+                                .port(broker.getPort())
+                                .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -> client.credit(subscriptionId, 1))
+                                .messageListener(clientSubscriptionState.getMessageListener())
+                );
+            });
+
+            clientSubscriptionState.setClient(consumingClient);
+
+            Runnable closingConsumerCallback = clientSubscriptionState.addHandler(stream, offsetSpecification, messageHandler);
+            return closingConsumerCallback;
+        }
+    }
+
+    private static final class ClientSubscriptionState {
+
+        private final AtomicInteger subscriptionSequence = new AtomicInteger();
+        private final Map<Integer, MessageHandler> handlers = new ConcurrentHashMap<>();
+        private final Client.MessageListener messageListener = (subscriptionId, offset, message) -> handlers.get(subscriptionId).handle(offset, message);
+        private final AtomicReference<Client> client = new AtomicReference<>();
+
+        Runnable addHandler(String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler) {
+            int subscriptionId = subscriptionSequence.getAndIncrement();
+            handlers.put(subscriptionId, messageHandler);
+            Client.Response subscribeResponse = client.get().subscribe(subscriptionId, stream, offsetSpecification, 10);
+            if (!subscribeResponse.isOk()) {
+                throw new StreamException("Subscription to stream " + stream + " failed with code " + subscribeResponse.getResponseCode());
+            }
+            // FIXME if no more handlers in the map, consider closing the client
+            return () -> {
+                Client.Response unsubscribeResponse = client.get().unsubscribe(subscriptionId);
+                handlers.remove(subscriptionId);
+                if (!unsubscribeResponse.isOk()) {
+                    throw new StreamException("Unsubscription to stream " + stream + " failed with code " + unsubscribeResponse.getResponseCode());
+                }
+            };
+        }
+
+        Client.MessageListener getMessageListener() {
+            return messageListener;
+        }
+
+        void setClient(Client client) {
+            this.client.set(client);
+        }
     }
 
     private static final class Address {

@@ -14,18 +14,14 @@
 
 package com.rabbitmq.stream;
 
-public interface Environment extends AutoCloseable {
+public interface ConsumerBuilder {
 
-    static EnvironmentBuilder builder() {
-        try {
-            return (EnvironmentBuilder) Class.forName("com.rabbitmq.stream.impl.StreamEnvironmentBuilder").getConstructor().newInstance();
-        } catch (Exception e) {
-            throw new StreamException(e);
-        }
-    }
+    ConsumerBuilder stream(String stream);
 
-    ProducerBuilder producerBuilder();
+    ConsumerBuilder offset(OffsetSpecification offsetSpecification);
 
-    ConsumerBuilder consumerBuilder();
+    ConsumerBuilder messageHandler(MessageHandler messageHandler);
+
+    Consumer build();
 
 }

@@ -12,20 +12,22 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-public interface Environment extends AutoCloseable {
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.OffsetSpecification;
 
-    static EnvironmentBuilder builder() {
-        try {
-            return (EnvironmentBuilder) Class.forName("com.rabbitmq.stream.impl.StreamEnvironmentBuilder").getConstructor().newInstance();
-        } catch (Exception e) {
-            throw new StreamException(e);
-        }
+public class StreamConsumer implements Consumer {
+
+    private final Runnable closingCallback;
+
+    StreamConsumer(String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler, StreamEnvironment environment) {
+        this.closingCallback = environment.registerConsumer(stream, offsetSpecification, messageHandler);
     }
 
-    ProducerBuilder producerBuilder();
-
-    ConsumerBuilder consumerBuilder();
-
+    @Override
+    public void close() {
+        this.closingCallback.run();
+    }
 }
