@@ -21,16 +21,18 @@ import java.util.Arrays;
 
 public class EnvironmentUsage {
 
-    void environmentCreation() {
+    void environmentCreation() throws Exception {
         // tag::environment-creation[]
-        Environment environment = Environment.builder().build(); // <1>
+        Environment environment = Environment.builder().build();  // <1>
+        // ...
+        environment.close(); // <2>
         // end::environment-creation[]
     }
 
     void environmentCreationWithUri() {
         // tag::environment-creation-with-uri[]
         Environment environment = Environment.builder()
-                .uri("rabbitmq-stream://guest:guest@localhost:5555/%2f") // <1>
+                .uri("rabbitmq-stream://guest:guest@localhost:5555/%2f")  // <1>
                 .build();
         // end::environment-creation-with-uri[]
     }
@@ -50,7 +52,7 @@ public class EnvironmentUsage {
     void createStream() {
         Environment environment = Environment.builder().build();
         // tag::stream-creation[]
-        environment.streamCreator().stream("my-stream").create(); // <1>
+        environment.streamCreator().stream("my-stream").create();  // <1>
         // end::stream-creation[]
     }
 
@@ -59,8 +61,8 @@ public class EnvironmentUsage {
         // tag::stream-creation-retention[]
         environment.streamCreator()
                 .stream("my-stream")
-                .maxLengthBytes(ByteCapacity.GB(10))       // <1>
-                .maxSegmentSizeBytes(ByteCapacity.MB(500)) // <2>
+                .maxLengthBytes(ByteCapacity.GB(10))  // <1>
+                .maxSegmentSizeBytes(ByteCapacity.MB(500))  // <2>
                 .create();
         // end::stream-creation-retention[]
     }
@@ -68,7 +70,7 @@ public class EnvironmentUsage {
     void deleteStream() {
         Environment environment = Environment.builder().build();
         // tag::stream-deletion[]
-        environment.deleteStream("my-stream"); // <1>
+        environment.deleteStream("my-stream");  // <1>
         // end::stream-deletion[]
     }
 
