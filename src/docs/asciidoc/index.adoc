@@ -162,7 +162,129 @@ repositories {
 }
 ----
 
-=== Sample Application
+=== RabbitMQ Stream Java API
+
+==== Overview
+
+This section describes the API to connect to the RabbitMQ Stream Plugin, publish messages, and
+consume messages. There are 3 main interfaces:
+
+ * `com.rabbitmq.stream.Environment` for connecting to a node and optionally
+managing streams.
+ * `com.rabbitmq.stream.Producer` to publish messages.
+ * `com.rabbitmq.stream.Consumer` to consume messages.
+
+==== Environment
+
+===== Creating the Environment
+
+The environment is the main entry point to a node or a cluster of nodes. `Producer` and
+`Consumer` instances are created from an `Environment` instance. Here is the simplest
+way to create an `Environment` instance:
+
+.Creating an environment with all the defaults
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation]
+--------
+<1> Create an environment that will connect to localhost:5555
+
+It is possible to use a URI to specify all the necessary information to
+connect to a node:
+
+.Creating an environment with a URI
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uri]
+--------
+<1> Use the `uri` method to specify the URI to connect to
+
+The previous snippet uses a URI that specifies the following information: host, port,
+username, password, and virtual host (`/`, which is encoded as `%2f`).
+The URI follows the same rules as the
+https://www.rabbitmq.com/uri-spec.html[AMQP 0.9.1 URI],
+except the protocol must be `rabbitmq-stream` and TLS is not supported.
+
+When using one URI, the corresponding node will be the main entry point to connect to. The
+`Environment` will then use the stream protocol to find out more about streams topology
+(leaders and replicas) when asked to create `Producer`s and `Consumer`s. The `Environment`
+may become blind if this node goes down though, so it may be more appropriate to specify
+several other URIs to try if one node goes down:
+
+.Creating an environment with several URIs
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uris]
+--------
+<1> Use the `uris` method to specify several URIs
+
+By specifying several URIs, the environment will try to connect to the first one, and
+will pick a new URI randomly in case of disconnection.
+
+===== Managing Streams
+
+Streams are usually long-lived, centrally-managed entities, that is, applications
+are not supposed to create and delete them. It is nevertheless possible to create and
+delete stream with the `Environment`. This comes in handy for development and testing
+purposes.
+
+Streams are created with the `Environment#streamCreator()` method:
+
+.Creating a stream
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=stream-creation]
+--------
+<1> Create the `my-stream` stream
+
+Streams can be deleted with the `Environment#delete(String)` method:
+
+.Deleting a stream
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=stream-deletion]
+--------
+<1> Delete the `my-stream` stream
+
+Note you should avoid stream churn (creating and deleting streams repetitively)
+as their creation and deletion imply some significant housekeeping on
+the server side (interactions with the file system, communication between nodes of the cluster).
+
+It is also possible to limit the size of a stream when creating it. A stream
+is an append-only data structure and reading from it does not remove data.
+This means a stream can grow indefinitely. RabbitMQ Stream supports a
+size-based retention policy: once the stream reaches a given size,
+it is truncated (starting from the beginning).
+
+[IMPORTANT]
+.Limit the size of streams if appropriate!
+====
+Make sure to set up a retention policy on potentially large streams
+if you don't want to saturate the storage devices of your servers. Keep
+in mind that this means some data will be erased!
+====
+
+It is possible to set up the retention policy when creating the stream:
+
+.Setting the retention policy when creating a stream
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=stream-creation-retention]
+--------
+<1> Set the maximum size to 10 GB
+<2> Set the segment size to 500 MB
+
+The previous snippet mentions a segment size. RabbitMQ Stream does not store a stream
+in a big, single file, it uses segment files for technical reasons.
+A stream is truncated by deleting whole segment files (and not part of them),
+so the maximum size of a stream is usually significantly higher than the size of
+segment files. 500 MB is a reasonable segment file size to begin with.
+
+==== Producer
+
+==== Consumer
+
+=== Sample Application (deprecated)
 
 This section covers the basics of the stream Java client by building
 a small publish/consume application. This is a good way to get
@@ -233,7 +355,7 @@ Sum: 49995000
 
 You can remove the `-q` flag if you want more insight on the execution of the build.
 
-=== Client Reference
+=== Client Reference (deprecated)
 
 ==== Connecting to RabbitMQ Stream
 
