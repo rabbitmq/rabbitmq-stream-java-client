@@ -405,6 +405,44 @@ to be accessed as AMQP 0-9-1 queues, without data loss.
 
 ==== Consumer
 
+A `Consumer` instance is created with `Environment#consumerBuilder()`. The main
+settings are the stream to consume from, the place in the stream to start
+consuming from (the _offset_), and a callback when a message is received
+(the `MessageHandler`). The next snippet shows how to create a `Consumer`:
+
+.Creating a consumer
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=producer-creation]
+--------
+<1> Use `Environment#consumerBuilder()` to define the consumer
+<2> Specify the stream to consume from
+<3> Specify where to start consuming from
+<4> Define behavior on message consumption
+<5> Build the consumer
+<6> Close consumer after usage
+
+The broker start sending messages as soon as the `Consumer` instance is created.
+
+The possible values for the offset parameter are the following:
+
+* `OffsetSpecification.first()`: starting from the first available offset. If
+the stream has not been <<limiting-the-size-of-a-stream,truncated>>, this
+means the beginning of the stream (offset 0).
+* `OffsetSpecification.last()`: starting from the end of the stream and returning
+the last chunk of messages immediately (if the stream is not empty).
+* `OffsetSpecification.next()`: starting from the next offset to be written. Contrary
+to `OffsetSpecification.last()`, consuming with `OffsetSpecification.next()`
+will not return anything if no-one is publishing to the stream. The broker will start
+sending messages to the consumer when messages are published to the stream.
+* `OffsetSpecification.offset(offset)`: starting from the specified offset. 0 means consuming
+from the beginning of the stream (first messages). The client
+can also specify any number, for example the offset where it left off
+in a previous incarnation of the application.
+* `OffsetSpecification.timestamp(timestamp)`: starting from the messages stored
+after the specified timestamp.
+
+
 === Sample Application (deprecated)
 
 This section covers the basics of the stream Java client by building

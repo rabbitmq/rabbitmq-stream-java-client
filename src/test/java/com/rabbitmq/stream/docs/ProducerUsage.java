@@ -17,7 +17,6 @@ package com.rabbitmq.stream.docs;
 import com.rabbitmq.stream.*;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.UUID;
 
 public class ProducerUsage {
