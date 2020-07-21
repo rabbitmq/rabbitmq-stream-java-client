@@ -7,8 +7,9 @@ MESSAGE=$(git log -1 --pretty=%B)
 git remote set-branches origin 'gh-pages'
 git fetch -v
 git checkout gh-pages
-cp target/generated-docs/index.html snapshot/htmlsingle
-git add snapshot/
+mkdir -p api-spike/htmlsingle
+cp target/generated-docs/index.html api-spike/htmlsingle
+git add api-spike/
 git commit -m "$MESSAGE"
 git push origin gh-pages
 git checkout master
