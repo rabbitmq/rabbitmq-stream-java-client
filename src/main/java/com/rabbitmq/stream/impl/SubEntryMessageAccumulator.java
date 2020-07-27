@@ -106,17 +106,6 @@ public class SubEntryMessageAccumulator implements MessageAccumulator {
         }
     }
 
-    private static class MessageConfirmationHandler {
-
-        private final Message message;
-        private final ConfirmationHandler confirmationHandler;
-
-        private MessageConfirmationHandler(Message message, ConfirmationHandler confirmationHandler) {
-            this.message = message;
-            this.confirmationHandler = confirmationHandler;
-        }
-    }
-
     private static class CompositeConfirmationCallback implements StreamProducer.ConfirmationCallback {
 
         private final List<StreamProducer.ConfirmationCallback> callbacks;
