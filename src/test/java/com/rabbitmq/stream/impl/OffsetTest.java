@@ -31,7 +31,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 
-import static com.rabbitmq.stream.impl.TestUtils.publishAndWaitForConfirms;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -239,10 +238,12 @@ public class OffsetTest {
         int messageLimit = messageCount * 2;
         AtomicLong lastConfirmed = new AtomicLong();
         CountDownLatch consumerStartLatch = new CountDownLatch(messageCount);
+        CountDownLatch confirmedLatch = new CountDownLatch(messageLimit);
         Client publisher = cf.get(new Client.ClientParameters()
                 .publishConfirmListener(publishingId -> {
                     lastConfirmed.set(publishingId);
                     consumerStartLatch.countDown();
+                    confirmedLatch.countDown();
                 }));
 
         CountDownLatch consumedMessagesLatch = new CountDownLatch(messageLimit);
@@ -272,8 +273,9 @@ public class OffsetTest {
         assertThat(consumer.subscribe(0, stream, OffsetSpecification.first(), 10).isOk()).isTrue();
         assertThat(consumedMessagesLatch.await(10, SECONDS)).isTrue();
         assertThat(publisherHasStopped).isTrue();
-        assertThat(lastConfirmed).hasValue(messageLimit - 1);
-        assertThat(lastConsumedMessage).hasValue(String.valueOf(messageLimit - 1));
+        assertThat(confirmedLatch.await(10, SECONDS)).isTrue();
+        assertThat(lastConfirmed.get()).isEqualTo(messageLimit - 1);
+        assertThat(lastConsumedMessage.get()).isEqualTo(String.valueOf(messageLimit - 1));
     }
 
 }

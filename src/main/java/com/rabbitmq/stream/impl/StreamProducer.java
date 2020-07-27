@@ -22,8 +22,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
 
 class StreamProducer implements Producer {
 
@@ -40,7 +43,12 @@ class StreamProducer implements Producer {
 
     private final Client.OutboundEntityWriteCallback writeCallback;
 
-    StreamProducer(String stream, int subEntrySize, int batchSize, Duration batchPublishingDelay, StreamEnvironment environment) {
+    private final Semaphore unconfirmedMessagesSemaphore;
+
+    StreamProducer(String stream,
+                   int subEntrySize, int batchSize, Duration batchPublishingDelay,
+                   int maxUnconfirmedMessages,
+                   StreamEnvironment environment) {
         this.client = environment.getClientForPublisher(stream);
         this.stream = stream;
         final Client.OutboundEntityWriteCallback delegateWriteCallback;
@@ -51,6 +59,9 @@ class StreamProducer implements Producer {
             this.accumulator = new SubEntryMessageAccumulator(subEntrySize, batchSize, environment.codec(), client.maxFrameSize(), this.stream);
             delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
         }
+
+        this.unconfirmedMessagesSemaphore = new Semaphore(maxUnconfirmedMessages, true);
+
         this.writeCallback = new Client.OutboundEntityWriteCallback() {
             @Override
             public int write(ByteBuf bb, Object entity, long publishingId) {
@@ -79,13 +90,20 @@ class StreamProducer implements Producer {
         this.client.addPublishConfirmListener(publishingId -> {
             ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
             if (confirmationCallback != null) {
-                confirmationCallback.handle(true, Constants.RESPONSE_CODE_OK);
+                int confirmedCount = confirmationCallback.handle(true, Constants.RESPONSE_CODE_OK);
+                this.unconfirmedMessagesSemaphore.release(confirmedCount);
+            } else {
+                unconfirmedMessagesSemaphore.release();
             }
         });
         this.client.addPublishErrorListener((publishingId, errorCode) -> {
             ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
+            unconfirmedMessagesSemaphore.release();
             if (confirmationCallback != null) {
-                confirmationCallback.handle(false, errorCode);
+                int nackedCount = confirmationCallback.handle(false, errorCode);
+                this.unconfirmedMessagesSemaphore.release(nackedCount);
+            } else {
+                unconfirmedMessagesSemaphore.release();
             }
         });
     }
@@ -97,10 +115,18 @@ class StreamProducer implements Producer {
 
     @Override
     public void send(Message message, ConfirmationHandler confirmationHandler) {
-        if (accumulator.add(message, confirmationHandler)) {
-            synchronized (this) {
-                publishBatch();
+        try {
+            if (unconfirmedMessagesSemaphore.tryAcquire(10, TimeUnit.SECONDS)) {
+                if (accumulator.add(message, confirmationHandler)) {
+                    synchronized (this) {
+                        publishBatch();
+                    }
+                }
+            } else {
+                confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_MESSAGE_ENQUEUEING_FAILED));
             }
+        } catch (InterruptedException e) {
+            throw new StreamException("Interrupted while waiting to accumulate outbound message", e);
         }
     }
 
@@ -128,7 +154,7 @@ class StreamProducer implements Producer {
 
     interface ConfirmationCallback {
 
-        void handle(boolean confirmed, short code);
+        int handle(boolean confirmed, short code);
 
     }
 

@@ -19,7 +19,6 @@ import com.rabbitmq.stream.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 
 class SimpleMessageAccumulator implements MessageAccumulator {
 
@@ -96,8 +95,9 @@ class SimpleMessageAccumulator implements MessageAccumulator {
         }
 
         @Override
-        public void handle(boolean confirmed, short code) {
+        public int handle(boolean confirmed, short code) {
             confirmationHandler.handle(new ConfirmationStatus(message, confirmed, code));
+            return 1;
         }
     }
 }

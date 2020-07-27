@@ -31,6 +31,8 @@ class StreamProducerBuilder implements ProducerBuilder {
 
     private Duration batchPublishingDelay = Duration.ofMillis(100);
 
+    private int maxUnconfirmedMessages = 10_000;
+
     StreamProducerBuilder(StreamEnvironment environment) {
         this.environment = environment;
     }
@@ -56,8 +58,17 @@ class StreamProducerBuilder implements ProducerBuilder {
         return this;
     }
 
+    @Override
+    public ProducerBuilder maxUnconfirmedMessages(int maxUnconfirmedMessages) {
+        this.maxUnconfirmedMessages = maxUnconfirmedMessages;
+        return this;
+    }
+
     public Producer build() {
-        Producer producer = new StreamProducer(stream, subEntrySize, batchSize, batchPublishingDelay, environment);
+        Producer producer = new StreamProducer(stream,
+                subEntrySize, batchSize, batchPublishingDelay,
+                maxUnconfirmedMessages,
+                environment);
         this.environment.addProducer(producer);
         return producer;
     }

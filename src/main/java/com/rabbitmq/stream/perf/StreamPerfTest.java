@@ -19,7 +19,6 @@ import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.impl.Client;
-import com.rabbitmq.stream.impl.MessageBatch;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
 import io.micrometer.core.instrument.Counter;
@@ -86,7 +85,8 @@ public class StreamPerfTest implements Callable<Integer> {
     @CommandLine.Option(names = {"--ack", "-ac"}, description = "ack (request credit) every x chunk(s)", defaultValue = "1",
             converter = Utils.PositiveIntegerTypeConverter.class)
     private int ack;
-    @CommandLine.Option(names = {"--confirms", "-c"}, description = "outstanding confirms", defaultValue = "-1")
+    @CommandLine.Option(names = {"--confirms", "-c"}, description = "outstanding confirms", defaultValue = "10000",
+            converter = Utils.NotNegativeIntegerTypeConverter.class)
     private int confirms;
     @CommandLine.Option(names = {"--streams", "-st"},
             description = "stream(s) to send to and consume from, separated by commas", defaultValue = "stream1",
@@ -273,7 +273,6 @@ public class StreamPerfTest implements Callable<Integer> {
 
         Topology topology = new MapTopology(metadataMap);
 
-        BrokerLocator publisherBrokerLocator = new LeaderOnlyBrokerLocator(topology);
         BrokerLocator consumerBrokerLocator = new RoundRobinReplicaBrokerLocator(topology);
 
         // FIXME handle metadata update for consumers and publishers
@@ -287,36 +286,11 @@ public class StreamPerfTest implements Callable<Integer> {
                 .metricsCollector(metricsCollector)
                 .build();
 
-        List<Client> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
+        List<Producer> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
         List<Runnable> producerRunnables = IntStream.range(0, this.producers).mapToObj(i -> {
-            Runnable beforePublishingCallback;
-            Client.PublishConfirmListener publishConfirmListener;
-            if (this.confirms > 0) {
-                Semaphore confirmsSemaphore = new Semaphore(this.confirms);
-                beforePublishingCallback = () -> {
-                    try {
-                        if (!confirmsSemaphore.tryAcquire(30, TimeUnit.SECONDS)) {
-                            LOGGER.info("Could not acquire confirm semaphore in 30 seconds");
-                        }
-                    } catch (InterruptedException e) {
-                        LOGGER.info("Interrupted while waiting confirms before publishing");
-                        Thread.currentThread().interrupt();
-                    }
-                };
-                publishConfirmListener = correlationId -> {
-                    confirmsSemaphore.release();
-                };
-            } else {
-                beforePublishingCallback = () -> {
-                };
-                publishConfirmListener = correlationId -> {
-                };
-            }
-
             Runnable rateLimiterCallback;
             if (this.rate > 0) {
                 RateLimiter rateLimiter = com.google.common.util.concurrent.RateLimiter.create(this.rate);
-//                int messageCountInFrame = this.batchSize * this.subEntrySize;
                 rateLimiterCallback = () -> rateLimiter.acquire(1);
             } else {
                 rateLimiterCallback = () -> {
@@ -324,74 +298,37 @@ public class StreamPerfTest implements Callable<Integer> {
             }
 
             String stream = stream();
-            Address publisherAddress = publisherBrokerLocator.get(stream);
-            Client client = client(new Client.ClientParameters()
-                    .host(publisherAddress.host).port(publisherAddress.port)
-                    .publishConfirmListener(publishConfirmListener));
 
-            producers.add(client);
+            Producer producer = environment.producerBuilder()
+                    .subEntrySize(this.subEntrySize)
+                    .batchSize(this.batchSize)
+                    .maxUnconfirmedMessages(this.confirms)
+                    .stream(stream)
+                    .build();
+
+            producers.add(producer);
 
             ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(this.producers);
 
             shutdownService.wrap(closeStep("Closing scheduled executor service", () -> scheduledExecutorService.shutdownNow()));
 
             shutdownService.wrap(closeStep("Closing producers", () -> {
-                for (Client producer : producers) {
-                    producer.close();
+                for (Producer p : producers) {
+                    p.close();
                 }
             }));
-            LOGGER.info("Connecting to {} to publish to {}", publisherAddress, stream);
+
             return (Runnable) () -> {
                 final int msgSize = this.messageSize;
-                Runnable publishCallback;
-                if (this.subEntrySize == 1) {
-                    List<Message> messages = new ArrayList<>(this.batchSize);
-                    IntStream.range(0, this.batchSize).forEach(unused -> messages.add(null));
-                    publishCallback = () -> {
-                        long creationTime = System.nanoTime();
-                        byte[] payload = new byte[msgSize];
-                        writeLong(payload, creationTime);
-                        for (int j = 0; j < this.batchSize; j++) {
-                            messages.set(j, codec.messageBuilder().addData(payload).build());
-                        }
-                        client.publish(stream, messages);
-                    };
-                } else {
-                    List<MessageBatch> messageBatches = new ArrayList<>(this.batchSize);
-                    IntStream.range(0, this.batchSize).forEach(unused -> messageBatches.add(null));
-                    List<Message> messages = new ArrayList<>(this.subEntrySize);
-                    IntStream.range(0, this.subEntrySize).forEach(unused -> messages.add(null));
-                    publishCallback = () -> {
-                        long creationTime = System.nanoTime();
-                        byte[] payload = new byte[msgSize];
-                        writeLong(payload, creationTime);
-                        for (int j = 0; j < this.subEntrySize; j++) {
-                            messages.set(j, codec.messageBuilder().addData(payload).build());
-                        }
-                        for (int j = 0; j < this.batchSize; j++) {
-                            messageBatches.set(j, new MessageBatch(MessageBatch.Compression.NONE, messages));
-                        }
-                        client.publishBatches(stream, messageBatches);
-                    };
-                }
 
-                Producer producer = environment.producerBuilder()
-                        .subEntrySize(this.subEntrySize)
-                        .batchSize(this.batchSize)
-                        .stream(stream)
-                        .build();
                 ConfirmationHandler confirmationHandler = confirmationStatus -> producerConfirm.increment();
                 while (true && !Thread.currentThread().isInterrupted()) {
-                    beforePublishingCallback.run();
                     rateLimiterCallback.run();
                     long creationTime = System.nanoTime();
                     byte[] payload = new byte[msgSize];
                     writeLong(payload, creationTime);
-//                    publishCallback.run();
                     producer.send(producer.messageBuilder().addData(payload).build(), confirmationHandler);
                 }
-
-
             };
 
         }).collect(Collectors.toList());

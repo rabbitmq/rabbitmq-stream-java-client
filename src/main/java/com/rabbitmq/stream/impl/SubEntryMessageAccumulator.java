@@ -119,10 +119,11 @@ public class SubEntryMessageAccumulator implements MessageAccumulator {
         }
 
         @Override
-        public void handle(boolean confirmed, short code) {
+        public int handle(boolean confirmed, short code) {
             for (StreamProducer.ConfirmationCallback callback : callbacks) {
                 callback.handle(confirmed, code);
             }
+            return callbacks.size();
         }
     }
 
@@ -137,8 +138,9 @@ public class SubEntryMessageAccumulator implements MessageAccumulator {
         }
 
         @Override
-        public void handle(boolean confirmed, short code) {
+        public int handle(boolean confirmed, short code) {
             confirmationHandler.handle(new ConfirmationStatus(message, confirmed, code));
+            return 1;
         }
     }
 

@@ -26,6 +26,8 @@ public interface ProducerBuilder {
 
     ProducerBuilder batchPublishingDelay(Duration batchPublishingDelay);
 
+    ProducerBuilder maxUnconfirmedMessages(int maxUnconfirmedMessages);
+
     Producer build();
 
 }
