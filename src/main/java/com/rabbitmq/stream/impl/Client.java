@@ -53,6 +53,7 @@ public class Client implements AutoCloseable {
 
     public static final int DEFAULT_PORT = 5555;
     static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK = new OutboundMessageWriteCallback();
+    static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK = new OutboundMessageBatchWriteCallback();
     private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(10);
     private static final PublishConfirmListener NO_OP_PUBLISH_CONFIRM_LISTENER = publishingId -> {
 
@@ -61,7 +62,6 @@ public class Client implements AutoCloseable {
 
     };
     private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
-    private static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK = new OutboundMessageBatchWriteCallback();
     //    private final PublishConfirmListener publishConfirmListener;
     private final List<PublishConfirmListener> publishConfirmListeners = new CopyOnWriteArrayList<>();
     //    private final PublishErrorListener publishErrorListener;
@@ -604,6 +604,21 @@ public class Client implements AutoCloseable {
         }
     }
 
+    static void checkMessageFitsInFrame(int maxFrameSize, String stream, Codec.EncodedMessage encodedMessage) {
+        int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8 + 4 + encodedMessage.getSize();
+        if (frameBeginning > maxFrameSize) {
+            throw new IllegalArgumentException("Message too big to fit in one frame: " + encodedMessage.getSize());
+        }
+    }
+
+    Codec codec() {
+        return codec;
+    }
+
+    int maxFrameSize() {
+        return this.maxFrameSize;
+    }
+
     void addPublishConfirmListener(PublishConfirmListener publishConfirmListener) {
         this.publishConfirmListeners.add(publishConfirmListener);
     }
@@ -1016,10 +1031,7 @@ public class Client implements AutoCloseable {
     }
 
     private void checkMessageFitsInFrame(String stream, Codec.EncodedMessage encodedMessage) {
-        int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8 + 4 + encodedMessage.getSize();
-        if (frameBeginning > this.maxFrameSize) {
-            throw new IllegalArgumentException("Message too big to fit in one frame: " + encodedMessage.getSize());
-        }
+        checkMessageFitsInFrame(this.maxFrameSize, stream, encodedMessage);
     }
 
     private void checkMessageBatchFitsInFrame(String stream, EncodedMessageBatch encodedMessageBatch) {
@@ -1083,7 +1095,6 @@ public class Client implements AutoCloseable {
                 metricsCollector.publish(msgCount);
             }
         });
-
     }
 
     public MessageBuilder messageBuilder() {
@@ -1335,14 +1346,19 @@ public class Client implements AutoCloseable {
         }
     }
 
-    private static class EncodedMessageBatch {
+    static class EncodedMessageBatch {
 
         private final MessageBatch.Compression compression;
-        private final List<Codec.EncodedMessage> messages = new ArrayList<>();
+        private final List<Codec.EncodedMessage> messages;
         private int size;
 
-        private EncodedMessageBatch(MessageBatch.Compression compression) {
+        EncodedMessageBatch(MessageBatch.Compression compression, List<Codec.EncodedMessage> messages) {
             this.compression = compression;
+            this.messages = messages;
+        }
+
+        EncodedMessageBatch(MessageBatch.Compression compression) {
+            this(compression, new ArrayList<>());
         }
 
         void add(Codec.EncodedMessage encodedMessage) {
@@ -1589,6 +1605,7 @@ public class Client implements AutoCloseable {
         private final Map<String, String> clientProperties = new HashMap<>();
         // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
         EventLoopGroup eventLoopGroup;
+        Codec codec;
         private String host = "localhost";
         private int port = DEFAULT_PORT;
         private String virtualHost = "/";
@@ -1609,7 +1626,6 @@ public class Client implements AutoCloseable {
         private ShutdownListener shutdownListener = shutdownContext -> {
 
         };
-        private Codec codec;
         private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
         private CredentialsProvider credentialsProvider = new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
         private ChannelCustomizer channelCustomizer = ch -> {

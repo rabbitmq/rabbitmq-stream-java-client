@@ -41,11 +41,6 @@ public final class MessageBatch {
         this.messages = messages;
     }
 
-    public MessageBatch add(byte[] binary) {
-        this.messages.add(new Client.BinaryOnlyMessage(binary));
-        return this;
-    }
-
     public MessageBatch add(Message message) {
         this.messages.add(message);
         return this;

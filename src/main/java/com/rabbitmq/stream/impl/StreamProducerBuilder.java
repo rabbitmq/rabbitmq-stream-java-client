@@ -25,6 +25,8 @@ class StreamProducerBuilder implements ProducerBuilder {
 
     private String stream;
 
+    private int subEntrySize = 1;
+
     private int batchSize = 100;
 
     private Duration batchPublishingDelay = Duration.ofMillis(100);
@@ -43,13 +45,19 @@ class StreamProducerBuilder implements ProducerBuilder {
         return this;
     }
 
+    @Override
+    public ProducerBuilder subEntrySize(int subEntrySize) {
+        this.subEntrySize = subEntrySize;
+        return this;
+    }
+
     public StreamProducerBuilder batchPublishingDelay(Duration batchPublishingDelay) {
         this.batchPublishingDelay = batchPublishingDelay;
         return this;
     }
 
     public Producer build() {
-        Producer producer = new StreamProducer(stream, batchSize, batchPublishingDelay, environment);
+        Producer producer = new StreamProducer(stream, subEntrySize, batchSize, batchPublishingDelay, environment);
         this.environment.addProducer(producer);
         return producer;
     }

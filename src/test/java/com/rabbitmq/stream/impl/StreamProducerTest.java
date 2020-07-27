@@ -27,6 +27,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 
@@ -61,7 +62,29 @@ public class StreamProducerTest {
         CountDownLatch publishLatch = new CountDownLatch(messageCount);
         Producer producer = environment.producerBuilder()
                 .stream(stream)
-                .batchSize(100)
+                .batchSize(batchSize)
+                .build();
+        AtomicLong count = new AtomicLong(0);
+        IntStream.range(0, messageCount).forEach(i -> {
+            producer.send(producer.messageBuilder().addData("".getBytes()).build(), confirmationStatus -> {
+                count.incrementAndGet();
+                publishLatch.countDown();
+            });
+        });
+        boolean completed = publishLatch.await(10, TimeUnit.SECONDS);
+        assertThat(completed).isTrue();
+    }
+
+    @Test
+    void sendWithSubEntryBatches() throws Exception {
+        int batchSize = 100;
+        int messagesInBatch = 10;
+        int messageCount = 1_000 * batchSize + 1; // don't want a multiple of batch size
+        CountDownLatch publishLatch = new CountDownLatch(messageCount);
+        Producer producer = environment.producerBuilder()
+                .stream(stream)
+                .subEntrySize(messagesInBatch)
+                .batchSize(batchSize)
                 .build();
         IntStream.range(0, messageCount).forEach(i -> {
             producer.send(producer.messageBuilder().addData("".getBytes()).build(), confirmationStatus -> {

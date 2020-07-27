@@ -51,7 +51,7 @@ public class StreamStreamCreator implements StreamCreator {
         if (stream == null) {
             throw new IllegalArgumentException("Stream cannot be null");
         }
-        Client.Response response = environment.getLocator().create(stream, streamParametersBuilder.build());
+        Client.Response response = environment.locator().create(stream, streamParametersBuilder.build());
         if (!response.isOk()) {
             throw new StreamException("Error while creating stream " + stream, response.getResponseCode());
         }

@@ -279,6 +279,14 @@ public class StreamPerfTest implements Callable<Integer> {
         // FIXME handle metadata update for consumers and publishers
         // they should at least issue a warning that their stream has been deleted and that they're now useless
 
+        Environment environment = Environment.builder()
+                .host(address.host)
+                .port(address.port)
+                .username(username)
+                .password(password)
+                .metricsCollector(metricsCollector)
+                .build();
+
         List<Client> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
         List<Runnable> producerRunnables = IntStream.range(0, this.producers).mapToObj(i -> {
             Runnable beforePublishingCallback;
@@ -308,8 +316,8 @@ public class StreamPerfTest implements Callable<Integer> {
             Runnable rateLimiterCallback;
             if (this.rate > 0) {
                 RateLimiter rateLimiter = com.google.common.util.concurrent.RateLimiter.create(this.rate);
-                int messageCountInFrame = this.batchSize * this.subEntrySize;
-                rateLimiterCallback = () -> rateLimiter.acquire(messageCountInFrame);
+//                int messageCountInFrame = this.batchSize * this.subEntrySize;
+                rateLimiterCallback = () -> rateLimiter.acquire(1);
             } else {
                 rateLimiterCallback = () -> {
                 };
@@ -366,17 +374,13 @@ public class StreamPerfTest implements Callable<Integer> {
                         client.publishBatches(stream, messageBatches);
                     };
                 }
-                /*
-                Producer producer = new StreamProducerBuilder().client(client)
-                        .batchSize(this.batchSize).stream(stream)
-                        .scheduledExecutorService(scheduledExecutorService)
+
+                Producer producer = environment.producerBuilder()
+                        .subEntrySize(this.subEntrySize)
+                        .batchSize(this.batchSize)
+                        .stream(stream)
                         .build();
-                ConfirmationHandler confirmationHandler = new ConfirmationHandler() {
-                    @Override
-                    public void handle(ConfirmationStatus confirmationStatus) {
-                        producerConfirm.increment();
-                    }
-                };
+                ConfirmationHandler confirmationHandler = confirmationStatus -> producerConfirm.increment();
                 while (true && !Thread.currentThread().isInterrupted()) {
                     beforePublishingCallback.run();
                     rateLimiterCallback.run();
@@ -387,7 +391,7 @@ public class StreamPerfTest implements Callable<Integer> {
                     producer.send(producer.messageBuilder().addData(payload).build(), confirmationHandler);
                 }
 
-                 */
+
             };
 
         }).collect(Collectors.toList());
@@ -410,7 +414,7 @@ public class StreamPerfTest implements Callable<Integer> {
             };
             final PerformanceMetrics metrics = this.performanceMetrics;
             Client.MessageListener messageListener = (correlationId, offset, data) -> {
-                metrics.latency(System.nanoTime() - readLong(data.getBodyAsBinary()), TimeUnit.NANOSECONDS);
+//                metrics.latency(System.nanoTime() - readLong(data.getBodyAsBinary()), TimeUnit.NANOSECONDS);
             };
 
             String stream = stream();

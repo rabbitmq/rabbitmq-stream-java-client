@@ -49,6 +49,7 @@ class StreamEnvironment implements Environment {
     private final Map<String, Client> consumingClientPool = new ConcurrentHashMap<>();
     private final Map<String, ClientSubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
     private final List<Producer> producers = new CopyOnWriteArrayList<>();
+    private final Codec codec;
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
                       List<URI> uris) {
@@ -79,6 +80,7 @@ class StreamEnvironment implements Environment {
         // FIXME plug shutdown listener to reconnect in case of disconnection
         // use the addresses array to reconnect to another node
         this.locator = new Client(clientParametersPrototype.duplicate());
+        this.codec = locator.codec();
     }
 
     private static String uriDecode(String s) {
@@ -138,7 +140,7 @@ class StreamEnvironment implements Environment {
 
     @Override
     public void deleteStream(String stream) {
-        Client.Response response = this.getLocator().delete(stream);
+        Client.Response response = this.locator().delete(stream);
         if (!response.isOk()) {
             throw new StreamException("Error while deleting stream " + stream, response.getResponseCode());
         }
@@ -296,8 +298,12 @@ class StreamEnvironment implements Environment {
         }
     }
 
-    Client getLocator() {
-        return locator;
+    Client locator() {
+        return this.locator;
+    }
+
+    Codec codec() {
+        return this.codec;
     }
 
     private static final class ClientSubscriptionState {

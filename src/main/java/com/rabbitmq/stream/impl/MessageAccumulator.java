@@ -14,19 +14,22 @@
 
 package com.rabbitmq.stream.impl;
 
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingDeque;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Message;
 
-class MessageAccumulator {
+interface MessageAccumulator {
 
-    final BlockingQueue<StreamProducer.AccumulatedMessage> messages;
+    boolean add(Message message, ConfirmationHandler confirmationHandler);
 
-    MessageAccumulator(int capacity) {
-        this.messages = new LinkedBlockingDeque<>(capacity);
+    AccumulatedEntity get();
+
+    boolean isEmpty();
+
+    interface AccumulatedEntity {
+
+        Object encodedEntity();
+
+        StreamProducer.ConfirmationCallback confirmationCallback();
+
     }
-
-    boolean add(StreamProducer.AccumulatedMessage message) {
-        return messages.offer(message);
-    }
-
 }

@@ -32,7 +32,7 @@ class StreamProducer implements Producer {
     private final MessageAccumulator accumulator;
 
     // FIXME investigate a more optimized data structure to handle pending messages
-    private final ConcurrentMap<Long, PendingMessage> unconfirmedMessages = new ConcurrentHashMap<>(10_000, 0.75f, 2);
+    private final ConcurrentMap<Long, ConfirmationCallback> unconfirmedMessages = new ConcurrentHashMap<>(10_000, 0.75f, 2);
 
     private final int batchSize;
 
@@ -40,24 +40,28 @@ class StreamProducer implements Producer {
 
     private final Client.OutboundEntityWriteCallback writeCallback;
 
-    StreamProducer(String stream, int batchSize, Duration batchPublishingDelay, StreamEnvironment environment) {
+    StreamProducer(String stream, int subEntrySize, int batchSize, Duration batchPublishingDelay, StreamEnvironment environment) {
         this.client = environment.getClientForPublisher(stream);
         this.stream = stream;
-        this.accumulator = new MessageAccumulator(batchSize);
-        this.batchSize = batchSize;
+        final Client.OutboundEntityWriteCallback delegateWriteCallback;
+        if (subEntrySize <= 1) {
+            this.accumulator = new SimpleMessageAccumulator(batchSize, environment.codec(), client.maxFrameSize(), this.stream);
+            delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
+        } else {
+            this.accumulator = new SubEntryMessageAccumulator(subEntrySize, batchSize, environment.codec(), client.maxFrameSize(), this.stream);
+            delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
+        }
         this.writeCallback = new Client.OutboundEntityWriteCallback() {
             @Override
             public int write(ByteBuf bb, Object entity, long publishingId) {
-                AccumulatedMessage accumulatedMessage = (AccumulatedMessage) entity;
-                unconfirmedMessages.put(publishingId, new PendingMessage(
-                        accumulatedMessage.message, accumulatedMessage.confirmationHandler, publishingId
-                ));
-                return Client.OUTBOUND_MESSAGE_WRITE_CALLBACK.write(bb, accumulatedMessage.encodedMessage, publishingId);
+                MessageAccumulator.AccumulatedEntity accumulatedEntity = (MessageAccumulator.AccumulatedEntity) entity;
+                unconfirmedMessages.put(publishingId, accumulatedEntity.confirmationCallback());
+                return delegateWriteCallback.write(bb, accumulatedEntity.encodedEntity(), publishingId);
             }
 
             @Override
             public int fragmentLength(Object entity) {
-                return Client.OUTBOUND_MESSAGE_WRITE_CALLBACK.fragmentLength(((AccumulatedMessage) entity).encodedMessage);
+                return delegateWriteCallback.fragmentLength(((MessageAccumulator.AccumulatedEntity) entity).encodedEntity());
             }
         };
         if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
@@ -71,16 +75,17 @@ class StreamProducer implements Producer {
             taskReference.set(task);
             environment.getScheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
+        this.batchSize = batchSize;
         this.client.addPublishConfirmListener(publishingId -> {
-            PendingMessage pendingMessage = unconfirmedMessages.remove(publishingId);
-            if (pendingMessage != null) {
-                pendingMessage.confirmationHandler.handle(new ConfirmationStatus(pendingMessage.message, true, Constants.RESPONSE_CODE_OK));
+            ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
+            if (confirmationCallback != null) {
+                confirmationCallback.handle(true, Constants.RESPONSE_CODE_OK);
             }
         });
         this.client.addPublishErrorListener((publishingId, errorCode) -> {
-            PendingMessage pendingMessage = unconfirmedMessages.remove(publishingId);
-            if (pendingMessage != null) {
-                pendingMessage.confirmationHandler.handle(new ConfirmationStatus(pendingMessage.message, false, errorCode));
+            ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
+            if (confirmationCallback != null) {
+                confirmationCallback.handle(false, errorCode);
             }
         });
     }
@@ -92,13 +97,9 @@ class StreamProducer implements Producer {
 
     @Override
     public void send(Message message, ConfirmationHandler confirmationHandler) {
-        Codec.EncodedMessage encodedMessage = this.client.encode(this.stream, message);
-        AccumulatedMessage accumulatedMessage = new AccumulatedMessage(message, confirmationHandler, encodedMessage);
-
-        if (!accumulator.add(accumulatedMessage)) {
+        if (accumulator.add(message, confirmationHandler)) {
             synchronized (this) {
                 publishBatch();
-                accumulator.add(accumulatedMessage);
             }
         }
     }
@@ -110,11 +111,11 @@ class StreamProducer implements Producer {
     }
 
     private void publishBatch() {
-        if (!accumulator.messages.isEmpty()) {
+        if (!accumulator.isEmpty()) {
             List<Object> messages = new ArrayList<>(this.batchSize);
             int batchCount = 0;
             while (batchCount != this.batchSize) {
-                AccumulatedMessage accMessage = accumulator.messages.poll();
+                Object accMessage = accumulator.get();
                 if (accMessage == null) {
                     break;
                 }
@@ -125,29 +126,10 @@ class StreamProducer implements Producer {
         }
     }
 
-    static class AccumulatedMessage {
+    interface ConfirmationCallback {
 
-        private final Message message;
-        private final ConfirmationHandler confirmationHandler;
-        private final Codec.EncodedMessage encodedMessage;
+        void handle(boolean confirmed, short code);
 
-        private AccumulatedMessage(Message message, ConfirmationHandler confirmationHandler, Codec.EncodedMessage encodedMessage) {
-            this.message = message;
-            this.confirmationHandler = confirmationHandler;
-            this.encodedMessage = encodedMessage;
-        }
     }
 
-    static class PendingMessage {
-
-        private final Message message;
-        private final ConfirmationHandler confirmationHandler;
-        private final long publishingId;
-
-        private PendingMessage(Message message, ConfirmationHandler confirmationHandler, long publishingId) {
-            this.message = message;
-            this.confirmationHandler = confirmationHandler;
-            this.publishingId = publishingId;
-        }
-    }
 }

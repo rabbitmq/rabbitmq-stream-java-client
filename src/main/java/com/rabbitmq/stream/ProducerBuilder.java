@@ -20,6 +20,8 @@ public interface ProducerBuilder {
 
     ProducerBuilder stream(String stream);
 
+    ProducerBuilder subEntrySize(int subEntrySize);
+
     ProducerBuilder batchSize(int batchSize);
 
     ProducerBuilder batchPublishingDelay(Duration batchPublishingDelay);
