@@ -43,6 +43,9 @@ class StreamProducerBuilder implements ProducerBuilder {
     }
 
     public StreamProducerBuilder batchSize(int batchSize) {
+        if (batchSize <= 0) {
+            throw new IllegalArgumentException("batchSize must greater than 0");
+        }
         this.batchSize = batchSize;
         return this;
     }
@@ -60,6 +63,9 @@ class StreamProducerBuilder implements ProducerBuilder {
 
     @Override
     public ProducerBuilder maxUnconfirmedMessages(int maxUnconfirmedMessages) {
+        if (maxUnconfirmedMessages <= 0) {
+            throw new IllegalArgumentException("maxUnconfirmedMessages must be greater than 0");
+        }
         this.maxUnconfirmedMessages = maxUnconfirmedMessages;
         return this;
     }
