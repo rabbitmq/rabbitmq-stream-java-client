@@ -21,18 +21,23 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.time.Duration;
 import java.util.UUID;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamEnvironmentTest {
 
     static EventLoopGroup eventLoopGroup;
 
     EnvironmentBuilder environmentBuilder;
+
+    String stream;
 
     @BeforeAll
     static void initAll() {
@@ -71,6 +76,46 @@ public class StreamEnvironmentTest {
                 .uri("rabbitmq-stream://guest:guest@localhost:5555/%2f")
                 .build()
                 .close();
+    }
+
+    @Test
+    @TestUtils.DisabledIfRabbitMqCtlNotSet
+    void locatorShouldReconnectIfConnectionIsLost() throws Exception {
+        try (Environment environment = environmentBuilder
+                .recoveryBackOffDelayPolicy(RecoveryBackOffDelayPolicy.fixed(Duration.ofSeconds(1)))
+                .build()) {
+            String s = UUID.randomUUID().toString();
+            environment.streamCreator().stream(s).create();
+            environment.deleteStream(s);
+            try {
+                Host.rabbitmqctl("stop_app");
+                assertThatThrownBy(() -> environment.streamCreator().stream("whatever").create())
+                        .isInstanceOf(StreamException.class);
+                assertThatThrownBy(() -> environment.deleteStream("whatever"))
+                        .isInstanceOf(StreamException.class);
+                assertThatThrownBy(() -> environment.producerBuilder().stream(stream).build())
+                        .isInstanceOf(StreamException.class);
+                assertThatThrownBy(() -> environment.consumerBuilder().stream(stream).build())
+                        .isInstanceOf(StreamException.class);
+            } finally {
+                Host.rabbitmqctl("start_app");
+            }
+
+            Producer producer = null;
+            int timeout = 10_000;
+            int waited = 0;
+            int interval = 1_000;
+            while (producer == null && waited < timeout) {
+                try {
+                    Thread.sleep(interval);
+                    waited += interval;
+                    producer = environment.producerBuilder().stream(stream).build();
+                } catch (StreamException e) {
+                }
+            }
+
+            assertThat(producer).isNotNull();
+        }
     }
 
     @Test

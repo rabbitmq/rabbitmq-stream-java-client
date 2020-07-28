@@ -118,7 +118,16 @@ public class Client implements AutoCloseable {
         this.metricsCollector = parameters.metricsCollector;
         this.metadataListener = parameters.metadataListener;
         final ShutdownListener shutdownListener = parameters.shutdownListener;
-        this.shutdownListenerCallback = Utils.makeIdempotent(shutdownReason -> shutdownListener.handle(new ShutdownContext(shutdownReason)));
+        final AtomicBoolean started = new AtomicBoolean(false);
+        this.shutdownListenerCallback = Utils.makeIdempotent(shutdownReason -> {
+            // the channel can become inactive even though the opening is not done yet,
+            // so we guard the shutdown listener invocation to avoid trying to reconnect
+            // even before having connected. The caller should be notified of the failure
+            // by an exception anyway.
+            if (started.get()) {
+                shutdownListener.handle(new ShutdownContext(shutdownReason));
+            }
+        });
 
         this.executorServiceClosing = Utils.makeIdempotent(() -> {
             if (this.executorService != null) {
@@ -173,6 +182,7 @@ public class Client implements AutoCloseable {
         this.heartbeat = this.tuneState.getHeartbeat();
         LOGGER.debug("Connection tuned with max frame size {} and heartbeat {}", this.maxFrameSize, this.heartbeat);
         open(parameters.virtualHost);
+        started.set(true);
     }
 
     private static Map<String, String> clientProperties(Map<String, String> fromParameters) {
@@ -1416,6 +1426,11 @@ public class Client implements AutoCloseable {
             return shutdownReason;
         }
 
+        boolean isShutdownUnexpected() {
+            return getShutdownReason() == ShutdownReason.HEARTBEAT_FAILURE ||
+                    getShutdownReason() == ShutdownReason.UNKNOWN;
+        }
+
         public enum ShutdownReason {
             CLIENT_CLOSE, SERVER_CLOSE, HEARTBEAT_FAILURE,
             UNKNOWN
@@ -1606,8 +1621,8 @@ public class Client implements AutoCloseable {
         // TODO eventloopgroup should be shared between clients, this could justify the introduction of client factory
         EventLoopGroup eventLoopGroup;
         Codec codec;
-        private String host = "localhost";
-        private int port = DEFAULT_PORT;
+        String host = "localhost";
+        int port = DEFAULT_PORT;
         private String virtualHost = "/";
         private Duration requestedHeartbeat = Duration.ofSeconds(60);
         private int requestedMaxFrameSize = 1048576;

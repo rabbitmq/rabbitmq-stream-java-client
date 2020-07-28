@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -44,21 +45,29 @@ class StreamEnvironment implements Environment {
     private final boolean privateScheduleExecutorService;
     private final Client.ClientParameters clientParametersPrototype;
     private final List<Address> addresses;
-    private final Client locator;
     private final Map<String, Client> publishingClientPool = new ConcurrentHashMap<>();
     private final Map<String, Client> consumingClientPool = new ConcurrentHashMap<>();
     private final Map<String, ClientSubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
     private final List<Producer> producers = new CopyOnWriteArrayList<>();
     private final Codec codec;
+    private final RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy;
+    private volatile Client locator;
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
-                      List<URI> uris) {
+                      List<URI> uris, RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy) {
 
+        this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
         clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
-        this.addresses = uris.stream()
-                .map(uriItem -> new Address(uriItem))
-                .collect(Collectors.toList());
+        if (uris.isEmpty()) {
+            this.addresses = Collections.singletonList(
+                    new Address(clientParametersPrototype.host, clientParametersPrototype.port)
+            );
+        } else {
+            this.addresses = uris.stream()
+                    .map(uriItem -> new Address(uriItem))
+                    .collect(Collectors.toList());
+        }
 
         if (clientParametersPrototype.eventLoopGroup == null) {
             this.eventLoopGroup = new NioEventLoopGroup();
@@ -77,9 +86,48 @@ class StreamEnvironment implements Environment {
             this.privateScheduleExecutorService = false;
         }
 
+
         // FIXME plug shutdown listener to reconnect in case of disconnection
         // use the addresses array to reconnect to another node
-        this.locator = new Client(clientParametersPrototype.duplicate());
+        AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
+        Client.ShutdownListener shutdownListener = shutdownContext -> {
+            if (shutdownContext.isShutdownUnexpected()) {
+                this.scheduledExecutorService.execute(() -> {
+                    try {
+                        LOGGER.debug("Unexpected locator disconnection, trying to reconnect");
+                        this.locator = null;
+                        Client newLocator = null;
+                        Client.ClientParameters newLocatorParameters = this.clientParametersPrototype.duplicate()
+                                .shutdownListener(shutdownListenerReference.get());
+
+                        int attempts = 0;
+                        while (newLocator == null) {
+                            Address address = addresses.size() == 1 ? addresses.get(0) :
+                                    addresses.get(random.nextInt(addresses.size()));
+                            LOGGER.debug("Trying to reconnect locator on {}", address);
+                            try {
+                                Thread.sleep(this.recoveryBackOffDelayPolicy.delay(attempts++).toMillis());
+                                newLocator = new Client(newLocatorParameters
+                                        .host(address.host)
+                                        .port(address.port)
+                                );
+                                LOGGER.debug("Locator connected on {}", address);
+                            } catch (Exception e) {
+                                LOGGER.debug("Error while trying to connect locator on {}, retrying possibly somewhere else", address);
+                            }
+                        }
+                        this.locator = newLocator;
+                    } catch (Exception e) {
+                        LOGGER.debug("Error while reconnecting locator", e);
+                    }
+                });
+            }
+        };
+        shutdownListenerReference.set(shutdownListener);
+        Client.ClientParameters locatorParameters = clientParametersPrototype
+                .duplicate()
+                .shutdownListener(shutdownListenerReference.get());
+        this.locator = new Client(locatorParameters);
         this.codec = locator.codec();
     }
 
@@ -186,7 +234,9 @@ class StreamEnvironment implements Environment {
         // FIXME close consumers
 
         try {
-            this.locator.close();
+            if (this.locator != null) {
+                this.locator.close();
+            }
         } catch (Exception e) {
             LOGGER.warn("Error while closing locator client", e);
         }
@@ -212,7 +262,7 @@ class StreamEnvironment implements Environment {
     }
 
     Client getClientForPublisher(String stream) {
-        Map<String, Client.StreamMetadata> metadata = this.locator.metadata(stream);
+        Map<String, Client.StreamMetadata> metadata = locator().metadata(stream);
         if (metadata.size() == 0 || metadata.get(stream) == null) {
             throw new IllegalArgumentException("Stream does not exist: " + stream);
         }
@@ -243,7 +293,7 @@ class StreamEnvironment implements Environment {
     }
 
     Runnable registerConsumer(String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler) {
-        Map<String, Client.StreamMetadata> metadata = this.locator.metadata(stream);
+        Map<String, Client.StreamMetadata> metadata = locator().metadata(stream);
         if (metadata.size() == 0 || metadata.get(stream) == null) {
             throw new IllegalArgumentException("Stream does not exist: " + stream);
         }
@@ -299,6 +349,9 @@ class StreamEnvironment implements Environment {
     }
 
     Client locator() {
+        if (this.locator == null) {
+            throw new StreamException("No connection available");
+        }
         return this.locator;
     }
 

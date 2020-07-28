@@ -34,6 +34,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     private final Client.ClientParameters clientParameters = new Client.ClientParameters();
     private ScheduledExecutorService scheduledExecutorService;
     private List<URI> uris = Collections.emptyList();
+    private RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy = RecoveryBackOffDelayPolicy.fixed(Duration.ofSeconds(5));
 
     public StreamEnvironmentBuilder() {
 
@@ -150,7 +151,13 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     }
 
     @Override
+    public EnvironmentBuilder recoveryBackOffDelayPolicy(RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy) {
+        this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
+        return this;
+    }
+
+    @Override
     public Environment build() {
-        return new StreamEnvironment(scheduledExecutorService, clientParameters, uris);
+        return new StreamEnvironment(scheduledExecutorService, clientParameters, uris, recoveryBackOffDelayPolicy);
     }
 }
