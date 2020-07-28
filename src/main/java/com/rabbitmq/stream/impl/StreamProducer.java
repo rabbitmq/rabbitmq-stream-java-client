@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
@@ -45,10 +46,17 @@ class StreamProducer implements Producer {
 
     private final Semaphore unconfirmedMessagesSemaphore;
 
+    private final Runnable clientListenersCleaningCallback;
+
+    private final StreamEnvironment environment;
+
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
     StreamProducer(String stream,
                    int subEntrySize, int batchSize, Duration batchPublishingDelay,
                    int maxUnconfirmedMessages,
                    StreamEnvironment environment) {
+        this.environment = environment;
         this.client = environment.getClientForPublisher(stream);
         this.stream = stream;
         final Client.OutboundEntityWriteCallback delegateWriteCallback;
@@ -87,7 +95,7 @@ class StreamProducer implements Producer {
             environment.getScheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
         this.batchSize = batchSize;
-        this.client.addPublishConfirmListener(publishingId -> {
+        Client.PublishConfirmListener publishConfirmListener = publishingId -> {
             ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
             if (confirmationCallback != null) {
                 int confirmedCount = confirmationCallback.handle(true, Constants.RESPONSE_CODE_OK);
@@ -95,8 +103,8 @@ class StreamProducer implements Producer {
             } else {
                 unconfirmedMessagesSemaphore.release();
             }
-        });
-        this.client.addPublishErrorListener((publishingId, errorCode) -> {
+        };
+        Client.PublishErrorListener publishErrorListener = (publishingId, errorCode) -> {
             ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
             unconfirmedMessagesSemaphore.release();
             if (confirmationCallback != null) {
@@ -105,7 +113,13 @@ class StreamProducer implements Producer {
             } else {
                 unconfirmedMessagesSemaphore.release();
             }
-        });
+        };
+        this.client.addPublishConfirmListener(publishConfirmListener);
+        this.client.addPublishErrorListener(publishErrorListener);
+        this.clientListenersCleaningCallback = () -> {
+            client.removePublishConfirmListener(publishConfirmListener);
+            client.removePublishErrorListener(publishErrorListener);
+        };
     }
 
     @Override
@@ -132,8 +146,15 @@ class StreamProducer implements Producer {
 
     @Override
     public void close() {
-        // FIXME remove from environment
-        // FIXME remove publish confirm callback from environment
+        if (this.closed.compareAndSet(false, true)) {
+            this.environment.removeProducer(this);
+            closeFromEnvironment();
+        }
+    }
+
+    void closeFromEnvironment() {
+        this.clientListenersCleaningCallback.run();
+        this.closed.set(true);
     }
 
     private void publishBatch() {
@@ -156,6 +177,10 @@ class StreamProducer implements Producer {
 
         int handle(boolean confirmed, short code);
 
+    }
+
+    boolean isOpen() {
+        return !this.closed.get();
     }
 
 }

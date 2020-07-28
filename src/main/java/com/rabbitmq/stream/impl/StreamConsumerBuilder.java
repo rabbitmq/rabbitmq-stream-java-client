@@ -51,6 +51,8 @@ public class StreamConsumerBuilder implements ConsumerBuilder {
 
     @Override
     public Consumer build() {
-        return new StreamConsumer(stream, offsetSpecification, messageHandler, environment);
+        StreamConsumer consumer = new StreamConsumer(stream, offsetSpecification, messageHandler, environment);
+        environment.addConsumer(consumer);
+        return consumer;
     }
 }

@@ -24,7 +24,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,6 +79,27 @@ public class StreamEnvironmentTest {
                 .uri("rabbitmq-stream://guest:guest@localhost:5555/%2f")
                 .build()
                 .close();
+    }
+
+    @Test
+    void producersAndConsumersShouldBeClosedWhenEnvironmentIsClosed() throws Exception {
+        Environment environment = environmentBuilder.build();
+        Collection<Producer> producers = IntStream.range(0, 2)
+                .mapToObj(i -> environment.producerBuilder().stream(stream).build())
+                .collect(Collectors.toList());
+        Collection<Consumer> consumers = IntStream.range(0, 2)
+                .mapToObj(i -> environment.consumerBuilder().stream(stream)
+                        .messageHandler((offset, message) -> {
+                        }).build())
+                .collect(Collectors.toList());
+
+        producers.forEach(producer -> assertThat(((StreamProducer) producer).isOpen()).isTrue());
+        consumers.forEach(consumer -> assertThat(((StreamConsumer) consumer).isOpen()).isTrue());
+
+        environment.close();
+
+        producers.forEach(producer -> assertThat(((StreamProducer) producer).isOpen()).isFalse());
+        consumers.forEach(consumer -> assertThat(((StreamConsumer) consumer).isOpen()).isFalse());
     }
 
     @Test

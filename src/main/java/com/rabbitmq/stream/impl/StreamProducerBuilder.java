@@ -71,7 +71,7 @@ class StreamProducerBuilder implements ProducerBuilder {
     }
 
     public Producer build() {
-        Producer producer = new StreamProducer(stream,
+        StreamProducer producer = new StreamProducer(stream,
                 subEntrySize, batchSize, batchPublishingDelay,
                 maxUnconfirmedMessages,
                 environment);

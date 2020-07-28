@@ -48,7 +48,8 @@ class StreamEnvironment implements Environment {
     private final Map<String, Client> publishingClientPool = new ConcurrentHashMap<>();
     private final Map<String, Client> consumingClientPool = new ConcurrentHashMap<>();
     private final Map<String, ClientSubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
-    private final List<Producer> producers = new CopyOnWriteArrayList<>();
+    private final List<StreamProducer> producers = new CopyOnWriteArrayList<>();
+    private final List<StreamConsumer> consumers = new CopyOnWriteArrayList<>();
     private final Codec codec;
     private final RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy;
     private volatile Client locator;
@@ -199,8 +200,22 @@ class StreamEnvironment implements Environment {
         return new StreamProducerBuilder(this);
     }
 
-    void addProducer(Producer producer) {
+    void addProducer(StreamProducer producer) {
         this.producers.add(producer);
+    }
+
+    void removeProducer(StreamProducer producer) {
+        // FIXME see if some client can be closed
+        this.producers.remove(producer);
+    }
+
+    void addConsumer(StreamConsumer consumer) {
+        this.consumers.add(consumer);
+    }
+
+    void removeConsumer(StreamConsumer consumer) {
+        // FIXME see if some client can be closed
+        this.consumers.remove(consumer);
     }
 
     @Override
@@ -210,15 +225,11 @@ class StreamEnvironment implements Environment {
 
     @Override
     public void close() {
-        if (privateScheduleExecutorService) {
-            this.scheduledExecutorService.shutdownNow();
-        }
-
-        for (Producer producer : producers) {
+        for (StreamProducer producer : producers) {
             try {
-                producer.close();
+                producer.closeFromEnvironment();
             } catch (Exception e) {
-                LOGGER.warn("Error while closing producer, moving on to the next publisher", e);
+                LOGGER.warn("Error while closing producer, moving on to the next one", e);
             }
         }
 
@@ -231,12 +242,32 @@ class StreamEnvironment implements Environment {
             }
         }
 
-        // FIXME close consumers
+        for (StreamConsumer consumer : consumers) {
+            try {
+                consumer.closeFromEnvironment();
+            } catch (Exception e) {
+                LOGGER.warn("Error while closing consumer, moving on to the next one", e);
+            }
+        }
+
+        for (Client client : consumingClientPool.values()) {
+            try {
+                client.close();
+            } catch (Exception e) {
+                LOGGER.warn("Error while closing client, moving on to the next client", e);
+            }
+        }
+
 
         try {
             if (this.locator != null) {
                 this.locator.close();
             }
+
+            if (privateScheduleExecutorService) {
+                this.scheduledExecutorService.shutdownNow();
+            }
+
         } catch (Exception e) {
             LOGGER.warn("Error while closing locator client", e);
         }
@@ -373,8 +404,10 @@ class StreamEnvironment implements Environment {
             if (!subscribeResponse.isOk()) {
                 throw new StreamException("Subscription to stream " + stream + " failed with code " + subscribeResponse.getResponseCode());
             }
+            LOGGER.debug("Subscribed to {} with subscription ID {} {}", stream, subscriptionId, client);
             // FIXME if no more handlers in the map, consider closing the client
             return () -> {
+                LOGGER.debug("Cancelling subscription {} on {} {}", subscriptionId, stream, client);
                 Client.Response unsubscribeResponse = client.get().unsubscribe(subscriptionId);
                 handlers.remove(subscriptionId);
                 if (!unsubscribeResponse.isOk()) {
@@ -390,6 +423,7 @@ class StreamEnvironment implements Environment {
         void setClient(Client client) {
             this.client.set(client);
         }
+
     }
 
     private static final class Address {

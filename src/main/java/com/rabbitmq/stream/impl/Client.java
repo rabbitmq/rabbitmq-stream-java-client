@@ -637,6 +637,14 @@ public class Client implements AutoCloseable {
         this.publishErrorListeners.add(publishErrorListener);
     }
 
+    void removePublishConfirmListener(PublishConfirmListener publishConfirmListener) {
+        this.publishConfirmListeners.remove(publishConfirmListener);
+    }
+
+    void removePublishErrorListener(PublishErrorListener publishErrorListener) {
+        this.publishErrorListeners.remove(publishErrorListener);
+    }
+
     private void handleHeartbeat(int frameSize) {
         LOGGER.debug("Received heartbeat frame");
         int read = 2 + 2; // already read the command id and version
