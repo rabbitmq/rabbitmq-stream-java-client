@@ -33,6 +33,7 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -332,12 +333,18 @@ public class StreamPerfTest implements Callable<Integer> {
         List<Consumer> consumers = Collections.synchronizedList(IntStream.range(0, this.consumers).mapToObj(i -> {
             final PerformanceMetrics metrics = this.performanceMetrics;
 
+            AtomicLong messageCount = new AtomicLong(0);
             String stream = stream();
             Consumer consumer = environment.consumerBuilder()
                     .stream(stream)
                     .offset(this.offset)
                     .messageHandler((offset, message) -> {
-                        metrics.latency(System.nanoTime() - readLong(message.getBodyAsBinary()), TimeUnit.NANOSECONDS);
+                        // at very high throughput ( > 1 M / s), the histogram can become a bottleneck,
+                        // so we downsample and calculate latency for every x message
+                        // this should not affect the metric much
+                        if (messageCount.incrementAndGet() % 100 == 0) {
+                            metrics.latency(System.nanoTime() - readLong(message.getBodyAsBinary()), TimeUnit.NANOSECONDS);
+                        }
                     })
                     .build();
 
