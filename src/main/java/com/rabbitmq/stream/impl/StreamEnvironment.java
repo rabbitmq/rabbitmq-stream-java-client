@@ -310,7 +310,7 @@ class StreamEnvironment implements Environment {
         if (leader == null) {
             throw new IllegalStateException("Not leader available for stream " + stream);
         }
-        LOGGER.info("Using client on {}:{} to publish to {}", leader.getHost(), leader.getPort(), stream);
+        LOGGER.debug("Using client on {}:{} to publish to {}", leader.getHost(), leader.getPort(), stream);
 
         // FIXME make sure this is a reasonable key for brokers
         String key = leader.getHost() + ":" + leader.getPort();

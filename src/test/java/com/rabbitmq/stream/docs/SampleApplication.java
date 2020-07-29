@@ -15,10 +15,7 @@
 package com.rabbitmq.stream.docs;
 
 // tag::sample-imports[]
-import com.rabbitmq.stream.impl.Client;
-import com.rabbitmq.stream.OffsetSpecification;
-
-import java.util.Collections;
+import com.rabbitmq.stream.*;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -29,19 +26,26 @@ import java.util.stream.IntStream;
 public class SampleApplication {
 
     public static void main(String[] args) throws Exception {
+        // tag::sample-environment[]
+        System.out.println("Connecting...");
+        Environment environment = Environment.builder().build();  // <1>
+        String stream = UUID.randomUUID().toString();
+        environment.streamCreator().stream(stream).create();  // <2>
+        // end::sample-environment[]
         // tag::sample-publisher[]
         System.out.println("Starting publishing...");
         int messageCount = 10000;
-        String stream = UUID.randomUUID().toString();
         CountDownLatch publishConfirmLatch = new CountDownLatch(messageCount);
-        Client publisher = new Client(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> publishConfirmLatch.countDown()));  // <1>
-        publisher.create(stream);  // <2>
+        Producer producer = environment.producerBuilder()  // <1>
+                .stream(stream)
+                .build();
         IntStream.range(0, messageCount)
-                .forEach(i -> publisher.publish(stream,
-                        Collections.singletonList(publisher.messageBuilder().addData(String.valueOf(i).getBytes()).build())));  // <3>
-        publishConfirmLatch.await(10, TimeUnit.SECONDS);  // <4>
-        publisher.close();  // <5>
+                .forEach(i -> producer.send(  // <2>
+                        producer.messageBuilder().addData(String.valueOf(i).getBytes()).build(),  // <3>
+                        confirmationStatus -> publishConfirmLatch.countDown()  // <4>
+                ));
+        publishConfirmLatch.await(10, TimeUnit.SECONDS);  // <5>
+        producer.close();  // <6>
         System.out.printf("Published %,d messages%n", messageCount);
         // end::sample-publisher[]
 
@@ -49,22 +53,25 @@ public class SampleApplication {
         System.out.println("Starting consuming...");
         AtomicLong sum = new AtomicLong(0);
         CountDownLatch consumeLatch = new CountDownLatch(messageCount);
-        Client consumer = new Client(new Client.ClientParameters()
-                .chunkListener((client, subscriptionId, offset, messagesInChunk, dataSize) ->
-                        client.credit(subscriptionId, 1))  // <1>
-                .messageListener((subscriptionId, offset, message) -> {
-                    sum.addAndGet(Long.parseLong(new String(message.getBodyAsBinary())));  // <2>
-                    consumeLatch.countDown();  // <3>
-                }));
+        Consumer consumer = environment.consumerBuilder()  // <1>
+                .stream(stream)
+                .messageHandler((offset, message) -> {  // <2>
+                    sum.addAndGet(Long.parseLong(new String(message.getBodyAsBinary())));  // <3>
+                    consumeLatch.countDown();  // <4>
+                })
+                .build();
 
-        consumer.subscribe(1, stream, OffsetSpecification.first(), 10);  // <4>
         consumeLatch.await(10, TimeUnit.SECONDS);  // <5>
 
         System.out.println("Sum: " + sum.get());  // <6>
 
-        consumer.delete(stream);  // <7>
-        consumer.close();  // <8>
+        consumer.close();  // <7>
         // end::sample-consumer[]
+
+        // tag::sample-environment-close[]
+        environment.deleteStream(stream);  // <1>
+        environment.close();  // <2>
+        // end::sample-environment-close[]
     }
 
 
