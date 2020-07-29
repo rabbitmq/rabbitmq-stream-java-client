@@ -33,7 +33,6 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -82,9 +81,6 @@ public class StreamPerfTest implements Callable<Integer> {
     @CommandLine.Option(names = {"--credit", "-cr"}, description = "credit requested on acknowledgment", defaultValue = "1",
             converter = Utils.PositiveIntegerTypeConverter.class)
     private int credit;
-    @CommandLine.Option(names = {"--ack", "-ac"}, description = "ack (request credit) every x chunk(s)", defaultValue = "1",
-            converter = Utils.PositiveIntegerTypeConverter.class)
-    private int ack;
     @CommandLine.Option(names = {"--confirms", "-c"}, description = "outstanding confirms", defaultValue = "10000",
             converter = Utils.NotNegativeIntegerTypeConverter.class)
     private int confirms;
@@ -333,42 +329,23 @@ public class StreamPerfTest implements Callable<Integer> {
 
         }).collect(Collectors.toList());
 
-        AtomicInteger consumerSequence = new AtomicInteger(0);
-        List<Client> consumers = Collections.synchronizedList(IntStream.range(0, this.consumers).mapToObj(i -> {
-            BooleanSupplier creditRequestCondition;
-            if (this.ack == 1) {
-                creditRequestCondition = () -> true;
-            } else {
-                AtomicInteger chunkCount = new AtomicInteger(0);
-                int ackEvery = this.ack;
-                creditRequestCondition = () -> chunkCount.incrementAndGet() % ackEvery == 0;
-            }
-            int creditToAsk = this.credit;
-            Client.ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> {
-                if (creditRequestCondition.getAsBoolean()) {
-                    client.credit(correlationId, creditToAsk);
-                }
-            };
+        List<Consumer> consumers = Collections.synchronizedList(IntStream.range(0, this.consumers).mapToObj(i -> {
             final PerformanceMetrics metrics = this.performanceMetrics;
-            Client.MessageListener messageListener = (correlationId, offset, data) -> {
-//                metrics.latency(System.nanoTime() - readLong(data.getBodyAsBinary()), TimeUnit.NANOSECONDS);
-            };
 
             String stream = stream();
-            Address consumerAddress = consumerBrokerLocator.get(stream);
-            Client consumer = client(new Client.ClientParameters()
-                    .host(consumerAddress.host).port(consumerAddress.port)
-                    .chunkListener(chunkListener)
-                    .messageListener(messageListener));
-
-            LOGGER.info("Connecting to {} to consume from {}", consumerAddress, stream);
-            consumer.subscribe(consumerSequence.getAndIncrement(), stream, this.offset, this.initialCredit);
+            Consumer consumer = environment.consumerBuilder()
+                    .stream(stream)
+                    .offset(this.offset)
+                    .messageHandler((offset, message) -> {
+                        metrics.latency(System.nanoTime() - readLong(message.getBodyAsBinary()), TimeUnit.NANOSECONDS);
+                    })
+                    .build();
 
             return consumer;
         }).collect(Collectors.toList()));
 
         shutdownService.wrap(closeStep("Closing consumers", () -> {
-            for (Client consumer : consumers) {
+            for (Consumer consumer : consumers) {
                 consumer.close();
             }
         }));
