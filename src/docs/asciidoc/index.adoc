@@ -228,6 +228,47 @@ include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uri
 By specifying several URIs, the environment will try to connect to the first one, and
 will pick a new URI randomly in case of disconnection.
 
+The following table sums up the main settings to create a `Environment`:
+
+[%header,cols=3*]
+|===
+|Parameter Name
+|Description
+|Default
+
+|`uri`
+|The URI of the node to connect to (single node).
+|`rabbitmq-stream://guest:guest@localhost:5555/%2f`
+
+|`uris`
+|The URI of the nodes to try to connect to (cluster).
+|`rabbitmq-stream://guest:guest@localhost:5555/%2f` singleton list
+
+|`host`
+|Host to connect to.
+|`localhost`
+
+|`port`
+|Port to use.
+|`5555`
+
+|`username`
+|Username to use to connect.
+|`guest`
+
+|`password`
+|Password to use to connect.
+|`guest`
+
+|`virtualHost`
+|Virtual host to connect to.
+|`/`
+
+|`recoveryBackOffDelayPolicy`
+|Delay policy to use for backoff on connection recovery.
+|Fixed delay of 5 seconds
+|===
+
 ===== Managing Streams
 
 Streams are usually long-lived, centrally-managed entities, that is, applications

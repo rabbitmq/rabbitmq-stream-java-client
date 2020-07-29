@@ -36,6 +36,7 @@ class StreamProducer implements Producer {
     private final MessageAccumulator accumulator;
 
     // FIXME investigate a more optimized data structure to handle pending messages
+    // FIXME size the map according to maxUnconfirmedMessages
     private final ConcurrentMap<Long, ConfirmationCallback> unconfirmedMessages = new ConcurrentHashMap<>(10_000, 0.75f, 2);
 
     private final int batchSize;

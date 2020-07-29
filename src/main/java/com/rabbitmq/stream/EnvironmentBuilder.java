@@ -64,6 +64,15 @@ public interface EnvironmentBuilder {
 
     EnvironmentBuilder metricsCollector(MetricsCollector metricsCollector);
 
+    /**
+     * Set the {@link ScheduledExecutorService} used to:
+     * <ul>
+     *     <li>Schedule producers batch sending</li>
+     *     <li>Handle connection recovery</li>
+     * </ul>
+     * @param scheduledExecutorService the service to use
+     * @return this builder instance
+     */
     EnvironmentBuilder scheduledExecutorService(ScheduledExecutorService scheduledExecutorService);
 
     EnvironmentBuilder recoveryBackOffDelayPolicy(RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy);

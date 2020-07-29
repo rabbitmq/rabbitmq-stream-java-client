@@ -80,6 +80,8 @@ class StreamEnvironment implements Environment {
                     .duplicate().eventLoopGroup(clientParametersPrototype.eventLoopGroup);
         }
         if (scheduledExecutorService == null) {
+            // FIXME find a more appropriate default scheduled executor
+            // (more thread could be needed, especially when recovery kicks in (potentially long process)
             this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
             this.privateScheduleExecutorService = true;
         } else {
@@ -128,6 +130,7 @@ class StreamEnvironment implements Environment {
         Client.ClientParameters locatorParameters = clientParametersPrototype
                 .duplicate()
                 .shutdownListener(shutdownListenerReference.get());
+        // FIXME try several URIs in case of failure
         this.locator = new Client(locatorParameters);
         this.codec = locator.codec();
     }
