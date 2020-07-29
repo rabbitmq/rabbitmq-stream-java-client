@@ -837,6 +837,65 @@ several other URIs to try in case of failure of a node:</p>
 <p>By specifying several URIs, the environment will try to connect to the first one, and
 will pick a new URI randomly in case of disconnection.</p>
 </div>
+<div class="paragraph">
+<p>The following table sums up the main settings to create a <code>Environment</code>:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Parameter Name</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>uri</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The URI of the node to connect to (single node).</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream://guest:guest@localhost:5555/%2f</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>uris</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The URI of the nodes to try to connect to (cluster).</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream://guest:guest@localhost:5555/%2f</code> singleton list</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>host</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Host to connect to.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>localhost</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>port</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Port to use.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>5555</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>username</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Username to use to connect.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>guest</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>password</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Password to use to connect.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>guest</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>virtualHost</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Virtual host to connect to.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>recoveryBackOffDelayPolicy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Delay policy to use for backoff on connection recovery.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Fixed delay of 5 seconds</p></td>
+</tr>
+</tbody>
+</table>
 </div>
 <div class="sect4">
 <h5 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h5>
@@ -1011,6 +1070,19 @@ publish to the leader node of the stream.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchSize</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of messages to accumulate before sending them to the broker.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">100</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>subEntrySize</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
+frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
+as well. Use this feature to increase throughput at the cost of increased latency.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 (meaning no use of sub-entry batching)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxUnconfirmedMessages</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of unconfirmed outbound messages. <code>Producer#send</code> will start
+blocking when the limit is reached.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10,000</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchPublishingDelay</code></p></td>
@@ -2214,7 +2286,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-07-21 16:41:59 +0200
+Last updated 2020-07-29 09:40:17 +0200
 </div>
 </div>
 <style>
