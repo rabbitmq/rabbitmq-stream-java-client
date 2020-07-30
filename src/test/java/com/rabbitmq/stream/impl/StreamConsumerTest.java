@@ -14,20 +14,22 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.Collections;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamConsumerTest {
@@ -72,6 +74,109 @@ public class StreamConsumerTest {
         assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
         consumer.close();
+    }
+
+    @Test
+    void creatingConsumerOnNonExistingStreamShouldThrowException() {
+        String nonExistingStream = UUID.randomUUID().toString();
+        assertThatThrownBy(() -> {
+            environment.consumerBuilder()
+                    .stream(nonExistingStream)
+                    .messageHandler((offset, message) -> {
+
+                    })
+                    .build();
+        }).isInstanceOf(StreamDoesNotExistException.class)
+                .hasMessageContaining(nonExistingStream)
+                .extracting("stream").isEqualTo(nonExistingStream);
+    }
+
+    @Test
+    void consumerShouldBeClosedWhenStreamGetsDeleted() throws Exception {
+        String s = UUID.randomUUID().toString();
+        environment.streamCreator().stream(s).create();
+
+        int messageCount = 10_000;
+        CountDownLatch publishLatch = new CountDownLatch(messageCount);
+        Producer producer = environment.producerBuilder().stream(s).build();
+        IntStream.range(0, messageCount).forEach(i -> producer.send(
+                producer.messageBuilder().addData("".getBytes()).build(),
+                confirmationStatus -> publishLatch.countDown()
+        ));
+
+        assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+        CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+        StreamConsumer consumer = (StreamConsumer) environment.consumerBuilder()
+                .stream(s)
+                .messageHandler((offset, message) -> consumeLatch.countDown())
+                .build();
+
+        assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(consumer.isOpen()).isTrue();
+
+        environment.deleteStream(s);
+
+        TestUtils.waitAtMost(10, () -> !consumer.isOpen());
+
+        assertThat(consumer.isOpen()).isFalse();
+    }
+
+    @Test
+    @Disabled
+    void consumerShouldKeepConsumingIfStreamBecomesUnavailable() throws Exception {
+        String s = UUID.randomUUID().toString();
+        environment.streamCreator().stream(s).create();
+        try {
+            int messageCount = 10_000;
+            CountDownLatch publishLatch = new CountDownLatch(messageCount);
+            Producer producer = environment.producerBuilder().stream(s).build();
+            IntStream.range(0, messageCount).forEach(i -> producer.send(
+                    producer.messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> publishLatch.countDown()
+            ));
+
+            assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+            producer.close();
+
+            CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+            CountDownLatch consumeLatchSecondWave = new CountDownLatch(messageCount * 2);
+            StreamConsumer consumer = (StreamConsumer) environment.consumerBuilder()
+                    .stream(s)
+                    .messageHandler((offset, message) -> {
+                        consumeLatch.countDown();
+                        consumeLatchSecondWave.countDown();
+                    })
+                    .build();
+
+            assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(consumer.isOpen()).isTrue();
+
+            Host.rabbitmqctl("eval 'exit(rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\"" + s + "\">>),kill).'");
+
+            Client client = cf.get();
+            TestUtils.waitAtMost(10, () -> {
+                Client.StreamMetadata metadata = client.metadata(s).get(s);
+                return metadata.getLeader() != null || !metadata.getReplicas().isEmpty();
+            });
+
+            CountDownLatch publishLatchSecondWave = new CountDownLatch(messageCount);
+            Producer producerSecondWave = environment.producerBuilder().stream(s).build();
+            IntStream.range(0, messageCount).forEach(i -> producerSecondWave.send(
+                    producerSecondWave.messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> publishLatchSecondWave.countDown()
+            ));
+
+            assertThat(publishLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+            producerSecondWave.close();
+
+            assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(consumer.isOpen()).isTrue();
+        } finally {
+            environment.deleteStream(s);
+        }
     }
 
 }

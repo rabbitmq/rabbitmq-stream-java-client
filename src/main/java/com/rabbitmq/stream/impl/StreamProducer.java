@@ -90,10 +90,10 @@ class StreamProducer implements Producer {
                 synchronized (this) {
                     publishBatch();
                 }
-                environment.getScheduledExecutorService().schedule(taskReference.get(), batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
+                environment.scheduledExecutorService().schedule(taskReference.get(), batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
             };
             taskReference.set(task);
-            environment.getScheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
+            environment.scheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
         this.batchSize = batchSize;
         Client.PublishConfirmListener publishConfirmListener = publishingId -> {
@@ -174,14 +174,14 @@ class StreamProducer implements Producer {
         }
     }
 
+    boolean isOpen() {
+        return !this.closed.get();
+    }
+
     interface ConfirmationCallback {
 
         int handle(boolean confirmed, short code);
 
-    }
-
-    boolean isOpen() {
-        return !this.closed.get();
     }
 
 }

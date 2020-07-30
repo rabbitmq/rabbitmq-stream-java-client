@@ -29,7 +29,7 @@ public class StreamConsumer implements Consumer {
     private final StreamEnvironment environment;
 
     StreamConsumer(String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler, StreamEnvironment environment) {
-        this.closingCallback = environment.registerConsumer(stream, offsetSpecification, messageHandler);
+        this.closingCallback = environment.registerConsumer(this, stream, offsetSpecification, messageHandler);
         this.environment = environment;
     }
 
@@ -44,6 +44,12 @@ public class StreamConsumer implements Consumer {
     void closeFromEnvironment() {
         this.closingCallback.run();
         closed.set(true);
+    }
+
+    void closeAfterStreamDeletion() {
+        if (closed.compareAndSet(false, true)) {
+            this.environment.removeConsumer(this);
+        }
     }
 
     boolean isOpen() {

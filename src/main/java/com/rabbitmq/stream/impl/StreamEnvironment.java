@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -47,11 +46,11 @@ class StreamEnvironment implements Environment {
     private final List<Address> addresses;
     private final Map<String, Client> publishingClientPool = new ConcurrentHashMap<>();
     private final Map<String, Client> consumingClientPool = new ConcurrentHashMap<>();
-    private final Map<String, ClientSubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
     private final List<StreamProducer> producers = new CopyOnWriteArrayList<>();
     private final List<StreamConsumer> consumers = new CopyOnWriteArrayList<>();
     private final Codec codec;
     private final RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy;
+    private final ClientSubscriptions clientSubscriptions;
     private volatile Client locator;
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
@@ -89,9 +88,8 @@ class StreamEnvironment implements Environment {
             this.privateScheduleExecutorService = false;
         }
 
+        this.clientSubscriptions = new DefaultClientSubscriptions(this);
 
-        // FIXME plug shutdown listener to reconnect in case of disconnection
-        // use the addresses array to reconnect to another node
         AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
         Client.ShutdownListener shutdownListener = shutdownContext -> {
             if (shutdownContext.isShutdownUnexpected()) {
@@ -261,7 +259,6 @@ class StreamEnvironment implements Environment {
             }
         }
 
-
         try {
             if (this.locator != null) {
                 this.locator.close();
@@ -291,7 +288,7 @@ class StreamEnvironment implements Environment {
 
     }
 
-    protected ScheduledExecutorService getScheduledExecutorService() {
+    protected ScheduledExecutorService scheduledExecutorService() {
         return this.scheduledExecutorService;
     }
 
@@ -326,60 +323,9 @@ class StreamEnvironment implements Environment {
         });
     }
 
-    Runnable registerConsumer(String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler) {
-        Map<String, Client.StreamMetadata> metadata = locator().metadata(stream);
-        if (metadata.size() == 0 || metadata.get(stream) == null) {
-            throw new IllegalArgumentException("Stream does not exist: " + stream);
-        }
-
-        Client.StreamMetadata streamMetadata = metadata.get(stream);
-        if (!streamMetadata.isResponseOk()) {
-            throw new IllegalArgumentException("Could not get stream metadata, response code: " + streamMetadata.getResponseCode());
-        }
-
-        List<Client.Broker> replicas = streamMetadata.getReplicas();
-        if ((replicas == null || replicas.isEmpty()) && streamMetadata.getLeader() == null) {
-            throw new IllegalStateException("Not node available to consume from stream " + stream);
-        }
-
-        Client.Broker broker;
-        if (replicas == null || replicas.isEmpty()) {
-            broker = streamMetadata.getLeader();
-            LOGGER.debug("Consuming from {} on leader node {}", stream, broker);
-        } else if (replicas.size() == 1) {
-            broker = replicas.get(0);
-        } else {
-            LOGGER.debug("Replicas for consuming from {}: {}", stream, replicas);
-            broker = replicas.get(random.nextInt(replicas.size()));
-        }
-
-        LOGGER.debug("Consuming from {} on node {}", stream, broker);
-
-        // FIXME make sure this is a reasonable key for brokers
-        String key = broker.getHost() + ":" + broker.getPort();
-
-        synchronized (this) {
-            // FIXME both client and subscription state could be in the same class
-            ClientSubscriptionState clientSubscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new ClientSubscriptionState());
-
-
-            Client consumingClient = consumingClientPool.computeIfAbsent(key, s -> {
-                // FIXME add shutdown listener to client for consumers
-                // this should notify the affected publishers/consumers
-                return new Client(
-                        clientParametersPrototype.duplicate()
-                                .host(broker.getHost())
-                                .port(broker.getPort())
-                                .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -> client.credit(subscriptionId, 1))
-                                .messageListener(clientSubscriptionState.getMessageListener())
-                );
-            });
-
-            clientSubscriptionState.setClient(consumingClient);
-
-            Runnable closingConsumerCallback = clientSubscriptionState.addHandler(stream, offsetSpecification, messageHandler);
-            return closingConsumerCallback;
-        }
+    Runnable registerConsumer(StreamConsumer consumer, String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler) {
+        long subscribeId = this.clientSubscriptions.subscribe(consumer, stream, offsetSpecification, messageHandler);
+        return () -> this.clientSubscriptions.unsubscribe(subscribeId);
     }
 
     Client locator() {
@@ -393,41 +339,10 @@ class StreamEnvironment implements Environment {
         return this.codec;
     }
 
-    private static final class ClientSubscriptionState {
-
-        private final AtomicInteger subscriptionSequence = new AtomicInteger();
-        private final Map<Integer, MessageHandler> handlers = new ConcurrentHashMap<>();
-        private final Client.MessageListener messageListener = (subscriptionId, offset, message) -> handlers.get(subscriptionId).handle(offset, message);
-        private final AtomicReference<Client> client = new AtomicReference<>();
-
-        Runnable addHandler(String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler) {
-            int subscriptionId = subscriptionSequence.getAndIncrement();
-            handlers.put(subscriptionId, messageHandler);
-            Client.Response subscribeResponse = client.get().subscribe(subscriptionId, stream, offsetSpecification, 10);
-            if (!subscribeResponse.isOk()) {
-                throw new StreamException("Subscription to stream " + stream + " failed with code " + subscribeResponse.getResponseCode());
-            }
-            LOGGER.debug("Subscribed to {} with subscription ID {} {}", stream, subscriptionId, client);
-            // FIXME if no more handlers in the map, consider closing the client
-            return () -> {
-                LOGGER.debug("Cancelling subscription {} on {} {}", subscriptionId, stream, client);
-                Client.Response unsubscribeResponse = client.get().unsubscribe(subscriptionId);
-                handlers.remove(subscriptionId);
-                if (!unsubscribeResponse.isOk()) {
-                    throw new StreamException("Unsubscription to stream " + stream + " failed with code " + unsubscribeResponse.getResponseCode());
-                }
-            };
-        }
-
-        Client.MessageListener getMessageListener() {
-            return messageListener;
-        }
-
-        void setClient(Client client) {
-            this.client.set(client);
-        }
-
+    Client.ClientParameters clientParametersCopy() {
+        return this.clientParametersPrototype.duplicate();
     }
+
 
     private static final class Address {
 
