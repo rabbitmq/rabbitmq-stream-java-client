@@ -18,17 +18,21 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,25 +50,54 @@ public class DefaultClientSubscriptionsTest {
     Client locator;
     @Mock
     Function<Client.ClientParameters, Client> clientFactory;
+    @Mock
+    Client client;
+    @Captor
+    ArgumentCaptor<Integer> subscriptionIdCaptor;
 
     DefaultClientSubscriptions clientSubscriptions;
+    ScheduledExecutorService scheduledExecutorService;
+    Client.ClientParameters clientParameters;
+    volatile Client.MetadataListener metadataListener;
+    volatile Client.MessageListener messageListener;
 
     @BeforeEach
     void init() {
+        this.clientParameters = new Client.ClientParameters() {
+            @Override
+            public Client.ClientParameters metadataListener(Client.MetadataListener metadataListener) {
+                DefaultClientSubscriptionsTest.this.metadataListener = metadataListener;
+                return super.metadataListener(metadataListener);
+            }
+
+            @Override
+            public Client.ClientParameters messageListener(Client.MessageListener messageListener) {
+                DefaultClientSubscriptionsTest.this.messageListener = messageListener;
+                return super.messageListener(messageListener);
+            }
+        };
         MockitoAnnotations.initMocks(this);
+        when(environment.locator()).thenReturn(locator);
+        when(environment.clientParametersCopy()).thenReturn(clientParameters);
+
         clientSubscriptions = new DefaultClientSubscriptions(environment, clientFactory);
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (scheduledExecutorService != null) {
+            scheduledExecutorService.shutdownNow();
+        }
     }
 
     @Test
     void subscribeShouldThrowExceptionWhenNoMetadataForTheStream() {
-        when(environment.locator()).thenReturn(locator);
         assertThatThrownBy(() -> clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
         })).isInstanceOf(StreamDoesNotExistException.class);
     }
 
     @Test
     void subscribeShouldThrowExceptionWhenStreamDoesNotExist() {
-        when(environment.locator()).thenReturn(locator);
         when(locator.metadata("stream"))
                 .thenReturn(Collections.singletonMap("stream",
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, null)));
@@ -74,7 +107,6 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void subscribeShouldThrowExceptionWhenMetadataResponseIsNotOk() {
-        when(environment.locator()).thenReturn(locator);
         when(locator.metadata("stream"))
                 .thenReturn(Collections.singletonMap("stream",
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_ACCESS_REFUSED, null, null)));
@@ -84,7 +116,6 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void subscribeShouldThrowExceptionIfNodeAvailableForStream() {
-        when(environment.locator()).thenReturn(locator);
         when(locator.metadata("stream"))
                 .thenReturn(Collections.singletonMap("stream",
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, null)));
@@ -94,7 +125,6 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void findBrokersForStreamShouldReturnLeaderIfNoReplicas() {
-        when(environment.locator()).thenReturn(locator);
         when(locator.metadata("stream"))
                 .thenReturn(Collections.singletonMap("stream",
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), null)));
@@ -105,7 +135,6 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void findBrokersForStreamShouldReturnReplicasIfThereAreSome() {
-        when(environment.locator()).thenReturn(locator);
         when(locator.metadata("stream"))
                 .thenReturn(Collections.singletonMap("stream",
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
@@ -116,22 +145,10 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void subscribeShouldSubscribeToStreamAndDispatchesMessage_UnsubscribeShouldUnsubscribe() {
-        AtomicReference<Client.MessageListener> messageListenerReference = new AtomicReference<>();
-        Client.ClientParameters cp = new Client.ClientParameters() {
-            @Override
-            public Client.ClientParameters messageListener(Client.MessageListener messageListener) {
-                messageListenerReference.set(messageListener);
-                return super.messageListener(messageListener);
-            }
-        };
-        when(environment.locator()).thenReturn(locator);
-        when(environment.clientParametersCopy()).thenReturn(cp);
         when(locator.metadata("stream"))
                 .thenReturn(Collections.singletonMap("stream",
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
 
-        Client client = mock(Client.class);
-        ArgumentCaptor<Integer> subscriptionIdCaptor = ArgumentCaptor.forClass(Integer.class);
         when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
         when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
                 .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -144,7 +161,7 @@ public class DefaultClientSubscriptionsTest {
         verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(0);
-        messageListenerReference.get().handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
         assertThat(messageHandlerCalls.get()).isEqualTo(1);
 
         when(client.unsubscribe(subscriptionIdCaptor.getValue()))
@@ -153,8 +170,53 @@ public class DefaultClientSubscriptionsTest {
         clientSubscriptions.unsubscribe(subscriptionGlobalId);
         verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
-        messageListenerReference.get().handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
         assertThat(messageHandlerCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRedistributeConsumerOnMetadataUpdate() throws Exception {
+        clientSubscriptions.delayAfterMetadataUpdate = Duration.ofMillis(500);
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        when(consumer.isOpen()).thenReturn(true);
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        AtomicInteger messageHandlerCalls = new AtomicInteger();
+        long subscriptionGlobalId = clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+            messageHandlerCalls.incrementAndGet();
+        });
+        verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        assertThat(messageHandlerCalls.get()).isEqualTo(0);
+        messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+
+        metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+        Thread.sleep(clientSubscriptions.delayAfterMetadataUpdate.toMillis() * 2);
+
+        verify(client, times(2)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(2);
+
+        when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        clientSubscriptions.unsubscribe(subscriptionGlobalId);
+        verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+
+        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(2);
     }
 
     Client.Broker leader() {

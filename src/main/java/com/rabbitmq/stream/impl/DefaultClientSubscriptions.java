@@ -28,7 +28,7 @@ import java.util.function.Function;
 
 class DefaultClientSubscriptions implements ClientSubscriptions {
 
-    static final Duration DELAY_AFTER_METADATA_UPDATE = Duration.ofSeconds(5);
+    static final Duration DEFAULT_DELAY_AFTER_METADATA_UPDATE = Duration.ofSeconds(5);
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultClientSubscriptions.class);
     private final Random random = new Random();
     private final AtomicLong globalSubscriptionIdSequence = new AtomicLong(0);
@@ -36,6 +36,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     private final Map<String, SubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
     private final Map<Long, StreamSubscription> streamSubscriptionRegistry = new ConcurrentHashMap<>();
     private final Function<Client.ClientParameters, Client> clientFactory;
+    volatile Duration delayAfterMetadataUpdate = DEFAULT_DELAY_AFTER_METADATA_UPDATE;
 
     DefaultClientSubscriptions(StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
         this.environment = environment;
@@ -180,7 +181,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         private SubscriptionState(Client.ClientParameters clientParameters) {
             this.client = clientFactory.apply(clientParameters
                     .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -> client.credit(subscriptionId, 1))
-                    .creditNotification((subscriptionId, responseCode) -> LOGGER.debug("Received notification for subscription {}: {}", subscriptionId, responseCode))
+                    .creditNotification((subscriptionId, responseCode) -> LOGGER.debug("Received credit notification for subscription {}: {}", subscriptionId, responseCode))
                     .messageListener((subscriptionId, offset, message) -> {
                         StreamSubscription streamSubscription = streamSubscriptions.get(subscriptionId);
                         if (streamSubscription != null) {
@@ -250,29 +251,33 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                         consumersClosingCallback.run();
                                     } else {
                                         for (StreamSubscription affectedSubscription : affectedSubscriptions) {
-                                            Client.Broker broker = pickBroker(candidates);
-                                            LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
-                                            String key = keyForClientSubscriptionState(broker);
-                                            // FIXME in case the broker is no longer there, we may have to deal with an error here
-                                            SubscriptionState subscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new SubscriptionState(environment
-                                                    .clientParametersCopy()
-                                                    .host(broker.getHost())
-                                                    .port(broker.getPort())
-                                            ));
-                                            if (affectedSubscription.consumer.isOpen()) {
-                                                synchronized (affectedSubscription.consumer) {
-                                                    if (affectedSubscription.consumer.isOpen()) {
-                                                        subscriptionState.add(affectedSubscription, OffsetSpecification.offset(affectedSubscription.offset));
+                                            try {
+                                                Client.Broker broker = pickBroker(candidates);
+                                                LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
+                                                String key = keyForClientSubscriptionState(broker);
+                                                // FIXME in case the broker is no longer there, we may have to deal with an error here
+                                                SubscriptionState subscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new SubscriptionState(environment
+                                                        .clientParametersCopy()
+                                                        .host(broker.getHost())
+                                                        .port(broker.getPort())
+                                                ));
+                                                if (affectedSubscription.consumer.isOpen()) {
+                                                    synchronized (affectedSubscription.consumer) {
+                                                        if (affectedSubscription.consumer.isOpen()) {
+                                                            subscriptionState.add(affectedSubscription, OffsetSpecification.offset(affectedSubscription.offset));
+                                                        }
                                                     }
                                                 }
+                                            } catch (Exception e) {
+                                                LOGGER.warn("Error while re-assigning subscription from stream {}", stream, e.getMessage());
                                             }
+
                                         }
                                     }
 
                                 }
-                            }, DELAY_AFTER_METADATA_UPDATE.toMillis(), TimeUnit.MILLISECONDS);
+                            }, delayAfterMetadataUpdate.toMillis(), TimeUnit.MILLISECONDS);
                         }
-
                     }));
         }
 
