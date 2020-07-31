@@ -280,18 +280,30 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
             int subscriptionId = subscriptionSequence.getAndIncrement();
             LOGGER.debug("Subscribing to {}", streamSubscription.stream);
             // FIXME consider using fewer initial credits
-            Client.Response subscribeResponse = client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
-            if (!subscribeResponse.isOk()) {
-                String message = "Subscription to stream " + streamSubscription.stream + " failed with code " + subscribeResponse.getResponseCode();
-                LOGGER.debug(message);
-                throw new StreamException(message);
+
+            try {
+                // updating data structures before subscribing
+                // (to make sure they are up-to-date in case message would arrive super fast)
+                streamSubscription.subscriptionIdInClient = subscriptionId;
+                streamSubscription.subscriptionState = this;
+                streamSubscriptions.put(subscriptionId, streamSubscription);
+                streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
+                        .add(streamSubscription);
+                Client.Response subscribeResponse = client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
+                if (!subscribeResponse.isOk()) {
+                    String message = "Subscription to stream " + streamSubscription.stream + " failed with code " + subscribeResponse.getResponseCode();
+                    LOGGER.debug(message);
+                    throw new StreamException(message);
+                }
+            } catch (RuntimeException e) {
+                streamSubscription.subscriptionIdInClient = -1;
+                streamSubscription.subscriptionState = null;
+                streamSubscriptions.remove(subscriptionId);
+                streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
+                        .remove(streamSubscription);
+                throw e;
             }
 
-            streamSubscription.subscriptionIdInClient = subscriptionId;
-            streamSubscription.subscriptionState = this;
-            streamSubscriptions.put(subscriptionId, streamSubscription);
-            streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
-                    .add(streamSubscription);
             LOGGER.debug("Subscribed to {}", streamSubscription.stream);
         }
 
