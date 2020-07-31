@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -138,11 +139,13 @@ public class StreamConsumerTest {
             assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
             producer.close();
 
+            AtomicInteger receivedMessageCount = new AtomicInteger(0);
             CountDownLatch consumeLatch = new CountDownLatch(messageCount);
             CountDownLatch consumeLatchSecondWave = new CountDownLatch(messageCount * 2);
             StreamConsumer consumer = (StreamConsumer) environment.consumerBuilder()
                     .stream(s)
                     .messageHandler((offset, message) -> {
+                        receivedMessageCount.incrementAndGet();
                         consumeLatch.countDown();
                         consumeLatchSecondWave.countDown();
                     })
@@ -174,6 +177,7 @@ public class StreamConsumerTest {
             producerSecondWave.close();
 
             assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(receivedMessageCount.get()).isEqualTo(messageCount * 2 + 1);
             assertThat(consumer.isOpen()).isTrue();
 
             consumer.close();

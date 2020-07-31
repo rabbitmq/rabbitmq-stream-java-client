@@ -72,7 +72,8 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         return environment.locator();
     }
 
-    private List<Client.Broker> findBrokersForStream(String stream) {
+    // package protected for testing
+    List<Client.Broker> findBrokersForStream(String stream) {
         // FIXME make sure locator is not null (retry)
         Map<String, Client.StreamMetadata> metadata = locator().metadata(stream);
         if (metadata.size() == 0 || metadata.get(stream) == null) {
@@ -91,7 +92,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
         List<Client.Broker> replicas = streamMetadata.getReplicas();
         if ((replicas == null || replicas.isEmpty()) && streamMetadata.getLeader() == null) {
-            throw new IllegalStateException("Not node available to consume from stream " + stream);
+            throw new IllegalStateException("No node available to consume from stream " + stream);
         }
 
         List<Client.Broker> brokers;
@@ -178,6 +179,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                         if (streamSubscription != null) {
                             streamSubscription.offset = offset;
                             streamSubscription.messageHandler.handle(offset, message);
+                            // FIXME set offset here as well, best effort to avoid duplicates
                         } else {
                             LOGGER.warn("Could not find stream subscription {}", subscriptionId);
                         }
