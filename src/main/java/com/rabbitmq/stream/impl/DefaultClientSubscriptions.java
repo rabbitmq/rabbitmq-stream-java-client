@@ -28,7 +28,9 @@ import java.util.function.Function;
 
 class DefaultClientSubscriptions implements ClientSubscriptions {
 
-    static final Duration DEFAULT_DELAY_AFTER_METADATA_UPDATE = Duration.ofSeconds(5);
+    static final Duration METADATA_UPDATE_DEFAULT_INITIAL_DELAY = Duration.ofSeconds(5);
+    static final Duration METADATA_UPDATE_DEFAULT_RETRY_DELAY = Duration.ofSeconds(1);
+    static final Duration METADATA_UPDATE_DEFAULT_RETRY_TIMEOUT = Duration.ofSeconds(60);
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultClientSubscriptions.class);
     private final Random random = new Random();
     private final AtomicLong globalSubscriptionIdSequence = new AtomicLong(0);
@@ -36,7 +38,10 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     private final Map<String, SubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
     private final Map<Long, StreamSubscription> streamSubscriptionRegistry = new ConcurrentHashMap<>();
     private final Function<Client.ClientParameters, Client> clientFactory;
-    volatile Duration delayAfterMetadataUpdate = DEFAULT_DELAY_AFTER_METADATA_UPDATE;
+    volatile Duration metadataUpdateInitialDelay = METADATA_UPDATE_DEFAULT_INITIAL_DELAY;
+    volatile Duration metadataUpdateRetryDelay = METADATA_UPDATE_DEFAULT_RETRY_DELAY;
+    volatile Duration metadataUpdateRetryTimeout = METADATA_UPDATE_DEFAULT_RETRY_TIMEOUT;
+
 
     DefaultClientSubscriptions(StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
         this.environment = environment;
@@ -219,8 +224,8 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
                                     // choose new node
                                     List<Client.Broker> candidates = null;
-                                    Duration delayInterval = Duration.ofSeconds(1);
-                                    Duration timeout = Duration.ofSeconds(60);
+                                    Duration delayInterval = metadataUpdateRetryDelay;
+                                    Duration timeout = metadataUpdateRetryTimeout;
                                     int waited = 0;
                                     while (waited < timeout.toMillis()) {
                                         try {
@@ -230,7 +235,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                             consumersClosingCallback.run();
                                             return;
                                         } catch (Exception e) {
-                                            LOGGER.debug("Error while looking up candidate nodes to consume from {}: {}",
+                                            LOGGER.debug("Error while looking up candidate nodes to consume from {}: {}, keep trying",
                                                     stream, e.getMessage());
                                         } finally {
                                             if (candidates == null || candidates.isEmpty()) {
@@ -276,7 +281,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                     }
 
                                 }
-                            }, delayAfterMetadataUpdate.toMillis(), TimeUnit.MILLISECONDS);
+                            }, metadataUpdateInitialDelay.toMillis(), TimeUnit.MILLISECONDS);
                         }
                     }));
         }

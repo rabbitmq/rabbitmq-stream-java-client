@@ -158,7 +158,7 @@ public class StreamConsumerTest {
             Host.rabbitmqctl("eval 'exit(rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\"" + s + "\">>),kill).'");
 
             // give the system some time to recover
-            Thread.sleep(DefaultClientSubscriptions.DEFAULT_DELAY_AFTER_METADATA_UPDATE.toMillis());
+            Thread.sleep(DefaultClientSubscriptions.METADATA_UPDATE_DEFAULT_INITIAL_DELAY.toMillis());
 
             Client client = cf.get();
             TestUtils.waitAtMost(10, () -> {

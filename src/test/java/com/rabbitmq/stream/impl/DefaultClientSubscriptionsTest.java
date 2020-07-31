@@ -176,7 +176,7 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void shouldRedistributeConsumerOnMetadataUpdate() throws Exception {
-        clientSubscriptions.delayAfterMetadataUpdate = Duration.ofMillis(500);
+        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(100);
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
         when(consumer.isOpen()).thenReturn(true);
@@ -201,7 +201,61 @@ public class DefaultClientSubscriptionsTest {
 
         metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-        Thread.sleep(clientSubscriptions.delayAfterMetadataUpdate.toMillis() * 2);
+        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() * 5);
+
+        verify(client, times(2)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(2);
+
+        when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        clientSubscriptions.unsubscribe(subscriptionGlobalId);
+        verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+
+        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldRetryRedistributionIfMetadataIsNotUpdatedImmediately() throws Exception {
+        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(100);
+        clientSubscriptions.metadataUpdateRetryDelay = Duration.ofMillis(100);
+        clientSubscriptions.metadataUpdateRetryTimeout = Duration.ofMillis(10_000); // does not matter here
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        when(consumer.isOpen()).thenReturn(true);
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, Collections.emptyList())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, Collections.emptyList())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        AtomicInteger messageHandlerCalls = new AtomicInteger();
+        long subscriptionGlobalId = clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+            messageHandlerCalls.incrementAndGet();
+        });
+        verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        assertThat(messageHandlerCalls.get()).isEqualTo(0);
+        messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+
+        metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis()
+                + clientSubscriptions.metadataUpdateRetryDelay.toMillis() * 5);
 
         verify(client, times(2)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
 
