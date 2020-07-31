@@ -18,7 +18,6 @@ import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -124,7 +123,6 @@ public class StreamConsumerTest {
     }
 
     @Test
-    @Disabled
     void consumerShouldKeepConsumingIfStreamBecomesUnavailable() throws Exception {
         String s = UUID.randomUUID().toString();
         environment.streamCreator().stream(s).create();
@@ -156,6 +154,9 @@ public class StreamConsumerTest {
 
             Host.rabbitmqctl("eval 'exit(rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\"" + s + "\">>),kill).'");
 
+            // give the system some time to recover
+            Thread.sleep(DefaultClientSubscriptions.DELAY_AFTER_METADATA_UPDATE.toMillis());
+
             Client client = cf.get();
             TestUtils.waitAtMost(10, () -> {
                 Client.StreamMetadata metadata = client.metadata(s).get(s);
@@ -174,6 +175,8 @@ public class StreamConsumerTest {
 
             assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
             assertThat(consumer.isOpen()).isTrue();
+
+            consumer.close();
         } finally {
             environment.deleteStream(s);
         }

@@ -102,6 +102,7 @@ class StreamEnvironment implements Environment {
                                 .shutdownListener(shutdownListenerReference.get());
 
                         int attempts = 0;
+                        // TODO schedule that stuff, this avoids keeping the thread busy between attempts
                         while (newLocator == null) {
                             Address address = addresses.size() == 1 ? addresses.get(0) :
                                     addresses.get(random.nextInt(addresses.size()));

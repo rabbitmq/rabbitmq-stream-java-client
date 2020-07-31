@@ -21,19 +21,18 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 class DefaultClientSubscriptions implements ClientSubscriptions {
 
+    static final Duration DELAY_AFTER_METADATA_UPDATE = Duration.ofSeconds(5);
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultClientSubscriptions.class);
     private final Random random = new Random();
     private final AtomicLong globalSubscriptionIdSequence = new AtomicLong(0);
-
     private final StreamEnvironment environment;
-
     private final Map<String, SubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
-
     private final Map<Long, StreamSubscription> streamSubscriptionRegistry = new ConcurrentHashMap<>();
 
     DefaultClientSubscriptions(StreamEnvironment environment) {
@@ -186,80 +185,85 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     .metadataListener((stream, code) -> {
                         LOGGER.debug("Received metadata notification for {}, stream is likely to have become unavailable",
                                 stream);
-                        environment.scheduledExecutorService().execute(() -> {
-                            Set<StreamSubscription> affectedSubscriptions = streamToStreamSubscriptions.remove(stream);
-                            if (affectedSubscriptions != null) {
-                                LOGGER.debug("Trying to move {} subscription(s) (stream {})", affectedSubscriptions.size(), stream);
-                                for (StreamSubscription affectedSubscription : affectedSubscriptions) {
-                                    streamSubscriptions.remove(affectedSubscription.subscriptionIdInClient);
-                                }
+                        Set<StreamSubscription> affectedSubscriptions = streamToStreamSubscriptions.remove(stream);
+                        if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
+                            // scheduling consumer re-assignment, to give the system some time to recover
+                            environment.scheduledExecutorService().schedule(() -> {
 
-                                Runnable consumersClosingCallback = () -> {
+                                if (affectedSubscriptions != null) {
+                                    LOGGER.debug("Trying to move {} subscription(s) (stream {})", affectedSubscriptions.size(), stream);
                                     for (StreamSubscription affectedSubscription : affectedSubscriptions) {
-                                        try {
-                                            affectedSubscription.consumer.closeAfterStreamDeletion();
-                                            streamSubscriptionRegistry.remove(affectedSubscription.id);
-                                        } catch (Exception e) {
-                                            LOGGER.debug("Error while closing consumer", e.getMessage());
-                                        }
+                                        streamSubscriptions.remove(affectedSubscription.subscriptionIdInClient);
                                     }
-                                };
 
-                                // choose new node
-                                List<Client.Broker> candidates = null;
-                                Duration delayInterval = Duration.ofSeconds(1);
-                                Duration timeout = Duration.ofSeconds(60);
-                                int waited = 0;
-                                while (waited < timeout.toMillis()) {
-                                    try {
-                                        // FIXME keep trying if there's no locator (can provide a supplier that does retry)
-                                        candidates = findBrokersForStream(stream);
-                                    } catch (StreamDoesNotExistException e) {
-                                        consumersClosingCallback.run();
-                                        return;
-                                    } catch (Exception e) {
-                                        LOGGER.debug("Error while looking up candidate nodes to consume from {}: {}",
-                                                stream, e.getMessage());
-                                    } finally {
-                                        if (candidates == null || candidates.isEmpty()) {
+                                    Runnable consumersClosingCallback = () -> {
+                                        for (StreamSubscription affectedSubscription : affectedSubscriptions) {
                                             try {
-                                                Thread.sleep(delayInterval.toMillis());
-                                                waited += delayInterval.toMillis();
-                                            } catch (InterruptedException e) {
-                                                Thread.currentThread().interrupt();
-                                                return;
+                                                affectedSubscription.consumer.closeAfterStreamDeletion();
+                                                streamSubscriptionRegistry.remove(affectedSubscription.id);
+                                            } catch (Exception e) {
+                                                LOGGER.debug("Error while closing consumer", e.getMessage());
                                             }
-                                        } else {
-                                            break;
+                                        }
+                                    };
+
+                                    // choose new node
+                                    List<Client.Broker> candidates = null;
+                                    Duration delayInterval = Duration.ofSeconds(1);
+                                    Duration timeout = Duration.ofSeconds(60);
+                                    int waited = 0;
+                                    while (waited < timeout.toMillis()) {
+                                        try {
+                                            // FIXME keep trying if there's no locator (can provide a supplier that does retry)
+                                            candidates = findBrokersForStream(stream);
+                                        } catch (StreamDoesNotExistException e) {
+                                            consumersClosingCallback.run();
+                                            return;
+                                        } catch (Exception e) {
+                                            LOGGER.debug("Error while looking up candidate nodes to consume from {}: {}",
+                                                    stream, e.getMessage());
+                                        } finally {
+                                            if (candidates == null || candidates.isEmpty()) {
+                                                try {
+                                                    Thread.sleep(delayInterval.toMillis());
+                                                    waited += delayInterval.toMillis();
+                                                } catch (InterruptedException e) {
+                                                    Thread.currentThread().interrupt();
+                                                    return;
+                                                }
+                                            } else {
+                                                break;
+                                            }
                                         }
                                     }
-                                }
 
-                                if (candidates == null || candidates.isEmpty()) {
-                                    consumersClosingCallback.run();
-                                } else {
-                                    for (StreamSubscription affectedSubscription : affectedSubscriptions) {
-                                        Client.Broker broker = pickBroker(candidates);
-                                        LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
-                                        String key = keyForClientSubscriptionState(broker);
-                                        // FIXME in case the broker is no longer there, we may have to deal with an error here
-                                        SubscriptionState subscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new SubscriptionState(environment
-                                                .clientParametersCopy()
-                                                .host(broker.getHost())
-                                                .port(broker.getPort())
-                                        ));
-                                        if (affectedSubscription.consumer.isOpen()) {
-                                            synchronized (affectedSubscription.consumer) {
-                                                if (affectedSubscription.consumer.isOpen()) {
-                                                    subscriptionState.add(affectedSubscription, OffsetSpecification.offset(affectedSubscription.offset));
+                                    if (candidates == null || candidates.isEmpty()) {
+                                        consumersClosingCallback.run();
+                                    } else {
+                                        for (StreamSubscription affectedSubscription : affectedSubscriptions) {
+                                            Client.Broker broker = pickBroker(candidates);
+                                            LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
+                                            String key = keyForClientSubscriptionState(broker);
+                                            // FIXME in case the broker is no longer there, we may have to deal with an error here
+                                            SubscriptionState subscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new SubscriptionState(environment
+                                                    .clientParametersCopy()
+                                                    .host(broker.getHost())
+                                                    .port(broker.getPort())
+                                            ));
+                                            if (affectedSubscription.consumer.isOpen()) {
+                                                synchronized (affectedSubscription.consumer) {
+                                                    if (affectedSubscription.consumer.isOpen()) {
+                                                        subscriptionState.add(affectedSubscription, OffsetSpecification.offset(affectedSubscription.offset));
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-                                }
 
-                            }
-                        });
+                                }
+                            }, DELAY_AFTER_METADATA_UPDATE.toMillis(), TimeUnit.MILLISECONDS);
+                        }
+
                     }));
         }
 
