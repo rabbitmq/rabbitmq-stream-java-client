@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 class DefaultClientSubscriptions implements ClientSubscriptions {
 
@@ -34,9 +35,15 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     private final StreamEnvironment environment;
     private final Map<String, SubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
     private final Map<Long, StreamSubscription> streamSubscriptionRegistry = new ConcurrentHashMap<>();
+    private final Function<Client.ClientParameters, Client> clientFactory;
+
+    DefaultClientSubscriptions(StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
+        this.environment = environment;
+        this.clientFactory = clientFactory;
+    }
 
     DefaultClientSubscriptions(StreamEnvironment environment) {
-        this.environment = environment;
+        this(environment, cp -> new Client(cp));
     }
 
     private static String keyForClientSubscriptionState(Client.Broker broker) {
@@ -171,7 +178,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         private final Map<String, Set<StreamSubscription>> streamToStreamSubscriptions = new ConcurrentHashMap<>();
 
         private SubscriptionState(Client.ClientParameters clientParameters) {
-            this.client = new Client(clientParameters
+            this.client = clientFactory.apply(clientParameters
                     .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -> client.credit(subscriptionId, 1))
                     .creditNotification((subscriptionId, responseCode) -> LOGGER.debug("Received notification for subscription {}: {}", subscriptionId, responseCode))
                     .messageListener((subscriptionId, offset, message) -> {
@@ -272,16 +279,12 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
             int subscriptionId = subscriptionSequence.getAndIncrement();
             LOGGER.debug("Subscribing to {}", streamSubscription.stream);
-            try {
-                Client.Response subscribeResponse = client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
-                if (!subscribeResponse.isOk()) {
-                    String message = "Subscription to stream " + streamSubscription.stream + " failed with code " + subscribeResponse.getResponseCode();
-                    LOGGER.debug(message);
-                    throw new StreamException(message);
-                }
-            } catch (RuntimeException e) {
-                e.printStackTrace();
-                throw e;
+            // FIXME consider using fewer initial credits
+            Client.Response subscribeResponse = client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
+            if (!subscribeResponse.isOk()) {
+                String message = "Subscription to stream " + streamSubscription.stream + " failed with code " + subscribeResponse.getResponseCode();
+                LOGGER.debug(message);
+                throw new StreamException(message);
             }
 
             streamSubscription.subscriptionIdInClient = subscriptionId;
