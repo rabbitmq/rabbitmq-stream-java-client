@@ -223,6 +223,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                     };
 
                                     AsyncRetry.asyncRetry(() -> findBrokersForStream(stream))
+                                            .description("Candidate lookup to consume from " + stream)
                                             .scheduler(environment.scheduledExecutorService())
                                             .retry(ex -> !(ex instanceof StreamDoesNotExistException))
                                             .delay(metadataUpdateRetryDelay)

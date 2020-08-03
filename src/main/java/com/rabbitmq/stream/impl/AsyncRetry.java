@@ -14,6 +14,9 @@
 
 package com.rabbitmq.stream.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -24,16 +27,21 @@ import java.util.function.Predicate;
 
 class AsyncRetry<V> {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AsyncRetry.class);
+
     private final Callable<V> task;
+    private final String description;
     private final ScheduledExecutorService scheduler;
     private final Duration delay;
     private final long timeoutInNanos;
     private final Predicate<Exception> retry;
     private final CompletableFuture<V> completableFuture;
 
-    AsyncRetry(Callable<V> task, ScheduledExecutorService scheduler, Duration delay, Duration timeout,
+    AsyncRetry(Callable<V> task, String description,
+               ScheduledExecutorService scheduler, Duration delay, Duration timeout,
                Predicate<Exception> retry) {
         this.task = task;
+        this.description = description;
         this.scheduler = scheduler;
         this.delay = delay;
         this.timeoutInNanos = timeout.toNanos();
@@ -45,15 +53,19 @@ class AsyncRetry<V> {
         Runnable retryableTask = () -> {
             try {
                 V result = task.call();
+                LOGGER.debug("Task '{}' succeeded, completing future", description);
                 completableFuture.complete(result);
             } catch (Exception e) {
                 if (retry.test(e)) {
                     if (System.nanoTime() - started > timeoutInNanos) {
+                        LOGGER.debug("Retryable attempts for task '{}' timed out, failing future", description);
                         this.completableFuture.completeExceptionally(new RetryTimeoutException());
                     } else {
+                        LOGGER.debug("Retryable exception for task '{}', scheduling another attempt", description);
                         scheduler.schedule(retryableTaskReference.get(), delay.toMillis(), TimeUnit.MILLISECONDS);
                     }
                 } else {
+                    LOGGER.debug("Non-retryable exception for task '{}', failing future", description);
                     this.completableFuture.completeExceptionally(e);
                 }
             }
@@ -69,6 +81,7 @@ class AsyncRetry<V> {
     static class AsyncRetryBuilder<V> {
 
         private final Callable<V> task;
+        private String description = "";
         private ScheduledExecutorService scheduler;
         private Duration delay = Duration.ofSeconds(1);
         private Duration timeout = Duration.ofSeconds(10);
@@ -98,8 +111,13 @@ class AsyncRetry<V> {
             return this;
         }
 
+        AsyncRetryBuilder<V> description(String description) {
+            this.description = description;
+            return this;
+        }
+
         CompletableFuture<V> build() {
-            return new AsyncRetry<>(task, scheduler, delay, timeout, retry).completableFuture;
+            return new AsyncRetry<>(task, description, scheduler, delay, timeout, retry).completableFuture;
         }
 
     }

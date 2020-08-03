@@ -273,6 +273,80 @@ public class DefaultClientSubscriptionsTest {
         assertThat(messageHandlerCalls.get()).isEqualTo(2);
     }
 
+    @Test
+    void metadataUpdate_shouldCloseConsumerIfStreamIsDeleted() throws Exception {
+        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(50);
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        when(consumer.isOpen()).thenReturn(true);
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, null)));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        AtomicInteger messageHandlerCalls = new AtomicInteger();
+        clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+            messageHandlerCalls.incrementAndGet();
+        });
+        verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        assertThat(messageHandlerCalls.get()).isEqualTo(0);
+        messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+
+        metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() * 5);
+
+        verify(consumer, times(1)).closeAfterStreamDeletion();
+        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(0)).unsubscribe(anyInt());
+    }
+
+    @Test
+    void metadataUpdate_shouldCloseConsumerIfRetryTimeoutIsReached() throws Exception {
+        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(50);
+        clientSubscriptions.metadataUpdateRetryDelay = Duration.ofMillis(50);
+        clientSubscriptions.metadataUpdateRetryTimeout = Duration.ofMillis(200);
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        when(consumer.isOpen()).thenReturn(true);
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+                .thenThrow(new IllegalStateException());
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        AtomicInteger messageHandlerCalls = new AtomicInteger();
+        clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+            messageHandlerCalls.incrementAndGet();
+        });
+        verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        assertThat(messageHandlerCalls.get()).isEqualTo(0);
+        messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+
+        metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() +
+                clientSubscriptions.metadataUpdateRetryTimeout.toMillis() * 2);
+
+        verify(consumer, times(1)).closeAfterStreamDeletion();
+        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(0)).unsubscribe(anyInt());
+    }
+
     Client.Broker leader() {
         return new Client.Broker("leader", -1);
     }
