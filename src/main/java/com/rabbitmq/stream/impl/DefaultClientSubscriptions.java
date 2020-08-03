@@ -20,10 +20,12 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 class DefaultClientSubscriptions implements ClientSubscriptions {
@@ -223,61 +225,79 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                     };
 
                                     // choose new node
-                                    List<Client.Broker> candidates = null;
                                     Duration delayInterval = metadataUpdateRetryDelay;
                                     Duration timeout = metadataUpdateRetryTimeout;
-                                    int waited = 0;
-                                    while (waited < timeout.toMillis()) {
+                                    final AtomicLong waited = new AtomicLong(0);
+
+                                    CompletableFuture<List<Client.Broker>> reassignmentTask = new CompletableFuture<>();
+
+                                    AtomicReference<Runnable> candidatesLookupTaskReference = new AtomicReference<>();
+                                    Runnable candidatesLookupTask = () -> {
+                                        List<Client.Broker> candidates = null;
                                         try {
                                             // FIXME keep trying if there's no locator (can provide a supplier that does retry)
                                             candidates = findBrokersForStream(stream);
                                         } catch (StreamDoesNotExistException e) {
-                                            consumersClosingCallback.run();
+                                            reassignmentTask.complete(null);
                                             return;
                                         } catch (Exception e) {
                                             LOGGER.debug("Error while looking up candidate nodes to consume from {}: {}, keep trying",
                                                     stream, e.getMessage());
                                         } finally {
                                             if (candidates == null || candidates.isEmpty()) {
-                                                try {
-                                                    Thread.sleep(delayInterval.toMillis());
-                                                    waited += delayInterval.toMillis();
-                                                } catch (InterruptedException e) {
-                                                    Thread.currentThread().interrupt();
-                                                    return;
+                                                if (waited.get() < timeout.toMillis()) {
+                                                    waited.set(waited.get() + delayInterval.toMillis());
+                                                    environment.scheduledExecutorService().schedule(
+                                                            candidatesLookupTaskReference.get(),
+                                                            delayInterval.toMillis(), TimeUnit.MILLISECONDS
+                                                    );
+                                                } else {
+                                                    reassignmentTask.complete(null);
                                                 }
                                             } else {
-                                                break;
+                                                reassignmentTask.complete(candidates);
                                             }
                                         }
-                                    }
+                                    };
+                                    candidatesLookupTaskReference.set(candidatesLookupTask);
 
-                                    if (candidates == null || candidates.isEmpty()) {
-                                        consumersClosingCallback.run();
-                                    } else {
-                                        for (StreamSubscription affectedSubscription : affectedSubscriptions) {
-                                            try {
-                                                Client.Broker broker = pickBroker(candidates);
-                                                LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
-                                                String key = keyForClientSubscriptionState(broker);
-                                                // FIXME in case the broker is no longer there, we may have to deal with an error here
-                                                SubscriptionState subscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new SubscriptionState(environment
-                                                        .clientParametersCopy()
-                                                        .host(broker.getHost())
-                                                        .port(broker.getPort())
-                                                ));
-                                                if (affectedSubscription.consumer.isOpen()) {
-                                                    synchronized (affectedSubscription.consumer) {
-                                                        if (affectedSubscription.consumer.isOpen()) {
-                                                            subscriptionState.add(affectedSubscription, OffsetSpecification.offset(affectedSubscription.offset));
+                                    reassignmentTask.thenAccept(candidates -> {
+                                        if (candidates == null) {
+                                            consumersClosingCallback.run();
+                                        } else {
+                                            for (StreamSubscription affectedSubscription : affectedSubscriptions) {
+                                                try {
+                                                    Client.Broker broker = pickBroker(candidates);
+                                                    LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
+                                                    String key = keyForClientSubscriptionState(broker);
+                                                    // FIXME in case the broker is no longer there, we may have to deal with an error here
+                                                    // we could renew the list of candidates for the stream
+                                                    SubscriptionState subscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new SubscriptionState(environment
+                                                            .clientParametersCopy()
+                                                            .host(broker.getHost())
+                                                            .port(broker.getPort())
+                                                    ));
+                                                    if (affectedSubscription.consumer.isOpen()) {
+                                                        synchronized (affectedSubscription.consumer) {
+                                                            if (affectedSubscription.consumer.isOpen()) {
+                                                                subscriptionState.add(affectedSubscription, OffsetSpecification.offset(affectedSubscription.offset));
+                                                            }
                                                         }
                                                     }
+                                                } catch (Exception e) {
+                                                    LOGGER.warn("Error while re-assigning subscription from stream {}", stream, e.getMessage());
                                                 }
-                                            } catch (Exception e) {
-                                                LOGGER.warn("Error while re-assigning subscription from stream {}", stream, e.getMessage());
                                             }
-
                                         }
+                                    });
+
+                                    // execute immediately and schedules if not succeeded
+                                    candidatesLookupTask.run();
+                                    if (!reassignmentTask.isDone()) {
+                                        environment.scheduledExecutorService().schedule(
+                                                candidatesLookupTaskReference.get(),
+                                                delayInterval.toMillis(), TimeUnit.MILLISECONDS
+                                        );
                                     }
 
                                 }
@@ -289,8 +309,6 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
             int subscriptionId = subscriptionSequence.getAndIncrement();
             LOGGER.debug("Subscribing to {}", streamSubscription.stream);
-            // FIXME consider using fewer initial credits
-
             try {
                 // updating data structures before subscribing
                 // (to make sure they are up-to-date in case message would arrive super fast)
@@ -299,6 +317,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 streamSubscriptions.put(subscriptionId, streamSubscription);
                 streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
                         .add(streamSubscription);
+                // FIXME consider using fewer initial credits
                 Client.Response subscribeResponse = client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
                 if (!subscribeResponse.isOk()) {
                     String message = "Subscription to stream " + streamSubscription.stream + " failed with code " + subscribeResponse.getResponseCode();
