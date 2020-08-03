@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -93,36 +94,25 @@ class StreamEnvironment implements Environment {
         AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
         Client.ShutdownListener shutdownListener = shutdownContext -> {
             if (shutdownContext.isShutdownUnexpected()) {
-                this.scheduledExecutorService.execute(() -> {
-                    try {
-                        LOGGER.debug("Unexpected locator disconnection, trying to reconnect");
-                        this.locator = null;
-                        Client newLocator = null;
-                        Client.ClientParameters newLocatorParameters = this.clientParametersPrototype.duplicate()
-                                .shutdownListener(shutdownListenerReference.get());
-
-                        int attempts = 0;
-                        // TODO schedule that stuff, this avoids keeping the thread busy between attempts
-                        while (newLocator == null) {
-                            Address address = addresses.size() == 1 ? addresses.get(0) :
-                                    addresses.get(random.nextInt(addresses.size()));
-                            LOGGER.debug("Trying to reconnect locator on {}", address);
-                            try {
-                                Thread.sleep(this.recoveryBackOffDelayPolicy.delay(attempts++).toMillis());
-                                newLocator = new Client(newLocatorParameters
-                                        .host(address.host)
-                                        .port(address.port)
-                                );
-                                LOGGER.debug("Locator connected on {}", address);
-                            } catch (Exception e) {
-                                LOGGER.debug("Error while trying to connect locator on {}, retrying possibly somewhere else", address);
-                            }
-                        }
-                        this.locator = newLocator;
-                    } catch (Exception e) {
-                        LOGGER.debug("Error while reconnecting locator", e);
-                    }
-                });
+                this.locator = null;
+                LOGGER.debug("Unexpected locator disconnection, trying to reconnect");
+                Client.ClientParameters newLocatorParameters = this.clientParametersPrototype.duplicate()
+                        .shutdownListener(shutdownListenerReference.get());
+                AsyncRetry.asyncRetry(() -> {
+                    Address address = addresses.size() == 1 ? addresses.get(0) :
+                            addresses.get(random.nextInt(addresses.size()));
+                    LOGGER.debug("Trying to reconnect locator on {}", address);
+                    Client newLocator = new Client(newLocatorParameters
+                            .host(address.host)
+                            .port(address.port)
+                    );
+                    LOGGER.debug("Locator connected on {}", address);
+                    return newLocator;
+                }).description("Locator recovery")
+                        .scheduler(this.scheduledExecutorService)
+                        .delayPolicy(attempt -> recoveryBackOffDelayPolicy.delay(attempt))
+                        .timeout(Duration.ZERO) // no timeout
+                        .build().thenAccept(newLocator -> this.locator = newLocator);
             }
         };
         shutdownListenerReference.set(shutdownListener);

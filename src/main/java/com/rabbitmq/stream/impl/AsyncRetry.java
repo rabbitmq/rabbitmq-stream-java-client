@@ -22,7 +22,11 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 class AsyncRetry<V> {
@@ -32,24 +36,31 @@ class AsyncRetry<V> {
     private final Callable<V> task;
     private final String description;
     private final ScheduledExecutorService scheduler;
-    private final Duration delay;
-    private final long timeoutInNanos;
+    private final Function<Integer, Duration> delayPolicy;
+    private final BooleanSupplier hasTimedOut;
     private final Predicate<Exception> retry;
     private final CompletableFuture<V> completableFuture;
 
-    AsyncRetry(Callable<V> task, String description,
-               ScheduledExecutorService scheduler, Duration delay, Duration timeout,
-               Predicate<Exception> retry) {
+    private AsyncRetry(Callable<V> task, String description,
+                       ScheduledExecutorService scheduler,
+                       Function<Integer, Duration> delayPolicy, Duration timeout,
+                       Predicate<Exception> retry) {
         this.task = task;
         this.description = description;
         this.scheduler = scheduler;
-        this.delay = delay;
-        this.timeoutInNanos = timeout.toNanos();
+        this.delayPolicy = delayPolicy;
+        if (timeout.isZero()) {
+            this.hasTimedOut = () -> false;
+        } else {
+            long started = System.nanoTime();
+            long timeoutInNanos = timeout.toNanos();
+            this.hasTimedOut = () -> System.nanoTime() - started > timeoutInNanos;
+        }
         this.retry = retry;
 
         this.completableFuture = new CompletableFuture<>();
         AtomicReference<Runnable> retryableTaskReference = new AtomicReference<>();
-        long started = System.nanoTime();
+        AtomicInteger attempts = new AtomicInteger(0);
         Runnable retryableTask = () -> {
             try {
                 V result = task.call();
@@ -57,12 +68,13 @@ class AsyncRetry<V> {
                 completableFuture.complete(result);
             } catch (Exception e) {
                 if (retry.test(e)) {
-                    if (System.nanoTime() - started > timeoutInNanos) {
+                    if (hasTimedOut.getAsBoolean()) {
                         LOGGER.debug("Retryable attempts for task '{}' timed out, failing future", description);
                         this.completableFuture.completeExceptionally(new RetryTimeoutException());
                     } else {
                         LOGGER.debug("Retryable exception for task '{}', scheduling another attempt", description);
-                        scheduler.schedule(retryableTaskReference.get(), delay.toMillis(), TimeUnit.MILLISECONDS);
+                        scheduler.schedule(retryableTaskReference.get(),
+                                delayPolicy.apply(attempts.getAndIncrement()).toMillis(), TimeUnit.MILLISECONDS);
                     }
                 } else {
                     LOGGER.debug("Non-retryable exception for task '{}', failing future", description);
@@ -71,11 +83,24 @@ class AsyncRetry<V> {
             }
         };
         retryableTaskReference.set(retryableTask);
-        retryableTask.run();
+        Duration initialDelay = delayPolicy.apply(attempts.getAndIncrement());
+        if (initialDelay.isZero()) {
+            retryableTask.run();
+        } else {
+            scheduler.schedule(retryableTaskReference.get(), initialDelay.toMillis(), TimeUnit.MILLISECONDS);
+        }
     }
 
     static <V> AsyncRetryBuilder<V> asyncRetry(Callable<V> task) {
         return new AsyncRetryBuilder<>(task);
+    }
+
+    static Function<Integer, Duration> fixed(Duration delay) {
+        return new FixedWithInitialDelayPolicy(Duration.ZERO, delay);
+    }
+
+    static Function<Integer, Duration> fixedWithInitialyDelay(Duration initialDelay, Duration delay) {
+        return new FixedWithInitialDelayPolicy(initialDelay, delay);
     }
 
     static class AsyncRetryBuilder<V> {
@@ -83,8 +108,8 @@ class AsyncRetry<V> {
         private final Callable<V> task;
         private String description = "";
         private ScheduledExecutorService scheduler;
-        private Duration delay = Duration.ofSeconds(1);
-        private Duration timeout = Duration.ofSeconds(10);
+        private Function<Integer, Duration> delayPolicy = fixed(Duration.ofSeconds(1));
+        private Duration timeout = Duration.ZERO;
         private Predicate<Exception> retry = e -> true;
 
         AsyncRetryBuilder(Callable<V> task) {
@@ -97,7 +122,12 @@ class AsyncRetry<V> {
         }
 
         AsyncRetryBuilder<V> delay(Duration delay) {
-            this.delay = delay;
+            this.delayPolicy = fixed(delay);
+            return this;
+        }
+
+        AsyncRetryBuilder<V> delayPolicy(Function<Integer, Duration> delayPolicy) {
+            this.delayPolicy = delayPolicy;
             return this;
         }
 
@@ -117,13 +147,34 @@ class AsyncRetry<V> {
         }
 
         CompletableFuture<V> build() {
-            return new AsyncRetry<>(task, description, scheduler, delay, timeout, retry).completableFuture;
+            return new AsyncRetry<>(task, description, scheduler, delayPolicy, timeout, retry).completableFuture;
         }
 
     }
 
     static class RetryTimeoutException extends RuntimeException {
 
+    }
+
+    private static class FixedWithInitialDelayPolicy implements Function<Integer, Duration> {
+
+        private final Duration initialDelay;
+        private final Duration delay;
+        private final AtomicBoolean first = new AtomicBoolean(true);
+
+        private FixedWithInitialDelayPolicy(Duration initialDelay, Duration delay) {
+            this.initialDelay = initialDelay;
+            this.delay = delay;
+        }
+
+        @Override
+        public Duration apply(Integer integer) {
+            if (first.compareAndSet(true, false)) {
+                return initialDelay;
+            } else {
+                return delay;
+            }
+        }
     }
 
 }
