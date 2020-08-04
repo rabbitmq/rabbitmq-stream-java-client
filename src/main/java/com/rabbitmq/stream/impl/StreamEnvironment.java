@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -52,11 +53,20 @@ class StreamEnvironment implements Environment {
     private final Codec codec;
     private final RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy;
     private final ClientSubscriptions clientSubscriptions;
+    private final Function<Client.ClientParameters, Client> clientFactory;
     private volatile Client locator;
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
                       List<URI> uris, RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy) {
+        this(scheduledExecutorService, clientParametersPrototype, uris, recoveryBackOffDelayPolicy,
+                cp -> new Client(cp));
+    }
 
+    StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
+                      List<URI> uris, RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy,
+                      Function<Client.ClientParameters, Client> clientFactory) {
+
+        this.clientFactory = clientFactory;
         this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
         clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
@@ -102,7 +112,7 @@ class StreamEnvironment implements Environment {
                     Address address = addresses.size() == 1 ? addresses.get(0) :
                             addresses.get(random.nextInt(addresses.size()));
                     LOGGER.debug("Trying to reconnect locator on {}", address);
-                    Client newLocator = new Client(newLocatorParameters
+                    Client newLocator = clientFactory.apply(newLocatorParameters
                             .host(address.host)
                             .port(address.port)
                     );
@@ -116,11 +126,25 @@ class StreamEnvironment implements Environment {
             }
         };
         shutdownListenerReference.set(shutdownListener);
-        Client.ClientParameters locatorParameters = clientParametersPrototype
-                .duplicate()
-                .shutdownListener(shutdownListenerReference.get());
         // FIXME try several URIs in case of failure
-        this.locator = new Client(locatorParameters);
+        RuntimeException lastException = null;
+        for (Address address : addresses) {
+            Client.ClientParameters locatorParameters = clientParametersPrototype
+                    .duplicate()
+                    .host(address.host).port(address.port)
+                    .shutdownListener(shutdownListenerReference.get());
+            try {
+                this.locator = clientFactory.apply(locatorParameters);
+                LOGGER.debug("Locator connected to {}", address);
+                break;
+            } catch (RuntimeException e) {
+                LOGGER.debug("Error while try to connect to {}: {}", address, e.getMessage());
+                lastException = e;
+            }
+        }
+        if (this.locator == null) {
+            throw lastException;
+        }
         this.codec = locator.codec();
     }
 
@@ -306,7 +330,7 @@ class StreamEnvironment implements Environment {
         return publishingClientPool.computeIfAbsent(key, s -> {
             // FIXME add shutdown listener to client for publisher
             // this should notify the affected publishers/consumers
-            return new Client(
+            return clientFactory.apply(
                     clientParametersPrototype.duplicate()
                             .host(leader.getHost())
                             .port(leader.getPort())

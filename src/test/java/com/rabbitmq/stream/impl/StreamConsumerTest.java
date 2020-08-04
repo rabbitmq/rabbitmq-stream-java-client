@@ -177,7 +177,7 @@ public class StreamConsumerTest {
             producerSecondWave.close();
 
             assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
-            assertThat(receivedMessageCount.get()).isEqualTo(messageCount * 2 + 1);
+            assertThat(receivedMessageCount.get()).isBetween(messageCount * 2, messageCount * 2 + 1); // there can be a duplicate
             assertThat(consumer.isOpen()).isTrue();
 
             consumer.close();

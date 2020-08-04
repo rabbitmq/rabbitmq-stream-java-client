@@ -57,13 +57,12 @@ public class DefaultClientSubscriptionsTest {
 
     DefaultClientSubscriptions clientSubscriptions;
     ScheduledExecutorService scheduledExecutorService;
-    Client.ClientParameters clientParameters;
     volatile Client.MetadataListener metadataListener;
     volatile Client.MessageListener messageListener;
 
     @BeforeEach
     void init() {
-        this.clientParameters = new Client.ClientParameters() {
+        Client.ClientParameters clientParameters = new Client.ClientParameters() {
             @Override
             public Client.ClientParameters metadataListener(Client.MetadataListener metadataListener) {
                 DefaultClientSubscriptionsTest.this.metadataListener = metadataListener;
