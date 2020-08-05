@@ -51,19 +51,19 @@ class StreamEnvironment implements Environment {
     private final List<StreamProducer> producers = new CopyOnWriteArrayList<>();
     private final List<StreamConsumer> consumers = new CopyOnWriteArrayList<>();
     private final Codec codec;
-    private final RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy;
+    private final BackOffDelayPolicy recoveryBackOffDelayPolicy;
     private final ClientSubscriptions clientSubscriptions;
     private final Function<Client.ClientParameters, Client> clientFactory;
     private volatile Client locator;
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
-                      List<URI> uris, RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy) {
+                      List<URI> uris, BackOffDelayPolicy recoveryBackOffDelayPolicy) {
         this(scheduledExecutorService, clientParametersPrototype, uris, recoveryBackOffDelayPolicy,
                 cp -> new Client(cp));
     }
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
-                      List<URI> uris, RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy,
+                      List<URI> uris, BackOffDelayPolicy recoveryBackOffDelayPolicy,
                       Function<Client.ClientParameters, Client> clientFactory) {
 
         this.clientFactory = clientFactory;
@@ -310,7 +310,7 @@ class StreamEnvironment implements Environment {
         return this.scheduledExecutorService;
     }
 
-    RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy() {
+    BackOffDelayPolicy recoveryBackOffDelayPolicy() {
         return this.recoveryBackOffDelayPolicy;
     }
 

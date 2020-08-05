@@ -75,7 +75,7 @@ public interface EnvironmentBuilder {
      */
     EnvironmentBuilder scheduledExecutorService(ScheduledExecutorService scheduledExecutorService);
 
-    EnvironmentBuilder recoveryBackOffDelayPolicy(RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy);
+    EnvironmentBuilder recoveryBackOffDelayPolicy(BackOffDelayPolicy recoveryBackOffDelayPolicy);
 
     Environment build();
 

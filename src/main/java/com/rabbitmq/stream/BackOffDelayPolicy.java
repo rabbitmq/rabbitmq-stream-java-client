@@ -16,19 +16,19 @@ package com.rabbitmq.stream;
 
 import java.time.Duration;
 
-public interface RecoveryBackOffDelayPolicy {
+public interface BackOffDelayPolicy {
 
-    static RecoveryBackOffDelayPolicy fixed(Duration delay) {
-        return new FixedRecoveryBackOffDelayPolicy(delay);
+    static BackOffDelayPolicy fixed(Duration delay) {
+        return new FixedBackOffDelayPolicy(delay);
     }
 
     Duration delay(int recoveryAttempt);
 
-    class FixedRecoveryBackOffDelayPolicy implements RecoveryBackOffDelayPolicy {
+    class FixedBackOffDelayPolicy implements BackOffDelayPolicy {
 
         private final Duration delay;
 
-        private FixedRecoveryBackOffDelayPolicy(Duration delay) {
+        private FixedBackOffDelayPolicy(Duration delay) {
             this.delay = delay;
         }
 

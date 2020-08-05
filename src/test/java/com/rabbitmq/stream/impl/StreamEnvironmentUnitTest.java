@@ -14,12 +14,11 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.RecoveryBackOffDelayPolicy;
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
 import java.net.URI;
@@ -37,7 +36,7 @@ import static org.mockito.Mockito.*;
 public class StreamEnvironmentUnitTest {
 
     @Mock
-    RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy;
+    BackOffDelayPolicy recoveryBackOffDelayPolicy;
     @Mock
     Function<Client.ClientParameters, Client> cf;
     @Mock

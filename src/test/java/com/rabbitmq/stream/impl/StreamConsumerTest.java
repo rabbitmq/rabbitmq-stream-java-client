@@ -47,7 +47,7 @@ public class StreamConsumerTest {
     void init() {
         environment = Environment.builder()
                 .eventLoopGroup(eventLoopGroup)
-                .recoveryBackOffDelayPolicy(RecoveryBackOffDelayPolicy.fixed(RECOVERY_DELAY))
+                .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(RECOVERY_DELAY))
                 .build();
     }
 

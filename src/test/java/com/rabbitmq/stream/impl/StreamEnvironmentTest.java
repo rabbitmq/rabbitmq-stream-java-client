@@ -106,7 +106,7 @@ public class StreamEnvironmentTest {
     @TestUtils.DisabledIfRabbitMqCtlNotSet
     void locatorShouldReconnectIfConnectionIsLost() throws Exception {
         try (Environment environment = environmentBuilder
-                .recoveryBackOffDelayPolicy(RecoveryBackOffDelayPolicy.fixed(Duration.ofSeconds(1)))
+                .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(1)))
                 .build()) {
             String s = UUID.randomUUID().toString();
             environment.streamCreator().stream(s).create();
