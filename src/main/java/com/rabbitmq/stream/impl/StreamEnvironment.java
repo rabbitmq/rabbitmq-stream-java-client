@@ -115,6 +115,7 @@ class StreamEnvironment implements Environment {
                     Client newLocator = clientFactory.apply(newLocatorParameters
                             .host(address.host)
                             .port(address.port)
+                            .clientProperty("name", "rabbitmq-stream-locator")
                     );
                     LOGGER.debug("Locator connected on {}", address);
                     return newLocator;
@@ -132,6 +133,7 @@ class StreamEnvironment implements Environment {
             Client.ClientParameters locatorParameters = clientParametersPrototype
                     .duplicate()
                     .host(address.host).port(address.port)
+                    .clientProperty("name", "rabbitmq-stream-locator")
                     .shutdownListener(shutdownListenerReference.get());
             try {
                 this.locator = clientFactory.apply(locatorParameters);
@@ -249,7 +251,6 @@ class StreamEnvironment implements Environment {
             }
         }
 
-
         for (Client client : publishingClientPool.values()) {
             try {
                 client.close();
@@ -265,6 +266,8 @@ class StreamEnvironment implements Environment {
                 LOGGER.warn("Error while closing consumer, moving on to the next one", e);
             }
         }
+
+        this.clientSubscriptions.close();
 
         for (Client client : consumingClientPool.values()) {
             try {
@@ -303,8 +306,12 @@ class StreamEnvironment implements Environment {
 
     }
 
-    protected ScheduledExecutorService scheduledExecutorService() {
+    ScheduledExecutorService scheduledExecutorService() {
         return this.scheduledExecutorService;
+    }
+
+    RecoveryBackOffDelayPolicy recoveryBackOffDelayPolicy() {
+        return this.recoveryBackOffDelayPolicy;
     }
 
     Client getClientForPublisher(String stream) {
@@ -334,6 +341,7 @@ class StreamEnvironment implements Environment {
                     clientParametersPrototype.duplicate()
                             .host(leader.getHost())
                             .port(leader.getPort())
+                            .clientProperty("name", "rabbitmq-stream-producer")
             );
         });
     }

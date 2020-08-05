@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -34,6 +35,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamConsumerTest {
 
+    static final Duration RECOVERY_DELAY = Duration.ofSeconds(1);
+
     String stream;
     EventLoopGroup eventLoopGroup;
     TestUtils.ClientFactory cf;
@@ -44,6 +47,7 @@ public class StreamConsumerTest {
     void init() {
         environment = Environment.builder()
                 .eventLoopGroup(eventLoopGroup)
+                .recoveryBackOffDelayPolicy(RecoveryBackOffDelayPolicy.fixed(RECOVERY_DELAY))
                 .build();
     }
 
@@ -124,6 +128,7 @@ public class StreamConsumerTest {
     }
 
     @Test
+    @TestUtils.DisabledIfRabbitMqCtlNotSet
     void consumerShouldKeepConsumingIfStreamBecomesUnavailable() throws Exception {
         String s = UUID.randomUUID().toString();
         environment.streamCreator().stream(s).create();
@@ -155,10 +160,74 @@ public class StreamConsumerTest {
 
             assertThat(consumer.isOpen()).isTrue();
 
-            Host.rabbitmqctl("eval 'exit(rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\"" + s + "\">>),kill).'");
+            Host.killStreamLeaderProcess(s);
 
             // give the system some time to recover
             Thread.sleep(DefaultClientSubscriptions.METADATA_UPDATE_DEFAULT_INITIAL_DELAY.toMillis());
+
+            Client client = cf.get();
+            TestUtils.waitAtMost(10, () -> {
+                Client.StreamMetadata metadata = client.metadata(s).get(s);
+                return metadata.getLeader() != null || !metadata.getReplicas().isEmpty();
+            });
+
+            CountDownLatch publishLatchSecondWave = new CountDownLatch(messageCount);
+            Producer producerSecondWave = environment.producerBuilder().stream(s).build();
+            IntStream.range(0, messageCount).forEach(i -> producerSecondWave.send(
+                    producerSecondWave.messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> publishLatchSecondWave.countDown()
+            ));
+
+            assertThat(publishLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+            producerSecondWave.close();
+
+            assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(receivedMessageCount.get()).isBetween(messageCount * 2, messageCount * 2 + 1); // there can be a duplicate
+            assertThat(consumer.isOpen()).isTrue();
+
+            consumer.close();
+        } finally {
+            environment.deleteStream(s);
+        }
+    }
+
+    @Test
+    @TestUtils.DisabledIfRabbitMqCtlNotSet
+    void consumerShouldKeepConsumingIfConnectionFails() throws Exception {
+        String s = UUID.randomUUID().toString();
+        environment.streamCreator().stream(s).create();
+        try {
+            int messageCount = 10_000;
+            CountDownLatch publishLatch = new CountDownLatch(messageCount);
+            Producer producer = environment.producerBuilder().stream(s).build();
+            IntStream.range(0, messageCount).forEach(i -> producer.send(
+                    producer.messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> publishLatch.countDown()
+            ));
+
+            assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+            producer.close();
+
+            AtomicInteger receivedMessageCount = new AtomicInteger(0);
+            CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+            CountDownLatch consumeLatchSecondWave = new CountDownLatch(messageCount * 2);
+            StreamConsumer consumer = (StreamConsumer) environment.consumerBuilder()
+                    .stream(s)
+                    .messageHandler((offset, message) -> {
+                        receivedMessageCount.incrementAndGet();
+                        consumeLatch.countDown();
+                        consumeLatchSecondWave.countDown();
+                    })
+                    .build();
+
+            assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(consumer.isOpen()).isTrue();
+
+            Host.killConnection("rabbitmq-stream-consumer");
+
+            // give the system some time to recover
+            Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
 
             Client client = cf.get();
             TestUtils.waitAtMost(10, () -> {

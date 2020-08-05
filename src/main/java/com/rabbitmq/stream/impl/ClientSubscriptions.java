@@ -23,4 +23,6 @@ interface ClientSubscriptions {
 
     void unsubscribe(long id);
 
+    void close();
+
 }
