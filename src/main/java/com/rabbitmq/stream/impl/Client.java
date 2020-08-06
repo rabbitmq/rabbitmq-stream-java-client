@@ -49,6 +49,18 @@ import java.util.function.Consumer;
 import static com.rabbitmq.stream.Constants.*;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+/**
+ * This is low-level client API to communicate with the broker.
+ * <p>
+ * <b>It is not meant for public usage and can change at any time.</b>
+ * <p>
+ * Users are encouraged to use the {@link Environment}, {@link Producer},
+ * {@link com.rabbitmq.stream.Consumer} API, and their respective builders
+ * to interact with the broker.
+ * <p>
+ * People wanting very fine control over their interaction with the broker
+ * can use {@link Client} but at their own risk.
+ */
 public class Client implements AutoCloseable {
 
     public static final int DEFAULT_PORT = 5555;
