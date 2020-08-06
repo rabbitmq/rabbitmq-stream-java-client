@@ -48,23 +48,24 @@ public class StreamConsumerTest {
 
     static Stream<java.util.function.Consumer<Object>> consumerShouldKeepConsumingAfterDisruption() {
         return Stream.of(
-                TestUtils.namedTask(o -> {
-                    Host.killStreamLeaderProcess(o.toString());
-                    Thread.sleep(DefaultClientSubscriptions.METADATA_UPDATE_DEFAULT_INITIAL_DELAY.toMillis());
-                }, "stream leader process is killed"),
+//                TestUtils.namedTask(o -> {
+//                    Host.killStreamLeaderProcess(o.toString());
+//                    Thread.sleep(DefaultClientSubscriptions.METADATA_UPDATE_DEFAULT_INITIAL_DELAY.toMillis());
+//                }, "stream leader process is killed"),
                 TestUtils.namedTask(o -> {
                     Host.killConnection("rabbitmq-stream-consumer");
                     Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
-                }, "consumer connection is killed"),
-                TestUtils.namedTask(o -> {
-                    try {
-                        Host.rabbitmqctl("stop_app");
-                        Thread.sleep(1000L);
-                    } finally {
-                        Host.rabbitmqctl("start_app");
-                    }
-                    Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
-                }, "broker is restarted")
+                }
+                , "consumer connection is killed")
+//                TestUtils.namedTask(o -> {
+//                    try {
+//                        Host.rabbitmqctl("stop_app");
+//                        Thread.sleep(1000L);
+//                    } finally {
+//                        Host.rabbitmqctl("start_app");
+//                    }
+//                    Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
+//                }, "broker is restarted")
         );
     }
 
