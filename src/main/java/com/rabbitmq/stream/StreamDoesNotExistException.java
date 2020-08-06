@@ -14,12 +14,16 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+public class StreamDoesNotExistException extends StreamException {
 
-    public AuthenticationFailureException(String message) {
-        super(message);
+    private final String stream;
+
+    public StreamDoesNotExistException(String stream) {
+        super("Stream " + stream + "  does not exist");
+        this.stream = stream;
+    }
+
+    public String getStream() {
+        return stream;
     }
 }

@@ -12,14 +12,24 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Message;
 
-    public AuthenticationFailureException(String message) {
-        super(message);
+interface MessageAccumulator {
+
+    boolean add(Message message, ConfirmationHandler confirmationHandler);
+
+    AccumulatedEntity get();
+
+    boolean isEmpty();
+
+    interface AccumulatedEntity {
+
+        Object encodedEntity();
+
+        StreamProducer.ConfirmationCallback confirmationCallback();
+
     }
 }

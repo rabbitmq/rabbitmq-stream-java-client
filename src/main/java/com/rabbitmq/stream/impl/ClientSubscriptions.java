@@ -12,14 +12,17 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.OffsetSpecification;
 
-    public AuthenticationFailureException(String message) {
-        super(message);
-    }
+interface ClientSubscriptions {
+
+    long subscribe(StreamConsumer consumer, String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler);
+
+    void unsubscribe(long id);
+
+    void close();
+
 }

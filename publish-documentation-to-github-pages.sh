@@ -7,6 +7,7 @@ MESSAGE=$(git log -1 --pretty=%B)
 git remote set-branches origin 'gh-pages'
 git fetch -v
 git checkout gh-pages
+mkdir -p snapshot/htmlsingle
 cp target/generated-docs/index.html snapshot/htmlsingle
 git add snapshot/
 git commit -m "$MESSAGE"

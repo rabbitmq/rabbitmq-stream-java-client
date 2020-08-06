@@ -18,8 +18,10 @@ import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
+import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -31,7 +33,7 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BooleanSupplier;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -80,10 +82,8 @@ public class StreamPerfTest implements Callable<Integer> {
     @CommandLine.Option(names = {"--credit", "-cr"}, description = "credit requested on acknowledgment", defaultValue = "1",
             converter = Utils.PositiveIntegerTypeConverter.class)
     private int credit;
-    @CommandLine.Option(names = {"--ack", "-ac"}, description = "ack (request credit) every x chunk(s)", defaultValue = "1",
-            converter = Utils.PositiveIntegerTypeConverter.class)
-    private int ack;
-    @CommandLine.Option(names = {"--confirms", "-c"}, description = "outstanding confirms", defaultValue = "-1")
+    @CommandLine.Option(names = {"--confirms", "-c"}, description = "outstanding confirms", defaultValue = "10000",
+            converter = Utils.NotNegativeIntegerTypeConverter.class)
     private int confirms;
     @CommandLine.Option(names = {"--streams", "-st"},
             description = "stream(s) to send to and consume from, separated by commas", defaultValue = "stream1",
@@ -170,7 +170,7 @@ public class StreamPerfTest implements Callable<Integer> {
         try {
             return (Codec) Class.forName(className).getConstructor().newInstance();
         } catch (Exception e) {
-            throw new ClientException("Exception while creating codec " + className, e);
+            throw new StreamException("Exception while creating codec " + className, e);
         }
     }
 
@@ -206,6 +206,8 @@ public class StreamPerfTest implements Callable<Integer> {
         CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
         String metricsPrefix = "rabbitmq.stream";
         this.metricsCollector = new MicrometerMetricsCollector(meterRegistry, metricsPrefix);
+
+        Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
 
         this.performanceMetrics = new DefaultPerformanceMetrics(meterRegistry, metricsPrefix, this.summaryFile);
 
@@ -268,140 +270,89 @@ public class StreamPerfTest implements Callable<Integer> {
 
         Topology topology = new MapTopology(metadataMap);
 
-        BrokerLocator publisherBrokerLocator = new LeaderOnlyBrokerLocator(topology);
         BrokerLocator consumerBrokerLocator = new RoundRobinReplicaBrokerLocator(topology);
 
         // FIXME handle metadata update for consumers and publishers
         // they should at least issue a warning that their stream has been deleted and that they're now useless
 
-        List<Client> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
-        List<Runnable> producerRunnables = IntStream.range(0, this.producers).mapToObj(i -> {
-            Runnable beforePublishingCallback;
-            Client.PublishConfirmListener publishConfirmListener;
-            if (this.confirms > 0) {
-                Semaphore confirmsSemaphore = new Semaphore(this.confirms);
-                beforePublishingCallback = () -> {
-                    try {
-                        if (!confirmsSemaphore.tryAcquire(30, TimeUnit.SECONDS)) {
-                            LOGGER.info("Could not acquire confirm semaphore in 30 seconds");
-                        }
-                    } catch (InterruptedException e) {
-                        LOGGER.info("Interrupted while waiting confirms before publishing");
-                        Thread.currentThread().interrupt();
-                    }
-                };
-                publishConfirmListener = correlationId -> {
-                    confirmsSemaphore.release();
-                };
-            } else {
-                beforePublishingCallback = () -> {
-                };
-                publishConfirmListener = correlationId -> {
-                };
-            }
+        Environment environment = Environment.builder()
+                .host(address.host)
+                .port(address.port)
+                .username(username)
+                .password(password)
+                .metricsCollector(metricsCollector)
+                .build();
 
+        List<Producer> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
+        List<Runnable> producerRunnables = IntStream.range(0, this.producers).mapToObj(i -> {
             Runnable rateLimiterCallback;
             if (this.rate > 0) {
                 RateLimiter rateLimiter = com.google.common.util.concurrent.RateLimiter.create(this.rate);
-                int messageCountInFrame = this.batchSize * this.subEntrySize;
-                rateLimiterCallback = () -> rateLimiter.acquire(messageCountInFrame);
+                rateLimiterCallback = () -> rateLimiter.acquire(1);
             } else {
                 rateLimiterCallback = () -> {
                 };
             }
 
             String stream = stream();
-            Address publisherAddress = publisherBrokerLocator.get(stream);
-            Client client = client(new Client.ClientParameters()
-                    .host(publisherAddress.host).port(publisherAddress.port)
-                    .publishConfirmListener(publishConfirmListener));
 
-            producers.add(client);
+            Producer producer = environment.producerBuilder()
+                    .subEntrySize(this.subEntrySize)
+                    .batchSize(this.batchSize)
+                    .maxUnconfirmedMessages(this.confirms)
+                    .stream(stream)
+                    .build();
+
+            producers.add(producer);
+
+            ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(this.producers);
+
+            shutdownService.wrap(closeStep("Closing scheduled executor service", () -> scheduledExecutorService.shutdownNow()));
 
             shutdownService.wrap(closeStep("Closing producers", () -> {
-                for (Client producer : producers) {
-                    producer.close();
+                for (Producer p : producers) {
+                    p.close();
                 }
             }));
-            LOGGER.info("Connecting to {} to publish to {}", publisherAddress, stream);
+
             return (Runnable) () -> {
                 final int msgSize = this.messageSize;
-                Runnable publishCallback;
-                if (this.subEntrySize == 1) {
-                    List<Message> messages = new ArrayList<>(this.batchSize);
-                    IntStream.range(0, this.batchSize).forEach(unused -> messages.add(null));
-                    publishCallback = () -> {
-                        long creationTime = System.nanoTime();
-                        byte[] payload = new byte[msgSize];
-                        writeLong(payload, creationTime);
-                        for (int j = 0; j < this.batchSize; j++) {
-                            messages.set(j, codec.messageBuilder().addData(payload).build());
-                        }
-                        client.publish(stream, messages);
-                    };
-                } else {
-                    List<MessageBatch> messageBatches = new ArrayList<>(this.batchSize);
-                    IntStream.range(0, this.batchSize).forEach(unused -> messageBatches.add(null));
-                    List<Message> messages = new ArrayList<>(this.subEntrySize);
-                    IntStream.range(0, this.subEntrySize).forEach(unused -> messages.add(null));
-                    publishCallback = () -> {
-                        long creationTime = System.nanoTime();
-                        byte[] payload = new byte[msgSize];
-                        writeLong(payload, creationTime);
-                        for (int j = 0; j < this.subEntrySize; j++) {
-                            messages.set(j, codec.messageBuilder().addData(payload).build());
-                        }
-                        for (int j = 0; j < this.batchSize; j++) {
-                            messageBatches.set(j, new MessageBatch(MessageBatch.Compression.NONE, messages));
-                        }
-                        client.publishBatches(stream, messageBatches);
-                    };
-                }
+
+                ConfirmationHandler confirmationHandler = confirmationStatus -> producerConfirm.increment();
                 while (true && !Thread.currentThread().isInterrupted()) {
-                    beforePublishingCallback.run();
                     rateLimiterCallback.run();
-                    publishCallback.run();
+                    long creationTime = System.nanoTime();
+                    byte[] payload = new byte[msgSize];
+                    writeLong(payload, creationTime);
+                    producer.send(producer.messageBuilder().addData(payload).build(), confirmationHandler);
                 }
             };
 
         }).collect(Collectors.toList());
 
-        AtomicInteger consumerSequence = new AtomicInteger(0);
-        List<Client> consumers = Collections.synchronizedList(IntStream.range(0, this.consumers).mapToObj(i -> {
-            BooleanSupplier creditRequestCondition;
-            if (this.ack == 1) {
-                creditRequestCondition = () -> true;
-            } else {
-                AtomicInteger chunkCount = new AtomicInteger(0);
-                int ackEvery = this.ack;
-                creditRequestCondition = () -> chunkCount.incrementAndGet() % ackEvery == 0;
-            }
-            int creditToAsk = this.credit;
-            Client.ChunkListener chunkListener = (client, correlationId, offset, messageCount, dataSize) -> {
-                if (creditRequestCondition.getAsBoolean()) {
-                    client.credit(correlationId, creditToAsk);
-                }
-            };
+        List<Consumer> consumers = Collections.synchronizedList(IntStream.range(0, this.consumers).mapToObj(i -> {
             final PerformanceMetrics metrics = this.performanceMetrics;
-            Client.MessageListener messageListener = (correlationId, offset, data) -> {
-                metrics.latency(System.nanoTime() - readLong(data.getBodyAsBinary()), TimeUnit.NANOSECONDS);
-            };
 
+            AtomicLong messageCount = new AtomicLong(0);
             String stream = stream();
-            Address consumerAddress = consumerBrokerLocator.get(stream);
-            Client consumer = client(new Client.ClientParameters()
-                    .host(consumerAddress.host).port(consumerAddress.port)
-                    .chunkListener(chunkListener)
-                    .messageListener(messageListener));
-
-            LOGGER.info("Connecting to {} to consume from {}", consumerAddress, stream);
-            consumer.subscribe(consumerSequence.getAndIncrement(), stream, this.offset, this.initialCredit);
+            Consumer consumer = environment.consumerBuilder()
+                    .stream(stream)
+                    .offset(this.offset)
+                    .messageHandler((offset, message) -> {
+                        // at very high throughput ( > 1 M / s), the histogram can become a bottleneck,
+                        // so we downsample and calculate latency for every x message
+                        // this should not affect the metric much
+                        if (messageCount.incrementAndGet() % 100 == 0) {
+                            metrics.latency(System.nanoTime() - readLong(message.getBodyAsBinary()), TimeUnit.NANOSECONDS);
+                        }
+                    })
+                    .build();
 
             return consumer;
         }).collect(Collectors.toList()));
 
         shutdownService.wrap(closeStep("Closing consumers", () -> {
-            for (Client consumer : consumers) {
+            for (Consumer consumer : consumers) {
                 consumer.close();
             }
         }));

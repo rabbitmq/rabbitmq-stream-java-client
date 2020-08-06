@@ -14,12 +14,28 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+import java.time.Duration;
 
-    public AuthenticationFailureException(String message) {
-        super(message);
+public interface BackOffDelayPolicy {
+
+    static BackOffDelayPolicy fixed(Duration delay) {
+        return new FixedBackOffDelayPolicy(delay);
     }
+
+    Duration delay(int recoveryAttempt);
+
+    class FixedBackOffDelayPolicy implements BackOffDelayPolicy {
+
+        private final Duration delay;
+
+        private FixedBackOffDelayPolicy(Duration delay) {
+            this.delay = delay;
+        }
+
+        @Override
+        public Duration delay(int recoveryAttempt) {
+            return delay;
+        }
+    }
+
 }

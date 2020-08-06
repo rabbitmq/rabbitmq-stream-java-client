@@ -14,12 +14,31 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+public class StreamException extends RuntimeException {
 
-    public AuthenticationFailureException(String message) {
+    private final short code;
+
+    public StreamException(String message) {
         super(message);
+        this.code = -1;
+    }
+
+    public StreamException(String message, short code) {
+        super(message);
+        this.code = code;
+    }
+
+    public StreamException(Throwable cause) {
+        super(null, cause);
+        this.code = -1;
+    }
+
+    public StreamException(String message, Throwable cause) {
+        super(message, cause);
+        this.code = -1;
+    }
+
+    public short getCode() {
+        return code;
     }
 }

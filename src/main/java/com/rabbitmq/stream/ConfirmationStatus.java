@@ -14,12 +14,29 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+public class ConfirmationStatus {
 
-    public AuthenticationFailureException(String message) {
-        super(message);
+    private final Message message;
+
+    private final boolean confirmed;
+
+    private final short code;
+
+    public ConfirmationStatus(Message message, boolean confirmed, short code) {
+        this.message = message;
+        this.confirmed = confirmed;
+        this.code = code;
+    }
+
+    public Message getMessage() {
+        return message;
+    }
+
+    public boolean isConfirmed() {
+        return confirmed;
+    }
+
+    public short getCode() {
+        return code;
     }
 }

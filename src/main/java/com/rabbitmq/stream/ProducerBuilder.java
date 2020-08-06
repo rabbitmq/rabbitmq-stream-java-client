@@ -14,12 +14,20 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+import java.time.Duration;
 
-    public AuthenticationFailureException(String message) {
-        super(message);
-    }
+public interface ProducerBuilder {
+
+    ProducerBuilder stream(String stream);
+
+    ProducerBuilder subEntrySize(int subEntrySize);
+
+    ProducerBuilder batchSize(int batchSize);
+
+    ProducerBuilder batchPublishingDelay(Duration batchPublishingDelay);
+
+    ProducerBuilder maxUnconfirmedMessages(int maxUnconfirmedMessages);
+
+    Producer build();
+
 }

@@ -80,8 +80,16 @@ public class Host {
                 " " + command);
     }
 
+    public static Process killConnection(String connectionName) throws IOException {
+        return rabbitmqctl("eval 'rabbit_stream:kill_connection(\"" + connectionName + "\").'");
+    }
 
-    static String rabbitmqctlCommand() {
+    public static Process killStreamLeaderProcess(String stream) throws IOException {
+        return rabbitmqctl("eval 'exit(rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\"" + stream + "\">>),kill).'");
+    }
+
+
+    public static String rabbitmqctlCommand() {
         return System.getProperty("rabbitmqctl.bin");
     }
 

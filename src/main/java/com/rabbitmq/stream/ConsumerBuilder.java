@@ -14,12 +14,14 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+public interface ConsumerBuilder {
 
-    public AuthenticationFailureException(String message) {
-        super(message);
-    }
+    ConsumerBuilder stream(String stream);
+
+    ConsumerBuilder offset(OffsetSpecification offsetSpecification);
+
+    ConsumerBuilder messageHandler(MessageHandler messageHandler);
+
+    Consumer build();
+
 }

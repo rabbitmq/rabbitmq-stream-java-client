@@ -8,15 +8,16 @@ ifndef::sourcedir[:sourcedir: ../../main/java]
 
 The RabbitMQ Stream Java Client is a Java library to communicate with
 the https://github.com/rabbitmq/rabbitmq-stream[RabbitMQ Stream Plugin].
-It allows to create and delete streams, as well as to publish to and consume from
+It allows creating and delete streams, as well as to publish to and consume from
 these streams.
 
 == What is a RabbitMQ Stream?
 
-A RabbitMQ stream is an append-only, FIFO structure. It differs from the classical
+A RabbitMQ stream is a persistent and replicated data structure that models
+an https://en.wikipedia.org/wiki/Append-only[append-only log]. It differs from the classical
 RabbitMQ queue in the way message consumption works. In a classical RabbitMQ queue,
 consuming removes messages from the queue. In a RabbitMQ stream, consuming leaves
-the stream intact. So the content of a stream can read and re-read without
+the stream intact. So the content of a stream can be read and re-read without
 impact or destructive effect.
 
 None of the stream or classical queue data structure is better than the other,
@@ -28,7 +29,7 @@ A stream abstraction is useful when one or several consumer applications
 require the whole history of data ("replay").
 
 Streams can also be useful when a higher throughput than with classical
-RabbitMQ queues is required. RabbitMQ streams use various optimization techniques
+RabbitMQ queues is required. RabbitMQ streams use various optimization techniques,
 and a custom network protocol to achieve performances that are not possible
 with the other protocols supported in RabbitMQ (AMQP, STOMP, MQTT). This
 does not make the stream protocol better than these protocols, they just
@@ -38,22 +39,22 @@ all serve different purposes.
 
 It is also possible to use the stream abstraction in RabbitMQ
 with the AMQP 0-9-1 protocol. Instead of consuming from a stream
-with the stream protocol, one consumes from a _stream queue_ with
-the AMQP 0-9-1. A _stream queue_ is a special type of queue that
-has been adapted to provide the stream semantics (mainly non-destructive
-reading).
+with the stream protocol, one consumes from a "stream-powered" queue with
+the AMQP 0-9-1 protocol. A "stream-powered" queue is a special type of queue that
+is backed up with a stream infrastructure layer and adapted to
+provide the stream semantics (mainly non-destructive reading).
 
-Using a stream queue has the advantage to provide the features
+Using such a queue has the advantage to provide the features
 inherent to the stream abstraction (append-only structure, non-destructive
 reading) with any AMQP 0-9-1 client library. This is clearly
 interesting when considering the maturity of AMQP 0-9-1 client libraries
 and the ecosystem around AMQP 0-9-1.
 
-But by using a stream queue, one does not benefit from the performance
+But by using it, one does not benefit from the performance
 of the stream protocol, which has been designed for performance in mind,
 whereas AMQP 0-9-1 is a more general-purpose protocol.
 
-It is not possible to use stream queues with the stream Java client,
+It is not possible to use "stream-powered" queues with the stream Java client,
 you need to use an AMQP 0-9-1 client library.
 
 == Guarantees
@@ -164,10 +165,10 @@ repositories {
 
 === Sample Application
 
-This section covers the basics of the stream Java client by building
+This section covers the basics of the RabbitMQ Stream Java API by building
 a small publish/consume application. This is a good way to get
-an overview of the client. If you want a more comprehensive introduction,
-you can go to the <<client-reference,the reference documentation section>>.
+an overview of the API. If you want a more comprehensive introduction,
+you can go to the <<rabbitmq-stream-java-api,the reference documentation section>>.
 
 The sample application publishes some messages and then registers
 a consumer to make some computations out of them. The
@@ -181,43 +182,65 @@ The sample class starts with a few imports:
 include::{test-examples}/SampleApplication.java[tag=sample-imports]
 --------
 
-Then comes the publishing part. The next snippet shows a client instance
-used to publish messages. The body of each message is made of the value
-of a sequence. A count down latch is used to make sure the broker confirmed
-all the messages before closing the publisher connection.
+The next step is to create the `Environment`. It is a management object
+used to manage streams and create producers as well as consumers. The
+next snippet shows how to create an `Environment` instance and
+create the stream used in the application:
+
+.Creating the environment
+[source,java,indent=0]
+--------
+include::{test-examples}/SampleApplication.java[tag=sample-environment]
+--------
+<1> Use `Environment#builder` to create the environment
+<2> Create the stream
+
+Then comes the publishing part. The next snippet shows how to create
+a `Producer`, send messages, and handle publishing confirmations, to
+make sure the broker has taken outbound messages into account.
+The application uses a count down latch to move on once the messages
+have been confirmed.
 
 .Publishing messages
 [source,java,indent=0]
 --------
 include::{test-examples}/SampleApplication.java[tag=sample-publisher]
 --------
-<1> Count down on message publishing confirmation
-<2> Create the target stream
-<3> Publish messages in a loop
-<4> Wait for all publishing confirmations to have arrived
-<5> Close the publisher connection
+<1> Create the `Producer` with `Environment#producerBuilder`
+<2> Send messages with `Producer#send(Message, ConfirmationHandler)`
+<3> Create a message with `Producer#messageBuilder`
+<4> Count down on message publishing confirmation
+<5> Wait for all publishing confirmations to have arrived
+<6> Close the producer
 
-The next snippet shows how to consume and process the messages published previously.
-It sets up a chunk listener when creating the client instance. The chunk listener is called
-every time the broker delivers a chunk (batch) of messages to the client. It
-asks the broker to deliver another chunk with the `credit` command. A message listener
-is also set up on client creation. The message listener is called every time a message
-is delivered (as part of a chunk). Once all messages have been received, the sum is output
-to the console, the stream is deleted, and the consumer connection is closed.
+It is now time to consume the messages. The `Environment` lets us create a `Consumer`
+and provide some logic on each incoming message by implementing a `MessageHandler`.
+The next snippet does this to calculate a sum and output it once all the messages
+have been received:
 
 .Consuming messages
 [source,java,indent=0]
 --------
 include::{test-examples}/SampleApplication.java[tag=sample-consumer]
 --------
-<1> Ask for a new chunk for each chunk received
-<2> Add the value in the message body to the sum
-<3> Count down on each message
-<4> Start consuming at the beginning of the stream
+<1> Create the `Consumer` with `Environment#consumerBuilder`
+<2> Set up the logic to handle messages
+<3> Add the value in the message body to the sum
+<4> Count down on each message
 <5> Wait for all messages to have arrived
 <6> Output the sum
-<7> Delete the stream
-<8> Close the consumer connection
+<7> Close the consumer
+
+The application has some cleaning to do before terminating, that is
+deleting the stream and closing the environment:
+
+.Cleaning before terminating
+[source,java,indent=0]
+--------
+include::{test-examples}/SampleApplication.java[tag=sample-environment-close]
+--------
+<1> Delete the stream
+<2> Close the environment
 
 You can run the sample application from the root of the project (you need
 a running local RabbitMQ node with the stream plugin enabled):
@@ -233,70 +256,148 @@ Sum: 49995000
 
 You can remove the `-q` flag if you want more insight on the execution of the build.
 
-=== Client Reference
+=== RabbitMQ Stream Java API
 
-==== Connecting to RabbitMQ Stream
+==== Overview
 
-The main API of the stream Java client is the `com.rabbitmq.stream.Client`
-class. To connect to a local instance of the RabbitMQ Stream plugin
-with the default user and password, just create an `Client` instance
+This section describes the API to connect to the RabbitMQ Stream Plugin, publish messages, and
+consume messages. There are 3 main interfaces:
 
-.Connecting with all the defaults
+ * `com.rabbitmq.stream.Environment` for connecting to a node and optionally
+managing streams.
+ * `com.rabbitmq.stream.Producer` to publish messages.
+ * `com.rabbitmq.stream.Consumer` to consume messages.
+
+==== Environment
+
+===== Creating the Environment
+
+The environment is the main entry point to a node or a cluster of nodes. `Producer` and
+`Consumer` instances are created from an `Environment` instance. Here is the simplest
+way to create an `Environment` instance:
+
+.Creating an environment with all the defaults
 [source,java,indent=0]
 --------
-include::{test-examples}/ClientUsage.java[tag=client-creation]
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation]
 --------
-<1> Connect to localhost:5555 with guest / guest
+<1> Create an environment that will connect to localhost:5555
+<2> Close the environment after usage
 
-A `Client` constructor can take a `ClientParameters` to set
-parameters like host, port, virtual host, username, and password:
+Note the environment must be closed to release resources when it is no
+longer needed.
 
-.Connecting with parameters
+Consider the environment like a long-lived object. An application will usually
+create one `Environment` instance when it starts up and close it when it exits.
+
+It is possible to use a URI to specify all the necessary information to
+connect to a node:
+
+.Creating an environment with a URI
 [source,java,indent=0]
 --------
-include::{test-examples}/ClientUsage.java[tag=client-creation-with-client-parameters]
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uri]
 --------
-<1> Use `ClientParameters` to set connection parameters
+<1> Use the `uri` method to specify the URI to connect to
 
-==== Managing Streams
+The previous snippet uses a URI that specifies the following information: host, port,
+username, password, and virtual host (`/`, which is encoded as `%2f`).
+The URI follows the same rules as the
+https://www.rabbitmq.com/uri-spec.html[AMQP 0.9.1 URI],
+except the protocol must be `rabbitmq-stream` and TLS is not supported.
 
-Streams can be created with the `Client#create(String)` method:
+When using one URI, the corresponding node will be the main entry point to connect to. The
+`Environment` will then use the stream protocol to find out more about streams topology
+(leaders and replicas) when asked to create `Producer`s and `Consumer`s. The `Environment`
+may become blind if this node goes down though, so it may be more appropriate to specify
+several other URIs to try in case of failure of a node:
+
+.Creating an environment with several URIs
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uris]
+--------
+<1> Use the `uris` method to specify several URIs
+
+By specifying several URIs, the environment will try to connect to the first one, and
+will pick a new URI randomly in case of disconnection.
+
+The following table sums up the main settings to create a `Environment`:
+
+[%header,cols=3*]
+|===
+|Parameter Name
+|Description
+|Default
+
+|`uri`
+|The URI of the node to connect to (single node).
+|`rabbitmq-stream://guest:guest@localhost:5555/%2f`
+
+|`uris`
+|The URI of the nodes to try to connect to (cluster).
+|`rabbitmq-stream://guest:guest@localhost:5555/%2f` singleton list
+
+|`host`
+|Host to connect to.
+|`localhost`
+
+|`port`
+|Port to use.
+|`5555`
+
+|`username`
+|Username to use to connect.
+|`guest`
+
+|`password`
+|Password to use to connect.
+|`guest`
+
+|`virtualHost`
+|Virtual host to connect to.
+|`/`
+
+|`recoveryBackOffDelayPolicy`
+|Delay policy to use for backoff on connection recovery.
+|Fixed delay of 5 seconds
+|===
+
+===== Managing Streams
+
+Streams are usually long-lived, centrally-managed entities, that is, applications
+are not supposed to create and delete them. It is nevertheless possible to create and
+delete stream with the `Environment`. This comes in handy for development and testing
+purposes.
+
+Streams are created with the `Environment#streamCreator()` method:
 
 .Creating a stream
 [source,java,indent=0]
 --------
-include::{test-examples}/ClientUsage.java[tag=stream-creation]
+include::{test-examples}/EnvironmentUsage.java[tag=stream-creation]
 --------
 <1> Create the `my-stream` stream
-<2> Check if creation is OK
-<3> Check response code
 
-The `Constants` class can help to make sense of response codes.
-
-The deletion of a stream follows the same pattern with the
-`Client#delete(String)` method:
+Streams can be deleted with the `Environment#delete(String)` method:
 
 .Deleting a stream
 [source,java,indent=0]
 --------
-include::{test-examples}/ClientUsage.java[tag=stream-deletion]
+include::{test-examples}/EnvironmentUsage.java[tag=stream-deletion]
 --------
 <1> Delete the `my-stream` stream
-<2> Check if deletion is OK
-<3> Check response code
 
-Note you should avoid stream churn (creating and deleting streams
-repetitively) as their creation and deletion imply
-some significant housekeeping on the server side (interactions
-with the file system, communication between nodes of the cluster).
-Therefore you should consider streams as long-lived objects.
+Note you should avoid stream churn (creating and deleting streams repetitively)
+as their creation and deletion imply some significant housekeeping on
+the server side (interactions with the file system, communication between nodes of the cluster).
 
-==== Limiting the Size of a Stream
-
-A stream is an append-only data structure and reading from
-it does not remove data. This means a stream can grow indefinitely. RabbitMQ Stream
-supports a size-based retention policy: once
-the stream reaches a given size, it is truncated (starting from the beginning).
+[[limiting-the-size-of-a-stream]]It is also possible to limit the size of a stream
+when creating it. A stream
+is an append-only data structure and reading from it does not remove data.
+This means a stream can grow indefinitely. RabbitMQ Stream supports a
+size-based retention policy: once the stream reaches a given size,
+it is truncated (starting from the beginning).
 
 [IMPORTANT]
 .Limit the size of streams if appropriate!
@@ -311,210 +412,98 @@ It is possible to set up the retention policy when creating the stream:
 .Setting the retention policy when creating a stream
 [source,java,indent=0]
 --------
-include::{test-examples}/ClientUsage.java[tag=stream-creation-retention]
+include::{test-examples}/EnvironmentUsage.java[tag=stream-creation-retention]
 --------
 <1> Set the maximum size to 10 GB
 <2> Set the segment size to 500 MB
 
-The previous snippet mentions a segment size. RabbitMQ Stream does not store
-a stream in a big, single file, it uses segment files for technical reasons.
+The previous snippet mentions a segment size. RabbitMQ Stream does not store a stream
+in a big, single file, it uses segment files for technical reasons.
 A stream is truncated by deleting whole segment files (and not part of them),
-so the maximum size of a stream is usually significantly higher than the size
-of segment files. 500 MB is a reasonable segment file size to begin with.
+so the maximum size of a stream is usually significantly higher than the size of
+segment files. 500 MB is a reasonable segment file size to begin with.
 
-You can also use the `ByteCapacity` class to set up the retention policy,
-it is just a matter of API preference:
+==== Producer
 
-.Using `ByteCapacity` to set up the retention policy
+===== Creating a Producer
+
+A `Producer` instance is created from the `Environment`. The only mandatory
+setting to specify is the stream to publish to:
+
+.Creating a producer from the environment
 [source,java,indent=0]
 --------
-include::{test-examples}/ClientUsage.java[tag=stream-creation-retention-alternative]
+include::{test-examples}/ProducerUsage.java[tag=producer-creation]
 --------
-<1> Set the maximum size to 10 GB
-<2> Set the segment size to 500 MB
+<1> Use `Environment#producerBuilder()` to define the producer
+<2> Specify the stream to publish to
+<3> Create the producer instance with `build()`
+<4> Close the producer after usage
 
+Consider a `Producer` instance like a long-lived object, do not create one
+to send just one message.
 
-==== Publishing Messages
+Internally, the `Environment` will query the broker to find out about
+the topology of the stream and will create or re-use a connection to
+publish to the leader node of the stream.
 
-The simplest way to publish something to a stream is the
-`Client#publish(Stream, byte[])` method:
+The following table sums up the main settings to create a `Producer`:
 
-.Publishing a message
+[%header,cols=3*]
+|===
+|Parameter Name
+|Description
+|Default
+
+|`batchSize`
+|The maximum number of messages to accumulate before sending them to the broker.
+|100
+
+|`subEntrySize`
+|The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
+frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
+as well. Use this feature to increase throughput at the cost of increased latency.
+|1 (meaning no use of sub-entry batching)
+
+|`maxUnconfirmedMessages`
+|The maximum number of unconfirmed outbound messages. `Producer#send` will start
+blocking when the limit is reached.
+|10,000
+
+|`batchPublishingDelay`
+|Period to send a batch of messages.
+|100 ms
+|===
+
+===== Sending Messages
+
+Once a `Producer` has been created, it is possible to send a message with
+the `Producer#send(Message, ConfirmationHandler)` method. The following
+snippet shows how to publish a message with a byte array payload:
+
+.Sending a message
 [source,java,indent=0]
 --------
-include::{test-examples}/ClientUsage.java[tag=publish-simple]
+include::{test-examples}/ProducerUsage.java[tag=producer-publish]
 --------
 <1> The payload of a message is an array of bytes
-<2> The stream to publish to
-<3> The content to publish
+<2> Create the message with `Producer#messageBuilder()`
+<3> Define the behavior on publish confirmation
 
-The `publish` method returns a long: it is the publishing identifier
-for the message. This identifier is used to correlate the message
-with a publishing confirmation that the broker sends asynchronously.
-This allows making sure a message made it to the broker and provides
-at-least-once guarantees.
+Messages are not only made of a `byte[]` payload, we will see in
+<<working-with-complex-messages,the next section>>
+they can also carry pre-defined and application properties.
 
-NOTE: The publishing identifier is local to the client instance connection. It
-is neither a global identifier for the message, nor the offset of the message
-in the stream.
+The `ConfirmationHandler` defines an asynchronous callback invoked
+when the client received from the broker the confirmation the message
+has been taken into account. The `ConfirmationHandler` is the place
+for any logic on publishing confirmation, including
+re-publishing the message if it is negatively acknowledged.
 
-Each `Client` instance can register a callback to react
-to publish confirms when the instance is created:
+===== Working with Complex Messages
 
-.Handling publish confirms
-[source,java,indent=0]
---------
-include::{test-examples}/ClientUsage.java[tag=publish-confirm-callback]
---------
-<1> Set publish confirm callback on client creation
-
-The broker also sends notification for messages that it could not
-take into account, for example when the targeted stream does not
-exist or is not available. Just like with publish confirms, set
-up the listener when creating the client instance:
-
-.Handling publishing errors
-[source,java,indent=0]
---------
-include::{test-examples}/ClientUsage.java[tag=publish-error-callback]
---------
-<1> Set publish error callback on client creation
-
-The `PublishErrorListener` callback provides the publishing ID as well
-as an error code to figure out the reason of the publishing error.
-
-It is also possible to publish messages in batch, with the
-`publishBinary(List<byte[]>)` method. The method returns a
-list of publishing identifiers
-to handle publish confirms. The following snippet shows how to use
-publish messages in batch:
-
-.Publishing messages in batch
-[source,java,indent=0]
---------
-include::{test-examples}/ClientUsage.java[tag=publish-multiple]
---------
-<1> Messages are a list of byte arrays
-<2> The stream to publish to
-<3> The messages to publish
-
-TIP: Use batch publishing to improve throughput.
-
-You may wonder if messages are only made of a byte array payload. They are not.
-They can have fixed and arbitrary headers. We will see how to
-create complex messages in a dedicated section.
-
-==== Consuming Messages
-
-The `Client#subscribe` method allows subscribing to a stream:
-
-.Subscribing to a stream
-[source,java,indent=0]
---------
-include::{test-examples}/ClientUsage.java[tag=subscribe]
---------
-<1> The identifier of the subscription
-<2> The stream to consume from
-<3> The offset to start consuming from
-<4> The initial number of credits
-<5> Check if response is OK
-<6> Check response code
-
-Once the subscription is done, the broker will start sending messages.
-We will see how to handle these messages asynchronously in a callback in a moment.
-Let's have a further look at the parameters of `subscribe`:
-
-* Identifier of the subscription: this is an arbitrary number to correlate
-the subscription with the inbound messages. The value must be unique within
-the connection.
-* Stream: this is the stream to consume from. It obviously must exist.
-* Offset: this is the offset to start consuming from. There are several ways to
-specify the offset:
-** `OffsetSpecification.first()`: starting from the first available offset. If
-the stream has not been <<limiting-the-size-of-a-stream,truncated>>, this
-means the beginning of the stream (offset 0).
-** `OffsetSpecification.last()`: starting from the end of the stream and returning
-the last chunk of messages immediately (if the stream is not empty).
-** `OffsetSpecification.next()`: starting from the next offset to be written. Contrary
-to `OffsetSpecification.last()`, consuming with `OffsetSpecification.next()`
-will not return anything if no-one is publishing to the stream. The broker will start
-sending messages to the consumer when messages are published to the stream.
-** `OffsetSpecification.offset(offset)`: starting from the specified offset. 0 means consuming
-from the beginning of the stream (first messages). The client
-can also specify any number, for example the offset where it left off
-in a previous incarnation of the application.
-** `OffsetSpecification.timestamp(timestamp)`: starting from the messages stored
-after the specified timestamp.
-* Initial number of credits: the number of chunks of messages the broker can
-send immediately after the subscription. This is a way to throttle delivery
-in case the broker send messages faster than the client can process them. We will
-see more about credits later.
-
-The broker delivers messages in chunks (batches). The size of a chunk is not
-fixed, it can vary from a few messages to thousands of them in the same chunk.
-Delivering messages in chunks instead of one by one contributes to the higher throughput
-RabbitMQ Stream can achieve compared to other protocols like AMQP 0-9-1
-(which do use batch at all).
-
-The `Client` provides 2 callbacks to handle inbound messages: one for each
-chunk and another one for each message within a chunk. Here is more information
-about each callback:
-
-* A `ChunkListener`: this callback is merely technical, it gives
-the application the occasion to ask for more chunks of messages
-or to compute metrics about chunks (number of messages, size in bytes).
-* A `MessageListener`: this callback should contain the application code
-to process a message.
-
-The 2 callbacks are provided when creating the `Client` instance:
-
-.Consuming messages
-[source,java,indent=0]
---------
-include::{test-examples}/ClientUsage.java[tag=consume]
---------
-<1> Set chunk listener
-<2> Ask for a new chunk after each chunk delivery
-<3> Set message listener
-<4> Get and process byte array payload
-
-Asking for a new credit on each chunk is usually a good default, so
-the `ChunkListener` implementation above can be taken as-is for
-most applications.
-
-[NOTE]
-.What's the deal with credits?
-====
-The broker cannot keep sending messages to a client if the latter
-cannot keep up. There must be a way for the client and the server
-to agree on the delivery rate, not too high, but also not to low
-(to keep the client busy). Credits are way to achieve this.
-
-When subscribing, the client specifies an initial number of credits. For
-every chunk the broker delivers, it removes a credit from the initial
-count. Once the credit count reaches 0 for the subscription, the broker
-stops sending chunks of messages. The client needs to ask for more credits to see
-more chunks of messages getting sent. This way a client can make
-sure it is not overwhelmed by the flow of incoming message.
-
-But the client must be careful in the way it asks for credits.
-It can choose to ask for more
-chunks when its credit count reaches 0, but this is usually not a good strategy:
-during the time the credit request arrives to the broker and a new chunk
-is received, the client remains idle, wasting processing time. This is why
-it is usually preferable to ask for a reasonable amount of initial credits
-(a few, not dozens, remember a chunk can contain thousands of messages)
-and ask for a new credit on every chunk.
-
-Inappropriate credit values can be the cause of an unstable consuming rate.
-The recommendation given above is usually a good rule of thumb, but may not
-be appropriate for all workloads.
-====
-
-==== Working with Complex Messages
-
-The publishing and consuming examples showed that messages are made of
-a byte array payload, but they did not go much further. Messages in RabbitMQ Stream
+The publishing example above showed that messages are made of
+a byte array payload, but it did not go much further. Messages in RabbitMQ Stream
 can actually be more sophisticated, as they comply to the
 https://www.amqp.org/resources/specifications[AMQP 1.0 message format].
 
@@ -528,15 +517,15 @@ message ID, correlation ID, content type, etc).
 
 The RabbitMQ Stream Java client uses the `Message` interface to abstract
 a message and the recommended way to create `Message` instances is to
-use the `Client#messageBuilder` method. To publish a `Message`, use
-the `Client#publish(String,Message)`:
+use the `Producer#messageBuilder()` method. To publish a `Message`, use
+the `Producer#send(Message,ConfirmationHandler)`:
 
-.Creating a `Message` instance
+.Creating a message with properties
 [source,java,indent=0]
 --------
-include::{test-examples}/ClientUsage.java[tag=message-creation]
+include::{test-examples}/ProducerUsage.java[tag=producer-publish-complex-message]
 --------
-<1> Get the message builder from the client
+<1> Get the message builder from the producer
 <2> Get the properties builder and set some properties
 <3> Go back to message builder
 <4> Set byte array payload
@@ -560,6 +549,45 @@ AMQP 1.0 message format was chosen because of its flexibility and its advanced
 type system. It provides good interoperability, which allows streams
 to be accessed as AMQP 0-9-1 queues, without data loss.
 ====
+
+==== Consumer
+
+A `Consumer` instance is created with `Environment#consumerBuilder()`. The main
+settings are the stream to consume from, the place in the stream to start
+consuming from (the _offset_), and a callback when a message is received
+(the `MessageHandler`). The next snippet shows how to create a `Consumer`:
+
+.Creating a consumer
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=producer-creation]
+--------
+<1> Use `Environment#consumerBuilder()` to define the consumer
+<2> Specify the stream to consume from
+<3> Specify where to start consuming from
+<4> Define behavior on message consumption
+<5> Build the consumer
+<6> Close consumer after usage
+
+The broker start sending messages as soon as the `Consumer` instance is created.
+
+The possible values for the offset parameter are the following:
+
+* `OffsetSpecification.first()`: starting from the first available offset. If
+the stream has not been <<limiting-the-size-of-a-stream,truncated>>, this
+means the beginning of the stream (offset 0).
+* `OffsetSpecification.last()`: starting from the end of the stream and returning
+the last chunk of messages immediately (if the stream is not empty).
+* `OffsetSpecification.next()`: starting from the next offset to be written. Contrary
+to `OffsetSpecification.last()`, consuming with `OffsetSpecification.next()`
+will not return anything if no-one is publishing to the stream. The broker will start
+sending messages to the consumer when messages are published to the stream.
+* `OffsetSpecification.offset(offset)`: starting from the specified offset. 0 means consuming
+from the beginning of the stream (first messages). The client
+can also specify any number, for example the offset where it left off
+in a previous incarnation of the application.
+* `OffsetSpecification.timestamp(timestamp)`: starting from the messages stored
+after the specified timestamp.
 
 === Builing the Client
 

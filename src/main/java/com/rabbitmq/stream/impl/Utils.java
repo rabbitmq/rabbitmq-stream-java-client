@@ -12,25 +12,33 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-public class ChunkChecksumValidationException extends StreamException {
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
-    private final long expected;
-    private final long computed;
+final class Utils {
 
+    private Utils() {
 
-    public ChunkChecksumValidationException(long expected, long computed) {
-        super("Expecting " + expected + ", got " + computed);
-        this.expected = expected;
-        this.computed = computed;
     }
 
-    public long getExpected() {
-        return expected;
+    static Runnable makeIdempotent(Runnable action) {
+        AtomicBoolean executed = new AtomicBoolean(false);
+        return () -> {
+            if (executed.compareAndSet(false, true)) {
+                action.run();
+            }
+        };
     }
 
-    public long getComputed() {
-        return computed;
+    static <T> Consumer<T> makeIdempotent(Consumer<T> action) {
+        AtomicBoolean executed = new AtomicBoolean(false);
+        return t -> {
+            if (executed.compareAndSet(false, true)) {
+                action.accept(t);
+            }
+        };
     }
+
 }

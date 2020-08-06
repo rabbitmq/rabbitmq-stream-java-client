@@ -12,14 +12,29 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.Codec;
 
-    public AuthenticationFailureException(String message) {
-        super(message);
+final class Codecs {
+
+    private Codecs() {
+
     }
+
+    static final Codec DEFAULT;
+
+    static {
+        DEFAULT = instanciateDefault();
+    }
+
+    private static Codec instanciateDefault() {
+        try {
+            return (Codec) Class.forName("com.rabbitmq.stream.codec.QpidProtonCodec").getConstructor().newInstance();
+        } catch (Exception e) {
+            throw new StreamException(e);
+        }
+    }
+
 }

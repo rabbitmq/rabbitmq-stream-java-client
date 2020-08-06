@@ -58,19 +58,19 @@ public class OffsetSpecification {
         return new OffsetSpecification(TYPE_TIMESTAMP, timestamp);
     }
 
-    boolean isOffset() {
+    public boolean isOffset() {
         return this.type == TYPE_OFFSET;
     }
 
-    boolean isTimestamp() {
+    public boolean isTimestamp() {
         return this.type == TYPE_TIMESTAMP;
     }
 
-    short getType() {
+    public short getType() {
         return type;
     }
 
-    long getOffset() {
+    public long getOffset() {
         return offset;
     }
 

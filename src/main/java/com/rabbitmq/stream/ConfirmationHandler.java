@@ -14,12 +14,8 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Exception to report a failed authentication attempt.
- */
-public class AuthenticationFailureException extends StreamException {
+public interface ConfirmationHandler {
 
-    public AuthenticationFailureException(String message) {
-        super(message);
-    }
+    void handle(ConfirmationStatus confirmationStatus);
+
 }

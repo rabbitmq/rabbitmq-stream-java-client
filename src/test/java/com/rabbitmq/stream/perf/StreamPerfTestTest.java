@@ -14,7 +14,7 @@
 
 package com.rabbitmq.stream.perf;
 
-import com.rabbitmq.stream.Client;
+import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.Constants;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +31,7 @@ public class StreamPerfTestTest {
         return new StreamPerfTest.MapTopology(
                 // order of replicas matter in the sample data
                 // the BrokerLocator implementation can sort them for better spreading
-                new HashMap<String, com.rabbitmq.stream.Client.StreamMetadata>() {{
+                new HashMap<String, Client.StreamMetadata>() {{
                     put("stream1", new Client.StreamMetadata("stream1", Constants.RESPONSE_CODE_OK,
                             new Client.Broker("broker1", 5555),
                             Arrays.asList(new Client.Broker("broker3", 5555), new Client.Broker("broker2", 5555))
