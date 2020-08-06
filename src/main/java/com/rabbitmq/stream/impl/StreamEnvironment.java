@@ -341,6 +341,11 @@ class StreamEnvironment implements Environment {
                     clientParametersPrototype.duplicate()
                             .host(leader.getHost())
                             .port(leader.getPort())
+                            .shutdownListener(shutdownContext -> {
+                                if (shutdownContext.isShutdownUnexpected()) {
+                                    publishingClientPool.remove(key);
+                                }
+                            })
                             .clientProperty("name", "rabbitmq-stream-producer")
             );
         });

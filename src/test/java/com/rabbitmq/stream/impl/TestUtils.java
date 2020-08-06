@@ -29,6 +29,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.apiguardian.api.API.Status.STABLE;
@@ -81,6 +82,25 @@ final class TestUtils {
         }
     }
 
+    static Consumer<Object> namedTask(TaskWithException task, String description) {
+        return new Consumer<Object>() {
+
+            @Override
+            public void accept(Object o) {
+                try {
+                    task.run(o);
+                } catch (Exception e) {
+                    throw new RuntimeException();
+                }
+            }
+
+            @Override
+            public String toString() {
+                return description;
+            }
+        };
+    }
+
     @Target({ElementType.TYPE, ElementType.METHOD})
     @Retention(RetentionPolicy.RUNTIME)
     @Documented
@@ -88,6 +108,12 @@ final class TestUtils {
     @API(status = STABLE, since = "5.1")
     @interface DisabledIfRabbitMqCtlNotSet {
 
+
+    }
+
+    interface TaskWithException {
+
+        void run(Object context) throws Exception;
 
     }
 
