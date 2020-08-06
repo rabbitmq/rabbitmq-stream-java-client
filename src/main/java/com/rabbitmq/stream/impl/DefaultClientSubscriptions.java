@@ -232,20 +232,15 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                         if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
                             // scheduling consumer re-assignment, to give the system some time to recover
                             environment.scheduledExecutorService().schedule(() -> {
-                                try {
-                                    LOGGER.debug("Trying to move {} subscription(s) (stream {})", affectedSubscriptions.size(), stream);
-                                    for (StreamSubscription affectedSubscription : affectedSubscriptions) {
-                                        streamSubscriptions.remove(affectedSubscription.subscriptionIdInClient);
-                                    }
-                                    assignConsumersToStream(
-                                            affectedSubscriptions, stream,
-                                            attempt -> attempt == 0 ? Duration.ZERO : metadataUpdateRetryDelay,
-                                            metadataUpdateRetryTimeout
-                                    );
-                                } catch (Exception e) {
-                                    e.printStackTrace();
+                                LOGGER.debug("Trying to move {} subscription(s) (stream {})", affectedSubscriptions.size(), stream);
+                                for (StreamSubscription affectedSubscription : affectedSubscriptions) {
+                                    streamSubscriptions.remove(affectedSubscription.subscriptionIdInClient);
                                 }
-
+                                assignConsumersToStream(
+                                        affectedSubscriptions, stream,
+                                        attempt -> attempt == 0 ? Duration.ZERO : metadataUpdateRetryDelay,
+                                        metadataUpdateRetryTimeout
+                                );
                             }, metadataUpdateInitialDelay.toMillis(), TimeUnit.MILLISECONDS);
                         }
                     }));

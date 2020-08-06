@@ -105,7 +105,6 @@ final class TestUtils {
     @Retention(RetentionPolicy.RUNTIME)
     @Documented
     @ExtendWith(DisabledIfRabbitMqCtlNotSetCondition.class)
-    @API(status = STABLE, since = "5.1")
     @interface DisabledIfRabbitMqCtlNotSet {
 
 

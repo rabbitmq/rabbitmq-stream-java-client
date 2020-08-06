@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
@@ -59,6 +60,7 @@ public class DefaultClientSubscriptionsTest {
     ScheduledExecutorService scheduledExecutorService;
     volatile Client.MetadataListener metadataListener;
     volatile Client.MessageListener messageListener;
+    volatile Client.ShutdownListener shutdownListener;
 
     @BeforeEach
     void init() {
@@ -73,6 +75,12 @@ public class DefaultClientSubscriptionsTest {
             public Client.ClientParameters messageListener(Client.MessageListener messageListener) {
                 DefaultClientSubscriptionsTest.this.messageListener = messageListener;
                 return super.messageListener(messageListener);
+            }
+
+            @Override
+            public Client.ClientParameters shutdownListener(Client.ShutdownListener shutdownListener) {
+                DefaultClientSubscriptionsTest.this.shutdownListener = shutdownListener;
+                return super.shutdownListener(shutdownListener);
             }
         };
         MockitoAnnotations.initMocks(this);
@@ -171,6 +179,58 @@ public class DefaultClientSubscriptionsTest {
 
         messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
         assertThat(messageHandlerCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRedistributeConsumerIfConnectionIsLost() throws Exception {
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        Duration retryDelay = Duration.ofMillis(100);
+        when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+        when(consumer.isOpen()).thenReturn(true);
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, Collections.emptyList())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, Collections.emptyList())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        AtomicInteger messageHandlerCalls = new AtomicInteger();
+        long subscriptionGlobalId = clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+            messageHandlerCalls.incrementAndGet();
+        });
+        verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        assertThat(messageHandlerCalls.get()).isEqualTo(0);
+        messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+
+        shutdownListener.handle(new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+        Thread.sleep(retryDelay.toMillis() * 5);
+
+        verify(client, times(2)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(2);
+
+        when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        clientSubscriptions.unsubscribe(subscriptionGlobalId);
+        verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+
+        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        assertThat(messageHandlerCalls.get()).isEqualTo(2);
     }
 
     @Test
