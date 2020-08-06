@@ -466,14 +466,23 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </ul>
 </li>
 <li><a href="#sample-application">Sample Application</a></li>
-<li><a href="#client-reference">Client Reference</a>
+<li><a href="#rabbitmq-stream-java-api">RabbitMQ Stream Java API</a>
 <ul class="sectlevel3">
-<li><a href="#connecting-to-rabbitmq-stream">Connecting to RabbitMQ Stream</a></li>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#environment">Environment</a>
+<ul class="sectlevel4">
+<li><a href="#creating-the-environment">Creating the Environment</a></li>
 <li><a href="#managing-streams">Managing Streams</a></li>
-<li><a href="#limiting-the-size-of-a-stream">Limiting the Size of a Stream</a></li>
-<li><a href="#publishing-messages">Publishing Messages</a></li>
-<li><a href="#consuming-messages">Consuming Messages</a></li>
+</ul>
+</li>
+<li><a href="#producer">Producer</a>
+<ul class="sectlevel4">
+<li><a href="#creating-a-producer">Creating a Producer</a></li>
+<li><a href="#sending-messages">Sending Messages</a></li>
 <li><a href="#working-with-complex-messages">Working with Complex Messages</a></li>
+</ul>
+</li>
+<li><a href="#consumer">Consumer</a></li>
 </ul>
 </li>
 <li><a href="#builing-the-client">Builing the Client</a></li>
@@ -494,7 +503,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="paragraph">
 <p>The RabbitMQ Stream Java Client is a Java library to communicate with
 the <a href="https://github.com/rabbitmq/rabbitmq-stream">RabbitMQ Stream Plugin</a>.
-It allows to create and delete streams, as well as to publish to and consume from
+It allows creating and delete streams, as well as to publish to and consume from
 these streams.</p>
 </div>
 </div>
@@ -503,10 +512,11 @@ these streams.</p>
 <h2 id="what-is-a-rabbitmq-stream"><a class="anchor" href="#what-is-a-rabbitmq-stream"></a>What is a RabbitMQ Stream?</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>A RabbitMQ stream is an append-only, FIFO structure. It differs from the classical
+<p>A RabbitMQ stream is a persistent and replicated data structure that models
+an <a href="https://en.wikipedia.org/wiki/Append-only">append-only log</a>. It differs from the classical
 RabbitMQ queue in the way message consumption works. In a classical RabbitMQ queue,
 consuming removes messages from the queue. In a RabbitMQ stream, consuming leaves
-the stream intact. So the content of a stream can read and re-read without
+the stream intact. So the content of a stream can be read and re-read without
 impact or destructive effect.</p>
 </div>
 <div class="paragraph">
@@ -524,7 +534,7 @@ require the whole history of data ("replay").</p>
 </div>
 <div class="paragraph">
 <p>Streams can also be useful when a higher throughput than with classical
-RabbitMQ queues is required. RabbitMQ streams use various optimization techniques
+RabbitMQ queues is required. RabbitMQ streams use various optimization techniques,
 and a custom network protocol to achieve performances that are not possible
 with the other protocols supported in RabbitMQ (AMQP, STOMP, MQTT). This
 does not make the stream protocol better than these protocols, they just
@@ -538,25 +548,25 @@ all serve different purposes.</p>
 <div class="paragraph">
 <p>It is also possible to use the stream abstraction in RabbitMQ
 with the AMQP 0-9-1 protocol. Instead of consuming from a stream
-with the stream protocol, one consumes from a <em>stream queue</em> with
-the AMQP 0-9-1. A <em>stream queue</em> is a special type of queue that
-has been adapted to provide the stream semantics (mainly non-destructive
-reading).</p>
+with the stream protocol, one consumes from a "stream-powered" queue with
+the AMQP 0-9-1 protocol. A "stream-powered" queue is a special type of queue that
+is backed up with a stream infrastructure layer and adapted to
+provide the stream semantics (mainly non-destructive reading).</p>
 </div>
 <div class="paragraph">
-<p>Using a stream queue has the advantage to provide the features
+<p>Using such a queue has the advantage to provide the features
 inherent to the stream abstraction (append-only structure, non-destructive
 reading) with any AMQP 0-9-1 client library. This is clearly
 interesting when considering the maturity of AMQP 0-9-1 client libraries
 and the ecosystem around AMQP 0-9-1.</p>
 </div>
 <div class="paragraph">
-<p>But by using a stream queue, one does not benefit from the performance
+<p>But by using it, one does not benefit from the performance
 of the stream protocol, which has been designed for performance in mind,
 whereas AMQP 0-9-1 is a more general-purpose protocol.</p>
 </div>
 <div class="paragraph">
-<p>It is not possible to use stream queues with the stream Java client,
+<p>It is not possible to use "stream-powered" queues with the stream Java client,
 you need to use an AMQP 0-9-1 client library.</p>
 </div>
 </div>
@@ -703,10 +713,10 @@ repositories {
 <div class="sect2">
 <h3 id="sample-application"><a class="anchor" href="#sample-application"></a>Sample Application</h3>
 <div class="paragraph">
-<p>This section covers the basics of the stream Java client by building
+<p>This section covers the basics of the RabbitMQ Stream Java API by building
 a small publish/consume application. This is a good way to get
-an overview of the client. If you want a more comprehensive introduction,
-you can go to the <a href="#client-reference">the reference documentation section</a>.</p>
+an overview of the API. If you want a more comprehensive introduction,
+you can go to the <a href="#rabbitmq-stream-java-api">the reference documentation section</a>.</p>
 </div>
 <div class="paragraph">
 <p>The sample application publishes some messages and then registers
@@ -719,9 +729,7 @@ a consumer to make some computations out of them. The
 <div class="listingblock">
 <div class="title">Imports for the sample application</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="keyword">import</span> <span class="include">com.rabbitmq.stream.Client</span>;
-<span class="keyword">import</span> <span class="include">com.rabbitmq.stream.OffsetSpecification</span>;
-
+<pre class="CodeRay highlight"><code data-lang="java"><span class="keyword">import</span> <span class="include">com.rabbitmq.stream</span>.*;
 <span class="keyword">import</span> <span class="include">java.util.UUID</span>;
 <span class="keyword">import</span> <span class="include">java.util.concurrent.CountDownLatch</span>;
 <span class="keyword">import</span> <span class="include">java.util.concurrent.TimeUnit</span>;
@@ -730,25 +738,55 @@ a consumer to make some computations out of them. The
 </div>
 </div>
 <div class="paragraph">
-<p>Then comes the publishing part. The next snippet shows a client instance
-used to publish messages. The body of each message is made of the value
-of a sequence. A count down latch is used to make sure the broker confirmed
-all the messages before closing the publisher connection.</p>
+<p>The next step is to create the <code>Environment</code>. It is a management object
+used to manage streams and create producers as well as consumers. The
+next snippet shows how to create an <code>Environment</code> instance and
+create the stream used in the application:</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating the environment</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Connecting...</span><span class="delimiter">&quot;</span></span>);
+Environment environment = Environment.builder().build();  <i class="conum" data-value="1"></i><b>(1)</b>
+<span class="predefined-type">String</span> stream = <span class="predefined-type">UUID</span>.randomUUID().toString();
+environment.streamCreator().stream(stream).create();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Use <code>Environment#builder</code> to create the environment</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Create the stream</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Then comes the publishing part. The next snippet shows how to create
+a <code>Producer</code>, send messages, and handle publishing confirmations, to
+make sure the broker has taken outbound messages into account.
+The application uses a count down latch to move on once the messages
+have been confirmed.</p>
 </div>
 <div class="listingblock">
 <div class="title">Publishing messages</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting publishing...</span><span class="delimiter">&quot;</span></span>);
 <span class="type">int</span> messageCount = <span class="integer">10000</span>;
-<span class="predefined-type">String</span> stream = <span class="predefined-type">UUID</span>.randomUUID().toString();
 <span class="predefined-type">CountDownLatch</span> publishConfirmLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
-Client publisher = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .publishConfirmListener(publishingId -&gt; publishConfirmLatch.countDown()));  <i class="conum" data-value="1"></i><b>(1)</b>
-publisher.create(stream);  <i class="conum" data-value="2"></i><b>(2)</b>
+Producer producer = environment.producerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+        .stream(stream)
+        .build();
 IntStream.range(<span class="integer">0</span>, messageCount)
-        .forEach(i -&gt; publisher.publish(stream, <span class="predefined-type">String</span>.valueOf(i).getBytes()));  <i class="conum" data-value="3"></i><b>(3)</b>
-publishConfirmLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="4"></i><b>(4)</b>
-publisher.close();  <i class="conum" data-value="5"></i><b>(5)</b>
+        .forEach(i -&gt; producer.send(  <i class="conum" data-value="2"></i><b>(2)</b>
+                producer.messageBuilder().addData(<span class="predefined-type">String</span>.valueOf(i).getBytes()).build(),  <i class="conum" data-value="3"></i><b>(3)</b>
+                confirmationStatus -&gt; publishConfirmLatch.countDown()  <i class="conum" data-value="4"></i><b>(4)</b>
+        ));
+publishConfirmLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
+producer.close();  <i class="conum" data-value="6"></i><b>(6)</b>
 <span class="predefined-type">System</span>.out.printf(<span class="string"><span class="delimiter">&quot;</span><span class="content">Published %,d messages%n</span><span class="delimiter">&quot;</span></span>, messageCount);</code></pre>
 </div>
 </div>
@@ -756,34 +794,35 @@ publisher.close();  <i class="conum" data-value="5"></i><b>(5)</b>
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Count down on message publishing confirmation</td>
+<td>Create the <code>Producer</code> with <code>Environment#producerBuilder</code></td>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Create the target stream</td>
+<td>Send messages with <code>Producer#send(Message, ConfirmationHandler)</code></td>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Publish messages in a loop</td>
+<td>Create a message with <code>Producer#messageBuilder</code></td>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Wait for all publishing confirmations to have arrived</td>
+<td>Count down on message publishing confirmation</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="5"></i><b>5</b></td>
-<td>Close the publisher connection</td>
+<td>Wait for all publishing confirmations to have arrived</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Close the producer</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>The next snippet shows how to consume and process the messages published previously.
-It sets up a chunk listener when creating the client instance. The chunk listener is called
-every time the broker delivers a chunk (batch) of messages to the client. It
-asks the broker to deliver another chunk with the <code>credit</code> command. A message listener
-is also set up on client creation. The message listener is called every time a message
-is delivered (as part of a chunk). Once all messages have been received, the sum is output
-to the console, the stream is deleted, and the consumer connection is closed.</p>
+<p>It is now time to consume the messages. The <code>Environment</code> lets us create a <code>Consumer</code>
+and provide some logic on each incoming message by implementing a <code>MessageHandler</code>.
+The next snippet does this to calculate a sum and output it once all the messages
+have been received:</p>
 </div>
 <div class="listingblock">
 <div class="title">Consuming messages</div>
@@ -791,40 +830,38 @@ to the console, the stream is deleted, and the consumer connection is closed.</p
 <pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting consuming...</span><span class="delimiter">&quot;</span></span>);
 <span class="predefined-type">AtomicLong</span> sum = <span class="keyword">new</span> <span class="predefined-type">AtomicLong</span>(<span class="integer">0</span>);
 <span class="predefined-type">CountDownLatch</span> consumeLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
-Client consumer = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .chunkListener((client, subscriptionId, offset, messagesInChunk, dataSize) -&gt;
-                client.credit(subscriptionId, <span class="integer">1</span>))  <i class="conum" data-value="1"></i><b>(1)</b>
-        .messageListener((subscriptionId, offset, message) -&gt; {
-            sum.addAndGet(<span class="predefined-type">Long</span>.parseLong(<span class="keyword">new</span> <span class="predefined-type">String</span>(message.getBodyAsBinary())));  <i class="conum" data-value="2"></i><b>(2)</b>
-            consumeLatch.countDown();  <i class="conum" data-value="3"></i><b>(3)</b>
-        }));
+Consumer consumer = environment.consumerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+        .stream(stream)
+        .messageHandler((offset, message) -&gt; {  <i class="conum" data-value="2"></i><b>(2)</b>
+            sum.addAndGet(<span class="predefined-type">Long</span>.parseLong(<span class="keyword">new</span> <span class="predefined-type">String</span>(message.getBodyAsBinary())));  <i class="conum" data-value="3"></i><b>(3)</b>
+            consumeLatch.countDown();  <i class="conum" data-value="4"></i><b>(4)</b>
+        })
+        .build();
 
-consumer.subscribe(<span class="integer">1</span>, stream, OffsetSpecification.first(), <span class="integer">10</span>);  <i class="conum" data-value="4"></i><b>(4)</b>
 consumeLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
 
 <span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Sum: </span><span class="delimiter">&quot;</span></span> + sum.get());  <i class="conum" data-value="6"></i><b>(6)</b>
 
-consumer.delete(stream);  <i class="conum" data-value="7"></i><b>(7)</b>
-consumer.close();  <i class="conum" data-value="8"></i><b>(8)</b></code></pre>
+consumer.close();  <i class="conum" data-value="7"></i><b>(7)</b></code></pre>
 </div>
 </div>
 <div class="colist arabic">
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Ask for a new chunk for each chunk received</td>
+<td>Create the <code>Consumer</code> with <code>Environment#consumerBuilder</code></td>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Add the value in the message body to the sum</td>
+<td>Set up the logic to handle messages</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Count down on each message</td>
+<td>Add the value in the message body to the sum</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Start consuming at the beginning of the stream</td>
+<td>Count down on each message</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="5"></i><b>5</b></td>
@@ -836,11 +873,30 @@ consumer.close();  <i class="conum" data-value="8"></i><b>(8)</b></code></pre>
 </tr>
 <tr>
 <td><i class="conum" data-value="7"></i><b>7</b></td>
+<td>Close the consumer</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The application has some cleaning to do before terminating, that is
+deleting the stream and closing the environment:</p>
+</div>
+<div class="listingblock">
+<div class="title">Cleaning before terminating</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">environment.deleteStream(stream);  <i class="conum" data-value="1"></i><b>(1)</b>
+environment.close();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
 <td>Delete the stream</td>
 </tr>
 <tr>
-<td><i class="conum" data-value="8"></i><b>8</b></td>
-<td>Close the consumer connection</td>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Close the environment</td>
 </tr>
 </table>
 </div>
@@ -863,65 +919,198 @@ Sum: 49995000</pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="client-reference"><a class="anchor" href="#client-reference"></a>Client Reference</h3>
+<h3 id="rabbitmq-stream-java-api"><a class="anchor" href="#rabbitmq-stream-java-api"></a>RabbitMQ Stream Java API</h3>
 <div class="sect3">
-<h4 id="connecting-to-rabbitmq-stream"><a class="anchor" href="#connecting-to-rabbitmq-stream"></a>Connecting to RabbitMQ Stream</h4>
+<h4 id="overview"><a class="anchor" href="#overview"></a>Overview</h4>
 <div class="paragraph">
-<p>The main API of the stream Java client is the <code>com.rabbitmq.stream.Client</code>
-class. To connect to a local instance of the RabbitMQ Stream plugin
-with the default user and password, just create an <code>Client</code> instance</p>
+<p>This section describes the API to connect to the RabbitMQ Stream Plugin, publish messages, and
+consume messages. There are 3 main interfaces:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>com.rabbitmq.stream.Environment</code> for connecting to a node and optionally
+managing streams.</p>
+</li>
+<li>
+<p><code>com.rabbitmq.stream.Producer</code> to publish messages.</p>
+</li>
+<li>
+<p><code>com.rabbitmq.stream.Consumer</code> to consume messages.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="environment"><a class="anchor" href="#environment"></a>Environment</h4>
+<div class="sect4">
+<h5 id="creating-the-environment"><a class="anchor" href="#creating-the-environment"></a>Creating the Environment</h5>
+<div class="paragraph">
+<p>The environment is the main entry point to a node or a cluster of nodes. <code>Producer</code> and
+<code>Consumer</code> instances are created from an <code>Environment</code> instance. Here is the simplest
+way to create an <code>Environment</code> instance:</p>
 </div>
 <div class="listingblock">
-<div class="title">Connecting with all the defaults</div>
+<div class="title">Creating an environment with all the defaults</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(); <i class="conum" data-value="1"></i><b>(1)</b></code></pre>
+<pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder().build();  <i class="conum" data-value="1"></i><b>(1)</b>
+<span class="comment">// ...</span>
+environment.close(); <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 </div>
 </div>
 <div class="colist arabic">
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Connect to localhost:5555 with guest / guest</td>
+<td>Create an environment that will connect to localhost:5555</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Close the environment after usage</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>A <code>Client</code> constructor can take a <code>ClientParameters</code> to set
-parameters like host, port, virtual host, username, and password:</p>
+<p>Note the environment must be closed to release resources when it is no
+longer needed.</p>
+</div>
+<div class="paragraph">
+<p>Consider the environment like a long-lived object. An application will usually
+create one <code>Environment</code> instance when it starts up and close it when it exits.</p>
+</div>
+<div class="paragraph">
+<p>It is possible to use a URI to specify all the necessary information to
+connect to a node:</p>
 </div>
 <div class="listingblock">
-<div class="title">Connecting with parameters</div>
+<div class="title">Creating an environment with a URI</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters() <i class="conum" data-value="1"></i><b>(1)</b>
-        .host(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-rabbitmq-stream</span><span class="delimiter">&quot;</span></span>)
-        .port(<span class="integer">1234</span>)
-        .virtualHost(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-virtual-host</span><span class="delimiter">&quot;</span></span>)
-        .username(<span class="string"><span class="delimiter">&quot;</span><span class="content">stream-user</span><span class="delimiter">&quot;</span></span>)
-        .password(<span class="string"><span class="delimiter">&quot;</span><span class="content">stream-password</span><span class="delimiter">&quot;</span></span>)
-);</code></pre>
+<pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder()
+        .uri(<span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://guest:guest@localhost:5555/%2f</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+        .build();</code></pre>
 </div>
 </div>
 <div class="colist arabic">
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Use <code>ClientParameters</code> to set connection parameters</td>
+<td>Use the <code>uri</code> method to specify the URI to connect to</td>
 </tr>
 </table>
 </div>
-</div>
-<div class="sect3">
-<h4 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h4>
 <div class="paragraph">
-<p>Streams can be created with the <code>Client#create(String)</code> method:</p>
+<p>The previous snippet uses a URI that specifies the following information: host, port,
+username, password, and virtual host (<code>/</code>, which is encoded as <code>%2f</code>).
+The URI follows the same rules as the
+<a href="https://www.rabbitmq.com/uri-spec.html">AMQP 0.9.1 URI</a>,
+except the protocol must be <code>rabbitmq-stream</code> and TLS is not supported.</p>
+</div>
+<div class="paragraph">
+<p>When using one URI, the corresponding node will be the main entry point to connect to. The
+<code>Environment</code> will then use the stream protocol to find out more about streams topology
+(leaders and replicas) when asked to create <code>Producer`s and `Consumer`s. The `Environment</code>
+may become blind if this node goes down though, so it may be more appropriate to specify
+several other URIs to try in case of failure of a node:</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating an environment with several URIs</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder()
+        .uris(<span class="predefined-type">Arrays</span>.asList(                     <i class="conum" data-value="1"></i><b>(1)</b>
+                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host1:5555</span><span class="delimiter">&quot;</span></span>,
+                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host2:5555</span><span class="delimiter">&quot;</span></span>,
+                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host3:5555</span><span class="delimiter">&quot;</span></span>)
+        )
+        .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Use the <code>uris</code> method to specify several URIs</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>By specifying several URIs, the environment will try to connect to the first one, and
+will pick a new URI randomly in case of disconnection.</p>
+</div>
+<div class="paragraph">
+<p>The following table sums up the main settings to create a <code>Environment</code>:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Parameter Name</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>uri</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The URI of the node to connect to (single node).</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream://guest:guest@localhost:5555/%2f</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>uris</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The URI of the nodes to try to connect to (cluster).</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream://guest:guest@localhost:5555/%2f</code> singleton list</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>host</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Host to connect to.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>localhost</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>port</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Port to use.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>5555</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>username</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Username to use to connect.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>guest</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>password</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Password to use to connect.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>guest</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>virtualHost</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Virtual host to connect to.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>recoveryBackOffDelayPolicy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Delay policy to use for backoff on connection recovery.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Fixed delay of 5 seconds</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect4">
+<h5 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h5>
+<div class="paragraph">
+<p>Streams are usually long-lived, centrally-managed entities, that is, applications
+are not supposed to create and delete them. It is nevertheless possible to create and
+delete stream with the <code>Environment</code>. This comes in handy for development and testing
+purposes.</p>
+</div>
+<div class="paragraph">
+<p>Streams are created with the <code>Environment#streamCreator()</code> method:</p>
 </div>
 <div class="listingblock">
 <div class="title">Creating a stream</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.create(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>); <i class="conum" data-value="1"></i><b>(1)</b>
-<span class="keyword">if</span> (!response.isOk()) { <i class="conum" data-value="2"></i><b>(2)</b>
-    response.getResponseCode(); <i class="conum" data-value="3"></i><b>(3)</b>
-}</code></pre>
+<pre class="CodeRay highlight"><code data-lang="java">environment.streamCreator().stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>).create();  <i class="conum" data-value="1"></i><b>(1)</b></code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -930,30 +1119,15 @@ parameters like host, port, virtual host, username, and password:</p>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
 <td>Create the <code>my-stream</code> stream</td>
 </tr>
-<tr>
-<td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Check if creation is OK</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Check response code</td>
-</tr>
 </table>
 </div>
 <div class="paragraph">
-<p>The <code>Constants</code> class can help to make sense of response codes.</p>
-</div>
-<div class="paragraph">
-<p>The deletion of a stream follows the same pattern with the
-<code>Client#delete(String)</code> method:</p>
+<p>Streams can be deleted with the <code>Environment#delete(String)</code> method:</p>
 </div>
 <div class="listingblock">
 <div class="title">Deleting a stream</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.delete(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>); <i class="conum" data-value="1"></i><b>(1)</b>
-<span class="keyword">if</span> (!response.isOk()) { <i class="conum" data-value="2"></i><b>(2)</b>
-    response.getResponseCode(); <i class="conum" data-value="3"></i><b>(3)</b>
-}</code></pre>
+<pre class="CodeRay highlight"><code data-lang="java">environment.deleteStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>);  <i class="conum" data-value="1"></i><b>(1)</b></code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -962,31 +1136,20 @@ parameters like host, port, virtual host, username, and password:</p>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
 <td>Delete the <code>my-stream</code> stream</td>
 </tr>
-<tr>
-<td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Check if deletion is OK</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Check response code</td>
-</tr>
 </table>
 </div>
 <div class="paragraph">
-<p>Note you should avoid stream churn (creating and deleting streams
-repetitively) as their creation and deletion imply
-some significant housekeeping on the server side (interactions
-with the file system, communication between nodes of the cluster).
-Therefore you should consider streams as long-lived objects.</p>
+<p>Note you should avoid stream churn (creating and deleting streams repetitively)
+as their creation and deletion imply some significant housekeeping on
+the server side (interactions with the file system, communication between nodes of the cluster).</p>
 </div>
-</div>
-<div class="sect3">
-<h4 id="limiting-the-size-of-a-stream"><a class="anchor" href="#limiting-the-size-of-a-stream"></a>Limiting the Size of a Stream</h4>
 <div class="paragraph">
-<p>A stream is an append-only data structure and reading from
-it does not remove data. This means a stream can grow indefinitely. RabbitMQ Stream
-supports a size-based retention policy: once
-the stream reaches a given size, it is truncated (starting from the beginning).</p>
+<p><a id="limiting-the-size-of-a-stream"></a>It is also possible to limit the size of a stream
+when creating it. A stream
+is an append-only data structure and reading from it does not remove data.
+This means a stream can grow indefinitely. RabbitMQ Stream supports a
+size-based retention policy: once the stream reaches a given size,
+it is truncated (starting from the beginning).</p>
 </div>
 <div class="admonitionblock important">
 <table>
@@ -1011,11 +1174,11 @@ in mind that this means some data will be erased!</p>
 <div class="listingblock">
 <div class="title">Setting the retention policy when creating a stream</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">client.create(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>, <span class="keyword">new</span> Client.StreamParametersBuilder()
-        .maxLengthGb(<span class="integer">10</span>) <i class="conum" data-value="1"></i><b>(1)</b>
-        .maxSegmentSizeMb(<span class="integer">500</span>) <i class="conum" data-value="2"></i><b>(2)</b>
-        .build()
-);</code></pre>
+<pre class="CodeRay highlight"><code data-lang="java">environment.streamCreator()
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+        .maxLengthBytes(ByteCapacity.GB(<span class="integer">10</span>))  <i class="conum" data-value="1"></i><b>(1)</b>
+        .maxSegmentSizeBytes(ByteCapacity.MB(<span class="integer">500</span>))  <i class="conum" data-value="2"></i><b>(2)</b>
+        .create();</code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -1031,53 +1194,124 @@ in mind that this means some data will be erased!</p>
 </table>
 </div>
 <div class="paragraph">
-<p>The previous snippet mentions a segment size. RabbitMQ Stream does not store
-a stream in a big, single file, it uses segment files for technical reasons.
+<p>The previous snippet mentions a segment size. RabbitMQ Stream does not store a stream
+in a big, single file, it uses segment files for technical reasons.
 A stream is truncated by deleting whole segment files (and not part of them),
-so the maximum size of a stream is usually significantly higher than the size
-of segment files. 500 MB is a reasonable segment file size to begin with.</p>
+so the maximum size of a stream is usually significantly higher than the size of
+segment files. 500 MB is a reasonable segment file size to begin with.</p>
 </div>
-<div class="paragraph">
-<p>You can also use the <code>ByteCapacity</code> class to set up the retention policy,
-it is just a matter of API preference:</p>
-</div>
-<div class="listingblock">
-<div class="title">Using <code>ByteCapacity</code> to set up the retention policy</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">client.create(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>, <span class="keyword">new</span> Client.StreamParametersBuilder()
-        .maxLengthBytes(ByteCapacity.GB(<span class="integer">10</span>)) <i class="conum" data-value="1"></i><b>(1)</b>
-        .maxSegmentSizeBytes(ByteCapacity.MB(<span class="integer">500</span>)) <i class="conum" data-value="2"></i><b>(2)</b>
-        .build()
-);</code></pre>
-</div>
-</div>
-<div class="colist arabic">
-<table>
-<tr>
-<td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Set the maximum size to 10 GB</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Set the segment size to 500 MB</td>
-</tr>
-</table>
 </div>
 </div>
 <div class="sect3">
-<h4 id="publishing-messages"><a class="anchor" href="#publishing-messages"></a>Publishing Messages</h4>
+<h4 id="producer"><a class="anchor" href="#producer"></a>Producer</h4>
+<div class="sect4">
+<h5 id="creating-a-producer"><a class="anchor" href="#creating-a-producer"></a>Creating a Producer</h5>
 <div class="paragraph">
-<p>The simplest way to publish something to a stream is the
-<code>Client#publish(Stream, byte[])</code> method:</p>
+<p>A <code>Producer</code> instance is created from the <code>Environment</code>. The only mandatory
+setting to specify is the stream to publish to:</p>
 </div>
 <div class="listingblock">
-<div class="title">Publishing a message</div>
+<div class="title">Creating a producer from the environment</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
+        .build();  <i class="conum" data-value="3"></i><b>(3)</b>
+<span class="comment">// ...</span>
+producer.close();  <i class="conum" data-value="4"></i><b>(4)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Use <code>Environment#producerBuilder()</code> to define the producer</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Specify the stream to publish to</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Create the producer instance with <code>build()</code></td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Close the producer after usage</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Consider a <code>Producer</code> instance like a long-lived object, do not create one
+to send just one message.</p>
+</div>
+<div class="paragraph">
+<p>Internally, the <code>Environment</code> will query the broker to find out about
+the topology of the stream and will create or re-use a connection to
+publish to the leader node of the stream.</p>
+</div>
+<div class="paragraph">
+<p>The following table sums up the main settings to create a <code>Producer</code>:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Parameter Name</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchSize</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of messages to accumulate before sending them to the broker.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">100</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>subEntrySize</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
+frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
+as well. Use this feature to increase throughput at the cost of increased latency.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 (meaning no use of sub-entry batching)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxUnconfirmedMessages</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of unconfirmed outbound messages. <code>Producer#send</code> will start
+blocking when the limit is reached.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10,000</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchPublishingDelay</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Period to send a batch of messages.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">100 ms</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect4">
+<h5 id="sending-messages"><a class="anchor" href="#sending-messages"></a>Sending Messages</h5>
+<div class="paragraph">
+<p>Once a <code>Producer</code> has been created, it is possible to send a message with
+the <code>Producer#send(Message, ConfirmationHandler)</code> method. The following
+snippet shows how to publish a message with a byte array payload:</p>
+</div>
+<div class="listingblock">
+<div class="title">Sending a message</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java"><span class="type">byte</span><span class="type">[]</span> messagePayload = <span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8);  <i class="conum" data-value="1"></i><b>(1)</b>
-<span class="type">long</span> publishingId = client.publish(
-        <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
-        messagePayload  <i class="conum" data-value="3"></i><b>(3)</b>
-);</code></pre>
+producer.send(
+        producer.messageBuilder().addData(messagePayload).build(),  <i class="conum" data-value="2"></i><b>(2)</b>
+        confirmationStatus -&gt; {  <i class="conum" data-value="3"></i><b>(3)</b>
+            <span class="keyword">if</span> (confirmationStatus.isConfirmed()) {
+                <span class="comment">// the message made it to the broker</span>
+            } <span class="keyword">else</span> {
+                <span class="comment">// the message did not make it to the broker</span>
+            }
+        });</code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -1088,354 +1322,32 @@ it is just a matter of API preference:</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>The stream to publish to</td>
+<td>Create the message with <code>Producer#messageBuilder()</code></td>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>The content to publish</td>
+<td>Define the behavior on publish confirmation</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>The <code>publish</code> method returns a long: it is the publishing identifier
-for the message. This identifier is used to correlate the message
-with a publishing confirmation that the broker sends asynchronously.
-This allows making sure a message made it to the broker and provides
-at-least-once guarantees.</p>
-</div>
-<div class="admonitionblock note">
-<table>
-<tr>
-<td class="icon">
-<i class="fa icon-note" title="Note"></i>
-</td>
-<td class="content">
-The publishing identifier is local to the client instance connection. It
-is neither a global identifier for the message, nor the offset of the message
-in the stream.
-</td>
-</tr>
-</table>
+<p>Messages are not only made of a <code>byte[]</code> payload, we will see in
+<a href="#working-with-complex-messages">the next section</a>
+they can also carry pre-defined and application properties.</p>
 </div>
 <div class="paragraph">
-<p>Each <code>Client</code> instance can register a callback to react
-to publish confirms when the instance is created:</p>
-</div>
-<div class="listingblock">
-<div class="title">Handling publish confirms</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .publishConfirmListener(publishingId -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
-            <span class="comment">// map publishing ID with initial outbound message</span>
-        })
-);</code></pre>
+<p>The <code>ConfirmationHandler</code> defines an asynchronous callback invoked
+when the client received from the broker the confirmation the message
+has been taken into account. The <code>ConfirmationHandler</code> is the place
+for any logic on publishing confirmation, including
+re-publishing the message if it is negatively acknowledged.</p>
 </div>
 </div>
-<div class="colist arabic">
-<table>
-<tr>
-<td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Set publish confirm callback on client creation</td>
-</tr>
-</table>
-</div>
+<div class="sect4">
+<h5 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h5>
 <div class="paragraph">
-<p>The broker also sends notification for messages that it could not
-take into account, for example when the targeted stream does not
-exist or is not available. Just like with publish confirms, set
-up the listener when creating the client instance:</p>
-</div>
-<div class="listingblock">
-<div class="title">Handling publishing errors</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Client client = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .publishErrorListener((publishingId, errorCode) -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
-            <span class="comment">// map publishing ID with initial outbound message</span>
-        })
-);</code></pre>
-</div>
-</div>
-<div class="colist arabic">
-<table>
-<tr>
-<td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Set publish error callback on client creation</td>
-</tr>
-</table>
-</div>
-<div class="paragraph">
-<p>The <code>PublishErrorListener</code> callback provides the publishing ID as well
-as an error code to figure out the reason of the publishing error.</p>
-</div>
-<div class="paragraph">
-<p>It is also possible to publish messages in batch, with the
-<code>publishBinary(List&lt;byte[]&gt;)</code> method. The method returns a
-list of publishing identifiers
-to handle publish confirms. The following snippet shows how to use
-publish messages in batch:</p>
-</div>
-<div class="listingblock">
-<div class="title">Publishing messages in batch</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">List</span>&lt;<span class="type">byte</span><span class="type">[]</span>&gt; messages = IntStream.range(<span class="integer">0</span>, <span class="integer">9</span>)
-        .mapToObj(i -&gt; (<span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span> + i).getBytes(StandardCharsets.UTF_8))
-        .collect(Collectors.toList());  <i class="conum" data-value="1"></i><b>(1)</b>
-
-<span class="predefined-type">List</span>&lt;<span class="predefined-type">Long</span>&gt; publishingIds = client.publishBinary(
-        <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
-        messages  <i class="conum" data-value="3"></i><b>(3)</b>
-);</code></pre>
-</div>
-</div>
-<div class="colist arabic">
-<table>
-<tr>
-<td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Messages are a list of byte arrays</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>The stream to publish to</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>The messages to publish</td>
-</tr>
-</table>
-</div>
-<div class="admonitionblock tip">
-<table>
-<tr>
-<td class="icon">
-<i class="fa icon-tip" title="Tip"></i>
-</td>
-<td class="content">
-Use batch publishing to improve throughput.
-</td>
-</tr>
-</table>
-</div>
-<div class="paragraph">
-<p>You may wonder if messages are only made of a byte array payload. They are not.
-They can have fixed and arbitrary headers. We will see how to
-create complex messages in a dedicated section.</p>
-</div>
-</div>
-<div class="sect3">
-<h4 id="consuming-messages"><a class="anchor" href="#consuming-messages"></a>Consuming Messages</h4>
-<div class="paragraph">
-<p>The <code>Client#subscribe</code> method allows subscribing to a stream:</p>
-</div>
-<div class="listingblock">
-<div class="title">Subscribing to a stream</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Client.Response response = client.subscribe(
-        <span class="integer">1</span>,  <i class="conum" data-value="1"></i><b>(1)</b>
-        <span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>,  <i class="conum" data-value="2"></i><b>(2)</b>
-        OffsetSpecification.first(),  <i class="conum" data-value="3"></i><b>(3)</b>
-        <span class="integer">10</span>  <i class="conum" data-value="4"></i><b>(4)</b>
-);
-<span class="keyword">if</span> (!response.isOk()) {  <i class="conum" data-value="5"></i><b>(5)</b>
-    response.getResponseCode();  <i class="conum" data-value="6"></i><b>(6)</b>
-}</code></pre>
-</div>
-</div>
-<div class="colist arabic">
-<table>
-<tr>
-<td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>The identifier of the subscription</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>The stream to consume from</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>The offset to start consuming from</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>The initial number of credits</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="5"></i><b>5</b></td>
-<td>Check if response is OK</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="6"></i><b>6</b></td>
-<td>Check response code</td>
-</tr>
-</table>
-</div>
-<div class="paragraph">
-<p>Once the subscription is done, the broker will start sending messages.
-We will see how to handle these messages asynchronously in a callback in a moment.
-Let&#8217;s have a further look at the parameters of <code>subscribe</code>:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>Identifier of the subscription: this is an arbitrary number to correlate
-the subscription with the inbound messages. The value must be unique within
-the connection.</p>
-</li>
-<li>
-<p>Stream: this is the stream to consume from. It obviously must exist.</p>
-</li>
-<li>
-<p>Offset: this is the offset to start consuming from. There are several ways to
-specify the offset:</p>
-<div class="ulist">
-<ul>
-<li>
-<p><code>OffsetSpecification.first()</code>: starting from the first available offset. If
-the stream has not been <a href="#limiting-the-size-of-a-stream">truncated</a>, this
-means the beginning of the stream (offset 0).</p>
-</li>
-<li>
-<p><code>OffsetSpecification.last()</code>: starting from the end of the stream and returning
-the last chunk of messages immediately (if the stream is not empty).</p>
-</li>
-<li>
-<p><code>OffsetSpecification.next()</code>: starting from the next offset to be written. Contrary
-to <code>OffsetSpecification.last()</code>, consuming with <code>OffsetSpecification.next()</code>
-will not return anything if no-one is publishing to the stream. The broker will start
-sending messages to the consumer when messages are published to the stream.</p>
-</li>
-<li>
-<p><code>OffsetSpecification.offset(offset)</code>: starting from the specified offset. 0 means consuming
-from the beginning of the stream (first messages). The client
-can also specify any number, for example the offset where it left off
-in a previous incarnation of the application.</p>
-</li>
-<li>
-<p><code>OffsetSpecification.timestamp(timestamp)</code>: starting from the messages stored
-after the specified timestamp.</p>
-</li>
-</ul>
-</div>
-</li>
-<li>
-<p>Initial number of credits: the number of chunks of messages the broker can
-send immediately after the subscription. This is a way to throttle delivery
-in case the broker send messages faster than the client can process them. We will
-see more about credits later.</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>The broker delivers messages in chunks (batches). The size of a chunk is not
-fixed, it can vary from a few messages to thousands of them in the same chunk.
-Delivering messages in chunks instead of one by one contributes to the higher throughput
-RabbitMQ Stream can achieve compared to other protocols like AMQP 0-9-1
-(which do use batch at all).</p>
-</div>
-<div class="paragraph">
-<p>The <code>Client</code> provides 2 callbacks to handle inbound messages: one for each
-chunk and another one for each message within a chunk. Here is more information
-about each callback:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>A <code>ChunkListener</code>: this callback is merely technical, it gives
-the application the occasion to ask for more chunks of messages
-or to compute metrics about chunks (number of messages, size in bytes).</p>
-</li>
-<li>
-<p>A <code>MessageListener</code>: this callback should contain the application code
-to process a message.</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>The 2 callbacks are provided when creating the <code>Client</code> instance:</p>
-</div>
-<div class="listingblock">
-<div class="title">Consuming messages</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Client consumer = <span class="keyword">new</span> Client(<span class="keyword">new</span> Client.ClientParameters()
-        .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
-            client.credit(subscriptionId, <span class="integer">1</span>);  <i class="conum" data-value="2"></i><b>(2)</b>
-        })
-        .messageListener((subscriptionId, offset, message) -&gt; {  <i class="conum" data-value="3"></i><b>(3)</b>
-            message.getBodyAsBinary();  <i class="conum" data-value="4"></i><b>(4)</b>
-        }));</code></pre>
-</div>
-</div>
-<div class="colist arabic">
-<table>
-<tr>
-<td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Set chunk listener</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Ask for a new chunk after each chunk delivery</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Set message listener</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Get and process byte array payload</td>
-</tr>
-</table>
-</div>
-<div class="paragraph">
-<p>Asking for a new credit on each chunk is usually a good default, so
-the <code>ChunkListener</code> implementation above can be taken as-is for
-most applications.</p>
-</div>
-<div class="admonitionblock note">
-<table>
-<tr>
-<td class="icon">
-<i class="fa icon-note" title="Note"></i>
-</td>
-<td class="content">
-<div class="title">What&#8217;s the deal with credits?</div>
-<div class="paragraph">
-<p>The broker cannot keep sending messages to a client if the latter
-cannot keep up. There must be a way for the client and the server
-to agree on the delivery rate, not too high, but also not to low
-(to keep the client busy). Credits are way to achieve this.</p>
-</div>
-<div class="paragraph">
-<p>When subscribing, the client specifies an initial number of credits. For
-every chunk the broker delivers, it removes a credit from the initial
-count. Once the credit count reaches 0 for the subscription, the broker
-stops sending chunks of messages. The client needs to ask for more credits to see
-more chunks of messages getting sent. This way a client can make
-sure it is not overwhelmed by the flow of incoming message.</p>
-</div>
-<div class="paragraph">
-<p>But the client must be careful in the way it asks for credits.
-It can choose to ask for more
-chunks when its credit count reaches 0, but this is usually not a good strategy:
-during the time the credit request arrives to the broker and a new chunk
-is received, the client remains idle, wasting processing time. This is why
-it is usually preferable to ask for a reasonable amount of initial credits
-(a few, not dozens, remember a chunk can contain thousands of messages)
-and ask for a new credit on every chunk.</p>
-</div>
-<div class="paragraph">
-<p>Inappropriate credit values can be the cause of an unstable consuming rate.
-The recommendation given above is usually a good rule of thumb, but may not
-be appropriate for all workloads.</p>
-</div>
-</td>
-</tr>
-</table>
-</div>
-</div>
-<div class="sect3">
-<h4 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h4>
-<div class="paragraph">
-<p>The publishing and consuming examples showed that messages are made of
-a byte array payload, but they did not go much further. Messages in RabbitMQ Stream
+<p>The publishing example above showed that messages are made of
+a byte array payload, but it did not go much further. Messages in RabbitMQ Stream
 can actually be more sophisticated, as they comply to the
 <a href="https://www.amqp.org/resources/specifications">AMQP 1.0 message format</a>.</p>
 </div>
@@ -1462,13 +1374,13 @@ message ID, correlation ID, content type, etc).</p>
 <div class="paragraph">
 <p>The RabbitMQ Stream Java client uses the <code>Message</code> interface to abstract
 a message and the recommended way to create <code>Message</code> instances is to
-use the <code>Client#messageBuilder</code> method. To publish a <code>Message</code>, use
-the <code>Client#publish(String,Message)</code>:</p>
+use the <code>Producer#messageBuilder()</code> method. To publish a <code>Message</code>, use
+the <code>Producer#send(Message,ConfirmationHandler)</code>:</p>
 </div>
 <div class="listingblock">
-<div class="title">Creating a <code>Message</code> instance</div>
+<div class="title">Creating a message with properties</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Message message = client.messageBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+<pre class="CodeRay highlight"><code data-lang="java">Message message = producer.messageBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
         .properties()  <i class="conum" data-value="2"></i><b>(2)</b>
             .messageId(<span class="predefined-type">UUID</span>.randomUUID())
             .correlationId(<span class="predefined-type">UUID</span>.randomUUID())
@@ -1476,14 +1388,14 @@ the <code>Client#publish(String,Message)</code>:</p>
         .messageBuilder()  <i class="conum" data-value="3"></i><b>(3)</b>
             .addData(<span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8))  <i class="conum" data-value="4"></i><b>(4)</b>
         .build();  <i class="conum" data-value="5"></i><b>(5)</b>
-<span class="type">long</span> publishingId = client.publish(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>, message);  <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
+producer.send(message, confirmationStatus -&gt; { }); <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
 </div>
 </div>
 <div class="colist arabic">
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Get the message builder from the client</td>
+<td>Get the message builder from the producer</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
@@ -1535,6 +1447,93 @@ to be accessed as AMQP 0-9-1 queues, without data loss.</p>
 </td>
 </tr>
 </table>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="consumer"><a class="anchor" href="#consumer"></a>Consumer</h4>
+<div class="paragraph">
+<p>A <code>Consumer</code> instance is created with <code>Environment#consumerBuilder()</code>. The main
+settings are the stream to consume from, the place in the stream to start
+consuming from (the <em>offset</em>), and a callback when a message is received
+(the <code>MessageHandler</code>). The next snippet shows how to create a <code>Consumer</code>:</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating a consumer</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer = environment.consumerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
+        .offset(OffsetSpecification.first())  <i class="conum" data-value="3"></i><b>(3)</b>
+        .messageHandler((offset, message) -&gt; {
+            message.getBodyAsBinary(); <i class="conum" data-value="4"></i><b>(4)</b>
+        })
+        .build();  <i class="conum" data-value="5"></i><b>(5)</b>
+<span class="comment">// ...</span>
+consumer.close();  <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Use <code>Environment#consumerBuilder()</code> to define the consumer</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Specify the stream to consume from</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Specify where to start consuming from</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Define behavior on message consumption</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Build the consumer</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Close consumer after usage</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The broker start sending messages as soon as the <code>Consumer</code> instance is created.</p>
+</div>
+<div class="paragraph">
+<p>The possible values for the offset parameter are the following:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>OffsetSpecification.first()</code>: starting from the first available offset. If
+the stream has not been <a href="#limiting-the-size-of-a-stream">truncated</a>, this
+means the beginning of the stream (offset 0).</p>
+</li>
+<li>
+<p><code>OffsetSpecification.last()</code>: starting from the end of the stream and returning
+the last chunk of messages immediately (if the stream is not empty).</p>
+</li>
+<li>
+<p><code>OffsetSpecification.next()</code>: starting from the next offset to be written. Contrary
+to <code>OffsetSpecification.last()</code>, consuming with <code>OffsetSpecification.next()</code>
+will not return anything if no-one is publishing to the stream. The broker will start
+sending messages to the consumer when messages are published to the stream.</p>
+</li>
+<li>
+<p><code>OffsetSpecification.offset(offset)</code>: starting from the specified offset. 0 means consuming
+from the beginning of the stream (first messages). The client
+can also specify any number, for example the offset where it left off
+in a previous incarnation of the application.</p>
+</li>
+<li>
+<p><code>OffsetSpecification.timestamp(timestamp)</code>: starting from the messages stored
+after the specified timestamp.</p>
+</li>
+</ul>
 </div>
 </div>
 </div>
@@ -1646,7 +1645,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-07-21 14:27:05 UTC
+Last updated 2020-08-06 11:50:17 UTC
 </div>
 </div>
 <style>
