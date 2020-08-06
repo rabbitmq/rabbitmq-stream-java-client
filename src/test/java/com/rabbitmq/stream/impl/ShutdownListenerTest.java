@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -63,23 +64,20 @@ public class ShutdownListenerTest {
     @Test
     @TestUtils.DisabledIfRabbitMqCtlNotSet
     void shutdownListenerShouldBeCalledWhenBrokerGoesDown() throws Exception {
+        String connectionName = UUID.randomUUID().toString();
         CountDownLatch shutdownLatch = new CountDownLatch(1);
         AtomicReference<Client.ShutdownContext.ShutdownReason> reason = new AtomicReference<>();
         Client client = new Client(new Client.ClientParameters()
+                .clientProperty("name", connectionName)
                 .shutdownListener(shutdownContext -> {
                     reason.set(shutdownContext.getShutdownReason());
                     shutdownLatch.countDown();
                 }));
 
-        try {
-            Host.rabbitmqctl("stop_app");
-
-            assertThat(shutdownLatch.await(10, TimeUnit.SECONDS)).isTrue();
-            assertThat(reason.get()).isNotNull().isEqualTo(Client.ShutdownContext.ShutdownReason.UNKNOWN);
-            assertThat(client.isOpen()).isFalse();
-        } finally {
-            Host.rabbitmqctl("start_app");
-        }
+        Host.killConnection(connectionName);
+        assertThat(shutdownLatch.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(reason.get()).isNotNull().isEqualTo(Client.ShutdownContext.ShutdownReason.UNKNOWN);
+        assertThat(client.isOpen()).isFalse();
     }
 
 }

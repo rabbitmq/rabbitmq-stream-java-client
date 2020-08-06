@@ -106,24 +106,20 @@ public class StreamEnvironmentTest {
     @TestUtils.DisabledIfRabbitMqCtlNotSet
     void locatorShouldReconnectIfConnectionIsLost() throws Exception {
         try (Environment environment = environmentBuilder
-                .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(1)))
+                .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
                 .build()) {
             String s = UUID.randomUUID().toString();
             environment.streamCreator().stream(s).create();
             environment.deleteStream(s);
-            try {
-                Host.rabbitmqctl("stop_app");
-                assertThatThrownBy(() -> environment.streamCreator().stream("whatever").create())
-                        .isInstanceOf(StreamException.class);
-                assertThatThrownBy(() -> environment.deleteStream("whatever"))
-                        .isInstanceOf(StreamException.class);
-                assertThatThrownBy(() -> environment.producerBuilder().stream(stream).build())
-                        .isInstanceOf(StreamException.class);
-                assertThatThrownBy(() -> environment.consumerBuilder().stream(stream).build())
-                        .isInstanceOf(StreamException.class);
-            } finally {
-                Host.rabbitmqctl("start_app");
-            }
+            Host.killConnection("rabbitmq-stream-locator");
+            assertThatThrownBy(() -> environment.streamCreator().stream("whatever").create())
+                    .isInstanceOf(StreamException.class);
+            assertThatThrownBy(() -> environment.deleteStream("whatever"))
+                    .isInstanceOf(StreamException.class);
+            assertThatThrownBy(() -> environment.producerBuilder().stream(stream).build())
+                    .isInstanceOf(StreamException.class);
+            assertThatThrownBy(() -> environment.consumerBuilder().stream(stream).build())
+                    .isInstanceOf(StreamException.class);
 
             Producer producer = null;
             int timeout = 10_000;
