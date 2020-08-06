@@ -41,6 +41,7 @@ public class StreamEnvironmentUnitTest {
     Function<Client.ClientParameters, Client> cf;
     @Mock
     Client client;
+    AutoCloseable mocks;
 
     StreamEnvironment environment;
     ScheduledExecutorService scheduledExecutorService;
@@ -63,7 +64,7 @@ public class StreamEnvironmentUnitTest {
             }
         };
         cpReference.set(clientParameters);
-        MockitoAnnotations.initMocks(this);
+        mocks = MockitoAnnotations.openMocks(this);
         when(cf.apply(any(Client.ClientParameters.class)))
                 .thenReturn(client);
         this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
@@ -77,9 +78,10 @@ public class StreamEnvironmentUnitTest {
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws Exception {
         environment.close();
         scheduledExecutorService.shutdownNow();
+        mocks.close();
     }
 
     @Test

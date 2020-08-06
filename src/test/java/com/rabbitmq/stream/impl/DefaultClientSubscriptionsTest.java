@@ -55,6 +55,7 @@ public class DefaultClientSubscriptionsTest {
     Client client;
     @Captor
     ArgumentCaptor<Integer> subscriptionIdCaptor;
+    AutoCloseable mocks;
 
     DefaultClientSubscriptions clientSubscriptions;
     ScheduledExecutorService scheduledExecutorService;
@@ -83,7 +84,7 @@ public class DefaultClientSubscriptionsTest {
                 return super.shutdownListener(shutdownListener);
             }
         };
-        MockitoAnnotations.initMocks(this);
+        mocks = MockitoAnnotations.openMocks(this);
         when(environment.locator()).thenReturn(locator);
         when(environment.clientParametersCopy()).thenReturn(clientParameters);
 
@@ -91,10 +92,11 @@ public class DefaultClientSubscriptionsTest {
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws Exception {
         if (scheduledExecutorService != null) {
             scheduledExecutorService.shutdownNow();
         }
+        mocks.close();
     }
 
     @Test

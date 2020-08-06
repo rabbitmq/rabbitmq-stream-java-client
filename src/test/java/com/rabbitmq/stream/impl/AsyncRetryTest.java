@@ -33,16 +33,18 @@ public class AsyncRetryTest {
     ScheduledExecutorService scheduler;
     @Mock
     Callable<Integer> task;
+    AutoCloseable mocks;
 
     @BeforeEach
     void init() {
-        MockitoAnnotations.initMocks(this);
+        mocks = MockitoAnnotations.openMocks(this);
         this.scheduler = Executors.newSingleThreadScheduledExecutor();
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws Exception {
         this.scheduler.shutdownNow();
+        mocks.close();
     }
 
     @Test
