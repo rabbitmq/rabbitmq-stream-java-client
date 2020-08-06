@@ -37,6 +37,61 @@ public class QpidProtonCodec implements Codec {
     private static final Function<String, String> MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR = k -> k;
     private static final Function<Symbol, String> MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR = Symbol::toString;
 
+    private static Map<String, Object> createApplicationProperties(org.apache.qpid.proton.message.Message message) {
+        if (message.getApplicationProperties() != null) {
+            return createMapFromAmqpMap(MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR, message.getApplicationProperties().getValue());
+        } else {
+            return null;
+        }
+    }
+
+    private static Map<String, Object> createMessageAnnotations(org.apache.qpid.proton.message.Message message) {
+        if (message.getMessageAnnotations() != null) {
+            return createMapFromAmqpMap(MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR, message.getMessageAnnotations().getValue());
+        } else {
+            return null;
+        }
+    }
+
+    private static <K> Map<String, Object> createMapFromAmqpMap(Function<K, String> keyMaker, Map<K, Object> amqpMap) {
+        Map<String, Object> result;
+        if (amqpMap != null) {
+            result = new LinkedHashMap<>(amqpMap.size());
+            for (Map.Entry<K, Object> entry : amqpMap.entrySet()) {
+                result.put(keyMaker.apply(entry.getKey()), convertApplicationProperty(entry.getValue()));
+            }
+        } else {
+            result = null;
+        }
+        return result;
+    }
+
+    private static Object convertApplicationProperty(Object value) {
+        if (value instanceof Boolean || value instanceof Byte ||
+                value instanceof Short || value instanceof Integer ||
+                value instanceof Long || value instanceof Float ||
+                value instanceof Double || value instanceof String ||
+                value instanceof Character || value instanceof UUID) {
+            return value;
+        } else if (value instanceof Binary) {
+            return ((Binary) value).getArray();
+        } else if (value instanceof UnsignedByte) {
+            return com.rabbitmq.stream.amqp.UnsignedByte.valueOf(((UnsignedByte) value).byteValue());
+        } else if (value instanceof UnsignedShort) {
+            return com.rabbitmq.stream.amqp.UnsignedShort.valueOf(((UnsignedShort) value).shortValue());
+        } else if (value instanceof UnsignedInteger) {
+            return com.rabbitmq.stream.amqp.UnsignedInteger.valueOf(((UnsignedInteger) value).intValue());
+        } else if (value instanceof UnsignedLong) {
+            return com.rabbitmq.stream.amqp.UnsignedLong.valueOf(((UnsignedLong) value).longValue());
+        } else if (value instanceof Date) {
+            return ((Date) value).getTime();
+        } else if (value instanceof Symbol) {
+            return ((Symbol) value).toString();
+        } else {
+            throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
+        }
+    }
+
     @Override
     public EncodedMessage encode(Message message) {
         org.apache.qpid.proton.message.Message qpidMessage;
@@ -185,35 +240,6 @@ public class QpidProtonCodec implements Codec {
         }
     }
 
-    protected Map<String, Object> createApplicationProperties(org.apache.qpid.proton.message.Message message) {
-        if (message.getApplicationProperties() != null) {
-            return createMapFromAmqpMap(MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR, message.getApplicationProperties().getValue());
-        } else {
-            return null;
-        }
-    }
-
-    protected Map<String, Object> createMessageAnnotations(org.apache.qpid.proton.message.Message message) {
-        if (message.getMessageAnnotations() != null) {
-            return createMapFromAmqpMap(MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR, message.getMessageAnnotations().getValue());
-        } else {
-            return null;
-        }
-    }
-
-    private <K> Map<String, Object> createMapFromAmqpMap(Function<K, String> keyMaker, Map<K, Object> amqpMap) {
-        Map<String, Object> result;
-        if (amqpMap != null) {
-            result = new LinkedHashMap<>(amqpMap.size());
-            for (Map.Entry<K, Object> entry : amqpMap.entrySet()) {
-                result.put(keyMaker.apply(entry.getKey()), convertApplicationProperty(entry.getValue()));
-            }
-        } else {
-            result = null;
-        }
-        return result;
-    }
-
     protected Object convertToQpidType(Object value) {
         if (value instanceof Boolean || value instanceof Byte ||
                 value instanceof Short || value instanceof Integer ||
@@ -234,32 +260,6 @@ public class QpidProtonCodec implements Codec {
             return Symbol.getSymbol(value.toString());
         } else if (value instanceof byte[]) {
             return new Binary((byte[]) value);
-        } else {
-            throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
-        }
-    }
-
-    protected Object convertApplicationProperty(Object value) {
-        if (value instanceof Boolean || value instanceof Byte ||
-                value instanceof Short || value instanceof Integer ||
-                value instanceof Long || value instanceof Float ||
-                value instanceof Double || value instanceof String ||
-                value instanceof Character || value instanceof UUID) {
-            return value;
-        } else if (value instanceof Binary) {
-            return ((Binary) value).getArray();
-        } else if (value instanceof UnsignedByte) {
-            return com.rabbitmq.stream.amqp.UnsignedByte.valueOf(((UnsignedByte) value).byteValue());
-        } else if (value instanceof UnsignedShort) {
-            return com.rabbitmq.stream.amqp.UnsignedShort.valueOf(((UnsignedShort) value).shortValue());
-        } else if (value instanceof UnsignedInteger) {
-            return com.rabbitmq.stream.amqp.UnsignedInteger.valueOf(((UnsignedInteger) value).intValue());
-        } else if (value instanceof UnsignedLong) {
-            return com.rabbitmq.stream.amqp.UnsignedLong.valueOf(((UnsignedLong) value).longValue());
-        } else if (value instanceof Date) {
-            return ((Date) value).getTime();
-        } else if (value instanceof Symbol) {
-            return ((Symbol) value).toString();
         } else {
             throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
         }
@@ -430,6 +430,9 @@ public class QpidProtonCodec implements Codec {
     static class QpidProtonAmqpMessageWrapper implements Message {
 
         private final org.apache.qpid.proton.message.Message message;
+        private Properties properties;
+        private Map<String, Object> applicationProperties;
+        private Map<String, Object> messageAnnotations;
 
         QpidProtonAmqpMessageWrapper(org.apache.qpid.proton.message.Message message) {
             this.message = message;
@@ -437,27 +440,48 @@ public class QpidProtonCodec implements Codec {
 
         @Override
         public byte[] getBodyAsBinary() {
-            throw new UnsupportedOperationException();
+            return ((Data) message.getBody()).getValue().getArray();
         }
 
         @Override
         public Object getBody() {
-            throw new UnsupportedOperationException();
+            return message.getBody();
         }
 
         @Override
         public Properties getProperties() {
-            throw new UnsupportedOperationException();
+            if (this.properties != null) {
+                return this.properties;
+            } else if (message.getProperties() != null) {
+                this.properties = new QpidProtonProperties(message.getProperties());
+                return this.properties;
+            } else {
+                return null;
+            }
         }
 
         @Override
         public Map<String, Object> getApplicationProperties() {
-            throw new UnsupportedOperationException();
+            if (this.applicationProperties != null) {
+                return this.applicationProperties;
+            } else if (message.getApplicationProperties() != null) {
+                this.applicationProperties = createApplicationProperties(this.message);
+                return this.applicationProperties;
+            } else {
+                return null;
+            }
         }
 
         @Override
         public Map<String, Object> getMessageAnnotations() {
-            throw new UnsupportedOperationException();
+            if (this.messageAnnotations != null) {
+                return this.messageAnnotations;
+            } else if (this.message.getMessageAnnotations() != null) {
+                this.messageAnnotations = createMessageAnnotations(this.message);
+                return this.messageAnnotations;
+            } else {
+                return null;
+            }
         }
     }
 

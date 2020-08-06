@@ -14,10 +14,10 @@
 
 package com.rabbitmq.stream.codec;
 
-import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.amqp.*;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
 import com.swiftmq.amqp.v100.generated.transport.definitions.SequenceNo;
@@ -32,6 +32,87 @@ import java.util.Map;
 import java.util.UUID;
 
 public class SwiftMqCodec implements Codec {
+
+    private static Object convertAmqpMapValue(AMQPType value) {
+        if (value instanceof AMQPBoolean) {
+            return ((AMQPBoolean) value).getValue() ? Boolean.TRUE : Boolean.FALSE;
+        } else if (value instanceof AMQPByte) {
+            return ((AMQPByte) value).getValue();
+        } else if (value instanceof AMQPUnsignedByte) {
+            return UnsignedByte.valueOf((byte) ((AMQPUnsignedByte) value).getValue());
+        } else if (value instanceof AMQPShort) {
+            return (short) ((AMQPShort) value).getValue();
+        } else if (value instanceof AMQPUnsignedShort) {
+            return UnsignedShort.valueOf((short) ((AMQPUnsignedShort) value).getValue());
+        } else if (value instanceof AMQPInt) {
+            return ((AMQPInt) value).getValue();
+        } else if (value instanceof AMQPUnsignedInt) {
+            return UnsignedInteger.valueOf(((AMQPUnsignedInt) value).getValue());
+        } else if (value instanceof AMQPLong) {
+            return ((AMQPLong) value).getValue();
+        } else if (value instanceof AMQPUnsignedLong) {
+            return UnsignedLong.valueOf(((AMQPUnsignedLong) value).getValue());
+        } else if (value instanceof AMQPFloat) {
+            return ((AMQPFloat) value).getValue();
+        } else if (value instanceof AMQPDouble) {
+            return ((AMQPDouble) value).getValue();
+        } else if (value instanceof AMQPBinary) {
+            return ((AMQPBinary) value).getValue();
+        } else if (value instanceof AMQPString) {
+            return ((AMQPString) value).getValue();
+        } else if (value instanceof AMQPChar) {
+            return (char) (((AMQPChar) value).getValue() & 0xffff);
+        } else if (value instanceof AMQPTimestamp) {
+            return ((AMQPTimestamp) value).getValue();
+        } else if (value instanceof AMQPUuid) {
+            return ((AMQPUuid) value).getValue();
+        } else if (value instanceof AMQPSymbol) {
+            return ((AMQPSymbol) value).getValue();
+        } else {
+            throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
+        }
+    }
+
+    private static Map<String, Object> createApplicationProperties(AMQPMessage amqpMessage) {
+        if (amqpMessage.getApplicationProperties() != null) {
+            Map<AMQPType, AMQPType> applicationProperties;
+            try {
+                applicationProperties = amqpMessage.getApplicationProperties().getValue();
+            } catch (IOException e) {
+                throw new StreamException("Error while reading application properties", e);
+            }
+            return createMapFromAmqpMap(applicationProperties);
+        } else {
+            return null;
+        }
+    }
+
+    private static Map<String, Object> createMessageAnnotations(AMQPMessage amqpMessage) {
+        if (amqpMessage.getMessageAnnotations() != null) {
+            Map<AMQPType, AMQPType> messageAnnotations;
+            try {
+                messageAnnotations = amqpMessage.getMessageAnnotations().getValue();
+            } catch (IOException e) {
+                throw new StreamException("Error while reading message annotations", e);
+            }
+            return createMapFromAmqpMap(messageAnnotations);
+        } else {
+            return null;
+        }
+    }
+
+    private static Map<String, Object> createMapFromAmqpMap(Map<AMQPType, AMQPType> map) {
+        Map<String, Object> result;
+        if (map != null) {
+            result = new LinkedHashMap<>(map.size());
+            for (Map.Entry<AMQPType, AMQPType> entry : map.entrySet()) {
+                result.put(entry.getKey().getValueString(), convertAmqpMapValue(entry.getValue()));
+            }
+        } else {
+            result = null;
+        }
+        return result;
+    }
 
     @Override
     public MessageBuilder messageBuilder() {
@@ -225,46 +306,6 @@ public class SwiftMqCodec implements Codec {
         }
     }
 
-    protected Object convertAmqpMapValue(AMQPType value) {
-        if (value instanceof AMQPBoolean) {
-            return ((AMQPBoolean) value).getValue() ? Boolean.TRUE : Boolean.FALSE;
-        } else if (value instanceof AMQPByte) {
-            return ((AMQPByte) value).getValue();
-        } else if (value instanceof AMQPUnsignedByte) {
-            return UnsignedByte.valueOf((byte) ((AMQPUnsignedByte) value).getValue());
-        } else if (value instanceof AMQPShort) {
-            return (short) ((AMQPShort) value).getValue();
-        } else if (value instanceof AMQPUnsignedShort) {
-            return UnsignedShort.valueOf((short) ((AMQPUnsignedShort) value).getValue());
-        } else if (value instanceof AMQPInt) {
-            return ((AMQPInt) value).getValue();
-        } else if (value instanceof AMQPUnsignedInt) {
-            return UnsignedInteger.valueOf(((AMQPUnsignedInt) value).getValue());
-        } else if (value instanceof AMQPLong) {
-            return ((AMQPLong) value).getValue();
-        } else if (value instanceof AMQPUnsignedLong) {
-            return UnsignedLong.valueOf(((AMQPUnsignedLong) value).getValue());
-        } else if (value instanceof AMQPFloat) {
-            return ((AMQPFloat) value).getValue();
-        } else if (value instanceof AMQPDouble) {
-            return ((AMQPDouble) value).getValue();
-        } else if (value instanceof AMQPBinary) {
-            return ((AMQPBinary) value).getValue();
-        } else if (value instanceof AMQPString) {
-            return ((AMQPString) value).getValue();
-        } else if (value instanceof AMQPChar) {
-            return (char) (((AMQPChar) value).getValue() & 0xffff);
-        } else if (value instanceof AMQPTimestamp) {
-            return ((AMQPTimestamp) value).getValue();
-        } else if (value instanceof AMQPUuid) {
-            return ((AMQPUuid) value).getValue();
-        } else if (value instanceof AMQPSymbol) {
-            return ((AMQPSymbol) value).getValue();
-        } else {
-            throw new IllegalArgumentException("Type not supported for an application property: " + value.getClass());
-        }
-    }
-
     @Override
     public Message decode(byte[] data) {
         return createMessage(data);
@@ -290,47 +331,6 @@ public class SwiftMqCodec implements Codec {
         } else {
             return null;
         }
-    }
-
-    protected Map<String, Object> createApplicationProperties(AMQPMessage amqpMessage) {
-        if (amqpMessage.getApplicationProperties() != null) {
-            Map<AMQPType, AMQPType> applicationProperties;
-            try {
-                applicationProperties = amqpMessage.getApplicationProperties().getValue();
-            } catch (IOException e) {
-                throw new StreamException("Error while reading application properties", e);
-            }
-            return createMapFromAmqpMap(applicationProperties);
-        } else {
-            return null;
-        }
-    }
-
-    protected Map<String, Object> createMessageAnnotations(AMQPMessage amqpMessage) {
-        if (amqpMessage.getMessageAnnotations() != null) {
-            Map<AMQPType, AMQPType> messageAnnotations;
-            try {
-                messageAnnotations = amqpMessage.getMessageAnnotations().getValue();
-            } catch (IOException e) {
-                throw new StreamException("Error while reading message annotations", e);
-            }
-            return createMapFromAmqpMap(messageAnnotations);
-        } else {
-            return null;
-        }
-    }
-
-    private Map<String, Object> createMapFromAmqpMap(Map<AMQPType, AMQPType> map) {
-        Map<String, Object> result;
-        if (map != null) {
-            result = new LinkedHashMap<>(map.size());
-            for (Map.Entry<AMQPType, AMQPType> entry : map.entrySet()) {
-                result.put(entry.getKey().getValueString(), convertAmqpMapValue(entry.getValue()));
-            }
-        } else {
-            result = null;
-        }
-        return result;
     }
 
     protected Message createMessage(byte[] data) {
@@ -513,6 +513,9 @@ public class SwiftMqCodec implements Codec {
     static class SwiftMqAmqpMessageWrapper implements Message {
 
         private final AMQPMessage message;
+        private com.rabbitmq.stream.Properties properties;
+        private Map<String, Object> applicationProperties;
+        private Map<String, Object> messageAnnotations;
 
         SwiftMqAmqpMessageWrapper(AMQPMessage message) {
             this.message = message;
@@ -520,27 +523,48 @@ public class SwiftMqCodec implements Codec {
 
         @Override
         public byte[] getBodyAsBinary() {
-            throw new UnsupportedOperationException();
+            return message.getData().get(0).getValue();
         }
 
         @Override
         public Object getBody() {
-            throw new UnsupportedOperationException();
+            return message.getData();
         }
 
         @Override
         public com.rabbitmq.stream.Properties getProperties() {
-            throw new UnsupportedOperationException();
+            if (this.properties != null) {
+                return this.properties;
+            } else if (message.getProperties() != null) {
+                this.properties = new SwiftMqProperties(message.getProperties());
+                return this.properties;
+            } else {
+                return null;
+            }
         }
 
         @Override
         public Map<String, Object> getApplicationProperties() {
-            throw new UnsupportedOperationException();
+            if (this.applicationProperties != null) {
+                return this.applicationProperties;
+            } else if (message.getApplicationProperties() != null) {
+                this.applicationProperties = createApplicationProperties(this.message);
+                return this.applicationProperties;
+            } else {
+                return null;
+            }
         }
 
         @Override
         public Map<String, Object> getMessageAnnotations() {
-            throw new UnsupportedOperationException();
+            if (this.messageAnnotations != null) {
+                return this.messageAnnotations;
+            } else if (this.message.getMessageAnnotations() != null) {
+                this.messageAnnotations = createMessageAnnotations(this.message);
+                return this.messageAnnotations;
+            } else {
+                return null;
+            }
         }
     }
 

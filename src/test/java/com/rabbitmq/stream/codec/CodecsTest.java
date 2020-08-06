@@ -38,6 +38,8 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class CodecsTest {
 
@@ -62,6 +64,14 @@ public class CodecsTest {
                 new MessageBuilderCreator(QpidProtonMessageBuilder.class),
                 new MessageBuilderCreator(SwiftMqMessageBuilder.class),
                 new MessageBuilderCreator(WrapperMessageBuilder.class)
+        );
+    }
+
+    static Iterable<Codec> readCreatedMessage() {
+        return Arrays.asList(
+                when(mock(Codec.class).messageBuilder()).thenReturn(new WrapperMessageBuilder()).getMock(),
+                new QpidProtonCodec(),
+                new SwiftMqCodec()
         );
     }
 
@@ -328,6 +338,25 @@ public class CodecsTest {
             assertThat(inboundMessage.getMessageAnnotations().get("annotations.symbol"))
                     .isNotNull().isInstanceOf(String.class).isEqualTo(symbol);
         });
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    void readCreatedMessage(Codec codec) {
+        // same conversion logic as for encoding/decoding, so not testing all types
+        Message message = codec.messageBuilder()
+                .addData("hello".getBytes(CHARSET))
+                .properties().messageId(42)
+                .messageBuilder()
+                .applicationProperties().entry("property1", "value1").messageBuilder()
+                .messageAnnotations().entry("annotation1", "value1").messageBuilder()
+                .build();
+
+        assertThat(message.getBodyAsBinary()).isEqualTo("hello".getBytes(CHARSET));
+        assertThat(message.getBody()).isNotNull();
+        assertThat(message.getProperties().getMessageIdAsLong()).isEqualTo(42);
+        assertThat(message.getApplicationProperties()).hasSize(1).containsKey("property1").containsValue("value1");
+        assertThat(message.getMessageAnnotations()).hasSize(1).containsKey("annotation1").containsValue("value1");
     }
 
     @ParameterizedTest
