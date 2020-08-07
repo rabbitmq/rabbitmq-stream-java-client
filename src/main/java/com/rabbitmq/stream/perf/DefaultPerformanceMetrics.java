@@ -82,18 +82,16 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     public void start(String description) throws Exception {
         String metricPublished = "rabbitmqStreamPublished";
         String metricProducerConfirmed = "rabbitmqStreamProducer_confirmed";
-        String metricConfirmed = "rabbitmqStreamConfirmed";
         String metricConsumed = "rabbitmqStreamConsumed";
         String metricChunkSize = "rabbitmqStreamChunk_size";
         String metricLatency = "rabbitmqStreamLatency";
 
-        Set<String> allMetrics = new HashSet<>(Arrays.asList(metricPublished, metricConfirmed, metricConsumed,
+        Set<String> allMetrics = new HashSet<>(Arrays.asList(metricPublished, metricProducerConfirmed, metricConsumed,
                 metricChunkSize, metricLatency));
 
         Map<String, String> metersNamesAndLabels = new LinkedHashMap<>();
         metersNamesAndLabels.put(metricPublished, "published");
-        metersNamesAndLabels.put(metricConfirmed, "confirmed");
-        metersNamesAndLabels.put(metricProducerConfirmed, "p. confirmed");
+        metersNamesAndLabels.put(metricProducerConfirmed, "confirmed");
         metersNamesAndLabels.put(metricConsumed, "consumed");
 
         ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
