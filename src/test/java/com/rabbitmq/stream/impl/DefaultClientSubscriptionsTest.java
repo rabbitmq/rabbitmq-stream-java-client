@@ -28,6 +28,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -35,6 +36,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -408,6 +411,46 @@ public class DefaultClientSubscriptionsTest {
         verify(client, times(0)).unsubscribe(anyInt());
     }
 
+    @Test
+    void shouldUseNewClientsForMoreThanMaxSubscriptionsAndCloseClientAfterUnsubscriptions() {
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), null)));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        int extraSubscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
+        int subscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
+
+        List<Long> globalSubscriptionIds = IntStream.range(0, subscriptionCount).mapToObj(i ->
+                clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+                })).collect(Collectors.toList());
+
+
+        verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
+        verify(client, times(subscriptionCount)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        when(client.unsubscribe(anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        // we reverse the subscription list to remove the lasts first
+        // this frees the second client that should get closed
+        Collections.reverse(globalSubscriptionIds);
+        new ArrayList<>(globalSubscriptionIds).stream().limit(subscriptionCount - extraSubscriptionCount * 2).forEach(id -> {
+            clientSubscriptions.unsubscribe(id);
+            globalSubscriptionIds.remove(id);
+        });
+
+        verify(client, times(1)).close();
+
+        globalSubscriptionIds.stream().forEach(id -> clientSubscriptions.unsubscribe(id));
+
+        verify(client, times(2)).close();
+    }
+
     Client.Broker leader() {
         return new Client.Broker("leader", -1);
     }
@@ -415,5 +458,6 @@ public class DefaultClientSubscriptionsTest {
     List<Client.Broker> replicas() {
         return Arrays.asList(new Client.Broker("replica1", -1), new Client.Broker("replica2", -1));
     }
+
 
 }

@@ -21,12 +21,15 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 class DefaultClientSubscriptions implements ClientSubscriptions {
+
+    static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
 
     static final Duration METADATA_UPDATE_DEFAULT_INITIAL_DELAY = Duration.ofSeconds(5);
     static final Duration METADATA_UPDATE_DEFAULT_RETRY_DELAY = Duration.ofSeconds(1);
@@ -35,7 +38,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     private final Random random = new Random();
     private final AtomicLong globalSubscriptionIdSequence = new AtomicLong(0);
     private final StreamEnvironment environment;
-    private final Map<String, SubscriptionState> clientSubscriptionStates = new ConcurrentHashMap<>();
+    private final Map<String, ClientSubscriptionPool> clientSubscriptionPools = new ConcurrentHashMap<>();
     private final Map<Long, StreamSubscription> streamSubscriptionRegistry = new ConcurrentHashMap<>();
     private final Function<Client.ClientParameters, Client> clientFactory;
     volatile Duration metadataUpdateInitialDelay = METADATA_UPDATE_DEFAULT_INITIAL_DELAY;
@@ -70,7 +73,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
         String key = keyForClientSubscriptionState(newNode);
 
-        SubscriptionState subscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new SubscriptionState(
+        ClientSubscriptionPool clientSubscriptionPool = clientSubscriptionPools.computeIfAbsent(key, s -> new ClientSubscriptionPool(
                 key,
                 environment
                         .clientParametersCopy()
@@ -78,7 +81,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                         .port(newNode.getPort())
         ));
 
-        subscriptionState.add(streamSubscription, offsetSpecification);
+        clientSubscriptionPool.add(streamSubscription, offsetSpecification);
         streamSubscriptionRegistry.put(streamSubscription.id, streamSubscription);
         return streamSubscriptionId;
     }
@@ -145,8 +148,8 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
     @Override
     public void close() {
-        for (SubscriptionState subscription : this.clientSubscriptionStates.values()) {
-            subscription.close();
+        for (ClientSubscriptionPool subscriptionPool : this.clientSubscriptionPools.values()) {
+            subscriptionPool.close();
         }
 
     }
@@ -186,14 +189,76 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
     }
 
+    private class ClientSubscriptionPool {
+
+        private final List<SubscriptionState> states = new CopyOnWriteArrayList<>();
+        private final String name;
+        private final Client.ClientParameters clientParameters;
+        private final java.util.function.Consumer<SubscriptionState> cleanCallback;
+
+        private ClientSubscriptionPool(String name, Client.ClientParameters clientParameters) {
+            this.name = name;
+            this.clientParameters = clientParameters;
+            this.cleanCallback = subscriptionState -> {
+                synchronized (ClientSubscriptionPool.this) {
+                    if (subscriptionState.isEmpty()) {
+                        subscriptionState.close();
+                        states.remove(subscriptionState);
+                        LOGGER.debug("Closed subscription state on {}, {} remaining", name, states.size());
+                        if (states.isEmpty()) {
+                            clientSubscriptionPools.remove(name);
+                            LOGGER.debug("Closed client subscription pool on {} because it was empty", name);
+                        }
+                    }
+
+                }
+            };
+            LOGGER.debug("Creating client subscription pool on {}", name);
+            states.add(new SubscriptionState(name, clientParameters, cleanCallback));
+        }
+
+        synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
+            boolean added = false;
+            for (SubscriptionState state : states) {
+                if (!state.isFull()) {
+                    state.add(streamSubscription, offsetSpecification);
+                    added = true;
+                    break;
+                }
+            }
+            if (!added) {
+                LOGGER.debug("Creating subscription state on {}, this is #{}", name, states.size() + 1);
+                SubscriptionState state = new SubscriptionState(name, clientParameters, cleanCallback);
+                states.add(state);
+                state.add(streamSubscription, offsetSpecification);
+            }
+        }
+
+        synchronized void close() {
+            Iterator<SubscriptionState> iterator = states.iterator();
+            while (iterator.hasNext()) {
+                SubscriptionState state = iterator.next();
+                state.close();
+            }
+            states.clear();
+        }
+    }
+
     private class SubscriptionState {
 
         private final Client client;
         private final AtomicInteger subscriptionSequence = new AtomicInteger();
+        private final java.util.function.Consumer<SubscriptionState> cleanCallback;
+
+        // the 3 following data structures track the subscriptions, they must remain consistent
         private final Map<Integer, StreamSubscription> streamSubscriptions = new ConcurrentHashMap<>();
         private final Map<String, Set<StreamSubscription>> streamToStreamSubscriptions = new ConcurrentHashMap<>();
+        private final Set<Long> globalStreamSubscriptionIds = ConcurrentHashMap.newKeySet();
 
-        private SubscriptionState(String name, Client.ClientParameters clientParameters) {
+        private SubscriptionState(String name, Client.ClientParameters clientParameters,
+                                  java.util.function.Consumer<SubscriptionState> cleanCallback) {
+            LOGGER.debug("creating subscription state on {}", name);
+            this.cleanCallback = cleanCallback;
             this.client = clientFactory.apply(clientParameters
                     .clientProperty("name", "rabbitmq-stream-consumer")
                     .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -> client.credit(subscriptionId, 1))
@@ -210,7 +275,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     })
                     .shutdownListener(shutdownContext -> {
                         if (shutdownContext.isShutdownUnexpected()) {
-                            clientSubscriptionStates.remove(name);
+                            clientSubscriptionPools.remove(name);
                             LOGGER.debug("Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment", name);
                             environment.scheduledExecutorService().schedule(() -> {
                                 for (Map.Entry<String, Set<StreamSubscription>> entry : streamToStreamSubscriptions.entrySet()) {
@@ -228,14 +293,22 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     .metadataListener((stream, code) -> {
                         LOGGER.debug("Received metadata notification for {}, stream is likely to have become unavailable",
                                 stream);
-                        Set<StreamSubscription> affectedSubscriptions = streamToStreamSubscriptions.remove(stream);
+
+                        Set<StreamSubscription> affectedSubscriptions;
+                        synchronized (SubscriptionState.this) {
+                            Set<StreamSubscription> subscriptions = streamToStreamSubscriptions.remove(stream);
+                            if (subscriptions != null) {
+                                for (StreamSubscription subscription : subscriptions) {
+                                    streamSubscriptions.remove(subscription.subscriptionIdInClient);
+                                    globalStreamSubscriptionIds.remove(subscription.id);
+                                }
+                            }
+                            affectedSubscriptions = subscriptions;
+                        }
                         if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
                             // scheduling consumer re-assignment, to give the system some time to recover
                             environment.scheduledExecutorService().schedule(() -> {
                                 LOGGER.debug("Trying to move {} subscription(s) (stream {})", affectedSubscriptions.size(), stream);
-                                for (StreamSubscription affectedSubscription : affectedSubscriptions) {
-                                    streamSubscriptions.remove(affectedSubscription.subscriptionIdInClient);
-                                }
                                 assignConsumersToStream(
                                         affectedSubscriptions, stream,
                                         attempt -> attempt == 0 ? Duration.ZERO : metadataUpdateRetryDelay,
@@ -246,8 +319,8 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     }));
         }
 
-        void assignConsumersToStream(Collection<StreamSubscription> subscriptions, String stream,
-                                     Function<Integer, Duration> delayPolicy, Duration retryTimeout) {
+        private void assignConsumersToStream(Collection<StreamSubscription> subscriptions, String stream,
+                                             Function<Integer, Duration> delayPolicy, Duration retryTimeout) {
             Runnable consumersClosingCallback = () -> {
                 for (StreamSubscription affectedSubscription : subscriptions) {
                     try {
@@ -277,7 +350,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                     String key = keyForClientSubscriptionState(broker);
                                     // FIXME in case the broker is no longer there, we may have to deal with an error here
                                     // we could renew the list of candidates for the stream
-                                    SubscriptionState subscriptionState = clientSubscriptionStates.computeIfAbsent(key, s -> new SubscriptionState(
+                                    ClientSubscriptionPool subscriptionPool = clientSubscriptionPools.computeIfAbsent(key, s -> new ClientSubscriptionPool(
                                             key,
                                             environment
                                                     .clientParametersCopy()
@@ -287,7 +360,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                     if (affectedSubscription.consumer.isOpen()) {
                                         synchronized (affectedSubscription.consumer) {
                                             if (affectedSubscription.consumer.isOpen()) {
-                                                subscriptionState.add(affectedSubscription, OffsetSpecification.offset(affectedSubscription.offset));
+                                                subscriptionPool.add(affectedSubscription, OffsetSpecification.offset(affectedSubscription.offset));
                                             }
                                         }
                                     }
@@ -302,7 +375,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
             });
         }
 
-        void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
+        synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
             int subscriptionId = subscriptionSequence.getAndIncrement();
             LOGGER.debug("Subscribing to {}", streamSubscription.stream);
             try {
@@ -313,6 +386,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 streamSubscriptions.put(subscriptionId, streamSubscription);
                 streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
                         .add(streamSubscription);
+                globalStreamSubscriptionIds.add(streamSubscription.id);
                 // FIXME consider using fewer initial credits
                 Client.Response subscribeResponse = client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
                 if (!subscribeResponse.isOk()) {
@@ -326,13 +400,14 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 streamSubscriptions.remove(subscriptionId);
                 streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
                         .remove(streamSubscription);
+                globalStreamSubscriptionIds.remove(streamSubscription.id);
                 throw e;
             }
 
             LOGGER.debug("Subscribed to {}", streamSubscription.stream);
         }
 
-        public void remove(StreamSubscription streamSubscription) {
+        synchronized void remove(StreamSubscription streamSubscription) {
             // TODO consider closing this state if there's no more subscription
             int subscriptionIdInClient = streamSubscription.subscriptionIdInClient;
             Client.Response unsubscribeResponse = client.unsubscribe(subscriptionIdInClient);
@@ -341,6 +416,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                         streamSubscription.stream, unsubscribeResponse.getResponseCode(), subscriptionIdInClient);
             }
             streamSubscriptions.remove(subscriptionIdInClient);
+            globalStreamSubscriptionIds.remove(streamSubscription.id);
             streamToStreamSubscriptions.compute(streamSubscription.stream, (stream, subscriptionsForThisStream) -> {
                 if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
                     // should not happen
@@ -350,7 +426,21 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     return subscriptionsForThisStream.isEmpty() ? null : subscriptionsForThisStream;
                 }
             });
+            this.cleanCallback.accept(this);
         }
+
+        boolean isFull() {
+            return this.streamSubscriptions.size() == MAX_SUBSCRIPTIONS_PER_CLIENT;
+        }
+
+        boolean isEmpty() {
+            return this.streamSubscriptions.isEmpty();
+        }
+
+        boolean contain(StreamSubscription streamSubscription) {
+            return globalStreamSubscriptionIds.contains(streamSubscription);
+        }
+
 
         void close() {
             this.client.close();
