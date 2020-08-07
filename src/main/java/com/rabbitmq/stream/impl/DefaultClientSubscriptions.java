@@ -23,9 +23,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 class DefaultClientSubscriptions implements ClientSubscriptions {
 
@@ -247,17 +247,16 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     private class SubscriptionState {
 
         private final Client client;
-        private final AtomicInteger subscriptionSequence = new AtomicInteger();
         private final java.util.function.Consumer<SubscriptionState> cleanCallback;
-
-        // the 3 following data structures track the subscriptions, they must remain consistent
-        private final Map<Integer, StreamSubscription> streamSubscriptions = new ConcurrentHashMap<>();
         private final Map<String, Set<StreamSubscription>> streamToStreamSubscriptions = new ConcurrentHashMap<>();
         private final Set<Long> globalStreamSubscriptionIds = ConcurrentHashMap.newKeySet();
+        // the 3 following data structures track the subscriptions, they must remain consistent
+        private volatile List<StreamSubscription> streamSubscriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
 
         private SubscriptionState(String name, Client.ClientParameters clientParameters,
                                   java.util.function.Consumer<SubscriptionState> cleanCallback) {
             LOGGER.debug("creating subscription state on {}", name);
+            IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> streamSubscriptions.add(null));
             this.cleanCallback = cleanCallback;
             this.client = clientFactory.apply(clientParameters
                     .clientProperty("name", "rabbitmq-stream-consumer")
@@ -299,7 +298,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                             Set<StreamSubscription> subscriptions = streamToStreamSubscriptions.remove(stream);
                             if (subscriptions != null) {
                                 for (StreamSubscription subscription : subscriptions) {
-                                    streamSubscriptions.remove(subscription.subscriptionIdInClient);
+                                    streamSubscriptions.set(subscription.subscriptionIdInClient, null);
                                     globalStreamSubscriptionIds.remove(subscription.id);
                                 }
                             }
@@ -376,17 +375,32 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
-            int subscriptionId = subscriptionSequence.getAndIncrement();
+            int subscriptionId = 0;
+            for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                if (streamSubscriptions.get(i) == null) {
+                    subscriptionId = i;
+                    break;
+                }
+            }
+
+            List<StreamSubscription> previousSubscriptions = this.streamSubscriptions;
+
             LOGGER.debug("Subscribing to {}", streamSubscription.stream);
             try {
                 // updating data structures before subscribing
                 // (to make sure they are up-to-date in case message would arrive super fast)
                 streamSubscription.subscriptionIdInClient = subscriptionId;
                 streamSubscription.subscriptionState = this;
-                streamSubscriptions.put(subscriptionId, streamSubscription);
                 streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
                         .add(streamSubscription);
                 globalStreamSubscriptionIds.add(streamSubscription.id);
+                List<StreamSubscription> newSubcriptions = new ArrayList<>();
+                for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                    newSubcriptions.add(i == subscriptionId ?
+                            streamSubscription : previousSubscriptions.get(i)
+                    );
+                }
+                this.streamSubscriptions = newSubcriptions;
                 // FIXME consider using fewer initial credits
                 Client.Response subscribeResponse = client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
                 if (!subscribeResponse.isOk()) {
@@ -397,7 +411,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
             } catch (RuntimeException e) {
                 streamSubscription.subscriptionIdInClient = -1;
                 streamSubscription.subscriptionState = null;
-                streamSubscriptions.remove(subscriptionId);
+                this.streamSubscriptions = previousSubscriptions;
                 streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
                         .remove(streamSubscription);
                 globalStreamSubscriptionIds.remove(streamSubscription.id);
@@ -415,7 +429,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 LOGGER.warn("Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
                         streamSubscription.stream, unsubscribeResponse.getResponseCode(), subscriptionIdInClient);
             }
-            streamSubscriptions.remove(subscriptionIdInClient);
+            streamSubscriptions.set(subscriptionIdInClient, null);
             globalStreamSubscriptionIds.remove(streamSubscription.id);
             streamToStreamSubscriptions.compute(streamSubscription.stream, (stream, subscriptionsForThisStream) -> {
                 if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
@@ -430,17 +444,12 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         boolean isFull() {
-            return this.streamSubscriptions.size() == MAX_SUBSCRIPTIONS_PER_CLIENT;
+            return this.globalStreamSubscriptionIds.size() == MAX_SUBSCRIPTIONS_PER_CLIENT;
         }
 
         boolean isEmpty() {
-            return this.streamSubscriptions.isEmpty();
+            return this.globalStreamSubscriptionIds.isEmpty();
         }
-
-        boolean contain(StreamSubscription streamSubscription) {
-            return globalStreamSubscriptionIds.contains(streamSubscription);
-        }
-
 
         void close() {
             this.client.close();
