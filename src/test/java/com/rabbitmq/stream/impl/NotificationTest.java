@@ -207,4 +207,23 @@ public class NotificationTest {
 
     }
 
+    @Test
+    void creditNotificationIsCalledWhenCreditingNonExistingSubscription() throws Exception {
+        byte subId = 42;
+        AtomicInteger receivedSubId = new AtomicInteger();
+        AtomicInteger receivedResponseCode = new AtomicInteger();
+        CountDownLatch latch = new CountDownLatch(1);
+        Client client = cf.get(new Client.ClientParameters()
+            .creditNotification((subscriptionId, responseCode) -> {
+                receivedSubId.set(subscriptionId);
+                receivedResponseCode.set(responseCode);
+                latch.countDown();
+            }));
+
+        client.credit(subId, 10);
+        assertThat(latch.await(10, SECONDS)).isTrue();
+        assertThat(receivedSubId.get()).isEqualTo(subId);
+        assertThat(receivedResponseCode.get()).isEqualTo(Constants.RESPONSE_CODE_SUBSCRIPTION_ID_DOES_NOT_EXIST);
+    }
+
 }
