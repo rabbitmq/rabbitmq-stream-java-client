@@ -296,11 +296,16 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                         Set<StreamSubscription> affectedSubscriptions;
                         synchronized (SubscriptionState.this) {
                             Set<StreamSubscription> subscriptions = streamToStreamSubscriptions.remove(stream);
-                            if (subscriptions != null) {
+                            if (subscriptions != null && !subscriptions.isEmpty()) {
+                                List<StreamSubscription> newSubscriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
+                                for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                                    newSubscriptions.add(streamSubscriptions.get(i));
+                                }
                                 for (StreamSubscription subscription : subscriptions) {
-                                    streamSubscriptions.set(subscription.subscriptionIdInClient, null);
+                                    newSubscriptions.set(subscription.subscriptionIdInClient, null);
                                     globalStreamSubscriptionIds.remove(subscription.id);
                                 }
+                                this.streamSubscriptions = newSubscriptions;
                             }
                             affectedSubscriptions = subscriptions;
                         }
@@ -394,13 +399,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 streamToStreamSubscriptions.computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
                         .add(streamSubscription);
                 globalStreamSubscriptionIds.add(streamSubscription.id);
-                List<StreamSubscription> newSubcriptions = new ArrayList<>();
-                for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-                    newSubcriptions.add(i == subscriptionId ?
-                            streamSubscription : previousSubscriptions.get(i)
-                    );
-                }
-                this.streamSubscriptions = newSubcriptions;
+                this.streamSubscriptions = update(previousSubscriptions, subscriptionId, streamSubscription);
                 // FIXME consider using fewer initial credits
                 Client.Response subscribeResponse = client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
                 if (!subscribeResponse.isOk()) {
@@ -422,14 +421,13 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         synchronized void remove(StreamSubscription streamSubscription) {
-            // TODO consider closing this state if there's no more subscription
             int subscriptionIdInClient = streamSubscription.subscriptionIdInClient;
             Client.Response unsubscribeResponse = client.unsubscribe(subscriptionIdInClient);
             if (!unsubscribeResponse.isOk()) {
                 LOGGER.warn("Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
                         streamSubscription.stream, unsubscribeResponse.getResponseCode(), subscriptionIdInClient);
             }
-            streamSubscriptions.set(subscriptionIdInClient, null);
+            this.streamSubscriptions = update(this.streamSubscriptions, subscriptionIdInClient, null);
             globalStreamSubscriptionIds.remove(streamSubscription.id);
             streamToStreamSubscriptions.compute(streamSubscription.stream, (stream, subscriptionsForThisStream) -> {
                 if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
@@ -441,6 +439,16 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 }
             });
             this.cleanCallback.accept(this);
+        }
+
+        private List<StreamSubscription> update(List<StreamSubscription> original, int index, StreamSubscription newValue) {
+            List<StreamSubscription> newSubcriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
+            for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                newSubcriptions.add(i == index ?
+                        newValue : original.get(i)
+                );
+            }
+            return newSubcriptions;
         }
 
         boolean isFull() {
