@@ -46,19 +46,19 @@
         <logback.version>1.2.3</logback.version>
         <netty.version>4.1.51.Final</netty.version>
         <proton-j.version>0.33.6</proton-j.version>
-        <metrics.version>4.1.11</metrics.version>
-        <micrometer.version>1.5.3</micrometer.version>
-        <swiftmq-client.version>12.1.0</swiftmq-client.version>
-        <picocli.version>4.5.0</picocli.version>
+        <metrics.version>4.1.12.1</metrics.version>
+        <micrometer.version>1.5.4</micrometer.version>
+        <swiftmq-client.version>12.2.0</swiftmq-client.version>
+        <picocli.version>4.5.1</picocli.version>
         <guava.version>29.0-jre</guava.version>
         <junit.jupiter.version>5.6.2</junit.jupiter.version>
-        <assertj.version>3.16.1</assertj.version>
-        <mockito.version>3.4.6</mockito.version>
+        <assertj.version>3.17.1</assertj.version>
+        <mockito.version>3.5.7</mockito.version>
         <amqp-client.version>5.9.0</amqp-client.version>
         <commons-lang3.version>3.11</commons-lang3.version>
         <maven.compiler.plugin.version>3.8.1</maven.compiler.plugin.version>
         <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
-        <spring-boot-maven-plugin.version>2.3.2.RELEASE</spring-boot-maven-plugin.version>
+        <spring-boot-maven-plugin.version>2.3.3.RELEASE</spring-boot-maven-plugin.version>
         <checksum.maven.plugin.version>1.8</checksum.maven.plugin.version>
         <maven.gpg.plugin.version>1.6</maven.gpg.plugin.version>
         <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
