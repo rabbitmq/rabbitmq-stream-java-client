@@ -28,10 +28,8 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,7 +55,7 @@ public class DefaultClientSubscriptionsTest {
     @Mock
     Client client;
     @Captor
-    ArgumentCaptor<Integer> subscriptionIdCaptor;
+    ArgumentCaptor<Byte> subscriptionIdCaptor;
     AutoCloseable mocks;
 
     DefaultClientSubscriptions clientSubscriptions;
@@ -127,7 +125,7 @@ public class DefaultClientSubscriptionsTest {
     }
 
     @Test
-    void subscribeShouldThrowExceptionIfNodeAvailableForStream() {
+    void subscribeShouldThrowExceptionIfNoNodeAvailableForStream() {
         when(locator.metadata("stream"))
                 .thenReturn(Collections.singletonMap("stream",
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, null)));
@@ -170,7 +168,7 @@ public class DefaultClientSubscriptionsTest {
             messageHandlerCalls.incrementAndGet();
         });
         verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
-        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(0);
         messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -184,6 +182,45 @@ public class DefaultClientSubscriptionsTest {
 
         messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
         assertThat(messageHandlerCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void subscribeShouldSubscribeToStreamAndDispatchesMessageWithManySubscriptions() {
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), null)));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        Map<Byte, Integer> messageHandlerCalls = new ConcurrentHashMap<>();
+        for (int i = 0; i < DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+            byte subId = (byte) i;
+            clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+                messageHandlerCalls.compute(subId, (k, v) -> (v == null) ? 1 : ++v);
+            });
+        }
+
+        verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+        verify(client, times(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        subscriptionIdCaptor.getAllValues().forEach(subscriptionId -> {
+            messageListener.handle(subscriptionId, 0, new WrapperMessageBuilder().build());
+        });
+        assertThat(messageHandlerCalls).hasSize(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT);
+//        assertThat(messageHandlerCalls.get()).isEqualTo(0);
+//        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+//        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+//
+//        when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+//                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+//        clientSubscriptions.unsubscribe(subscriptionGlobalId);
+//        verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+//
+//        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+//        assertThat(messageHandlerCalls.get()).isEqualTo(1);
     }
 
     @Test
@@ -212,7 +249,7 @@ public class DefaultClientSubscriptionsTest {
             messageHandlerCalls.incrementAndGet();
         });
         verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
-        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(0);
         messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
@@ -222,7 +259,7 @@ public class DefaultClientSubscriptionsTest {
 
         Thread.sleep(retryDelay.toMillis() * 5);
 
-        verify(client, times(2)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(2)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(1);
         messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -257,7 +294,7 @@ public class DefaultClientSubscriptionsTest {
             messageHandlerCalls.incrementAndGet();
         });
         verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
-        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(0);
         messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
@@ -267,7 +304,7 @@ public class DefaultClientSubscriptionsTest {
 
         Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() * 5);
 
-        verify(client, times(2)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(2)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(1);
         messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -310,7 +347,7 @@ public class DefaultClientSubscriptionsTest {
             messageHandlerCalls.incrementAndGet();
         });
         verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
-        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(0);
         messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
@@ -321,7 +358,7 @@ public class DefaultClientSubscriptionsTest {
         Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis()
                 + clientSubscriptions.metadataUpdateRetryDelay.toMillis() * 5);
 
-        verify(client, times(2)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(2)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(1);
         messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -358,7 +395,7 @@ public class DefaultClientSubscriptionsTest {
             messageHandlerCalls.incrementAndGet();
         });
         verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
-        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(0);
         messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
@@ -369,8 +406,8 @@ public class DefaultClientSubscriptionsTest {
         Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() * 5);
 
         verify(consumer, times(1)).closeAfterStreamDeletion();
-        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
-        verify(client, times(0)).unsubscribe(anyInt());
+        verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(0)).unsubscribe(anyByte());
     }
 
     @Test
@@ -395,7 +432,7 @@ public class DefaultClientSubscriptionsTest {
             messageHandlerCalls.incrementAndGet();
         });
         verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
-        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
         assertThat(messageHandlerCalls.get()).isEqualTo(0);
         messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
@@ -407,8 +444,8 @@ public class DefaultClientSubscriptionsTest {
                 clientSubscriptions.metadataUpdateRetryTimeout.toMillis() * 2);
 
         verify(consumer, times(1)).closeAfterStreamDeletion();
-        verify(client, times(1)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
-        verify(client, times(0)).unsubscribe(anyInt());
+        verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(0)).unsubscribe(anyByte());
     }
 
     @Test
@@ -431,9 +468,9 @@ public class DefaultClientSubscriptionsTest {
 
 
         verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
-        verify(client, times(subscriptionCount)).subscribe(anyInt(), anyString(), any(OffsetSpecification.class), anyInt());
+        verify(client, times(subscriptionCount)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
-        when(client.unsubscribe(anyInt()))
+        when(client.unsubscribe(anyByte()))
                 .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
         // we reverse the subscription list to remove the lasts first

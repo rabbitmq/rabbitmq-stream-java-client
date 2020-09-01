@@ -15,7 +15,6 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.*;
-import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -52,7 +51,7 @@ public class DeliveryTest {
     ByteBuf generateFrameBuffer(int nbMessages, long chunkOffset, int dataSize, Iterable<byte[]> messages) {
         ByteBuf bb = ByteBufAllocator.DEFAULT.buffer(1024);
         bb.writeShort(Constants.COMMAND_DELIVER).writeShort(Constants.VERSION_0)
-                .writeInt(1) // subscription id
+                .writeByte(1) // subscription id
                 .writeByte(1) // magic and version
                 .writeShort(nbMessages) // num entries
                 .writeInt(nbMessages) // num messages

@@ -45,36 +45,36 @@ public class SubscriptionTest {
         int messageCount = 1000;
         Client publisher = cf.get();
 
-        ConcurrentMap<Integer, CountDownLatch> latches = new ConcurrentHashMap<>(2);
-        latches.put(1, new CountDownLatch(messageCount * 2));
-        latches.put(2, new CountDownLatch(messageCount));
+        ConcurrentMap<Byte, CountDownLatch> latches = new ConcurrentHashMap<>(2);
+        latches.put((byte) 1, new CountDownLatch(messageCount * 2));
+        latches.put((byte) 2, new CountDownLatch(messageCount));
 
-        ConcurrentMap<Integer, AtomicInteger> messageCounts = new ConcurrentHashMap<>(2);
+        ConcurrentMap<Byte, AtomicInteger> messageCounts = new ConcurrentHashMap<>(2);
         Client consumer = cf.get(new Client.ClientParameters().messageListener((correlationId, offset, message) -> {
             messageCounts.computeIfAbsent(correlationId, k -> new AtomicInteger(0)).incrementAndGet();
             latches.get(correlationId).countDown();
         }));
 
-        consumer.subscribe(1, stream, OffsetSpecification.first(), messageCount * 2);
+        consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), messageCount * 2);
 
         IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
                 Collections.singletonList(publisher.messageBuilder().addData(("" + i).getBytes()).build())));
 
-        waitAtMost(5, () -> messageCounts.computeIfAbsent(1, k -> new AtomicInteger(0)).get() == messageCount);
+        waitAtMost(5, () -> messageCounts.computeIfAbsent((byte) 1, k -> new AtomicInteger(0)).get() == messageCount);
 
-        consumer.subscribe(2, stream, OffsetSpecification.first(), messageCount * 2);
+        consumer.subscribe((byte) 2, stream, OffsetSpecification.first(), messageCount * 2);
 
         IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
                 Collections.singletonList(publisher.messageBuilder().addData(("" + i).getBytes()).build())));
 
-        assertThat(latches.get(1).await(5, SECONDS)).isTrue();
-        assertThat(latches.get(2).await(5, SECONDS)).isTrue();
+        assertThat(latches.get((byte) 1).await(5, SECONDS)).isTrue();
+        assertThat(latches.get((byte) 2).await(5, SECONDS)).isTrue();
     }
 
     @Test
     void subscriptionToNonExistingStreamShouldReturnError() {
         String nonExistingStream = UUID.randomUUID().toString();
-        Client.Response response = cf.get().subscribe(1, nonExistingStream, OffsetSpecification.first(), 10);
+        Client.Response response = cf.get().subscribe((byte) 1, nonExistingStream, OffsetSpecification.first(), 10);
         assertThat(response.isOk()).isFalse();
         assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
     }
@@ -87,7 +87,7 @@ public class SubscriptionTest {
              Channel c = amqpConnection.createChannel()) {
             c.queueDeclare(nonStreamQueue, false, true, false, null);
 
-            Client.Response response = cf.get().subscribe(1, nonStreamQueue, OffsetSpecification.first(), 10);
+            Client.Response response = cf.get().subscribe((byte) 1, nonStreamQueue, OffsetSpecification.first(), 10);
             assertThat(response.isOk()).isFalse();
             assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
         }
@@ -102,17 +102,17 @@ public class SubscriptionTest {
             receivedMessageCount.incrementAndGet();
             latch.countDown();
         }));
-        Client.Response response = client.subscribe(1, stream, OffsetSpecification.first(), messageCount * 100);
+        Client.Response response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), messageCount * 100);
         assertThat(response.isOk()).isTrue();
         IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
                 Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
         assertThat(latch.await(10, SECONDS)).isTrue();
-        response = client.unsubscribe(1);
+        response = client.unsubscribe((byte) 1);
         assertThat(response.isOk()).isTrue();
 
         CountDownLatch latch2 = new CountDownLatch(messageCount);
         Client client2 = cf.get(new Client.ClientParameters().messageListener((correlationId, offset, message) -> latch2.countDown()));
-        client2.subscribe(1, stream, OffsetSpecification.first(), messageCount * 100);
+        client2.subscribe((byte) 1, stream, OffsetSpecification.first(), messageCount * 100);
         IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
                 Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
         assertThat(latch2.await(10, SECONDS)).isTrue();
@@ -123,43 +123,43 @@ public class SubscriptionTest {
     @Test
     void unsubscribeTwoSubscriptionsOneIsCancelled() throws Exception {
         int messageCount = 10;
-        ConcurrentMap<Integer, CountDownLatch> latches = new ConcurrentHashMap<>(2);
-        latches.put(1, new CountDownLatch(messageCount));
-        latches.put(2, new CountDownLatch(messageCount * 2));
-        ConcurrentMap<Integer, AtomicInteger> messageCounts = new ConcurrentHashMap<>(2);
+        ConcurrentMap<Byte, CountDownLatch> latches = new ConcurrentHashMap<>(2);
+        latches.put((byte) 1, new CountDownLatch(messageCount));
+        latches.put((byte) 2, new CountDownLatch(messageCount * 2));
+        ConcurrentMap<Byte, AtomicInteger> messageCounts = new ConcurrentHashMap<>(2);
         Client client = cf.get(new Client.ClientParameters().messageListener((correlationId, offset, message) -> {
             messageCounts.computeIfAbsent(correlationId, k -> new AtomicInteger(0)).incrementAndGet();
             latches.get(correlationId).countDown();
         }));
 
-        Client.Response response = client.subscribe(1, stream, OffsetSpecification.first(), messageCount * 100);
+        Client.Response response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), messageCount * 100);
         assertThat(response.isOk()).isTrue();
-        response = client.subscribe(2, stream, OffsetSpecification.first(), messageCount * 100);
-        assertThat(response.isOk()).isTrue();
-
-        IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
-                Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
-        assertThat(latches.get(1).await(10, SECONDS)).isTrue();
-
-        response = client.unsubscribe(1);
+        response = client.subscribe((byte) 2, stream, OffsetSpecification.first(), messageCount * 100);
         assertThat(response.isOk()).isTrue();
 
         IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
                 Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
-        assertThat(latches.get(2).await(10, SECONDS)).isTrue();
-        assertThat(messageCounts.get(2)).hasValue(messageCount * 2);
-        assertThat(messageCounts.get(1)).hasValue(messageCount);
+        assertThat(latches.get((byte) 1).await(10, SECONDS)).isTrue();
 
-        client.unsubscribe(2);
+        response = client.unsubscribe((byte) 1);
+        assertThat(response.isOk()).isTrue();
+
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
+                Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build())));
+        assertThat(latches.get((byte) 2).await(10, SECONDS)).isTrue();
+        assertThat(messageCounts.get((byte) 2)).hasValue(messageCount * 2);
+        assertThat(messageCounts.get((byte) 1)).hasValue(messageCount);
+
+        client.unsubscribe((byte) 2);
     }
 
     @Test
     void unsubscribeNonExistingSubscriptionShouldReturnError() {
         Client client = cf.get();
-        Client.Response response = client.subscribe(1, stream, OffsetSpecification.first(), 10);
+        Client.Response response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
         assertThat(response.isOk()).isTrue();
 
-        response = client.unsubscribe(42);
+        response = client.unsubscribe((byte) 42);
         assertThat(response.isOk()).isFalse();
         assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_SUBSCRIPTION_ID_DOES_NOT_EXIST);
     }
@@ -167,11 +167,11 @@ public class SubscriptionTest {
     @Test
     void subscriptionWithAlreadyExistingSubscriptionIdShouldReturnError() {
         Client client = cf.get();
-        Client.Response response = client.subscribe(1, stream, OffsetSpecification.first(), 20);
+        Client.Response response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 20);
         assertThat(response.isOk()).isTrue();
         assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
-        response = client.subscribe(1, stream, OffsetSpecification.first(), 20);
+        response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 20);
         assertThat(response.isOk()).isFalse();
         assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS);
     }

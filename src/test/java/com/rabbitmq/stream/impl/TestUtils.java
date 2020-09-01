@@ -17,7 +17,6 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.Host;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import org.apiguardian.api.API;
 import org.junit.jupiter.api.extension.*;
 
 import java.lang.annotation.*;
@@ -32,7 +31,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.apiguardian.api.API.Status.STABLE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 

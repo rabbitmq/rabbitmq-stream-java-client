@@ -161,7 +161,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         private final MessageHandler messageHandler;
         private final StreamConsumer consumer;
         private volatile long offset;
-        private volatile int subscriptionIdInClient;
+        private volatile byte subscriptionIdInClient;
         private volatile SubscriptionState subscriptionState;
 
         private StreamSubscription(long id, StreamConsumer consumer, String stream, MessageHandler messageHandler) {
@@ -263,7 +263,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -> client.credit(subscriptionId, 1))
                     .creditNotification((subscriptionId, responseCode) -> LOGGER.debug("Received credit notification for subscription {}: {}", subscriptionId, responseCode))
                     .messageListener((subscriptionId, offset, message) -> {
-                        StreamSubscription streamSubscription = streamSubscriptions.get(subscriptionId);
+                        StreamSubscription streamSubscription = streamSubscriptions.get(subscriptionId & 0xFF);
                         if (streamSubscription != null) {
                             streamSubscription.offset = offset;
                             streamSubscription.messageHandler.handle(offset, message);
@@ -302,7 +302,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                     newSubscriptions.add(streamSubscriptions.get(i));
                                 }
                                 for (StreamSubscription subscription : subscriptions) {
-                                    newSubscriptions.set(subscription.subscriptionIdInClient, null);
+                                    newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
                                     globalStreamSubscriptionIds.remove(subscription.id);
                                 }
                                 this.streamSubscriptions = newSubscriptions;
@@ -380,10 +380,10 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
-            int subscriptionId = 0;
+            byte subscriptionId = 0;
             for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
                 if (streamSubscriptions.get(i) == null) {
-                    subscriptionId = i;
+                    subscriptionId = (byte) i;
                     break;
                 }
             }
@@ -421,7 +421,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         synchronized void remove(StreamSubscription streamSubscription) {
-            int subscriptionIdInClient = streamSubscription.subscriptionIdInClient;
+            byte subscriptionIdInClient = streamSubscription.subscriptionIdInClient;
             Client.Response unsubscribeResponse = client.unsubscribe(subscriptionIdInClient);
             if (!unsubscribeResponse.isOk()) {
                 LOGGER.warn("Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
@@ -441,10 +441,11 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
             this.cleanCallback.accept(this);
         }
 
-        private List<StreamSubscription> update(List<StreamSubscription> original, int index, StreamSubscription newValue) {
+        private List<StreamSubscription> update(List<StreamSubscription> original, byte index, StreamSubscription newValue) {
             List<StreamSubscription> newSubcriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
+            int intIndex = index & 0xFF;
             for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-                newSubcriptions.add(i == index ?
+                newSubcriptions.add(i == intIndex ?
                         newValue : original.get(i)
                 );
             }

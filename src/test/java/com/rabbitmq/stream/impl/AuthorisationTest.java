@@ -134,7 +134,7 @@ public class AuthorisationTest {
             assertThat(response.isOk()).isTrue();
             assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
-            response = client.subscribe(1, stream, OffsetSpecification.first(), 10);
+            response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
             assertThat(response.isOk()).isTrue();
             assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
@@ -154,7 +154,7 @@ public class AuthorisationTest {
             assertThat(response.isOk()).isTrue();
             assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
-            response = client.subscribe(1, stream, OffsetSpecification.first(), 10);
+            response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
             assertThat(response.isOk()).isFalse();
             assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_ACCESS_REFUSED);
 

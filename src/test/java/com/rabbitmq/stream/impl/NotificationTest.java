@@ -39,7 +39,7 @@ public class NotificationTest {
 
     @Test
     void metadataListenerIsCalledWhenStreamIsDeletedWithAmqp() throws Exception {
-        int subscriptionCount = 1;
+        byte subscriptionCount = 1;
         String t = UUID.randomUUID().toString();
         CountDownLatch subscriptionListenerLatch = new CountDownLatch(subscriptionCount);
         Client subscriptionClient = cf.get(new Client.ClientParameters()
@@ -54,7 +54,7 @@ public class NotificationTest {
             Channel ch = c.createChannel();
             ch.queueDeclare(t, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
 
-            IntStream.range(0, subscriptionCount).forEach(i -> subscriptionClient.subscribe(i, t, OffsetSpecification.first(), 10));
+            IntStream.range(0, subscriptionCount).forEach(i -> subscriptionClient.subscribe((byte) i, t, OffsetSpecification.first(), 10));
 
             ch.queueDelete(t);
 
@@ -122,7 +122,7 @@ public class NotificationTest {
                     metadataLatch.countDown();
                 }));
 
-        response = consumer.subscribe(1, s, OffsetSpecification.first(), 10);
+        response = consumer.subscribe((byte) 1, s, OffsetSpecification.first(), 10);
         assertThat(response.isOk()).isTrue();
         assertThat(consumeLatch.await(10, SECONDS)).isTrue();
 
@@ -145,10 +145,10 @@ public class NotificationTest {
         Client consumer = cf.get(new Client.ClientParameters()
                 .metadataListener((stream, code) -> metadataLatch.countDown()));
 
-        response = consumer.subscribe(1, s, OffsetSpecification.first(), 10);
+        response = consumer.subscribe((byte) 1, s, OffsetSpecification.first(), 10);
         assertThat(response.isOk()).isTrue();
 
-        response = consumer.unsubscribe(1);
+        response = consumer.unsubscribe((byte) 1);
         assertThat(response.isOk()).isTrue();
 
         response = cf.get().delete(s);
@@ -197,7 +197,7 @@ public class NotificationTest {
 
             createDeleteClient.create(t);
 
-            IntStream.range(0, testParameter.subscriptionCount).forEach(i -> subscriptionClient.subscribe(i, t, OffsetSpecification.first(), 10));
+            IntStream.range(0, testParameter.subscriptionCount).forEach(i -> subscriptionClient.subscribe((byte) i, t, OffsetSpecification.first(), 10));
 
             createDeleteClient.delete(t);
 

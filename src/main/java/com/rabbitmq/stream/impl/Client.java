@@ -459,8 +459,8 @@ public class Client implements AutoCloseable {
                               int frameSize, Codec codec, List<SubscriptionOffset> subscriptionOffsets, ChunkChecksum chunkChecksum,
                               MetricsCollector metricsCollector) {
         int read = 2 + 2; // already read the command id and version
-        int subscriptionId = bb.readInt();
-        read += 4;
+        byte subscriptionId = bb.readByte();
+        read += 1;
 /*
 %% <<
 %%   Magic=5:4/unsigned,
@@ -569,7 +569,7 @@ public class Client implements AutoCloseable {
     }
 
     static int handleMessage(ByteBuf bb, int read, boolean filter, long offset, long offsetLimit,
-                             Codec codec, MessageListener messageListener, int subscriptionId) {
+                             Codec codec, MessageListener messageListener, byte subscriptionId) {
         int entrySize = bb.readInt();
         read += 4;
         byte[] data = new byte[entrySize];
@@ -1131,17 +1131,17 @@ public class Client implements AutoCloseable {
         return this.codec.messageBuilder();
     }
 
-    public void credit(int subscriptionId, int credit) {
+    public void credit(byte subscriptionId, int credit) {
         if (credit < 0 || credit > Short.MAX_VALUE) {
             throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
         }
-        int length = 2 + 2 + 4 + 2;
+        int length = 2 + 2 + 1 + 2;
 
         ByteBuf bb = allocate(length + 4);
         bb.writeInt(length);
         bb.writeShort(COMMAND_CREDIT);
         bb.writeShort(VERSION_0);
-        bb.writeInt(subscriptionId);
+        bb.writeByte(subscriptionId);
         bb.writeShort((short) credit);
         channel.writeAndFlush(bb);
     }
@@ -1159,11 +1159,11 @@ public class Client implements AutoCloseable {
      * @param credit              the initial number of credits
      * @return the subscription confirmation
      */
-    public Response subscribe(int subscriptionId, String stream, OffsetSpecification offsetSpecification, int credit) {
+    public Response subscribe(byte subscriptionId, String stream, OffsetSpecification offsetSpecification, int credit) {
         if (credit < 0 || credit > Short.MAX_VALUE) {
             throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
         }
-        int length = 2 + 2 + 4 + 4 + 2 + stream.length() + 2 + 2; // misses the offset
+        int length = 2 + 2 + 4 + 1 + 2 + stream.length() + 2 + 2; // misses the offset
         if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
             length += 8;
         }
@@ -1174,7 +1174,7 @@ public class Client implements AutoCloseable {
             bb.writeShort(COMMAND_SUBSCRIBE);
             bb.writeShort(VERSION_0);
             bb.writeInt(correlationId);
-            bb.writeInt(subscriptionId);
+            bb.writeByte(subscriptionId);
             bb.writeShort(stream.length());
             bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
             bb.writeShort(offsetSpecification.getType());
@@ -1196,8 +1196,8 @@ public class Client implements AutoCloseable {
         }
     }
 
-    public Response unsubscribe(int subscriptionId) {
-        int length = 2 + 2 + 4 + 4;
+    public Response unsubscribe(byte subscriptionId) {
+        int length = 2 + 2 + 4 + 1;
         int correlationId = correlationSequence.getAndIncrement();
         try {
             ByteBuf bb = allocate(length + 4);
@@ -1205,7 +1205,7 @@ public class Client implements AutoCloseable {
             bb.writeShort(COMMAND_UNSUBSCRIBE);
             bb.writeShort(VERSION_0);
             bb.writeInt(correlationId);
-            bb.writeInt(subscriptionId);
+            bb.writeByte(subscriptionId);
             OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
             outstandingRequests.put(correlationId, request);
             channel.writeAndFlush(bb);
@@ -1319,13 +1319,13 @@ public class Client implements AutoCloseable {
          * @param messageCount   the total number of messages in the chunk
          * @param dataSize       the size in bytes of the data in the chunk
          */
-        void handle(Client client, int subscriptionId, long offset, long messageCount, long dataSize);
+        void handle(Client client, byte subscriptionId, long offset, long messageCount, long dataSize);
 
     }
 
     public interface MessageListener {
 
-        void handle(int subscriptionId, long offset, Message message);
+        void handle(byte subscriptionId, long offset, Message message);
 
     }
 

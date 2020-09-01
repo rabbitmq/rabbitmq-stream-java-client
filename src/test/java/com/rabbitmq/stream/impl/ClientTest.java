@@ -20,8 +20,8 @@ import com.codahale.metrics.MetricRegistry;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.Properties;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
@@ -46,7 +46,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.rabbitmq.stream.impl.TestUtils.publishAndWaitForConfirms;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -82,12 +81,12 @@ public class ClientTest {
                     caughtResponseCode.set(responseCode);
                     latch.countDown();
                 }));
-        Client.Response response = client.subscribe(1, stream, OffsetSpecification.first(), 20);
+        Client.Response response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 20);
         assertThat(response.isOk()).isTrue();
         assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
-        client.credit(1, 1);
-        client.credit(42, credit);
+        client.credit((byte) 1, 1);
+        client.credit((byte) 42, credit);
 
         assertThat(latch.await(10, SECONDS)).isTrue();
         assertThat(creditNotificationCount.get()).isEqualTo(1);
@@ -138,7 +137,7 @@ public class ClientTest {
         Client consumer = cf.get(new Client.ClientParameters()
                 .codec(codec)
                 .messageListener(messageListener).chunkListener(chunkListener));
-        consumer.subscribe(1, stream, OffsetSpecification.first(), credit);
+        consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), credit);
         assertThat(await(latch, Duration.ofSeconds(10))).isTrue();
         assertThat(messages).hasSize(publishCount);
         messages.stream().forEach(message -> {
@@ -146,7 +145,7 @@ public class ClientTest {
             Integer id = (Integer) message.getApplicationProperties().get("id");
             assertThat(message.getBodyAsBinary()).isEqualTo(("message" + id).getBytes(StandardCharsets.UTF_8));
         });
-        assertThat(consumer.unsubscribe(1).isOk()).isTrue();
+        assertThat(consumer.unsubscribe((byte) 1).isOk()).isTrue();
     }
 
     @Test
@@ -221,7 +220,7 @@ public class ClientTest {
                 })
         );
 
-        consumer.subscribe(1, stream, OffsetSpecification.first(), 10);
+        consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
         assertThat(consumeLatch.await(10, SECONDS)).isTrue();
         IntStream.range(0, messageCount).forEach(i -> assertThat(messageBodies).contains(String.valueOf(i)));
     }
@@ -263,7 +262,7 @@ public class ClientTest {
                     consumeLatch.countDown();
                 }));
 
-        consumer.subscribe(1, stream, OffsetSpecification.first(), 10);
+        consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
         assertThat(consumeLatch.await(10, SECONDS)).isTrue();
         assertThat(sizes).hasSize(1).containsOnly(payloadSize);
         assertThat(sequences).hasSize(messageCount);
@@ -273,7 +272,7 @@ public class ClientTest {
     @Test
     void consume() throws Exception {
         int publishCount = 100000;
-        int correlationId = 42;
+        byte correlationId = 42;
         TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
         MetricRegistry metrics = new MetricRegistry();
         Meter consumed = metrics.meter("consumed");
@@ -325,7 +324,7 @@ public class ClientTest {
         Client client = cf.get(new Client.ClientParameters()
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
-        client.subscribe(1, stream, OffsetSpecification.first(), credit);
+        client.subscribe((byte) 1, stream, OffsetSpecification.first(), credit);
 
         CountDownLatch confirmedLatch = new CountDownLatch(publishCount);
         new Thread(() -> {
@@ -343,7 +342,7 @@ public class ClientTest {
 
         assertThat(confirmedLatch.await(15, SECONDS)).isTrue();
         assertThat(consumedLatch.await(15, SECONDS)).isTrue();
-        client.unsubscribe(1);
+        client.unsubscribe((byte) 1);
     }
 
     @Test
@@ -434,9 +433,9 @@ public class ClientTest {
                             }
                         }));
 
-                consumer.subscribe(1, testStream, OffsetSpecification.first(), 10);
+                consumer.subscribe((byte) 1, testStream, OffsetSpecification.first(), 10);
                 assertThat(consumingLatch.await(10, SECONDS)).isTrue();
-                consumer.unsubscribe(1);
+                consumer.unsubscribe((byte) 1);
                 assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get())).isTrue();
             } finally {
                 publisher.delete(testStream);
@@ -524,7 +523,7 @@ public class ClientTest {
                     Collections.singletonList(client.messageBuilder().addData("hello".getBytes(StandardCharsets.UTF_8)).build())));
             assertThat(publishedLatch.await(10, SECONDS)).isTrue();
 
-            client.subscribe(1, q, OffsetSpecification.first(), 10);
+            client.subscribe((byte) 1, q, OffsetSpecification.first(), 10);
             assertThat(consumedLatch.await(10, SECONDS)).isTrue();
         }
     }

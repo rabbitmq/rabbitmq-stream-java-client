@@ -16,7 +16,10 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.client.*;
 import com.rabbitmq.client.impl.LongStringHelper;
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.amqp.UnsignedByte;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
@@ -159,7 +162,7 @@ public class AmqpInteroperabilityTest {
                 })
         );
 
-        client.subscribe(1, stream, OffsetSpecification.first(), 10);
+        client.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
         assertThat(consumedLatch.await(10, SECONDS)).isTrue();
         assertThat(messageBodies).hasSize(messageCount);
         IntStream.range(0, messageCount).forEach(i -> assertThat(messageBodies.contains("amqp " + i)).isTrue());

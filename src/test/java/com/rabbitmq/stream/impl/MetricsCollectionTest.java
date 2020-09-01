@@ -65,7 +65,7 @@ public class MetricsCollectionTest {
                 .messageListener((subscriptionId, offset, message) -> consumeLatch.countDown())
         );
 
-        Client.Response response = consumer.subscribe(1, stream, OffsetSpecification.first(), 10);
+        Client.Response response = consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
         assertThat(response.isOk()).isTrue();
 
         assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
@@ -124,7 +124,7 @@ public class MetricsCollectionTest {
                     consumeLatch.countDown();
                 }));
 
-        Client.Response response = consumer.subscribe(1, stream, OffsetSpecification.first(), 10);
+        Client.Response response = consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
         assertThat(response.isOk()).isTrue();
 
         assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
