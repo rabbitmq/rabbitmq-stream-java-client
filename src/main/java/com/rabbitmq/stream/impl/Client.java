@@ -247,8 +247,8 @@ public class Client implements AutoCloseable {
 
         short responseCode = bb.readShort();
         read += 2;
-        int subscriptionId = bb.readInt();
-        read += 4;
+        byte subscriptionId = bb.readByte();
+        read += 1;
 
         creditNotification.handle(subscriptionId, responseCode);
 
@@ -1331,7 +1331,7 @@ public class Client implements AutoCloseable {
 
     public interface CreditNotification {
 
-        void handle(int subscriptionId, short responseCode);
+        void handle(byte subscriptionId, short responseCode);
 
     }
 
