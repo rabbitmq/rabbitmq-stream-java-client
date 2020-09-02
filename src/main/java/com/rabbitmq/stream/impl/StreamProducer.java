@@ -43,6 +43,8 @@ class StreamProducer implements Producer {
 
     private final String stream;
 
+    private final byte publisherId;
+
     private final Client.OutboundEntityWriteCallback writeCallback;
 
     private final Semaphore unconfirmedMessagesSemaphore;
@@ -60,6 +62,8 @@ class StreamProducer implements Producer {
         this.environment = environment;
         this.client = environment.getClientForPublisher(stream);
         this.stream = stream;
+        // FIXME set publisher id (depends on the client)
+        this.publisherId = -1;
         final Client.OutboundEntityWriteCallback delegateWriteCallback;
         if (subEntrySize <= 1) {
             this.accumulator = new SimpleMessageAccumulator(batchSize, environment.codec(), client.maxFrameSize(), this.stream);
@@ -96,7 +100,7 @@ class StreamProducer implements Producer {
             environment.scheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
         this.batchSize = batchSize;
-        Client.PublishConfirmListener publishConfirmListener = publishingId -> {
+        Client.PublishConfirmListener publishConfirmListener = (pubId, publishingId) -> {
             ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
             if (confirmationCallback != null) {
                 int confirmedCount = confirmationCallback.handle(true, Constants.RESPONSE_CODE_OK);
@@ -105,7 +109,7 @@ class StreamProducer implements Producer {
                 unconfirmedMessagesSemaphore.release();
             }
         };
-        Client.PublishErrorListener publishErrorListener = (publishingId, errorCode) -> {
+        Client.PublishErrorListener publishErrorListener = (pubId, publishingId, errorCode) -> {
             ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
             unconfirmedMessagesSemaphore.release();
             if (confirmationCallback != null) {
@@ -170,7 +174,7 @@ class StreamProducer implements Producer {
                 messages.add(accMessage);
                 batchCount++;
             }
-            client.publishInternal(this.stream, messages, this.writeCallback);
+            client.publishInternal(this.stream, this.publisherId, messages, this.writeCallback);
         }
     }
 

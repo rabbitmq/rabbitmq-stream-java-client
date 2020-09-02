@@ -100,7 +100,7 @@ public class ClientTest {
 
         Set<Long> confirmedIds = ConcurrentHashMap.newKeySet(publishCount);
         CountDownLatch latchConfirm = new CountDownLatch(1);
-        Client.PublishConfirmListener publishConfirmListener = correlationId -> {
+        Client.PublishConfirmListener publishConfirmListener = (publisherId, correlationId) -> {
             confirmedIds.add(correlationId);
             if (confirmedIds.size() == publishCount) {
                 latchConfirm.countDown();
@@ -111,7 +111,7 @@ public class ClientTest {
 
         Set<Long> correlationIds = new HashSet<>(publishCount);
         for (int i = 1; i <= publishCount; i++) {
-            List<Long> sequenceId = client.publish(stream,
+            List<Long> sequenceId = client.publish(stream, (byte) 1,
                     Collections.singletonList(client.messageBuilder().addData(("message" + i).getBytes(StandardCharsets.UTF_8)).build()));
             correlationIds.add(sequenceId.get(0));
         }
@@ -121,10 +121,65 @@ public class ClientTest {
         assertThat(correlationIds).isEmpty();
     }
 
+    @Test
+    void publishConfirmWithSeveralPublisherIds() throws Exception {
+        Map<Byte, Integer> outboundMessagesSpec = new HashMap<Byte, Integer>() {{
+            put((byte) 0, 1_000);
+            put((byte) 1, 100);
+            put((byte) 2, 50_000);
+            put((byte) 3, 10_000);
+            put((byte) 4, 500);
+        }};
+
+        Map<Byte, Set<Long>> confirmed = new HashMap<>();
+        Map<Byte, Set<Long>> publishingSequences = new HashMap<>();
+        AtomicInteger totalMessageCount = new AtomicInteger(0);
+        outboundMessagesSpec.keySet().forEach(publisherId -> {
+            confirmed.put(publisherId, ConcurrentHashMap.newKeySet());
+            publishingSequences.put(publisherId, ConcurrentHashMap.newKeySet());
+            totalMessageCount.addAndGet(outboundMessagesSpec.get(publisherId));
+        });
+
+        CountDownLatch confirmLatch = new CountDownLatch(totalMessageCount.get());
+
+        Client client = cf.get(new Client.ClientParameters()
+                .publishConfirmListener((publisherId, publishingId) -> {
+                    confirmed.get(publisherId).add(publishingId);
+                    confirmLatch.countDown();
+                })
+        );
+
+        outboundMessagesSpec.entrySet().stream().map(entry -> {
+            byte publisherId = entry.getKey();
+            Random random = new Random();
+            return new Thread(() -> {
+                int messageCount = entry.getValue();
+                while (messageCount > 0) {
+                    int messagesToPublish = messageCount < 10 ? messageCount : random.nextInt(messageCount);
+                    List<Long> pSequences = client.publish(stream, publisherId, IntStream.range(0, messagesToPublish)
+                            .mapToObj(i -> client.messageBuilder().addData(("hello " + i).getBytes(UTF8)).build())
+                            .collect(Collectors.toList()));
+                    publishingSequences.get(publisherId).addAll(pSequences);
+                    messageCount -= messagesToPublish;
+                }
+            });
+        }).collect(Collectors.toList()).forEach(thread -> thread.start());
+
+        assertThat(confirmLatch.await(10, SECONDS)).isTrue();
+        outboundMessagesSpec.entrySet().forEach(entry -> {
+            byte publisherId = entry.getKey();
+            int expectedMessageCount = entry.getValue();
+            Set<Long> sequences = publishingSequences.get(publisherId);
+            assertThat(confirmed.get(publisherId)).hasSize(expectedMessageCount)
+                    .hasSameSizeAs(sequences);
+            confirmed.get(publisherId).forEach(publishingId -> assertThat(sequences.contains(publishingId)).isTrue());
+        });
+    }
+
     void publishConsumeComplexMessage(Client publisher, Codec codec, Function<Integer, Message> messageFactory) {
         int publishCount = 1000;
         for (int i = 1; i <= publishCount; i++) {
-            publisher.publish(stream, Collections.singletonList(messageFactory.apply(i)));
+            publisher.publish(stream, (byte) 1, Collections.singletonList(messageFactory.apply(i)));
         }
 
         CountDownLatch latch = new CountDownLatch(publishCount);
@@ -206,7 +261,7 @@ public class ClientTest {
         int messageCount = 1000;
         Codec codec = new SimpleCodec();
         Client publisher = cf.get(new Client.ClientParameters().codec(codec));
-        IntStream.range(0, 1000).forEach(i -> publisher.publish(stream,
+        IntStream.range(0, 1000).forEach(i -> publisher.publish(stream, (byte) 1,
                 Collections.singletonList(publisher.messageBuilder().addData(String.valueOf(i).getBytes(UTF8)).build())));
 
         CountDownLatch consumeLatch = new CountDownLatch(messageCount);
@@ -233,11 +288,11 @@ public class ClientTest {
         int messageCount = batchCount * batchSize;
         CountDownLatch publishLatch = new CountDownLatch(messageCount);
         Client publisher = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> publishLatch.countDown())
+                .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown())
         );
         AtomicInteger publishingSequence = new AtomicInteger(0);
         IntStream.range(0, batchCount).forEach(batchIndex -> {
-            publisher.publish(stream, IntStream.range(0, batchSize)
+            publisher.publish(stream, (byte) 1, IntStream.range(0, batchSize)
                     .mapToObj(i -> {
                         int sequence = publishingSequence.getAndIncrement();
                         ByteBuffer b = ByteBuffer.allocate(payloadSize);
@@ -329,12 +384,12 @@ public class ClientTest {
         CountDownLatch confirmedLatch = new CountDownLatch(publishCount);
         new Thread(() -> {
             Client publisher = cf.get(new Client.ClientParameters()
-                    .publishConfirmListener(correlationId -> confirmedLatch.countDown())
+                    .publishConfirmListener((publisherId, correlationId) -> confirmedLatch.countDown())
             );
             int messageId = 0;
             while (messageId < publishCount) {
                 messageId++;
-                publisher.publish(stream,
+                publisher.publish(stream, (byte) 1,
                         Collections.singletonList(publisher.messageBuilder().addData(("message" + messageId).getBytes(StandardCharsets.UTF_8)).build()));
                 published.mark();
             }
@@ -407,7 +462,7 @@ public class ClientTest {
             String testStream = UUID.randomUUID().toString();
             CountDownLatch publishingLatch = new CountDownLatch(messageCount);
             Client publisher = cf.get(new Client.ClientParameters()
-                    .publishConfirmListener(publishingId -> publishingLatch.countDown())
+                    .publishConfirmListener((publisherId, publishingId) -> publishingLatch.countDown())
             );
 
             Map<String, String> arguments = configuration.arguments.get();
@@ -415,7 +470,7 @@ public class ClientTest {
                 publisher.create(testStream, arguments);
                 AtomicLong publishSequence = new AtomicLong(0);
                 byte[] payload = new byte[payloadSize];
-                IntStream.range(0, messageCount).forEach(i -> publisher.publish(testStream,
+                IntStream.range(0, messageCount).forEach(i -> publisher.publish(testStream, (byte) 1,
                         Collections.singletonList(publisher.messageBuilder().properties().messageId(publishSequence.getAndIncrement())
                                 .messageBuilder().addData(payload).build()))
                 );
@@ -451,8 +506,8 @@ public class ClientTest {
         Set<Long> publishingIdErrors = ConcurrentHashMap.newKeySet(messageCount);
         CountDownLatch latch = new CountDownLatch(messageCount);
         Client client = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> confirms.incrementAndGet())
-                .publishErrorListener((publishingId, responseCode) -> {
+                .publishConfirmListener((publisherId, publishingId) -> confirms.incrementAndGet())
+                .publishErrorListener((publisherId, publishingId, responseCode) -> {
                     publishingIdErrors.add(publishingId);
                     responseCodes.add(responseCode);
                     latch.countDown();
@@ -461,7 +516,7 @@ public class ClientTest {
 
         String nonExistingStream = UUID.randomUUID().toString();
         Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-        IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(client.publish(nonExistingStream,
+        IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(client.publish(nonExistingStream, (byte) 1,
                 Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build()))));
 
         assertThat(latch.await(10, SECONDS)).isTrue();
@@ -484,8 +539,8 @@ public class ClientTest {
             Set<Long> publishingIdErrors = ConcurrentHashMap.newKeySet(messageCount);
             CountDownLatch latch = new CountDownLatch(messageCount);
             Client client = cf.get(new Client.ClientParameters()
-                    .publishConfirmListener(publishingId -> confirms.incrementAndGet())
-                    .publishErrorListener((publishingId, responseCode) -> {
+                    .publishConfirmListener((publisherId, publishingId) -> confirms.incrementAndGet())
+                    .publishErrorListener((publisherId, publishingId, responseCode) -> {
                         publishingIdErrors.add(publishingId);
                         responseCodes.add(responseCode);
                         latch.countDown();
@@ -493,7 +548,7 @@ public class ClientTest {
             );
 
             Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-            IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(client.publish(nonStreamQueue,
+            IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(client.publish(nonStreamQueue, (byte) 1,
                     Collections.singletonList(client.messageBuilder().addData(("" + i).getBytes()).build()))));
 
             assertThat(latch.await(10, SECONDS)).isTrue();
@@ -514,12 +569,12 @@ public class ClientTest {
             CountDownLatch publishedLatch = new CountDownLatch(messageCount);
             CountDownLatch consumedLatch = new CountDownLatch(messageCount);
             Client client = cf.get(new Client.ClientParameters()
-                    .publishConfirmListener(publishingId -> publishedLatch.countDown())
+                    .publishConfirmListener((publisherId, publishingId) -> publishedLatch.countDown())
                     .chunkListener((client1, subscriptionId, offset, messageCount1, dataSize) -> client1.credit(subscriptionId, 1))
                     .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown())
             );
 
-            IntStream.range(0, messageCount).forEach(i -> client.publish(q,
+            IntStream.range(0, messageCount).forEach(i -> client.publish(q, (byte) 1,
                     Collections.singletonList(client.messageBuilder().addData("hello".getBytes(StandardCharsets.UTF_8)).build())));
             assertThat(publishedLatch.await(10, SECONDS)).isTrue();
 
@@ -541,18 +596,18 @@ public class ClientTest {
         CountDownLatch confirmLatch = new CountDownLatch(messageCount);
         CountDownLatch publishErrorLatch = new CountDownLatch(messageCount);
         Client publisher = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> {
+                .publishConfirmListener((publisherId, publishingId) -> {
                     confirms.incrementAndGet();
                     confirmLatch.countDown();
                 })
-                .publishErrorListener((publishingId, responseCode) -> {
+                .publishErrorListener((publisherId, publishingId, responseCode) -> {
                     publishingIdErrors.add(publishingId);
                     responseCodes.add(responseCode);
                     publishErrorLatch.countDown();
                 })
         );
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(s,
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(s, (byte) 1,
                 Collections.singletonList(publisher.messageBuilder().addData(("first wave" + i).getBytes()).build())));
 
         assertThat(confirmLatch.await(10, SECONDS)).isTrue();
@@ -565,7 +620,7 @@ public class ClientTest {
         Thread.sleep(1000);
 
         Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-        IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(publisher.publish(s,
+        IntStream.range(0, messageCount).forEach(i -> publishingIds.addAll(publisher.publish(s, (byte) 1,
                 Collections.singletonList(publisher.messageBuilder().addData(("second wave" + i).getBytes()).build()))));
 
         assertThat(publishErrorLatch.await(10, SECONDS)).isTrue();

@@ -63,13 +63,13 @@ final class TestUtils {
 
     static void publishAndWaitForConfirms(TestUtils.ClientFactory cf, String messagePrefix, int publishCount, String stream) {
         CountDownLatch latchConfirm = new CountDownLatch(publishCount);
-        Client.PublishConfirmListener publishConfirmListener = correlationId -> latchConfirm.countDown();
+        Client.PublishConfirmListener publishConfirmListener = (publisherId, correlationId) -> latchConfirm.countDown();
 
         Client client = cf.get(new Client.ClientParameters()
                 .publishConfirmListener(publishConfirmListener));
 
         for (int i = 1; i <= publishCount; i++) {
-            client.publish(stream, Collections.singletonList(client.messageBuilder().addData((messagePrefix + i).getBytes(StandardCharsets.UTF_8)).build()));
+            client.publish(stream, (byte) 1, Collections.singletonList(client.messageBuilder().addData((messagePrefix + i).getBytes(StandardCharsets.UTF_8)).build()));
         }
 
         try {

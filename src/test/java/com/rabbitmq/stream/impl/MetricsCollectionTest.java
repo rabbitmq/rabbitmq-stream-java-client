@@ -48,9 +48,9 @@ public class MetricsCollectionTest {
         CountDownLatch publishLatch = new CountDownLatch(messageCount);
         Client publisher = cf.get(new Client.ClientParameters()
                 .metricsCollector(metricsCollector)
-                .publishConfirmListener(publishingId -> publishLatch.countDown()));
+                .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream, (byte) 1,
                 Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build())));
 
         assertThat(publishLatch.await(10, TimeUnit.SECONDS));
@@ -80,10 +80,10 @@ public class MetricsCollectionTest {
         CountDownLatch publishErrorLatch = new CountDownLatch(messageCount);
         Client publisher = cf.get(new Client.ClientParameters()
                 .metricsCollector(metricsCollector)
-                .publishErrorListener((publishingId, errorCode) -> publishErrorLatch.countDown()));
+                .publishErrorListener((publisherId, publishingId, errorCode) -> publishErrorLatch.countDown()));
 
         String nonExistingStream = UUID.randomUUID().toString();
-        IntStream.range(0, messageCount).forEach(i -> publisher.publish(nonExistingStream,
+        IntStream.range(0, messageCount).forEach(i -> publisher.publish(nonExistingStream, (byte) 1,
                 Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build())
         ));
 
@@ -100,14 +100,14 @@ public class MetricsCollectionTest {
         CountDownLatch publishLatch = new CountDownLatch(batchCount);
         Client publisher = cf.get(new Client.ClientParameters()
                 .metricsCollector(metricsCollector)
-                .publishConfirmListener(publishingId -> publishLatch.countDown()));
+                .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
         IntStream.range(0, batchCount).forEach(batchIndex -> {
             MessageBatch messageBatch = new MessageBatch(MessageBatch.Compression.NONE);
             IntStream.range(0, messagesInBatch).forEach(messageIndex -> {
                 messageBatch.add(publisher.messageBuilder().addData("".getBytes()).build());
             });
-            publisher.publishBatches(stream, Collections.singletonList(messageBatch));
+            publisher.publishBatches(stream, (byte) 1, Collections.singletonList(messageBatch));
         });
 
         assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();

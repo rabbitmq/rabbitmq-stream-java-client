@@ -204,11 +204,12 @@ public class OffsetTest {
         CountDownLatch firstWaveLatch = new CountDownLatch(messageCount);
         CountDownLatch secondWaveLatch = new CountDownLatch(messageCount * 2);
         Client publisher = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> {
+                .publishConfirmListener((publisherId, publishingId) -> {
                     firstWaveLatch.countDown();
                     secondWaveLatch.countDown();
                 }));
         IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
+                (byte) 1,
                 Collections.singletonList(publisher.messageBuilder().addData(("first wave " + i).getBytes(StandardCharsets.UTF_8)).build())));
         assertThat(firstWaveLatch.await(10, SECONDS)).isTrue();
 
@@ -225,6 +226,7 @@ public class OffsetTest {
         consumer.subscribe((byte) 1, stream, OffsetSpecification.next(), 10);
 
         IntStream.range(0, messageCount).forEach(i -> publisher.publish(stream,
+                (byte) 1,
                 Collections.singletonList(publisher.messageBuilder().addData(("second wave " + i).getBytes(StandardCharsets.UTF_8)).build())));
 
         assertThat(consumedLatch.await(10, SECONDS)).isTrue();
@@ -240,7 +242,7 @@ public class OffsetTest {
         CountDownLatch consumerStartLatch = new CountDownLatch(messageCount);
         CountDownLatch confirmedLatch = new CountDownLatch(messageLimit);
         Client publisher = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> {
+                .publishConfirmListener((publisherId, publishingId) -> {
                     lastConfirmed.set(publishingId);
                     consumerStartLatch.countDown();
                     confirmedLatch.countDown();
@@ -259,7 +261,7 @@ public class OffsetTest {
         new Thread(() -> {
             int publishedMessageCount = 0;
             while (true) {
-                publisher.publish(stream,
+                publisher.publish(stream, (byte) 1,
                         Collections.singletonList(publisher.messageBuilder().addData(String.valueOf(publishedMessageCount).getBytes()).build()));
                 if (++publishedMessageCount == messageLimit) {
                     break;

@@ -77,7 +77,7 @@ public class FrameTest {
                 }
             };
             List<ThrowableAssert.ThrowingCallable> publishCalls = Arrays.asList(
-                    () -> client.publish("", Arrays.asList(message))
+                    () -> client.publish("", (byte) 1, Arrays.asList(message))
             );
             publishCalls.forEach(callable -> assertThatThrownBy(callable).isInstanceOf(IllegalArgumentException.class));
         }
@@ -124,7 +124,7 @@ public class FrameTest {
                 Mockito.when(channel.alloc()).thenReturn(ByteBufAllocator.DEFAULT);
                 Mockito.when(channel.writeAndFlush(Mockito.any())).thenReturn(Mockito.mock(ChannelFuture.class));
 
-                client.publishInternal(channel, "stream", test.sizes.stream()
+                client.publishInternal(channel, "stream", (byte) 1, test.sizes.stream()
                                 .map(size -> new Codec.EncodedMessage(size, new byte[size])).collect(Collectors.toList()),
                         Client.OUTBOUND_MESSAGE_WRITE_CALLBACK);
 

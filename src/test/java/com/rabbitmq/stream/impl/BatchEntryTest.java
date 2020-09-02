@@ -43,7 +43,7 @@ public class BatchEntryTest {
         int messagesInBatch = 30;
         CountDownLatch publishLatch = new CountDownLatch(batchCount);
         Client publisher = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> publishLatch.countDown()));
+                .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
         IntStream.range(0, batchCount).forEach(batchIndex -> {
             MessageBatch messageBatch = new MessageBatch(MessageBatch.Compression.NONE);
@@ -51,7 +51,7 @@ public class BatchEntryTest {
                 messageBatch.add(publisher.messageBuilder()
                         .addData(("batch " + batchIndex + " message " + messageIndex).getBytes(UTF8)).build());
             });
-            publisher.publishBatches(stream, Collections.singletonList(messageBatch));
+            publisher.publishBatches(stream, (byte) 1, Collections.singletonList(messageBatch));
         });
 
         assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();

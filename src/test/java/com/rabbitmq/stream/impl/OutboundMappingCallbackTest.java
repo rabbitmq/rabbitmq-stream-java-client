@@ -44,13 +44,13 @@ public class OutboundMappingCallbackTest {
         CountDownLatch confirmLatch = new CountDownLatch(messageCount);
         Set<Long> mapped = ConcurrentHashMap.newKeySet(messageCount);
         Client client = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> confirmLatch.countDown()));
+                .publishConfirmListener((publisherId, publishingId) -> confirmLatch.countDown()));
         IntStream.range(0, batchNumber).forEach(i -> {
             List<Message> messages = IntStream.range(0, batchSize)
                     .mapToObj(messageIndex -> String.valueOf(messageIndex).getBytes())
                     .map(body -> client.messageBuilder().addData(body).build())
                     .collect(Collectors.toList());
-            client.publish(stream, messages, (publishingId, original) -> {
+            client.publish(stream, (byte) 1, messages, (publishingId, original) -> {
                 assertThat(original).isNotNull().isInstanceOf(Message.class);
                 mapped.add(publishingId);
                 mappingLatch.countDown();
@@ -71,7 +71,7 @@ public class OutboundMappingCallbackTest {
         CountDownLatch confirmLatch = new CountDownLatch(frameCount * messagesInFrameCount);
         Set<Long> mapped = ConcurrentHashMap.newKeySet(frameCount * messagesInFrameCount);
         Client client = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> confirmLatch.countDown()));
+                .publishConfirmListener((publisherId, publishingId) -> confirmLatch.countDown()));
         IntStream.range(0, frameCount).forEach(frameIndex -> {
             List<MessageBatch> batches = new ArrayList<>(messagesInFrameCount);
             IntStream.range(0, messagesInFrameCount).forEach(batchIndex -> {
@@ -83,7 +83,7 @@ public class OutboundMappingCallbackTest {
                 batches.add(batch);
             });
 
-            client.publishBatches(stream, batches, (publishingId, original) -> {
+            client.publishBatches(stream, (byte) 1, batches, (publishingId, original) -> {
                 assertThat(original).isNotNull().isInstanceOf(MessageBatch.class);
                 mapped.add(publishingId);
                 mappingLatch.countDown();

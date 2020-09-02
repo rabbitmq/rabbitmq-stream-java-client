@@ -178,10 +178,10 @@ public class AuthorisationTest {
             CountDownLatch publishConfirmLatch = new CountDownLatch(messageCount);
             AtomicInteger publishErrorCount = new AtomicInteger(0);
             Client client = client(new Client.ClientParameters()
-                    .publishConfirmListener(publishingId -> publishConfirmLatch.countDown())
-                    .publishErrorListener((publishingId, errorCode) -> publishErrorCount.incrementAndGet()));
+                    .publishConfirmListener((publisherId, publishingId) -> publishConfirmLatch.countDown())
+                    .publishErrorListener((publisherId, publishingId, errorCode) -> publishErrorCount.incrementAndGet()));
 
-            IntStream.range(0, messageCount).forEach(j -> client.publish(stream,
+            IntStream.range(0, messageCount).forEach(j -> client.publish(stream, (byte) 1,
                     Collections.singletonList(client.messageBuilder().addData("hello".getBytes(StandardCharsets.UTF_8)).build())));
 
             assertThat(await(publishConfirmLatch)).isTrue();
@@ -207,10 +207,10 @@ public class AuthorisationTest {
             CountDownLatch publishErrorLatch = new CountDownLatch(messageCount);
             AtomicInteger publishConfirmCount = new AtomicInteger(0);
             Client client = client(new Client.ClientParameters()
-                    .publishConfirmListener(publishingId -> publishConfirmCount.incrementAndGet())
-                    .publishErrorListener((publishingId, errorCode) -> publishErrorLatch.countDown()));
+                    .publishConfirmListener((publisherId, publishingId) -> publishConfirmCount.incrementAndGet())
+                    .publishErrorListener((publisherId, publishingId, errorCode) -> publishErrorLatch.countDown()));
 
-            IntStream.range(0, messageCount).forEach(j -> client.publish(stream,
+            IntStream.range(0, messageCount).forEach(j -> client.publish(stream, (byte) 1,
                     Collections.singletonList(client.messageBuilder().addData(("hello".getBytes(StandardCharsets.UTF_8))).build())));
 
             assertThat(await(publishErrorLatch)).isTrue();

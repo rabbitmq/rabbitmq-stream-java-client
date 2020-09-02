@@ -75,15 +75,15 @@ public class NotificationTest {
         AtomicInteger receivedCode = new AtomicInteger(-1);
         AtomicReference<String> receivedStream = new AtomicReference<>();
         Client publisher = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> publishLatch.countDown())
+                .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown())
                 .metadataListener((stream, code) -> {
                     receivedStream.set(stream);
                     receivedCode.set(code);
                     metadataLatch.countDown();
                 })
-                .publishErrorListener((publishingId, errorCode) -> errorLatch.countDown()));
+                .publishErrorListener((publisherId, publishingId, errorCode) -> errorLatch.countDown()));
 
-        publisher.publish(s, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
+        publisher.publish(s, (byte) 1, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
 
         assertThat(publishLatch.await(10, SECONDS)).isTrue();
 
@@ -94,7 +94,7 @@ public class NotificationTest {
         assertThat(receivedStream.get()).isEqualTo(s);
         assertThat(receivedCode.get()).isEqualTo(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-        publisher.publish(s, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
+        publisher.publish(s, (byte) 1, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
         assertThat(errorLatch.await(10, SECONDS)).isTrue();
     }
 
@@ -103,10 +103,10 @@ public class NotificationTest {
         String s = UUID.randomUUID().toString();
         CountDownLatch publishLatch = new CountDownLatch(1);
         Client publisher = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> publishLatch.countDown()));
+                .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
         Client.Response response = publisher.create(s);
         assertThat(response.isOk()).isTrue();
-        publisher.publish(s, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
+        publisher.publish(s, (byte) 1, Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
 
         assertThat(publishLatch.await(10, SECONDS)).isTrue();
 
@@ -205,25 +205,6 @@ public class NotificationTest {
             assertThat(metadataListenerCalls.get()).isEqualTo(1);
         }
 
-    }
-
-    @Test
-    void creditNotificationIsCalledWhenCreditingNonExistingSubscription() throws Exception {
-        byte subId = 42;
-        AtomicInteger receivedSubId = new AtomicInteger();
-        AtomicInteger receivedResponseCode = new AtomicInteger();
-        CountDownLatch latch = new CountDownLatch(1);
-        Client client = cf.get(new Client.ClientParameters()
-            .creditNotification((subscriptionId, responseCode) -> {
-                receivedSubId.set(subscriptionId);
-                receivedResponseCode.set(responseCode);
-                latch.countDown();
-            }));
-
-        client.credit(subId, 10);
-        assertThat(latch.await(10, SECONDS)).isTrue();
-        assertThat(receivedSubId.get()).isEqualTo(subId);
-        assertThat(receivedResponseCode.get()).isEqualTo(Constants.RESPONSE_CODE_SUBSCRIPTION_ID_DOES_NOT_EXIST);
     }
 
 }

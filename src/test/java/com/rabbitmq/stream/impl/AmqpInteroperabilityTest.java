@@ -269,7 +269,7 @@ public class AmqpInteroperabilityTest {
 
         testMessageOperations.get().forEach(testMessageOperation -> {
             CountDownLatch confirmLatch = new CountDownLatch(messageCount);
-            Client client = cf.get(new Client.ClientParameters().codec(codec).publishConfirmListener(publishingId -> confirmLatch.countDown()));
+            Client client = cf.get(new Client.ClientParameters().codec(codec).publishConfirmListener((publisherId, publishingId) -> confirmLatch.countDown()));
 
             String s = UUID.randomUUID().toString();
             Client.Response response = client.create(s);
@@ -366,7 +366,7 @@ public class AmqpInteroperabilityTest {
 
                 messageOperations.get().forEach(messageOperation -> messageOperation.messageBuilderConsumer.accept(messageBuilder));
 
-                client.publish(s, Collections.singletonList(messageBuilder.build()));
+                client.publish(s, (byte) 1, Collections.singletonList(messageBuilder.build()));
             });
 
             try (Connection c = connectionFactory.newConnection()) {

@@ -53,10 +53,10 @@ public class StreamConsumerTest {
 //                    Thread.sleep(DefaultClientSubscriptions.METADATA_UPDATE_DEFAULT_INITIAL_DELAY.toMillis());
 //                }, "stream leader process is killed"),
                 TestUtils.namedTask(o -> {
-                    Host.killConnection("rabbitmq-stream-consumer");
-                    Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
-                }
-                , "consumer connection is killed")
+                            Host.killConnection("rabbitmq-stream-consumer");
+                            Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
+                        }
+                        , "consumer connection is killed")
 //                TestUtils.namedTask(o -> {
 //                    try {
 //                        Host.rabbitmqctl("stop_app");
@@ -87,9 +87,9 @@ public class StreamConsumerTest {
         int messageCount = 100_000;
         CountDownLatch publishLatch = new CountDownLatch(messageCount);
         Client client = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishingId -> publishLatch.countDown()));
+                .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
-        IntStream.range(0, messageCount).forEach(i -> client.publish(stream,
+        IntStream.range(0, messageCount).forEach(i -> client.publish(stream, (byte) 1,
                 Collections.singletonList(client.messageBuilder().addData("".getBytes()).build())));
 
         assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
