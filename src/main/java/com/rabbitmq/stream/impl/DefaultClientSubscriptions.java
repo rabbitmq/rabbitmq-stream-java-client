@@ -139,8 +139,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
     @Override
     public void unsubscribe(long id) {
-        // TODO consider closing the corresponding subscriptions state if there's no more subscription in it
-        StreamSubscription streamSubscription = this.streamSubscriptionRegistry.get(id);
+        StreamSubscription streamSubscription = this.streamSubscriptionRegistry.remove(id);
         if (streamSubscription != null) {
             streamSubscription.cancel();
         }
@@ -248,9 +247,9 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
         private final Client client;
         private final java.util.function.Consumer<SubscriptionState> cleanCallback;
+        // the 3 following data structures track the subscriptions, they must remain consistent
         private final Map<String, Set<StreamSubscription>> streamToStreamSubscriptions = new ConcurrentHashMap<>();
         private final Set<Long> globalStreamSubscriptionIds = ConcurrentHashMap.newKeySet();
-        // the 3 following data structures track the subscriptions, they must remain consistent
         private volatile List<StreamSubscription> streamSubscriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
 
         private SubscriptionState(String name, Client.ClientParameters clientParameters,

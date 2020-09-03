@@ -74,10 +74,8 @@ public class Client implements AutoCloseable {
 
     };
     private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
-    //    private final PublishConfirmListener publishConfirmListener;
-    private final List<PublishConfirmListener> publishConfirmListeners = new CopyOnWriteArrayList<>();
-    //    private final PublishErrorListener publishErrorListener;
-    private final List<PublishErrorListener> publishErrorListeners = new CopyOnWriteArrayList<>();
+    private final PublishConfirmListener publishConfirmListener;
+    private final PublishErrorListener publishErrorListener;
     private final ChunkListener chunkListener;
     private final MessageListener messageListener;
     private final CreditNotification creditNotification;
@@ -114,12 +112,8 @@ public class Client implements AutoCloseable {
     }
 
     public Client(ClientParameters parameters) {
-        if (parameters.publishConfirmListener != NO_OP_PUBLISH_CONFIRM_LISTENER) {
-            this.publishConfirmListeners.add(parameters.publishConfirmListener);
-        }
-        if (parameters.publishErrorListener != NO_OP_PUBLISH_ERROR_LISTENER) {
-            this.publishErrorListeners.add(parameters.publishErrorListener);
-        }
+        this.publishConfirmListener = parameters.publishConfirmListener;
+        this.publishErrorListener = parameters.publishErrorListener;
         this.chunkListener = parameters.chunkListener;
         this.messageListener = parameters.messageListener;
         this.creditNotification = parameters.creditNotification;
@@ -592,7 +586,7 @@ public class Client implements AutoCloseable {
         return read;
     }
 
-    static void handleConfirm(ByteBuf bb, List<PublishConfirmListener> publishConfirmListeners, int frameSize, MetricsCollector metricsCollector) {
+    static void handleConfirm(ByteBuf bb, PublishConfirmListener publishConfirmListener, int frameSize, MetricsCollector metricsCollector) {
         int read = 4; // already read the command id and version
         byte publisherId = bb.readByte();
         read += 1;
@@ -603,9 +597,7 @@ public class Client implements AutoCloseable {
         while (publishingIdCount != 0) {
             publishingId = bb.readLong();
             read += 8;
-            for (PublishConfirmListener publishConfirmListener : publishConfirmListeners) {
-                publishConfirmListener.handle(publisherId, publishingId);
-            }
+            publishConfirmListener.handle(publisherId, publishingId);
             publishingIdCount--;
         }
         if (read != frameSize) {
@@ -613,7 +605,7 @@ public class Client implements AutoCloseable {
         }
     }
 
-    static void handlePublishError(ByteBuf bb, List<PublishErrorListener> publishErrorListeners, int frameSize, MetricsCollector metricsCollector) {
+    static void handlePublishError(ByteBuf bb, PublishErrorListener publishErrorListener, int frameSize, MetricsCollector metricsCollector) {
         int read = 4; // already read the command id and version
         byte publisherId = bb.readByte();
         read += 1;
@@ -627,9 +619,7 @@ public class Client implements AutoCloseable {
             read += 8;
             code = bb.readShort();
             read += 2;
-            for (PublishErrorListener publishErrorListener : publishErrorListeners) {
-                publishErrorListener.handle(publisherId, publishingId, code);
-            }
+            publishErrorListener.handle(publisherId, publishingId, code);
             publishingErrorCount--;
         }
         if (read != frameSize) {
@@ -650,22 +640,6 @@ public class Client implements AutoCloseable {
 
     int maxFrameSize() {
         return this.maxFrameSize;
-    }
-
-    void addPublishConfirmListener(PublishConfirmListener publishConfirmListener) {
-        this.publishConfirmListeners.add(publishConfirmListener);
-    }
-
-    void addPublishErrorListener(PublishErrorListener publishErrorListener) {
-        this.publishErrorListeners.add(publishErrorListener);
-    }
-
-    void removePublishConfirmListener(PublishConfirmListener publishConfirmListener) {
-        this.publishConfirmListeners.remove(publishConfirmListener);
-    }
-
-    void removePublishErrorListener(PublishErrorListener publishErrorListener) {
-        this.publishErrorListeners.remove(publishErrorListener);
     }
 
     private void handleHeartbeat(int frameSize) {
@@ -1991,12 +1965,12 @@ public class Client implements AutoCloseable {
                 }
             } else {
                 if (commandId == COMMAND_PUBLISH_CONFIRM) {
-                    task = () -> handleConfirm(m, publishConfirmListeners, frameSize, metricsCollector);
+                    task = () -> handleConfirm(m, publishConfirmListener, frameSize, metricsCollector);
                 } else if (commandId == COMMAND_DELIVER) {
                     task = () -> handleDeliver(m, Client.this, chunkListener, messageListener,
                             frameSize, codec, subscriptionOffsets, chunkChecksum, metricsCollector);
                 } else if (commandId == COMMAND_PUBLISH_ERROR) {
-                    task = () -> handlePublishError(m, publishErrorListeners, frameSize, metricsCollector);
+                    task = () -> handlePublishError(m, publishErrorListener, frameSize, metricsCollector);
                 } else if (commandId == COMMAND_METADATA_UPDATE) {
                     task = () -> handleMetadataUpdate(m, frameSize, metadataListener);
                 } else if (commandId == COMMAND_METADATA) {

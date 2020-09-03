@@ -31,39 +31,28 @@ import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
 
 class StreamProducer implements Producer {
 
-    private final Client client;
-
     private final MessageAccumulator accumulator;
-
     // FIXME investigate a more optimized data structure to handle pending messages
     // FIXME size the map according to maxUnconfirmedMessages
     private final ConcurrentMap<Long, ConfirmationCallback> unconfirmedMessages = new ConcurrentHashMap<>(10_000, 0.75f, 2);
-
     private final int batchSize;
-
     private final String stream;
-
-    private final byte publisherId;
-
     private final Client.OutboundEntityWriteCallback writeCallback;
-
     private final Semaphore unconfirmedMessagesSemaphore;
-
-    private final Runnable clientListenersCleaningCallback;
-
+    private final Runnable closingCallback;
     private final StreamEnvironment environment;
-
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    volatile Client client;
+    volatile byte publisherId;
+    private volatile State state = State.INITIALIZING;
 
     StreamProducer(String stream,
                    int subEntrySize, int batchSize, Duration batchPublishingDelay,
                    int maxUnconfirmedMessages,
                    StreamEnvironment environment) {
         this.environment = environment;
-        this.client = environment.getClientForPublisher(stream);
         this.stream = stream;
-        // FIXME set publisher id (depends on the client)
-        this.publisherId = -1;
+        this.closingCallback = environment.registerProducer(this, this.stream);
         final Client.OutboundEntityWriteCallback delegateWriteCallback;
         if (subEntrySize <= 1) {
             this.accumulator = new SimpleMessageAccumulator(batchSize, environment.codec(), client.maxFrameSize(), this.stream);
@@ -100,30 +89,27 @@ class StreamProducer implements Producer {
             environment.scheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
         this.batchSize = batchSize;
-        Client.PublishConfirmListener publishConfirmListener = (pubId, publishingId) -> {
-            ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
-            if (confirmationCallback != null) {
-                int confirmedCount = confirmationCallback.handle(true, Constants.RESPONSE_CODE_OK);
-                this.unconfirmedMessagesSemaphore.release(confirmedCount);
-            } else {
-                unconfirmedMessagesSemaphore.release();
-            }
-        };
-        Client.PublishErrorListener publishErrorListener = (pubId, publishingId, errorCode) -> {
-            ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
-            if (confirmationCallback != null) {
-                int nackedCount = confirmationCallback.handle(false, errorCode);
-                this.unconfirmedMessagesSemaphore.release(nackedCount);
-            } else {
-                unconfirmedMessagesSemaphore.release();
-            }
-        };
-        this.client.addPublishConfirmListener(publishConfirmListener);
-        this.client.addPublishErrorListener(publishErrorListener);
-        this.clientListenersCleaningCallback = () -> {
-            client.removePublishConfirmListener(publishConfirmListener);
-            client.removePublishErrorListener(publishErrorListener);
-        };
+        this.state = State.WORKING;
+    }
+
+    void confirm(long publishingId) {
+        ConfirmationCallback confirmationCallback = this.unconfirmedMessages.remove(publishingId);
+        if (confirmationCallback != null) {
+            int confirmedCount = confirmationCallback.handle(true, Constants.RESPONSE_CODE_OK);
+            this.unconfirmedMessagesSemaphore.release(confirmedCount);
+        } else {
+            this.unconfirmedMessagesSemaphore.release();
+        }
+    }
+
+    void error(long publishingId, short errorCode) {
+        ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
+        if (confirmationCallback != null) {
+            int nackedCount = confirmationCallback.handle(false, errorCode);
+            this.unconfirmedMessagesSemaphore.release(nackedCount);
+        } else {
+            unconfirmedMessagesSemaphore.release();
+        }
     }
 
     @Override
@@ -133,6 +119,7 @@ class StreamProducer implements Producer {
 
     @Override
     public void send(Message message, ConfirmationHandler confirmationHandler) {
+        // TODO check state to see if sending is possible
         try {
             if (unconfirmedMessagesSemaphore.tryAcquire(10, TimeUnit.SECONDS)) {
                 if (accumulator.add(message, confirmationHandler)) {
@@ -151,13 +138,14 @@ class StreamProducer implements Producer {
     @Override
     public void close() {
         if (this.closed.compareAndSet(false, true)) {
+            // FIXME close the scheduled task
             this.environment.removeProducer(this);
             closeFromEnvironment();
         }
     }
 
     void closeFromEnvironment() {
-        this.clientListenersCleaningCallback.run();
+        this.closingCallback.run();
         this.closed.set(true);
     }
 
@@ -179,6 +167,10 @@ class StreamProducer implements Producer {
 
     boolean isOpen() {
         return !this.closed.get();
+    }
+
+    private enum State {
+        INITIALIZING, WORKING, NOT_AVAILABLE, STREAM_DELETED, CLOSED
     }
 
     interface ConfirmationCallback {

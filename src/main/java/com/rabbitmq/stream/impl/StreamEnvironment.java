@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -46,8 +48,7 @@ class StreamEnvironment implements Environment {
     private final boolean privateScheduleExecutorService;
     private final Client.ClientParameters clientParametersPrototype;
     private final List<Address> addresses;
-    private final Map<String, Client> publishingClientPool = new ConcurrentHashMap<>();
-    private final Map<String, Client> consumingClientPool = new ConcurrentHashMap<>();
+    private final Map<String, ClientProducerState> clientProducerStates = new ConcurrentHashMap<>();
     private final List<StreamProducer> producers = new CopyOnWriteArrayList<>();
     private final List<StreamConsumer> consumers = new CopyOnWriteArrayList<>();
     private final Codec codec;
@@ -251,9 +252,9 @@ class StreamEnvironment implements Environment {
             }
         }
 
-        for (Client client : publishingClientPool.values()) {
+        for (ClientProducerState clientProducerState : clientProducerStates.values()) {
             try {
-                client.close();
+                clientProducerState.client.close();
             } catch (Exception e) {
                 LOGGER.warn("Error while closing client, moving on to the next client", e);
             }
@@ -268,14 +269,6 @@ class StreamEnvironment implements Environment {
         }
 
         this.clientSubscriptions.close();
-
-        for (Client client : consumingClientPool.values()) {
-            try {
-                client.close();
-            } catch (Exception e) {
-                LOGGER.warn("Error while closing client, moving on to the next client", e);
-            }
-        }
 
         try {
             if (this.locator != null) {
@@ -314,7 +307,7 @@ class StreamEnvironment implements Environment {
         return this.recoveryBackOffDelayPolicy;
     }
 
-    Client getClientForPublisher(String stream) {
+    ClientProducerState getClientForPublisher(String stream) {
         Map<String, Client.StreamMetadata> metadata = locator().metadata(stream);
         if (metadata.size() == 0 || metadata.get(stream) == null) {
             throw new StreamDoesNotExistException("Stream does not exist: " + stream);
@@ -338,26 +331,94 @@ class StreamEnvironment implements Environment {
         // FIXME make sure this is a reasonable key for brokers
         String key = leader.getHost() + ":" + leader.getPort();
 
-        return publishingClientPool.computeIfAbsent(key, s -> {
+        return clientProducerStates.computeIfAbsent(key, s -> {
             // FIXME add shutdown listener to client for publisher
             // this should notify the affected publishers/consumers
-            return clientFactory.apply(
-                    clientParametersPrototype.duplicate()
-                            .host(leader.getHost())
-                            .port(leader.getPort())
-                            .shutdownListener(shutdownContext -> {
-                                if (shutdownContext.isShutdownUnexpected()) {
-                                    publishingClientPool.remove(key);
-                                }
-                            })
-                            .clientProperty("name", "rabbitmq-stream-producer")
-            );
+            return new ClientProducerState(clientFactory, clientParametersPrototype.duplicate()
+                    .host(leader.getHost())
+                    .port(leader.getPort()));
         });
     }
 
     Runnable registerConsumer(StreamConsumer consumer, String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler) {
         long subscribeId = this.clientSubscriptions.subscribe(consumer, stream, offsetSpecification, messageHandler);
         return () -> this.clientSubscriptions.unsubscribe(subscribeId);
+    }
+
+    private static class ClientProducerState {
+
+        private static final int MAX_PUBLISHERS_PER_CLIENT = 256;
+
+        private final Map<Byte, ProducerState> producers = new ConcurrentHashMap<>(MAX_PUBLISHERS_PER_CLIENT);
+
+        private final AtomicInteger producerSequence = new AtomicInteger(0);
+
+        private final Client client;
+
+        private ClientProducerState(Function<Client.ClientParameters, Client> cf, Client.ClientParameters clientParameters) {
+            // FIXME handle client disconnection
+            // FIXME handle stream unavailability
+            this.client = cf.apply(clientParameters
+                    .publishConfirmListener((publisherId, publishingId) -> {
+                        ProducerState producerState = producers.get(publisherId);
+                        if (producerState == null) {
+                            LOGGER.warn("Received publish confirm for unknown producer: {}");
+                        } else {
+                            producerState.producer.confirm(publishingId);
+                        }
+                    })
+                    .publishErrorListener((publisherId, publishingId, errorCode) -> {
+                        ProducerState producerState = producers.get(publisherId);
+                        if (producerState == null) {
+                            LOGGER.warn("Received publish error for unknown producer: {}");
+                        } else {
+                            producerState.producer.error(publishingId, errorCode);
+                        }
+                    })
+                    .clientProperty("name", "rabbitmq-stream-producer"));
+        }
+
+        private void register(ProducerState producerState) {
+            producerState.publisherId = (byte) producerSequence.incrementAndGet();
+            producerState.producer.publisherId = producerState.publisherId;
+            producerState.producer.client = this.client;
+            producerState.clientProducerState = this;
+            producers.put(producerState.publisherId, producerState);
+        }
+
+        private void unregister(ProducerState producerState) {
+            producers.remove(producerState.publisherId);
+        }
+
+    }
+
+    private static class ProducerState {
+
+        private final long id;
+        private final StreamProducer producer;
+        private volatile byte publisherId;
+        private volatile ClientProducerState clientProducerState;
+
+        private ProducerState(long id, StreamProducer producer) {
+            this.id = id;
+            this.producer = producer;
+        }
+    }
+
+    private final AtomicLong globalPublisherIdSequence = new AtomicLong(0);
+    private final Map<Long, ProducerState> producerRegistry = new ConcurrentHashMap<>();
+
+    Runnable registerProducer(StreamProducer producer, String stream) {
+        ClientProducerState clientForPublisher = getClientForPublisher(stream);
+        long globalProducerId = globalPublisherIdSequence.getAndIncrement();
+        ProducerState producerState = new ProducerState(globalProducerId, producer);
+        clientForPublisher.register(producerState);
+        producerRegistry.put(globalProducerId, producerState);
+
+        return () -> {
+            producerState.clientProducerState.unregister(producerState);
+            producerRegistry.remove(globalProducerId);
+        };
     }
 
     Client locator() {
