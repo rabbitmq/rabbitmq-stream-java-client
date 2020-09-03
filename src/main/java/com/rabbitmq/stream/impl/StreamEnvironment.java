@@ -317,12 +317,16 @@ class StreamEnvironment implements Environment {
     Client getClientForPublisher(String stream) {
         Map<String, Client.StreamMetadata> metadata = locator().metadata(stream);
         if (metadata.size() == 0 || metadata.get(stream) == null) {
-            throw new IllegalArgumentException("Stream does not exist: " + stream);
+            throw new StreamDoesNotExistException("Stream does not exist: " + stream);
         }
 
         Client.StreamMetadata streamMetadata = metadata.get(stream);
         if (!streamMetadata.isResponseOk()) {
-            throw new IllegalArgumentException("Could not get stream metadata, response code: " + streamMetadata.getResponseCode());
+            if (streamMetadata.getResponseCode() == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
+                throw new StreamDoesNotExistException("Stream does not exist: " + stream);
+            } else {
+                throw new IllegalArgumentException("Could not get stream metadata, response code: " + streamMetadata.getResponseCode());
+            }
         }
 
         Client.Broker leader = streamMetadata.getLeader();

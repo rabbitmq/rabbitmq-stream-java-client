@@ -465,6 +465,7 @@ public class Client implements AutoCloseable {
 %% <<
 %%   Magic=5:4/unsigned,
 %%   ProtoVersion:4/unsigned,
+%%   ChunkType:8/unsigned, %% 0=user, 1=tracking delta, 2=tracking snapshot
 %%   NumEntries:16/unsigned, %% need some kind of limit on chunk sizes 64k is a good start
 %%   NumRecords:32/unsigned, %% total including all sub batch entries
 %%   Timestamp:64/signed, %% millisecond posix (ish) timestamp
@@ -477,6 +478,12 @@ public class Client implements AutoCloseable {
  */
         // FIXME handle magic and version
         byte magicAndVersion = bb.readByte();
+        read += 1;
+
+        byte chunkType = bb.readByte();
+        if (chunkType != 0) {
+            throw new IllegalStateException("Invalid chunk type: " + chunkType);
+        }
         read += 1;
 
         int numEntries = bb.readUnsignedShort();

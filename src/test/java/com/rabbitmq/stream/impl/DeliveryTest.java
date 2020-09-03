@@ -53,6 +53,7 @@ public class DeliveryTest {
         bb.writeShort(Constants.COMMAND_DELIVER).writeShort(Constants.VERSION_0)
                 .writeByte(1) // subscription id
                 .writeByte(1) // magic and version
+                .writeByte(0) // chunk type, always 0 in our case
                 .writeShort(nbMessages) // num entries
                 .writeInt(nbMessages) // num messages
                 .writeLong(System.currentTimeMillis())

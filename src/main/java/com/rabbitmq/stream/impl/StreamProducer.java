@@ -111,7 +111,6 @@ class StreamProducer implements Producer {
         };
         Client.PublishErrorListener publishErrorListener = (pubId, publishingId, errorCode) -> {
             ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
-            unconfirmedMessagesSemaphore.release();
             if (confirmationCallback != null) {
                 int nackedCount = confirmationCallback.handle(false, errorCode);
                 this.unconfirmedMessagesSemaphore.release(nackedCount);
