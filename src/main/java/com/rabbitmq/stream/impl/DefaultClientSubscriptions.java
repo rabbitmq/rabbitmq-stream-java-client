@@ -150,9 +150,13 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         for (ClientSubscriptionPool subscriptionPool : this.clientSubscriptionPools.values()) {
             subscriptionPool.close();
         }
-
     }
 
+    /**
+     * Data structure that keeps track of a given {@link StreamConsumer} and its message callback.
+     *
+     * An instance is "moved" between {@link SubscriptionState} instances on stream failure or on disconnection.
+     */
     private static class StreamSubscription {
 
         private final long id;
@@ -188,6 +192,12 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
     }
 
+    /**
+     * Maintains {@link SubscriptionState} instances for a given host.
+     *
+     * Creates new {@link SubscriptionState} instances (and so {@link Client}s, i.e. connections)
+     * when needed and disposes them when appropriate.
+     */
     private class ClientSubscriptionPool {
 
         private final List<SubscriptionState> states = new CopyOnWriteArrayList<>();
@@ -243,6 +253,12 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
     }
 
+    /**
+     * Maintains a set of {@link StreamSubscription} instances on a {@link Client}.
+     *
+     * It dispatches inbound messages to the appropriate {@link StreamSubscription} and
+     * re-allocates {@link StreamSubscription}s in case of stream unavailability or disconnection.
+     */
     private class SubscriptionState {
 
         private final Client client;
