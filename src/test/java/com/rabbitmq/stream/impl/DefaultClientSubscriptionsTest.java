@@ -195,32 +195,36 @@ public class DefaultClientSubscriptionsTest {
                 .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
         Map<Byte, Integer> messageHandlerCalls = new ConcurrentHashMap<>();
+        List<Long> subscriptionGlobalIds = new ArrayList<>();
         for (int i = 0; i < DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
             byte subId = (byte) i;
-            clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+            long subscriptionGlobalId = clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
                 messageHandlerCalls.compute(subId, (k, v) -> (v == null) ? 1 : ++v);
             });
+            subscriptionGlobalIds.add(subscriptionGlobalId);
         }
 
         verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
         verify(client, times(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
-        subscriptionIdCaptor.getAllValues().forEach(subscriptionId -> {
+        Runnable messageToEachSubscription = () -> subscriptionIdCaptor.getAllValues().forEach(subscriptionId -> {
             messageListener.handle(subscriptionId, 0, new WrapperMessageBuilder().build());
         });
+        messageToEachSubscription.run();
         assertThat(messageHandlerCalls).hasSize(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT);
-//        assertThat(messageHandlerCalls.get()).isEqualTo(0);
-//        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
-//        assertThat(messageHandlerCalls.get()).isEqualTo(1);
-//
-//        when(client.unsubscribe(subscriptionIdCaptor.getValue()))
-//                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+        messageHandlerCalls.values().forEach(messageCount -> assertThat(messageCount).isEqualTo(1));
 
-//        clientSubscriptions.unsubscribe(subscriptionGlobalId);
-//        verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
-//
-//        messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
-//        assertThat(messageHandlerCalls.get()).isEqualTo(1);
+        when(client.unsubscribe(anyByte()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        subscriptionGlobalIds.forEach(subscriptionGlobalId -> clientSubscriptions.unsubscribe(subscriptionGlobalId));
+
+        verify(client, times(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT)).unsubscribe(anyByte());
+
+        // simulating inbound messages again, but they should go nowhere
+        messageToEachSubscription.run();
+        assertThat(messageHandlerCalls).hasSize(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT);
+        messageHandlerCalls.values().forEach(messageCount -> assertThat(messageCount).isEqualTo(1));
     }
 
     @Test

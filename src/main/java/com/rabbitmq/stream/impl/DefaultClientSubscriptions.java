@@ -289,6 +289,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     })
                     .shutdownListener(shutdownContext -> {
                         if (shutdownContext.isShutdownUnexpected()) {
+                            // FIXME this does not look right, the SubscriptionState should be disposed because it's no longer usable
                             clientSubscriptionPools.remove(name);
                             LOGGER.debug("Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment", name);
                             environment.scheduledExecutorService().schedule(() -> {
@@ -328,6 +329,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                             // scheduling consumer re-assignment, to give the system some time to recover
                             environment.scheduledExecutorService().schedule(() -> {
                                 LOGGER.debug("Trying to move {} subscription(s) (stream {})", affectedSubscriptions.size(), stream);
+                                // FIXME the SubscriptionState instance may be empty after the re-assignment, it should be disposed
                                 assignConsumersToStream(
                                         affectedSubscriptions, stream,
                                         attempt -> attempt == 0 ? Duration.ZERO : metadataUpdateRetryDelay,
