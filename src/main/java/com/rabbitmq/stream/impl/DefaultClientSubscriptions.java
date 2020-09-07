@@ -83,6 +83,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
         clientSubscriptionPool.add(streamSubscription, offsetSpecification);
         streamSubscriptionRegistry.put(streamSubscription.id, streamSubscription);
+
         return streamSubscriptionId;
     }
 
@@ -154,7 +155,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
     /**
      * Data structure that keeps track of a given {@link StreamConsumer} and its message callback.
-     *
+     * <p>
      * An instance is "moved" between {@link SubscriptionState} instances on stream failure or on disconnection.
      */
     private static class StreamSubscription {
@@ -194,7 +195,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
     /**
      * Maintains {@link SubscriptionState} instances for a given host.
-     *
+     * <p>
      * Creates new {@link SubscriptionState} instances (and so {@link Client}s, i.e. connections)
      * when needed and disposes them when appropriate.
      */
@@ -203,27 +204,28 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         private final List<SubscriptionState> states = new CopyOnWriteArrayList<>();
         private final String name;
         private final Client.ClientParameters clientParameters;
-        private final java.util.function.Consumer<SubscriptionState> cleanCallback;
 
         private ClientSubscriptionPool(String name, Client.ClientParameters clientParameters) {
             this.name = name;
             this.clientParameters = clientParameters;
-            this.cleanCallback = subscriptionState -> {
-                synchronized (ClientSubscriptionPool.this) {
-                    if (subscriptionState.isEmpty()) {
-                        subscriptionState.close();
-                        states.remove(subscriptionState);
-                        LOGGER.debug("Closed subscription state on {}, {} remaining", name, states.size());
-                        if (states.isEmpty()) {
-                            clientSubscriptionPools.remove(name);
-                            LOGGER.debug("Closed client subscription pool on {} because it was empty", name);
-                        }
-                    }
-
-                }
-            };
             LOGGER.debug("Creating client subscription pool on {}", name);
-            states.add(new SubscriptionState(name, clientParameters, cleanCallback));
+            states.add(new SubscriptionState(this, clientParameters));
+        }
+
+        private synchronized void maybeDisposeSubscriptionState(SubscriptionState subscriptionState) {
+            if (subscriptionState.isEmpty()) {
+                subscriptionState.close();
+                this.removeSubscriptionState(subscriptionState);
+                LOGGER.debug("Closed subscription state on {}, {} remaining", name, states.size());
+                if (states.isEmpty()) {
+                    clientSubscriptionPools.remove(name);
+                    LOGGER.debug("Closed client subscription pool on {} because it was empty", name);
+                }
+            }
+        }
+
+        private synchronized void removeSubscriptionState(SubscriptionState subscriptionState) {
+            states.remove(subscriptionState);
         }
 
         synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
@@ -236,8 +238,8 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 }
             }
             if (!added) {
-                LOGGER.debug("Creating subscription state on {}, this is #{}", name, states.size() + 1);
-                SubscriptionState state = new SubscriptionState(name, clientParameters, cleanCallback);
+                LOGGER.debug("Creating subscription state on {}, this is subscription state #{}", name, states.size() + 1);
+                SubscriptionState state = new SubscriptionState(this, clientParameters);
                 states.add(state);
                 state.add(streamSubscription, offsetSpecification);
             }
@@ -255,24 +257,24 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
     /**
      * Maintains a set of {@link StreamSubscription} instances on a {@link Client}.
-     *
+     * <p>
      * It dispatches inbound messages to the appropriate {@link StreamSubscription} and
      * re-allocates {@link StreamSubscription}s in case of stream unavailability or disconnection.
      */
     private class SubscriptionState {
 
         private final Client client;
-        private final java.util.function.Consumer<SubscriptionState> cleanCallback;
         // the 3 following data structures track the subscriptions, they must remain consistent
         private final Map<String, Set<StreamSubscription>> streamToStreamSubscriptions = new ConcurrentHashMap<>();
         private final Set<Long> globalStreamSubscriptionIds = ConcurrentHashMap.newKeySet();
+        private final ClientSubscriptionPool owner;
         private volatile List<StreamSubscription> streamSubscriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
 
-        private SubscriptionState(String name, Client.ClientParameters clientParameters,
-                                  java.util.function.Consumer<SubscriptionState> cleanCallback) {
+        private SubscriptionState(ClientSubscriptionPool owner, Client.ClientParameters clientParameters) {
+            this.owner = owner;
+            String name = owner.name;
             LOGGER.debug("creating subscription state on {}", name);
             IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> streamSubscriptions.add(null));
-            this.cleanCallback = cleanCallback;
             this.client = clientFactory.apply(clientParameters
                     .clientProperty("name", "rabbitmq-stream-consumer")
                     .chunkListener((client, subscriptionId, offset, messageCount, dataSize) -> client.credit(subscriptionId, 1))
@@ -289,17 +291,17 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     })
                     .shutdownListener(shutdownContext -> {
                         if (shutdownContext.isShutdownUnexpected()) {
-                            // FIXME this does not look right, the SubscriptionState should be disposed because it's no longer usable
-                            clientSubscriptionPools.remove(name);
+                            owner.removeSubscriptionState(this);
                             LOGGER.debug("Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment", name);
                             environment.scheduledExecutorService().schedule(() -> {
                                 for (Map.Entry<String, Set<StreamSubscription>> entry : streamToStreamSubscriptions.entrySet()) {
                                     String stream = entry.getKey();
-                                    LOGGER.debug("Re-assigning consumers to stream {} after disconnection");
+                                    LOGGER.debug("Re-assigning {} consumer(s) to stream {} after disconnection", entry.getValue().size(), stream);
                                     assignConsumersToStream(
                                             entry.getValue(), stream,
                                             attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt + 1), // already waited once
-                                            Duration.ZERO
+                                            Duration.ZERO,
+                                            false
                                     );
                                 }
                             }, environment.recoveryBackOffDelayPolicy().delay(0).toMillis(), TimeUnit.MILLISECONDS);
@@ -325,15 +327,19 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                             }
                             affectedSubscriptions = subscriptions;
                         }
+                        if (isEmpty()) {
+                            this.owner.removeSubscriptionState(this);
+                        }
                         if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
                             // scheduling consumer re-assignment, to give the system some time to recover
                             environment.scheduledExecutorService().schedule(() -> {
                                 LOGGER.debug("Trying to move {} subscription(s) (stream {})", affectedSubscriptions.size(), stream);
-                                // FIXME the SubscriptionState instance may be empty after the re-assignment, it should be disposed
+                                // FIXME the SubscriptionState instance may be empty after the re-assignment, it should be disposed of
                                 assignConsumersToStream(
                                         affectedSubscriptions, stream,
                                         attempt -> attempt == 0 ? Duration.ZERO : metadataUpdateRetryDelay,
-                                        metadataUpdateRetryTimeout
+                                        metadataUpdateRetryTimeout,
+                                        isEmpty()
                                 );
                             }, metadataUpdateInitialDelay.toMillis(), TimeUnit.MILLISECONDS);
                         }
@@ -341,7 +347,8 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         private void assignConsumersToStream(Collection<StreamSubscription> subscriptions, String stream,
-                                             Function<Integer, Duration> delayPolicy, Duration retryTimeout) {
+                                             Function<Integer, Duration> delayPolicy, Duration retryTimeout,
+                                             boolean closeClient) {
             Runnable consumersClosingCallback = () -> {
                 for (StreamSubscription affectedSubscription : subscriptions) {
                     try {
@@ -388,6 +395,9 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                 } catch (Exception e) {
                                     LOGGER.warn("Error while re-assigning subscription from stream {}", stream, e.getMessage());
                                 }
+                            }
+                            if (closeClient) {
+                                this.close();
                             }
                         }
                     }).exceptionally(ex -> {
@@ -455,7 +465,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     return subscriptionsForThisStream.isEmpty() ? null : subscriptionsForThisStream;
                 }
             });
-            this.cleanCallback.accept(this);
+            this.owner.maybeDisposeSubscriptionState(this);
         }
 
         private List<StreamSubscription> update(List<StreamSubscription> original, byte index, StreamSubscription newValue) {
@@ -478,7 +488,9 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         void close() {
-            this.client.close();
+            if (this.client.isOpen()) {
+                this.client.close();
+            }
         }
     }
 }

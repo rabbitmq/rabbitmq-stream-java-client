@@ -30,6 +30,7 @@ import org.mockito.MockitoAnnotations;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -63,6 +64,8 @@ public class DefaultClientSubscriptionsTest {
     volatile Client.MetadataListener metadataListener;
     volatile Client.MessageListener messageListener;
     volatile Client.ShutdownListener shutdownListener;
+    List<Client.ShutdownListener> shutdownListeners = new CopyOnWriteArrayList<>(); // when we need several of them in the test
+    List<Client.MetadataListener> metadataListeners = new CopyOnWriteArrayList<>(); // when we need several of them in the test
 
     @BeforeEach
     void init() {
@@ -70,6 +73,7 @@ public class DefaultClientSubscriptionsTest {
             @Override
             public Client.ClientParameters metadataListener(Client.MetadataListener metadataListener) {
                 DefaultClientSubscriptionsTest.this.metadataListener = metadataListener;
+                DefaultClientSubscriptionsTest.this.metadataListeners.add(metadataListener);
                 return super.metadataListener(metadataListener);
             }
 
@@ -82,6 +86,7 @@ public class DefaultClientSubscriptionsTest {
             @Override
             public Client.ClientParameters shutdownListener(Client.ShutdownListener shutdownListener) {
                 DefaultClientSubscriptionsTest.this.shutdownListener = shutdownListener;
+                DefaultClientSubscriptionsTest.this.shutdownListeners.add(shutdownListener);
                 return super.shutdownListener(shutdownListener);
             }
         };
@@ -462,6 +467,7 @@ public class DefaultClientSubscriptionsTest {
 
         when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
                 .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+        when(client.isOpen()).thenReturn(true);
 
         int extraSubscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
         int subscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
@@ -490,6 +496,88 @@ public class DefaultClientSubscriptionsTest {
         globalSubscriptionIds.stream().forEach(id -> clientSubscriptions.unsubscribe(id));
 
         verify(client, times(2)).close();
+    }
+
+    @Test
+    void shouldRemoveSubscriptionStateFromPoolAfterConnectionDies() throws Exception {
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        Duration retryDelay = Duration.ofMillis(100);
+        when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+        when(consumer.isOpen()).thenReturn(true);
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas().subList(0, 1))));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        int extraSubscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
+        int subscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
+        IntStream.range(0, subscriptionCount).forEach(i -> {
+            clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+            });
+        });
+        // the extra is allocated on another client from the same pool
+        verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
+        verify(client, times(subscriptionCount))
+                .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        // let's kill the first client connection
+        shutdownListeners.get(0).handle(new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+        Thread.sleep(retryDelay.toMillis() * 5);
+
+        // the MAX consumers must have been re-allocated to the existing client and a new one
+        // let's add a new subscription to make sure we are still using the same pool
+        clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+        });
+
+        verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
+        verify(client, times(subscriptionCount + DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
+                .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+    }
+
+    @Test
+    void shouldRemoveSubscriptionStateFromPoolIfEmptyAfterMetadataUpdate() throws Exception {
+        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(50);
+        clientSubscriptions.metadataUpdateRetryDelay = Duration.ofMillis(50);
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        when(consumer.isOpen()).thenReturn(true);
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas().subList(0, 1))));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+        when(client.subscribe(subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+                .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+        int extraSubscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
+        int subscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
+        IntStream.range(0, subscriptionCount).forEach(i -> {
+            clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+            });
+        });
+        // the extra is allocated on another client from the same pool
+        verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
+        verify(client, times(subscriptionCount))
+                .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+
+        // let's kill the first client connection
+        metadataListeners.get(0).handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() * 5);
+
+        // the MAX consumers must have been re-allocated to the existing client and a new one
+        // let's add a new subscription to make sure we are still using the same pool
+        clientSubscriptions.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {
+        });
+
+        verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
+        verify(client, times(subscriptionCount + DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
+                .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
     }
 
     Client.Broker leader() {
