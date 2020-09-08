@@ -296,20 +296,18 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                         owner.removeSubscriptionState(this);
                         if (shutdownContext.isShutdownUnexpected()) {
                             LOGGER.debug("Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment", name);
-                            // FIXME the code below seems to schedule a first backoff twice, maybe the first scheduling is not necessary
-                            // make sure to execute the first call in the thread pool to free the IO thread
-                            environment.scheduledExecutorService().schedule(() -> {
+                            environment.scheduledExecutorService().execute(() -> {
                                 for (Map.Entry<String, Set<StreamSubscription>> entry : streamToStreamSubscriptions.entrySet()) {
                                     String stream = entry.getKey();
                                     LOGGER.debug("Re-assigning {} consumer(s) to stream {} after disconnection", entry.getValue().size(), stream);
                                     assignConsumersToStream(
                                             entry.getValue(), stream,
-                                            attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt + 1), // already waited once
+                                            attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt),
                                             Duration.ZERO,
                                             false
                                     );
                                 }
-                            }, environment.recoveryBackOffDelayPolicy().delay(0).toMillis(), TimeUnit.MILLISECONDS);
+                            });
                         }
                     })
                     .metadataListener((stream, code) -> {

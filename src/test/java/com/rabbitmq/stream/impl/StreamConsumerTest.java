@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamConsumerTest {
 
-    static final Duration RECOVERY_DELAY = Duration.ofSeconds(5);
+    static final Duration RECOVERY_DELAY = Duration.ofSeconds(2);
 
     String stream;
     EventLoopGroup eventLoopGroup;
@@ -52,10 +52,7 @@ public class StreamConsumerTest {
 //                    Host.killStreamLeaderProcess(o.toString());
 //                    Thread.sleep(DefaultClientSubscriptions.METADATA_UPDATE_DEFAULT_INITIAL_DELAY.toMillis());
 //                }, "stream leader process is killed"),
-                TestUtils.namedTask(o -> {
-                            Host.killConnection("rabbitmq-stream-consumer");
-                            Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
-                        }
+                TestUtils.namedTask(o -> Host.killConnection("rabbitmq-stream-consumer")
                         , "consumer connection is killed")
 //                TestUtils.namedTask(o -> {
 //                    try {
