@@ -31,6 +31,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
     static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
 
+    // FIXME consider using a delay policy for metadata update delays and timeout
     static final Duration METADATA_UPDATE_DEFAULT_INITIAL_DELAY = Duration.ofSeconds(5);
     static final Duration METADATA_UPDATE_DEFAULT_RETRY_DELAY = Duration.ofSeconds(1);
     static final Duration METADATA_UPDATE_DEFAULT_RETRY_TIMEOUT = Duration.ofSeconds(60);
@@ -230,6 +231,8 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
         synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
             boolean added = false;
+            // FIXME deal with state unavailability (state may be closing because of connection closing)
+            // try all of them until it succeeds, throw exception if failure
             for (SubscriptionState state : states) {
                 if (!state.isFull()) {
                     state.add(streamSubscription, offsetSpecification);
@@ -290,9 +293,11 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                         }
                     })
                     .shutdownListener(shutdownContext -> {
+                        owner.removeSubscriptionState(this);
                         if (shutdownContext.isShutdownUnexpected()) {
-                            owner.removeSubscriptionState(this);
                             LOGGER.debug("Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment", name);
+                            // FIXME the code below seems to schedule a first backoff twice, maybe the first scheduling is not necessary
+                            // make sure to execute the first call in the thread pool to free the IO thread
                             environment.scheduledExecutorService().schedule(() -> {
                                 for (Map.Entry<String, Set<StreamSubscription>> entry : streamToStreamSubscriptions.entrySet()) {
                                     String stream = entry.getKey();
@@ -407,6 +412,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
+            // FIXME check state is still open (not closed because of connection failure)
             byte subscriptionId = 0;
             for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
                 if (streamSubscriptions.get(i) == null) {
@@ -448,6 +454,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         }
 
         synchronized void remove(StreamSubscription streamSubscription) {
+            // FIXME check state is still open (not closed because of connection failure)
             byte subscriptionIdInClient = streamSubscription.subscriptionIdInClient;
             Client.Response unsubscribeResponse = client.unsubscribe(subscriptionIdInClient);
             if (!unsubscribeResponse.isOk()) {

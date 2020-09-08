@@ -34,7 +34,8 @@ public final class Constants {
     public static final short RESPONSE_CODE_ACCESS_REFUSED = 15;
 
 
-    public static final short CODE_MESSAGE_ENQUEUEING_FAILED = 1000;
+    public static final short CODE_MESSAGE_ENQUEUEING_FAILED = 10_000;
+    public static final short CODE_PRODUCER_NOT_AVAILABLE = 10_001;
 
     public static final short COMMAND_PUBLISH = 0;
     public static final short COMMAND_PUBLISH_CONFIRM = 1;

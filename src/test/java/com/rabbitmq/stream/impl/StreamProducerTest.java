@@ -14,23 +14,25 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.ConfirmationStatus;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -47,6 +49,7 @@ public class StreamProducerTest {
     void init() {
         environment = Environment.builder()
                 .eventLoopGroup(eventLoopGroup)
+                .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
                 .build();
     }
 
@@ -120,6 +123,82 @@ public class StreamProducerTest {
         assertThat(confirmationStatusReference.get()).isNotNull();
         assertThat(confirmationStatusReference.get().isConfirmed()).isFalse();
         assertThat(confirmationStatusReference.get().getCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    }
+
+    @Test
+    @TestUtils.DisabledIfRabbitMqCtlNotSet
+    void shouldRecoverAfterConnectionIsKilled() throws Exception {
+        Producer producer = environment.producerBuilder()
+                .stream(stream)
+                .build();
+
+        AtomicInteger published = new AtomicInteger(0);
+        AtomicInteger confirmed = new AtomicInteger(0);
+        AtomicInteger errored = new AtomicInteger(0);
+
+        AtomicBoolean canPublish = new AtomicBoolean(true);
+        CountDownLatch unavailabilityLatch = new CountDownLatch(1);
+        Thread publishThread = new Thread(() -> {
+            ConfirmationHandler confirmationHandler = confirmationStatus -> {
+                if (confirmationStatus.isConfirmed()) {
+                    confirmed.incrementAndGet();
+                } else {
+                    errored.incrementAndGet();
+                    if (confirmationStatus.getCode() == Constants.CODE_PRODUCER_NOT_AVAILABLE) {
+                        unavailabilityLatch.countDown();
+                    }
+                }
+            };
+            while (true) {
+                try {
+                    if (canPublish.get()) {
+                        producer.send(
+                                producer.messageBuilder().addData("".getBytes(StandardCharsets.UTF_8)).build(),
+                                confirmationHandler
+                        );
+                        published.incrementAndGet();
+                    } else {
+                        Thread.sleep(500);
+                    }
+                } catch (InterruptedException | StreamException e) {
+                    // OK
+                }
+            }
+        });
+        publishThread.start();
+
+        Thread.sleep(1000L);
+
+        Host.killConnection("rabbitmq-stream-producer");
+
+        assertThat(unavailabilityLatch.await(10, TimeUnit.SECONDS)).isTrue();
+        canPublish.set(false);
+
+        assertThat(((StreamProducer) producer).status()).isEqualTo(StreamProducer.Status.NOT_AVAILABLE);
+
+        assertThat(confirmed.get()).isPositive();
+        assertThat(confirmed.get() + errored.get()).isEqualTo(published.get());
+        int confirmedAfterUnavailability = confirmed.get();
+        int errorAfterUnavailability = errored.get();
+
+        waitAtMost(10, () -> ((StreamProducer) producer).status() == StreamProducer.Status.RUNNING);
+
+        canPublish.set(true);
+
+        waitAtMost(10, () -> confirmed.get() > confirmedAfterUnavailability * 2);
+
+        assertThat(errored.get()).isEqualTo(errorAfterUnavailability);
+
+        canPublish.set(false);
+        publishThread.interrupt();
+
+        waitAtMost(10, () -> confirmed.get() + errored.get() == published.get());
+
+        CountDownLatch consumeLatch = new CountDownLatch(confirmed.get());
+        environment.consumerBuilder().stream(stream).messageHandler((offset, message) -> {
+            consumeLatch.countDown();
+        }).build();
+        assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     }
 
 }

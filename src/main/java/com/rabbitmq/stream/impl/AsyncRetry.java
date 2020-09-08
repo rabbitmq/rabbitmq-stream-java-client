@@ -41,6 +41,8 @@ class AsyncRetry<V> {
     private final Predicate<Exception> retry;
     private final CompletableFuture<V> completableFuture;
 
+    // FIXME consider supporting a timeout with the delayPolicy/BackOffDelayPolicy
+    // the policy could return a Duration.of(Long.MAX_VALUE) and that would be the condition to stop
     private AsyncRetry(Callable<V> task, String description,
                        ScheduledExecutorService scheduler,
                        Function<Integer, Duration> delayPolicy, Duration timeout,

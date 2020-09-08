@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
+import static com.rabbitmq.stream.Constants.CODE_PRODUCER_NOT_AVAILABLE;
 
 class StreamProducer implements Producer {
 
@@ -42,9 +43,10 @@ class StreamProducer implements Producer {
     private final Runnable closingCallback;
     private final StreamEnvironment environment;
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final int maxUnconfirmedMessages;
     volatile Client client;
     volatile byte publisherId;
-    private volatile State state = State.INITIALIZING;
+    private volatile Status status;
 
     StreamProducer(String stream,
                    int subEntrySize, int batchSize, Duration batchPublishingDelay,
@@ -62,6 +64,7 @@ class StreamProducer implements Producer {
             delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
         }
 
+        this.maxUnconfirmedMessages = maxUnconfirmedMessages;
         this.unconfirmedMessagesSemaphore = new Semaphore(maxUnconfirmedMessages, true);
 
         this.writeCallback = new Client.OutboundEntityWriteCallback() {
@@ -89,7 +92,7 @@ class StreamProducer implements Producer {
             environment.scheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
         }
         this.batchSize = batchSize;
-        this.state = State.WORKING;
+        this.status = Status.RUNNING;
     }
 
     void confirm(long publishingId) {
@@ -121,18 +124,38 @@ class StreamProducer implements Producer {
     public void send(Message message, ConfirmationHandler confirmationHandler) {
         // TODO check state to see if sending is possible
         try {
-            if (unconfirmedMessagesSemaphore.tryAcquire(10, TimeUnit.SECONDS)) {
-                if (accumulator.add(message, confirmationHandler)) {
-                    synchronized (this) {
-                        publishBatch();
+            if (canSend()) {
+                if (unconfirmedMessagesSemaphore.tryAcquire(10, TimeUnit.SECONDS)) {
+                    if (canSend()) {
+                        if (accumulator.add(message, confirmationHandler)) {
+                            synchronized (this) {
+                                publishBatch();
+                            }
+                        }
+                    } else {
+                        if (this.status == Status.NOT_AVAILABLE) {
+                            confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_PRODUCER_NOT_AVAILABLE));
+                        } else {
+                            throw new IllegalStateException("Cannot publish while status is " + this.status);
+                        }
                     }
+                } else {
+                    confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_MESSAGE_ENQUEUEING_FAILED));
                 }
             } else {
-                confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_MESSAGE_ENQUEUEING_FAILED));
+                if (this.status == Status.NOT_AVAILABLE) {
+                    confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_PRODUCER_NOT_AVAILABLE));
+                } else {
+                    throw new IllegalStateException("Cannot publish while status is " + this.status);
+                }
             }
         } catch (InterruptedException e) {
             throw new StreamException("Interrupted while waiting to accumulate outbound message", e);
         }
+    }
+
+    private boolean canSend() {
+        return this.status == Status.RUNNING;
     }
 
     @Override
@@ -150,7 +173,7 @@ class StreamProducer implements Producer {
     }
 
     private void publishBatch() {
-        if (!accumulator.isEmpty()) {
+        if (canSend() && !accumulator.isEmpty()) {
             List<Object> messages = new ArrayList<>(this.batchSize);
             int batchCount = 0;
             while (batchCount != this.batchSize) {
@@ -169,8 +192,34 @@ class StreamProducer implements Producer {
         return !this.closed.get();
     }
 
-    private enum State {
-        INITIALIZING, WORKING, NOT_AVAILABLE, STREAM_DELETED, CLOSED
+    void unavailable() {
+        this.status = Status.NOT_AVAILABLE;
+        synchronized (this) {
+            this.unconfirmedMessages.keySet().forEach(publishingId -> error(publishingId, CODE_PRODUCER_NOT_AVAILABLE));
+            if (!accumulator.isEmpty()) {
+                MessageAccumulator.AccumulatedEntity accumulatedEntity;
+                while ((accumulatedEntity = accumulator.get()) != null) {
+                    accumulatedEntity.confirmationCallback().handle(false, CODE_PRODUCER_NOT_AVAILABLE);
+                }
+            }
+        }
+    }
+
+    void running() {
+        synchronized (this) {
+            if (unconfirmedMessagesSemaphore.availablePermits() != maxUnconfirmedMessages) {
+                unconfirmedMessagesSemaphore.release(maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits());
+            }
+        }
+        this.status = Status.RUNNING;
+    }
+
+    Status status() {
+        return this.status;
+    }
+
+    enum Status {
+        RUNNING, NOT_AVAILABLE
     }
 
     interface ConfirmationCallback {

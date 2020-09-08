@@ -5,10 +5,13 @@ import com.rabbitmq.stream.StreamDoesNotExistException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 class ProducersCoordinator {
@@ -35,12 +38,12 @@ class ProducersCoordinator {
     Runnable registerProducer(StreamProducer producer, String stream) {
         ClientProducersManager clientForPublisher = getClient(stream);
         long globalProducerId = globalPublisherIdSequence.getAndIncrement();
-        ProducerTracker producerState = new ProducerTracker(globalProducerId, producer);
-        clientForPublisher.register(producerState);
-        producerRegistry.put(globalProducerId, producerState);
+        ProducerTracker producerTracker = new ProducerTracker(globalProducerId, stream, producer);
+        clientForPublisher.register(producerTracker);
+        producerRegistry.put(globalProducerId, producerTracker);
 
         return () -> {
-            producerState.clientProducersManager.unregister(producerState);
+            producerTracker.clientProducersManager.unregister(producerTracker);
             producerRegistry.remove(globalProducerId);
         };
     }
@@ -69,13 +72,9 @@ class ProducersCoordinator {
         // FIXME make sure this is a reasonable key for brokers
         String key = leader.getHost() + ":" + leader.getPort();
 
-        return clientProducerManagers.computeIfAbsent(key, s -> {
-            // FIXME add shutdown listener to client for publisher
-            // this should notify the affected publishers/consumers
-            return new ClientProducersManager(clientFactory, clientParametersPrototype.duplicate()
-                    .host(leader.getHost())
-                    .port(leader.getPort()));
-        });
+        return clientProducerManagers.computeIfAbsent(key, s -> new ClientProducersManager(clientFactory, clientParametersPrototype.duplicate()
+                .host(leader.getHost())
+                .port(leader.getPort())));
     }
 
     void close() {
@@ -91,21 +90,24 @@ class ProducersCoordinator {
     private static class ProducerTracker {
 
         private final long id;
+        private final String stream;
         private final StreamProducer producer;
         private volatile byte publisherId;
         private volatile ClientProducersManager clientProducersManager;
 
-        private ProducerTracker(long id, StreamProducer producer) {
+        private ProducerTracker(long id, String stream, StreamProducer producer) {
             this.id = id;
+            this.stream = stream;
             this.producer = producer;
         }
     }
 
-    private static class ClientProducersManager {
+    private class ClientProducersManager {
 
         private static final int MAX_PUBLISHERS_PER_CLIENT = 256;
 
         private final Map<Byte, ProducerTracker> producers = new ConcurrentHashMap<>(MAX_PUBLISHERS_PER_CLIENT);
+        private final Map<String, Set<ProducerTracker>> streamToProducerTrackers = new ConcurrentHashMap<>();
 
         private final AtomicInteger producerSequence = new AtomicInteger(0);
 
@@ -114,6 +116,7 @@ class ProducersCoordinator {
         private ClientProducersManager(Function<Client.ClientParameters, Client> cf, Client.ClientParameters clientParameters) {
             // FIXME handle client disconnection
             // FIXME handle stream unavailability
+            AtomicReference<Client> ref = new AtomicReference<>();
             this.client = cf.apply(clientParameters
                     .publishConfirmListener((publisherId, publishingId) -> {
                         ProducerTracker producerTracker = producers.get(publisherId);
@@ -131,19 +134,57 @@ class ProducersCoordinator {
                             producerTracker.producer.error(publishingId, errorCode);
                         }
                     })
+                    .shutdownListener(shutdownContext -> {
+                        clientProducerManagers.values().remove(this);
+                        if (shutdownContext.isShutdownUnexpected()) {
+                            producers.forEach((publishingId, tracker) -> tracker.producer.unavailable());
+                            // execute in thread pool to free the IO thread
+                            environment.scheduledExecutorService().execute(() -> {
+                                streamToProducerTrackers.entrySet().forEach(entry -> {
+                                    String stream = entry.getKey();
+                                    Set<ProducerTracker> trackers = entry.getValue();
+
+                                    // FIXME deal with errors (no locator)
+                                    AsyncRetry.asyncRetry(() -> getClient(stream))
+                                            .description("Candidate lookup to publish to " + stream)
+                                            .scheduler(environment.scheduledExecutorService())
+                                            .retry(ex -> !(ex instanceof StreamDoesNotExistException))
+                                            .delayPolicy(attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt))
+                                            .timeout(Duration.ZERO)
+                                            .build()
+                                            .thenAccept(producersManager -> trackers.forEach(tracker -> {
+                                                producersManager.register(tracker);
+                                                tracker.producer.running();
+                                            }));
+                                });
+                            });
+                        }
+                    })
                     .clientProperty("name", "rabbitmq-stream-producer"));
+            ref.set(this.client);
         }
 
-        private void register(ProducerTracker producerTracker) {
+        private synchronized void register(ProducerTracker producerTracker) {
             producerTracker.publisherId = (byte) producerSequence.incrementAndGet();
             producerTracker.producer.publisherId = producerTracker.publisherId;
             producerTracker.producer.client = this.client;
             producerTracker.clientProducersManager = this;
             producers.put(producerTracker.publisherId, producerTracker);
+            streamToProducerTrackers.computeIfAbsent(producerTracker.stream, s -> ConcurrentHashMap.newKeySet())
+                    .add(producerTracker);
         }
 
-        private void unregister(ProducerTracker producerTracker) {
+        private synchronized void unregister(ProducerTracker producerTracker) {
             producers.remove(producerTracker.publisherId);
+            streamToProducerTrackers.compute(producerTracker.stream, (s, producerTrackersForThisStream) -> {
+                if (s == null || producerTrackersForThisStream == null) {
+                    // should not happen
+                    return null;
+                } else {
+                    producerTrackersForThisStream.remove(producerTracker);
+                    return producerTrackersForThisStream.isEmpty() ? null : producerTrackersForThisStream;
+                }
+            });
         }
 
     }
