@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
@@ -49,23 +48,24 @@ class StreamEnvironment implements Environment {
     private final List<StreamConsumer> consumers = new CopyOnWriteArrayList<>();
     private final Codec codec;
     private final BackOffDelayPolicy recoveryBackOffDelayPolicy;
+    private final BackOffDelayPolicy topologyUpdateBackOffDelayPolicy;
     private final ClientSubscriptions clientSubscriptions;
     private final ProducersCoordinator producersCoordinator;
     private final Function<Client.ClientParameters, Client> clientFactory;
     private volatile Client locator;
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
-                      List<URI> uris, BackOffDelayPolicy recoveryBackOffDelayPolicy) {
-        this(scheduledExecutorService, clientParametersPrototype, uris, recoveryBackOffDelayPolicy,
+                      List<URI> uris, BackOffDelayPolicy recoveryBackOffDelayPolicy, BackOffDelayPolicy topologyBackOffDelayPolicy) {
+        this(scheduledExecutorService, clientParametersPrototype, uris, recoveryBackOffDelayPolicy, topologyBackOffDelayPolicy,
                 cp -> new Client(cp));
     }
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
-                      List<URI> uris, BackOffDelayPolicy recoveryBackOffDelayPolicy,
+                      List<URI> uris, BackOffDelayPolicy recoveryBackOffDelayPolicy, BackOffDelayPolicy topologyBackOffDelayPolicy,
                       Function<Client.ClientParameters, Client> clientFactory) {
-
         this.clientFactory = clientFactory;
         this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
+        this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
         clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
         if (uris.isEmpty()) {
@@ -120,8 +120,7 @@ class StreamEnvironment implements Environment {
                     return newLocator;
                 }).description("Locator recovery")
                         .scheduler(this.scheduledExecutorService)
-                        .delayPolicy(attempt -> recoveryBackOffDelayPolicy.delay(attempt))
-                        .timeout(Duration.ZERO) // no timeout
+                        .delayPolicy(recoveryBackOffDelayPolicy)
                         .build().thenAccept(newLocator -> this.locator = newLocator);
             }
         };
@@ -296,6 +295,10 @@ class StreamEnvironment implements Environment {
 
     BackOffDelayPolicy recoveryBackOffDelayPolicy() {
         return this.recoveryBackOffDelayPolicy;
+    }
+
+    BackOffDelayPolicy topologyUpdateBackOffDelayPolicy() {
+        return this.topologyUpdateBackOffDelayPolicy;
     }
 
     Runnable registerConsumer(StreamConsumer consumer, String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler) {

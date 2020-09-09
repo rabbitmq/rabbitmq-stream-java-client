@@ -18,11 +18,9 @@ import com.rabbitmq.stream.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.IntStream;
@@ -31,10 +29,6 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
 
     static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
 
-    // FIXME consider using a delay policy for metadata update delays and timeout
-    static final Duration METADATA_UPDATE_DEFAULT_INITIAL_DELAY = Duration.ofSeconds(5);
-    static final Duration METADATA_UPDATE_DEFAULT_RETRY_DELAY = Duration.ofSeconds(1);
-    static final Duration METADATA_UPDATE_DEFAULT_RETRY_TIMEOUT = Duration.ofSeconds(60);
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultClientSubscriptions.class);
     private final Random random = new Random();
     private final AtomicLong globalSubscriptionIdSequence = new AtomicLong(0);
@@ -42,10 +36,6 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     private final Map<String, ClientSubscriptionPool> clientSubscriptionPools = new ConcurrentHashMap<>();
     private final Map<Long, StreamSubscription> streamSubscriptionRegistry = new ConcurrentHashMap<>();
     private final Function<Client.ClientParameters, Client> clientFactory;
-    volatile Duration metadataUpdateInitialDelay = METADATA_UPDATE_DEFAULT_INITIAL_DELAY;
-    volatile Duration metadataUpdateRetryDelay = METADATA_UPDATE_DEFAULT_RETRY_DELAY;
-    volatile Duration metadataUpdateRetryTimeout = METADATA_UPDATE_DEFAULT_RETRY_TIMEOUT;
-
 
     DefaultClientSubscriptions(StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
         this.environment = environment;
@@ -59,6 +49,10 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     private static String keyForClientSubscriptionState(Client.Broker broker) {
         // FIXME make sure this is a reasonable key for brokers
         return broker.getHost() + ":" + broker.getPort();
+    }
+
+    private BackOffDelayPolicy metadataUpdateBackOffDelayPolicy() {
+        return environment.topologyUpdateBackOffDelayPolicy();
     }
 
     @Override
@@ -289,7 +283,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                             streamSubscription.messageHandler.handle(offset, message);
                             // FIXME set offset here as well, best effort to avoid duplicates
                         } else {
-                            LOGGER.warn("Could not find stream subscription {}", subscriptionId);
+                            LOGGER.debug("Could not find stream subscription {}", subscriptionId);
                         }
                     })
                     .shutdownListener(shutdownContext -> {
@@ -303,7 +297,6 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                                     assignConsumersToStream(
                                             entry.getValue(), stream,
                                             attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt),
-                                            Duration.ZERO,
                                             false
                                     );
                                 }
@@ -334,23 +327,20 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                             this.owner.removeSubscriptionState(this);
                         }
                         if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
-                            // scheduling consumer re-assignment, to give the system some time to recover
-                            environment.scheduledExecutorService().schedule(() -> {
+                            environment.scheduledExecutorService().execute(() -> {
                                 LOGGER.debug("Trying to move {} subscription(s) (stream {})", affectedSubscriptions.size(), stream);
-                                // FIXME the SubscriptionState instance may be empty after the re-assignment, it should be disposed of
                                 assignConsumersToStream(
                                         affectedSubscriptions, stream,
-                                        attempt -> attempt == 0 ? Duration.ZERO : metadataUpdateRetryDelay,
-                                        metadataUpdateRetryTimeout,
+                                        attempt -> metadataUpdateBackOffDelayPolicy().delay(attempt),
                                         isEmpty()
                                 );
-                            }, metadataUpdateInitialDelay.toMillis(), TimeUnit.MILLISECONDS);
+                            });
                         }
                     }));
         }
 
         private void assignConsumersToStream(Collection<StreamSubscription> subscriptions, String stream,
-                                             Function<Integer, Duration> delayPolicy, Duration retryTimeout,
+                                             BackOffDelayPolicy delayPolicy,
                                              boolean closeClient) {
             Runnable consumersClosingCallback = () -> {
                 for (StreamSubscription affectedSubscription : subscriptions) {
@@ -368,7 +358,6 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                     .scheduler(environment.scheduledExecutorService())
                     .retry(ex -> !(ex instanceof StreamDoesNotExistException))
                     .delayPolicy(delayPolicy)
-                    .timeout(retryTimeout)
                     .build()
                     .thenAccept(candidates -> {
                         if (candidates == null) {

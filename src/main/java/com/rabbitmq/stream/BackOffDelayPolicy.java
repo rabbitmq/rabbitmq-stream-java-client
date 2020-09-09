@@ -15,26 +15,75 @@
 package com.rabbitmq.stream;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public interface BackOffDelayPolicy {
 
+    Duration TIMEOUT = Duration.ofMillis(Long.MAX_VALUE);
+
     static BackOffDelayPolicy fixed(Duration delay) {
-        return new FixedBackOffDelayPolicy(delay);
+        return new FixedWithInitialDelayBackOffPolicy(delay, delay);
+    }
+
+    static BackOffDelayPolicy fixedWithInitialDelay(Duration initialDelay, Duration delay) {
+        return new FixedWithInitialDelayBackOffPolicy(initialDelay, delay);
+    }
+
+    static BackOffDelayPolicy fixedWithInitialDelay(Duration initialDelay, Duration delay, Duration timeout) {
+        return new FixedWithInitialDelayAndTimeoutBackOffPolicy(initialDelay, delay, timeout);
     }
 
     Duration delay(int recoveryAttempt);
 
-    class FixedBackOffDelayPolicy implements BackOffDelayPolicy {
+    class FixedWithInitialDelayBackOffPolicy implements BackOffDelayPolicy {
 
+        private final Duration initialDelay;
         private final Duration delay;
+        private final AtomicBoolean first = new AtomicBoolean(true);
 
-        private FixedBackOffDelayPolicy(Duration delay) {
+        private FixedWithInitialDelayBackOffPolicy(Duration initialDelay, Duration delay) {
+            this.initialDelay = initialDelay;
             this.delay = delay;
         }
 
         @Override
         public Duration delay(int recoveryAttempt) {
-            return delay;
+            if (first.compareAndSet(true, false)) {
+                return initialDelay;
+            } else {
+                return delay;
+            }
+        }
+    }
+
+    class FixedWithInitialDelayAndTimeoutBackOffPolicy implements BackOffDelayPolicy {
+
+        private final Duration initialDelay;
+        private final Duration delay;
+        private final AtomicBoolean first = new AtomicBoolean(true);
+        private final int attemptLimitBeforeTimeout;
+
+        private FixedWithInitialDelayAndTimeoutBackOffPolicy(Duration initialDelay, Duration delay, Duration timeout) {
+            if (timeout.toMillis() < initialDelay.toMillis()) {
+                throw new IllegalArgumentException("Timeout must be longer than initial delay");
+            }
+            this.initialDelay = initialDelay;
+            this.delay = delay;
+            long timeoutWithInitialDelay = timeout.toMillis() - initialDelay.toMillis();
+            this.attemptLimitBeforeTimeout = (int) (timeoutWithInitialDelay / delay.toMillis()) + 1;
+        }
+
+        @Override
+        public Duration delay(int recoveryAttempt) {
+            if (first.compareAndSet(true, false)) {
+                return initialDelay;
+            } else {
+                if (recoveryAttempt >= attemptLimitBeforeTimeout) {
+                    return TIMEOUT;
+                } else {
+                    return delay;
+                }
+            }
         }
     }
 

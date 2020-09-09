@@ -5,7 +5,6 @@ import com.rabbitmq.stream.StreamDoesNotExistException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -150,7 +149,6 @@ class ProducersCoordinator {
                                             .scheduler(environment.scheduledExecutorService())
                                             .retry(ex -> !(ex instanceof StreamDoesNotExistException))
                                             .delayPolicy(attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt))
-                                            .timeout(Duration.ZERO)
                                             .build()
                                             .thenAccept(producersManager -> trackers.forEach(tracker -> {
                                                 producersManager.register(tracker);

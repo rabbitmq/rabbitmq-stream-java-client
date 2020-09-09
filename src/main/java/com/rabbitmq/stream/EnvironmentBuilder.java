@@ -70,12 +70,15 @@ public interface EnvironmentBuilder {
      *     <li>Schedule producers batch sending</li>
      *     <li>Handle connection recovery</li>
      * </ul>
+     *
      * @param scheduledExecutorService the service to use
      * @return this builder instance
      */
     EnvironmentBuilder scheduledExecutorService(ScheduledExecutorService scheduledExecutorService);
 
     EnvironmentBuilder recoveryBackOffDelayPolicy(BackOffDelayPolicy recoveryBackOffDelayPolicy);
+
+    EnvironmentBuilder topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy topologyUpdateBackOffDelayPolicy);
 
     Environment build();
 

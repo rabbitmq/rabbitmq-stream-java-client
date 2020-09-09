@@ -38,6 +38,8 @@ public class StreamEnvironmentUnitTest {
     @Mock
     BackOffDelayPolicy recoveryBackOffDelayPolicy;
     @Mock
+    BackOffDelayPolicy topologyUpdateBackOffDelayPolicy;
+    @Mock
     Function<Client.ClientParameters, Client> cf;
     @Mock
     Client client;
@@ -73,6 +75,7 @@ public class StreamEnvironmentUnitTest {
                 clientParameters,
                 Collections.emptyList(),
                 recoveryBackOffDelayPolicy,
+                topologyUpdateBackOffDelayPolicy,
                 cf
         );
     }
@@ -121,6 +124,7 @@ public class StreamEnvironmentUnitTest {
                 new Client.ClientParameters(),
                 Arrays.asList(uri, uri, uri),
                 recoveryBackOffDelayPolicy,
+                topologyUpdateBackOffDelayPolicy,
                 cf
         );
         verify(cf, times(3)).apply(any(Client.ClientParameters.class));

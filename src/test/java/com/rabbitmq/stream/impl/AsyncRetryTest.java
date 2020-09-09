@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,9 @@ public class AsyncRetryTest {
     @Test
     void callbackCalledIfCompletedImmediately() throws Exception {
         when(task.call()).thenReturn(42);
-        CompletableFuture<Integer> completableFuture = AsyncRetry.asyncRetry(task).scheduler(scheduler).build();
+        CompletableFuture<Integer> completableFuture = AsyncRetry.asyncRetry(task)
+                .delayPolicy(BackOffDelayPolicy.fixedWithInitialDelay(Duration.ZERO, Duration.ofMillis(10)))
+                .scheduler(scheduler).build();
         AtomicInteger result = new AtomicInteger(0);
         completableFuture.thenAccept(value -> result.set(value));
         assertThat(result.get()).isEqualTo(42);
@@ -66,7 +69,6 @@ public class AsyncRetryTest {
         CompletableFuture<Integer> completableFuture = AsyncRetry.asyncRetry(task)
                 .scheduler(scheduler)
                 .delay(Duration.ofMillis(50))
-                .timeout(Duration.ofSeconds(1))
                 .build();
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger result = new AtomicInteger(0);
@@ -84,9 +86,8 @@ public class AsyncRetryTest {
         when(task.call())
                 .thenThrow(new RuntimeException());
         CompletableFuture<Integer> completableFuture = AsyncRetry.asyncRetry(task)
-                .scheduler(scheduler)
-                .delay(Duration.ofMillis(50))
-                .timeout(Duration.ofMillis(500))
+                .scheduler(this.scheduler)
+                .delayPolicy(BackOffDelayPolicy.fixedWithInitialDelay(Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMillis(500)))
                 .build();
         CountDownLatch latch = new CountDownLatch(1);
         AtomicBoolean acceptCalled = new AtomicBoolean(false);
@@ -114,7 +115,6 @@ public class AsyncRetryTest {
                 .scheduler(scheduler)
                 .retry(e -> e instanceof IllegalStateException)
                 .delay(Duration.ofMillis(50))
-                .timeout(Duration.ofSeconds(1))
                 .build();
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger result = new AtomicInteger(0);
@@ -137,7 +137,6 @@ public class AsyncRetryTest {
                 .scheduler(scheduler)
                 .retry(e -> !(e instanceof IllegalArgumentException))
                 .delay(Duration.ofMillis(50))
-                .timeout(Duration.ofSeconds(50))
                 .build();
         CountDownLatch latch = new CountDownLatch(1);
         AtomicBoolean acceptCalled = new AtomicBoolean(false);

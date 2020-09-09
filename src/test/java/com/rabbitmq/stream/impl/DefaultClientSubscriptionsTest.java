@@ -38,6 +38,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
@@ -66,6 +67,10 @@ public class DefaultClientSubscriptionsTest {
     volatile Client.ShutdownListener shutdownListener;
     List<Client.ShutdownListener> shutdownListeners = new CopyOnWriteArrayList<>(); // when we need several of them in the test
     List<Client.MetadataListener> metadataListeners = new CopyOnWriteArrayList<>(); // when we need several of them in the test
+
+    static Duration ms(long ms) {
+        return Duration.ofMillis(ms);
+    }
 
     @BeforeEach
     void init() {
@@ -286,7 +291,8 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void shouldRedistributeConsumerOnMetadataUpdate() throws Exception {
-        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(100);
+        BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(100), ms(100));
+        when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
         when(consumer.isOpen()).thenReturn(true);
@@ -311,7 +317,7 @@ public class DefaultClientSubscriptionsTest {
 
         metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() * 5);
+        Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
 
         verify(client, times(2)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -331,9 +337,8 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void shouldRetryRedistributionIfMetadataIsNotUpdatedImmediately() throws Exception {
-        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(100);
-        clientSubscriptions.metadataUpdateRetryDelay = Duration.ofMillis(100);
-        clientSubscriptions.metadataUpdateRetryTimeout = Duration.ofMillis(10_000); // does not matter here
+        BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(100), ms(100));
+        when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
         when(consumer.isOpen()).thenReturn(true);
@@ -364,8 +369,8 @@ public class DefaultClientSubscriptionsTest {
 
         metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis()
-                + clientSubscriptions.metadataUpdateRetryDelay.toMillis() * 5);
+        Thread.sleep(delayPolicy.delay(0).toMillis()
+                + delayPolicy.delay(1).toMillis() * 5);
 
         verify(client, times(2)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -385,7 +390,8 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void metadataUpdate_shouldCloseConsumerIfStreamIsDeleted() throws Exception {
-        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(50);
+        BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(50), ms(50));
+        when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
         when(consumer.isOpen()).thenReturn(true);
@@ -412,7 +418,7 @@ public class DefaultClientSubscriptionsTest {
 
         metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() * 5);
+        Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
 
         verify(consumer, times(1)).closeAfterStreamDeletion();
         verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
@@ -421,9 +427,9 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void metadataUpdate_shouldCloseConsumerIfRetryTimeoutIsReached() throws Exception {
-        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(50);
-        clientSubscriptions.metadataUpdateRetryDelay = Duration.ofMillis(50);
-        clientSubscriptions.metadataUpdateRetryTimeout = Duration.ofMillis(200);
+        Duration retryTimeout = Duration.ofMillis(200);
+        BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(50), ms(50), ms(200));
+        when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
         when(consumer.isOpen()).thenReturn(true);
@@ -449,8 +455,8 @@ public class DefaultClientSubscriptionsTest {
 
         metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() +
-                clientSubscriptions.metadataUpdateRetryTimeout.toMillis() * 2);
+        Thread.sleep(delayPolicy.delay(0).toMillis() +
+                retryTimeout.toMillis() * 2);
 
         verify(consumer, times(1)).closeAfterStreamDeletion();
         verify(client, times(1)).subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
@@ -541,8 +547,8 @@ public class DefaultClientSubscriptionsTest {
 
     @Test
     void shouldRemoveSubscriptionStateFromPoolIfEmptyAfterMetadataUpdate() throws Exception {
-        clientSubscriptions.metadataUpdateInitialDelay = Duration.ofMillis(50);
-        clientSubscriptions.metadataUpdateRetryDelay = Duration.ofMillis(50);
+        BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(50), ms(50));
+        when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
         when(consumer.isOpen()).thenReturn(true);
@@ -568,7 +574,7 @@ public class DefaultClientSubscriptionsTest {
         // let's kill the first client connection
         metadataListeners.get(0).handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-        Thread.sleep(clientSubscriptions.metadataUpdateInitialDelay.toMillis() * 5);
+        Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
 
         // the MAX consumers must have been re-allocated to the existing client and a new one
         // let's add a new subscription to make sure we are still using the same pool
