@@ -36,7 +36,6 @@ class ProducersCoordinator {
     private final AtomicLong globalPublisherIdSequence = new AtomicLong(0);
     private final Map<Long, ProducerTracker> producerRegistry = new ConcurrentHashMap<>();
     private final Function<Client.ClientParameters, Client> clientFactory;
-    private final Client.ClientParameters clientParametersPrototype;
 
     ProducersCoordinator(StreamEnvironment environment) {
         this(environment, cp -> new Client(cp));
@@ -45,7 +44,7 @@ class ProducersCoordinator {
     ProducersCoordinator(StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
         this.environment = environment;
         this.clientFactory = clientFactory;
-        this.clientParametersPrototype = this.environment.clientParametersCopy();
+        this.environment.clientParametersCopy();
     }
 
     Runnable registerProducer(StreamProducer producer, String stream) {
@@ -85,7 +84,7 @@ class ProducersCoordinator {
         // FIXME make sure this is a reasonable key for brokers
         String key = leader.getHost() + ":" + leader.getPort();
 
-        return clientProducerManagers.computeIfAbsent(key, s -> new ClientProducersManager(clientFactory, clientParametersPrototype.duplicate()
+        return clientProducerManagers.computeIfAbsent(key, s -> new ClientProducersManager(clientFactory, environment.clientParametersCopy()
                 .host(leader.getHost())
                 .port(leader.getPort())));
     }
@@ -179,8 +178,8 @@ class ProducersCoordinator {
 
         private synchronized void register(ProducerTracker producerTracker) {
             producerTracker.publisherId = (byte) producerSequence.incrementAndGet();
-            producerTracker.producer.publisherId = producerTracker.publisherId;
-            producerTracker.producer.client = this.client;
+            producerTracker.producer.setPublisherId(producerTracker.publisherId);
+            producerTracker.producer.setClient(this.client);
             producerTracker.clientProducersManager = this;
             producers.put(producerTracker.publisherId, producerTracker);
             streamToProducerTrackers.computeIfAbsent(producerTracker.stream, s -> ConcurrentHashMap.newKeySet())
@@ -199,6 +198,8 @@ class ProducersCoordinator {
                 }
             });
         }
+
+        // FIXME close client
 
     }
 

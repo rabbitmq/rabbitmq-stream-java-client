@@ -14,23 +14,29 @@
 
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
-
 import org.mockito.MockitoAnnotations;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 public class ProducersCoordinatorTest {
 
@@ -46,16 +52,30 @@ public class ProducersCoordinatorTest {
     Client client;
     AutoCloseable mocks;
     ProducersCoordinator producersCoordinator;
+    ScheduledExecutorService scheduledExecutorService;
+
+    volatile Client.ShutdownListener shutdownListener;
 
     @BeforeEach
     void init() {
+        Client.ClientParameters clientParameters = new Client.ClientParameters() {
+            @Override
+            public Client.ClientParameters shutdownListener(Client.ShutdownListener shutdownListener) {
+                ProducersCoordinatorTest.this.shutdownListener = shutdownListener;
+                return super.shutdownListener(shutdownListener);
+            }
+        };
         mocks = MockitoAnnotations.openMocks(this);
         when(environment.locator()).thenReturn(locator);
+        when(environment.clientParametersCopy()).thenReturn(clientParameters);
         producersCoordinator = new ProducersCoordinator(environment, clientFactory);
     }
 
     @AfterEach
     void tearDown() throws Exception {
+        if (scheduledExecutorService != null) {
+            scheduledExecutorService.shutdownNow();
+        }
         mocks.close();
     }
 
@@ -80,7 +100,7 @@ public class ProducersCoordinatorTest {
                 .thenReturn(Collections.singletonMap("stream",
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_ACCESS_REFUSED, null, null)));
         assertThatThrownBy(() -> producersCoordinator.registerProducer(producer, "stream"))
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -90,6 +110,56 @@ public class ProducersCoordinatorTest {
                         new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
         assertThatThrownBy(() -> producersCoordinator.registerProducer(producer, "stream"))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void registerShouldAllowPublishing() {
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), replicas())));
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+
+        Runnable cleanTask = producersCoordinator.registerProducer(producer, "stream");
+
+        verify(producer, times(1)).setClient(client);
+
+        cleanTask.run();
+    }
+
+    @Test
+    void shouldRedistributeProducerIfConnectionIsLost() throws Exception {
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        Duration retryDelay = Duration.ofMillis(50);
+        when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), replicas())));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+
+        CountDownLatch setClientLatch = new CountDownLatch(2);
+        doAnswer(invocation -> {
+            setClientLatch.countDown();
+            return null;
+        }).when(producer).setClient(client);
+
+        producersCoordinator.registerProducer(producer, "stream");
+
+        verify(producer, times(1)).setClient(client);
+
+        shutdownListener.handle(new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+        assertThat(setClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+        verify(producer, times(1)).unavailable();
+        verify(producer, times(2)).setClient(client);
+        verify(producer, times(1)).running();
     }
 
     Client.Broker leader() {

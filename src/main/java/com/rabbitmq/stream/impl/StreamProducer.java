@@ -27,8 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
-import static com.rabbitmq.stream.Constants.CODE_PRODUCER_NOT_AVAILABLE;
+import static com.rabbitmq.stream.Constants.*;
 
 class StreamProducer implements Producer {
 
@@ -44,8 +43,8 @@ class StreamProducer implements Producer {
     private final StreamEnvironment environment;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final int maxUnconfirmedMessages;
-    volatile Client client;
-    volatile byte publisherId;
+    private Client client;
+    private volatile byte publisherId;
     private volatile Status status;
 
     StreamProducer(String stream,
@@ -122,7 +121,6 @@ class StreamProducer implements Producer {
 
     @Override
     public void send(Message message, ConfirmationHandler confirmationHandler) {
-        // TODO check state to see if sending is possible
         try {
             if (canSend()) {
                 if (unconfirmedMessagesSemaphore.tryAcquire(10, TimeUnit.SECONDS)) {
@@ -133,24 +131,26 @@ class StreamProducer implements Producer {
                             }
                         }
                     } else {
-                        if (this.status == Status.NOT_AVAILABLE) {
-                            confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_PRODUCER_NOT_AVAILABLE));
-                        } else {
-                            throw new IllegalStateException("Cannot publish while status is " + this.status);
-                        }
+                        failPublishing(message, confirmationHandler);
                     }
                 } else {
                     confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_MESSAGE_ENQUEUEING_FAILED));
                 }
             } else {
-                if (this.status == Status.NOT_AVAILABLE) {
-                    confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_PRODUCER_NOT_AVAILABLE));
-                } else {
-                    throw new IllegalStateException("Cannot publish while status is " + this.status);
-                }
+                failPublishing(message, confirmationHandler);
             }
         } catch (InterruptedException e) {
             throw new StreamException("Interrupted while waiting to accumulate outbound message", e);
+        }
+    }
+
+    private void failPublishing(Message message, ConfirmationHandler confirmationHandler) {
+        if (this.status == Status.NOT_AVAILABLE) {
+            confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_PRODUCER_NOT_AVAILABLE));
+        } else if (this.status == Status.CLOSED) {
+            confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_PRODUCER_CLOSED));
+        } else {
+            throw new IllegalStateException("Cannot publish while status is " + this.status);
         }
     }
 
@@ -161,6 +161,7 @@ class StreamProducer implements Producer {
     @Override
     public void close() {
         if (this.closed.compareAndSet(false, true)) {
+            this.status = Status.CLOSED;
             // FIXME close the scheduled task
             this.environment.removeProducer(this);
             closeFromEnvironment();
@@ -214,12 +215,20 @@ class StreamProducer implements Producer {
         this.status = Status.RUNNING;
     }
 
+    synchronized void setClient(Client client) {
+        this.client = client;
+    }
+
+    synchronized void setPublisherId(byte publisherId) {
+        this.publisherId = publisherId;
+    }
+
     Status status() {
         return this.status;
     }
 
     enum Status {
-        RUNNING, NOT_AVAILABLE
+        RUNNING, NOT_AVAILABLE, CLOSED
     }
 
     interface ConfirmationCallback {
