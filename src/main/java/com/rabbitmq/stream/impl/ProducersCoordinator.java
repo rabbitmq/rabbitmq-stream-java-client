@@ -1,3 +1,17 @@
+// Copyright (c) 2020 VMware, Inc. or its affiliates.  All rights reserved.
+//
+// This software, the RabbitMQ Stream Java client library, is dual-licensed under the
+// Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
+// For the MPL, please see LICENSE-MPL-RabbitMQ. For the ASL,
+// please see LICENSE-APACHE2.
+//
+// This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND,
+// either express or implied. See the LICENSE file for specific language governing
+// rights and limitations of this software.
+//
+// If you have any questions regarding licensing, please contact us at
+// info@rabbitmq.com.
+
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Constants;
@@ -58,7 +72,7 @@ class ProducersCoordinator {
             if (streamMetadata.getResponseCode() == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
                 throw new StreamDoesNotExistException("Stream does not exist: " + stream);
             } else {
-                throw new IllegalArgumentException("Could not get stream metadata, response code: " + streamMetadata.getResponseCode());
+                throw new IllegalStateException("Could not get stream metadata, response code: " + streamMetadata.getResponseCode());
             }
         }
 
@@ -143,7 +157,8 @@ class ProducersCoordinator {
                                     String stream = entry.getKey();
                                     Set<ProducerTracker> trackers = entry.getValue();
 
-                                    // FIXME deal with errors (no locator)
+                                    // FIXME deal with errors (no locator or timeout to look up a leader)
+                                    // producers should be closed
                                     AsyncRetry.asyncRetry(() -> getClient(stream))
                                             .description("Candidate lookup to publish to " + stream)
                                             .scheduler(environment.scheduledExecutorService())

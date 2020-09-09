@@ -51,7 +51,6 @@ class StreamEnvironment implements Environment {
     private final BackOffDelayPolicy topologyUpdateBackOffDelayPolicy;
     private final ClientSubscriptions clientSubscriptions;
     private final ProducersCoordinator producersCoordinator;
-    private final Function<Client.ClientParameters, Client> clientFactory;
     private volatile Client locator;
 
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
@@ -63,7 +62,6 @@ class StreamEnvironment implements Environment {
     StreamEnvironment(ScheduledExecutorService scheduledExecutorService, Client.ClientParameters clientParametersPrototype,
                       List<URI> uris, BackOffDelayPolicy recoveryBackOffDelayPolicy, BackOffDelayPolicy topologyBackOffDelayPolicy,
                       Function<Client.ClientParameters, Client> clientFactory) {
-        this.clientFactory = clientFactory;
         this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
         this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
         clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
@@ -310,6 +308,8 @@ class StreamEnvironment implements Environment {
         return producersCoordinator.registerProducer(producer, stream);
     }
 
+    // FIXME make the locator available as a completable future (with retry)
+    // this would make client code more robust
     Client locator() {
         if (this.locator == null) {
             throw new StreamException("No connection available");
