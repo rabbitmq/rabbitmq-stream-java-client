@@ -56,6 +56,10 @@ public class ProducersCoordinatorTest {
 
     volatile Client.ShutdownListener shutdownListener;
 
+    static Duration ms(long ms) {
+        return Duration.ofMillis(ms);
+    }
+
     @BeforeEach
     void init() {
         Client.ClientParameters clientParameters = new Client.ClientParameters() {
@@ -160,6 +164,39 @@ public class ProducersCoordinatorTest {
         verify(producer, times(1)).unavailable();
         verify(producer, times(2)).setClient(client);
         verify(producer, times(1)).running();
+    }
+
+    @Test
+    void shouldDisposeProducerIfRecoveryTimesOut() throws Exception {
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(
+                ms(10), ms(10), ms(100)
+        ));
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+
+        CountDownLatch closeClientLatch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            closeClientLatch.countDown();
+            return null;
+        }).when(producer).closeAfterStreamDeletion();
+
+        producersCoordinator.registerProducer(producer, "stream");
+
+        verify(producer, times(1)).setClient(client);
+
+        shutdownListener.handle(new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+        assertThat(closeClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+        verify(producer, times(1)).unavailable();
+        verify(producer, times(1)).setClient(client);
+        verify(producer, never()).running();
     }
 
     Client.Broker leader() {

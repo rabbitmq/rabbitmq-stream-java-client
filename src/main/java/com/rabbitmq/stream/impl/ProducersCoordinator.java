@@ -167,7 +167,17 @@ class ProducersCoordinator {
                                             .thenAccept(producersManager -> trackers.forEach(tracker -> {
                                                 producersManager.register(tracker);
                                                 tracker.producer.running();
-                                            }));
+                                            })).exceptionally(ex -> {
+                                        for (ProducerTracker tracker : trackers) {
+                                            try {
+                                                tracker.producer.closeAfterStreamDeletion();
+                                                producerRegistry.remove(tracker.id);
+                                            } catch (Exception e) {
+                                                LOGGER.debug("Error while closing producer", e.getMessage());
+                                            }
+                                        }
+                                        return null;
+                                    });
                                 });
                             });
                         }

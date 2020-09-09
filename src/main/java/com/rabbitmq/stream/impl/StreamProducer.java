@@ -82,10 +82,14 @@ class StreamProducer implements Producer {
         if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
             AtomicReference<Runnable> taskReference = new AtomicReference<>();
             Runnable task = () -> {
-                synchronized (this) {
-                    publishBatch();
+                if (canSend()) {
+                    synchronized (this) {
+                        publishBatch();
+                    }
                 }
-                environment.scheduledExecutorService().schedule(taskReference.get(), batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
+                if (status != Status.CLOSED) {
+                    environment.scheduledExecutorService().schedule(taskReference.get(), batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
+                }
             };
             taskReference.set(task);
             environment.scheduledExecutorService().schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
@@ -162,7 +166,6 @@ class StreamProducer implements Producer {
     public void close() {
         if (this.closed.compareAndSet(false, true)) {
             this.status = Status.CLOSED;
-            // FIXME close the scheduled task
             this.environment.removeProducer(this);
             closeFromEnvironment();
         }
@@ -171,6 +174,12 @@ class StreamProducer implements Producer {
     void closeFromEnvironment() {
         this.closingCallback.run();
         this.closed.set(true);
+    }
+
+    void closeAfterStreamDeletion() {
+        if (closed.compareAndSet(false, true)) {
+            this.environment.removeProducer(this);
+        }
     }
 
     private void publishBatch() {
