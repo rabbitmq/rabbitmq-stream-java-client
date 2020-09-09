@@ -55,6 +55,7 @@ public class ProducersCoordinatorTest {
     ScheduledExecutorService scheduledExecutorService;
 
     volatile Client.ShutdownListener shutdownListener;
+    volatile Client.MetadataListener metadataListener;
 
     static Duration ms(long ms) {
         return Duration.ofMillis(ms);
@@ -67,6 +68,12 @@ public class ProducersCoordinatorTest {
             public Client.ClientParameters shutdownListener(Client.ShutdownListener shutdownListener) {
                 ProducersCoordinatorTest.this.shutdownListener = shutdownListener;
                 return super.shutdownListener(shutdownListener);
+            }
+
+            @Override
+            public Client.ClientParameters metadataListener(Client.MetadataListener metadataListener) {
+                ProducersCoordinatorTest.this.metadataListener = metadataListener;
+                return super.metadataListener(metadataListener);
             }
         };
         mocks = MockitoAnnotations.openMocks(this);
@@ -192,6 +199,108 @@ public class ProducersCoordinatorTest {
         verify(producer, times(1)).setClient(client);
 
         shutdownListener.handle(new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+        assertThat(closeClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+        verify(producer, times(1)).unavailable();
+        verify(producer, times(1)).setClient(client);
+        verify(producer, never()).running();
+    }
+
+    @Test
+    void shouldRedistributeProducerOnMetadataUpdate() throws Exception {
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        Duration retryDelay = Duration.ofMillis(50);
+        when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), replicas())));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+
+        CountDownLatch setClientLatch = new CountDownLatch(2);
+        doAnswer(invocation -> {
+            setClientLatch.countDown();
+            return null;
+        }).when(producer).setClient(client);
+
+        producersCoordinator.registerProducer(producer, "stream");
+
+        verify(producer, times(1)).setClient(client);
+
+        metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+        assertThat(setClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+        verify(producer, times(1)).unavailable();
+        verify(producer, times(2)).setClient(client);
+        verify(producer, times(1)).running();
+    }
+
+    @Test
+    void shouldDisposeProducerIfStreamIsDeleted() throws Exception {
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(
+                ms(10), ms(10), ms(100)
+        ));
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, replicas())));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+
+        CountDownLatch closeClientLatch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            closeClientLatch.countDown();
+            return null;
+        }).when(producer).closeAfterStreamDeletion();
+
+        producersCoordinator.registerProducer(producer, "stream");
+
+        verify(producer, times(1)).setClient(client);
+
+        metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+        assertThat(closeClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+        verify(producer, times(1)).unavailable();
+        verify(producer, times(1)).setClient(client);
+        verify(producer, never()).running();
+    }
+
+    @Test
+    void shouldDisposeProducerIfMetadataUpdateTimesOut() throws Exception {
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+        when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(
+                ms(10), ms(10), ms(100)
+        ));
+        when(locator.metadata("stream"))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
+                .thenReturn(Collections.singletonMap("stream",
+                        new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+
+        when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+
+        CountDownLatch closeClientLatch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            closeClientLatch.countDown();
+            return null;
+        }).when(producer).closeAfterStreamDeletion();
+
+        producersCoordinator.registerProducer(producer, "stream");
+
+        verify(producer, times(1)).setClient(client);
+
+        metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
         assertThat(closeClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
         verify(producer, times(1)).unavailable();

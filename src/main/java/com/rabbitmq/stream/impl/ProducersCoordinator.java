@@ -14,11 +14,13 @@
 
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -63,13 +65,13 @@ class ProducersCoordinator {
     private ClientProducersManager getClient(String stream) {
         Map<String, Client.StreamMetadata> metadata = this.environment.locator().metadata(stream);
         if (metadata.size() == 0 || metadata.get(stream) == null) {
-            throw new StreamDoesNotExistException("Stream does not exist: " + stream);
+            throw new StreamDoesNotExistException(stream);
         }
 
         Client.StreamMetadata streamMetadata = metadata.get(stream);
         if (!streamMetadata.isResponseOk()) {
             if (streamMetadata.getResponseCode() == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
-                throw new StreamDoesNotExistException("Stream does not exist: " + stream);
+                throw new StreamDoesNotExistException(stream);
             } else {
                 throw new IllegalStateException("Could not get stream metadata, response code: " + streamMetadata.getResponseCode());
             }
@@ -155,35 +157,56 @@ class ProducersCoordinator {
                                 streamToProducerTrackers.entrySet().forEach(entry -> {
                                     String stream = entry.getKey();
                                     Set<ProducerTracker> trackers = entry.getValue();
-
-                                    // FIXME deal with errors (no locator or timeout to look up a leader)
-                                    // producers should be closed
-                                    AsyncRetry.asyncRetry(() -> getClient(stream))
-                                            .description("Candidate lookup to publish to " + stream)
-                                            .scheduler(environment.scheduledExecutorService())
-                                            .retry(ex -> !(ex instanceof StreamDoesNotExistException))
-                                            .delayPolicy(attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt))
-                                            .build()
-                                            .thenAccept(producersManager -> trackers.forEach(tracker -> {
-                                                producersManager.register(tracker);
-                                                tracker.producer.running();
-                                            })).exceptionally(ex -> {
-                                        for (ProducerTracker tracker : trackers) {
-                                            try {
-                                                tracker.producer.closeAfterStreamDeletion();
-                                                producerRegistry.remove(tracker.id);
-                                            } catch (Exception e) {
-                                                LOGGER.debug("Error while closing producer", e.getMessage());
-                                            }
-                                        }
-                                        return null;
-                                    });
+                                    assignProducersToNewManagers(trackers, stream, environment.recoveryBackOffDelayPolicy());
                                 });
                             });
                         }
                     })
+                    .metadataListener((stream, code) -> {
+                        synchronized (ClientProducersManager.this) {
+                            Set<ProducerTracker> affectedProducerTrackers = streamToProducerTrackers.remove(stream);
+                            if (affectedProducerTrackers != null && !affectedProducerTrackers.isEmpty()) {
+                                affectedProducerTrackers.forEach(tracker -> {
+                                    tracker.producer.unavailable();
+                                    producers.remove(tracker.publisherId);
+                                });
+                                environment.scheduledExecutorService().execute(() -> {
+                                    // close manager if no more trackers for it
+                                    // needs to be done in another thread than the IO thread
+                                    if (streamToProducerTrackers.isEmpty()) {
+                                        close();
+                                    }
+                                    assignProducersToNewManagers(affectedProducerTrackers, stream, environment.topologyUpdateBackOffDelayPolicy());
+                                });
+                            }
+                        }
+
+                    })
                     .clientProperty("name", "rabbitmq-stream-producer"));
             ref.set(this.client);
+        }
+
+        private void assignProducersToNewManagers(Collection<ProducerTracker> trackers, String stream, BackOffDelayPolicy delayPolicy) {
+            AsyncRetry.asyncRetry(() -> getClient(stream))
+                    .description("Candidate lookup to publish to " + stream)
+                    .scheduler(environment.scheduledExecutorService())
+                    .retry(ex -> !(ex instanceof StreamDoesNotExistException))
+                    .delayPolicy(delayPolicy)
+                    .build()
+                    .thenAccept(producersManager -> trackers.forEach(tracker -> {
+                        producersManager.register(tracker);
+                        tracker.producer.running();
+                    })).exceptionally(ex -> {
+                for (ProducerTracker tracker : trackers) {
+                    try {
+                        tracker.producer.closeAfterStreamDeletion();
+                        producerRegistry.remove(tracker.id);
+                    } catch (Exception e) {
+                        LOGGER.debug("Error while closing producer", e.getMessage());
+                    }
+                }
+                return null;
+            });
         }
 
         private synchronized void register(ProducerTracker producerTracker) {
@@ -209,6 +232,13 @@ class ProducersCoordinator {
             });
         }
 
+        private void close() {
+            try {
+                this.client.close();
+            } catch (Exception e) {
+
+            }
+        }
         // FIXME close client
 
     }
