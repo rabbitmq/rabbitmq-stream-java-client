@@ -17,7 +17,12 @@ package com.rabbitmq.stream.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.StreamDoesNotExistException;
 import io.netty.channel.EventLoopGroup;
 import java.time.Duration;
 import java.util.Collections;

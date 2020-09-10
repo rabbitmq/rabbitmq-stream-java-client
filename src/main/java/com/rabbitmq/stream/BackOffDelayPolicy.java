@@ -17,23 +17,57 @@ package com.rabbitmq.stream;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Contract to determine a delay between attempts of some task.
+ *
+ * <p>The task is typically the creation of a connection.
+ */
 public interface BackOffDelayPolicy {
 
   Duration TIMEOUT = Duration.ofMillis(Long.MAX_VALUE);
 
+  /**
+   * A policy with a constant delay.
+   *
+   * @param delay
+   * @return
+   */
   static BackOffDelayPolicy fixed(Duration delay) {
     return new FixedWithInitialDelayBackOffPolicy(delay, delay);
   }
 
+  /**
+   * A policy with a first delay and then a constant delay.
+   *
+   * @param initialDelay
+   * @param delay
+   * @return
+   */
   static BackOffDelayPolicy fixedWithInitialDelay(Duration initialDelay, Duration delay) {
     return new FixedWithInitialDelayBackOffPolicy(initialDelay, delay);
   }
 
+  /**
+   * A policy with a first delay, then a constant delay until a timeout is reached.
+   *
+   * @param initialDelay
+   * @param delay
+   * @param timeout
+   * @return
+   */
   static BackOffDelayPolicy fixedWithInitialDelay(
       Duration initialDelay, Duration delay, Duration timeout) {
     return new FixedWithInitialDelayAndTimeoutBackOffPolicy(initialDelay, delay, timeout);
   }
 
+  /**
+   * Returns the delay to use for a given attempt.
+   *
+   * <p>The policy can return the TIMEOUT constant to indicate that the task has reached a timeout.
+   *
+   * @param recoveryAttempt
+   * @return the delay, TIMEOUT if the task should stop being retried
+   */
   Duration delay(int recoveryAttempt);
 
   class FixedWithInitialDelayBackOffPolicy implements BackOffDelayPolicy {
