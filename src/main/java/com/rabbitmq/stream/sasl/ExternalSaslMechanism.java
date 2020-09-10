@@ -16,21 +16,18 @@ package com.rabbitmq.stream.sasl;
 
 import java.nio.charset.StandardCharsets;
 
-/**
- * The <code>EXTERNAL</code> {@link SaslMechanism}.
- */
+/** The <code>EXTERNAL</code> {@link SaslMechanism}. */
 public class ExternalSaslMechanism implements SaslMechanism {
 
-    public static final SaslMechanism INSTANCE = new ExternalSaslMechanism();
+  public static final SaslMechanism INSTANCE = new ExternalSaslMechanism();
 
-    @Override
-    public String getName() {
-        return "EXTERNAL";
-    }
+  @Override
+  public String getName() {
+    return "EXTERNAL";
+  }
 
-    @Override
-    public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
-        return "".getBytes(StandardCharsets.UTF_8);
-    }
-
+  @Override
+  public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
+    return "".getBytes(StandardCharsets.UTF_8);
+  }
 }

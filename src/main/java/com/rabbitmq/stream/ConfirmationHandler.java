@@ -16,6 +16,5 @@ package com.rabbitmq.stream;
 
 public interface ConfirmationHandler {
 
-    void handle(ConfirmationStatus confirmationStatus);
-
+  void handle(ConfirmationStatus confirmationStatus);
 }

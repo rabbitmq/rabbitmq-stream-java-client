@@ -15,56 +15,52 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Message;
-
 import java.util.ArrayList;
 import java.util.List;
 
 public final class MessageBatch {
 
-    final Compression compression;
-    final List<Message> messages;
+  final Compression compression;
+  final List<Message> messages;
 
-    public MessageBatch() {
-        this(Compression.NONE, new ArrayList<>());
+  public MessageBatch() {
+    this(Compression.NONE, new ArrayList<>());
+  }
+
+  public MessageBatch(Compression compression) {
+    this(compression, new ArrayList<>());
+  }
+
+  public MessageBatch(List<Message> messages) {
+    this(Compression.NONE, messages);
+  }
+
+  public MessageBatch(Compression compression, List<Message> messages) {
+    this.compression = compression;
+    this.messages = messages;
+  }
+
+  public MessageBatch add(Message message) {
+    this.messages.add(message);
+    return this;
+  }
+
+  public List<Message> getMessages() {
+    return messages;
+  }
+
+  public enum Compression {
+    NONE((byte) 0);
+
+    private static final Compression[] COMPRESSIONS = new Compression[] {NONE};
+    byte code;
+
+    Compression(byte code) {
+      this.code = code;
     }
 
-    public MessageBatch(Compression compression) {
-        this(compression, new ArrayList<>());
+    public static Compression get(byte code) {
+      return COMPRESSIONS[code];
     }
-
-    public MessageBatch(List<Message> messages) {
-        this(Compression.NONE, messages);
-    }
-
-    public MessageBatch(Compression compression, List<Message> messages) {
-        this.compression = compression;
-        this.messages = messages;
-    }
-
-    public MessageBatch add(Message message) {
-        this.messages.add(message);
-        return this;
-    }
-
-    public List<Message> getMessages() {
-        return messages;
-    }
-
-    public enum Compression {
-
-        NONE((byte) 0);
-
-        private static final Compression[] COMPRESSIONS = new Compression[]{NONE};
-        byte code;
-
-        Compression(byte code) {
-            this.code = code;
-        }
-
-        public static Compression get(byte code) {
-            return COMPRESSIONS[code];
-        }
-
-    }
-
+  }
 }

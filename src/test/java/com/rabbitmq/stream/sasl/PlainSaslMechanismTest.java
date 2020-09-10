@@ -14,26 +14,26 @@
 
 package com.rabbitmq.stream.sasl;
 
-import org.junit.jupiter.api.Test;
-
-import java.nio.charset.StandardCharsets;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
+import org.junit.jupiter.api.Test;
+
 public class PlainSaslMechanismTest {
 
-    @Test
-    void handleChallengeShouldEncodeUsernamePasswordCorrectly() {
-        byte[] challengeResponse = PlainSaslMechanism.INSTANCE
-                .handleChallenge(null, new DefaultUsernamePasswordCredentialsProvider("foo", "bar"));
-        assertThat(challengeResponse).isEqualTo("\u0000foo\u0000bar".getBytes(StandardCharsets.UTF_8));
-    }
+  @Test
+  void handleChallengeShouldEncodeUsernamePasswordCorrectly() {
+    byte[] challengeResponse =
+        PlainSaslMechanism.INSTANCE.handleChallenge(
+            null, new DefaultUsernamePasswordCredentialsProvider("foo", "bar"));
+    assertThat(challengeResponse).isEqualTo("\u0000foo\u0000bar".getBytes(StandardCharsets.UTF_8));
+  }
 
-    @Test
-    void handleChallengeSupportsOnlyUsernamePasswordCredentialsProvider() {
-        assertThatThrownBy(() -> PlainSaslMechanism.INSTANCE.handleChallenge(null, new CredentialsProvider() {
-        })).isInstanceOf(IllegalArgumentException.class);
-    }
-
+  @Test
+  void handleChallengeSupportsOnlyUsernamePasswordCredentialsProvider() {
+    assertThatThrownBy(
+            () -> PlainSaslMechanism.INSTANCE.handleChallenge(null, new CredentialsProvider() {}))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

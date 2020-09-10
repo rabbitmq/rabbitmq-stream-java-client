@@ -18,7 +18,6 @@ import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
 import io.netty.channel.EventLoopGroup;
-
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -26,60 +25,61 @@ import java.util.concurrent.ScheduledExecutorService;
 
 public interface EnvironmentBuilder {
 
-    // FIXME add urls parameters for the locator
+  // FIXME add urls parameters for the locator
 
-    EnvironmentBuilder uri(String uri);
+  EnvironmentBuilder uri(String uri);
 
-    EnvironmentBuilder uris(List<String> uris);
+  EnvironmentBuilder uris(List<String> uris);
 
-    EnvironmentBuilder host(String host);
+  EnvironmentBuilder host(String host);
 
-    EnvironmentBuilder port(int port);
+  EnvironmentBuilder port(int port);
 
-    EnvironmentBuilder codec(Codec codec);
+  EnvironmentBuilder codec(Codec codec);
 
-    EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
+  EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
 
-    EnvironmentBuilder saslConfiguration(SaslConfiguration saslConfiguration);
+  EnvironmentBuilder saslConfiguration(SaslConfiguration saslConfiguration);
 
-    EnvironmentBuilder credentialsProvider(CredentialsProvider credentialsProvider);
+  EnvironmentBuilder credentialsProvider(CredentialsProvider credentialsProvider);
 
-    EnvironmentBuilder username(String username);
+  EnvironmentBuilder username(String username);
 
-    EnvironmentBuilder password(String password);
+  EnvironmentBuilder password(String password);
 
-    EnvironmentBuilder virtualHost(String virtualHost);
+  EnvironmentBuilder virtualHost(String virtualHost);
 
-    EnvironmentBuilder requestedHeartbeat(Duration requestedHeartbeat);
+  EnvironmentBuilder requestedHeartbeat(Duration requestedHeartbeat);
 
-    EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
+  EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
 
-    EnvironmentBuilder channelCustomizer(ChannelCustomizer channelCustomizer);
+  EnvironmentBuilder channelCustomizer(ChannelCustomizer channelCustomizer);
 
-    EnvironmentBuilder chunkChecksum(ChunkChecksum chunkChecksum);
+  EnvironmentBuilder chunkChecksum(ChunkChecksum chunkChecksum);
 
-    EnvironmentBuilder clientProperties(Map<String, String> clientProperties);
+  EnvironmentBuilder clientProperties(Map<String, String> clientProperties);
 
-    EnvironmentBuilder clientProperty(String key, String value);
+  EnvironmentBuilder clientProperty(String key, String value);
 
-    EnvironmentBuilder metricsCollector(MetricsCollector metricsCollector);
+  EnvironmentBuilder metricsCollector(MetricsCollector metricsCollector);
 
-    /**
-     * Set the {@link ScheduledExecutorService} used to:
-     * <ul>
-     *     <li>Schedule producers batch sending</li>
-     *     <li>Handle connection recovery</li>
-     * </ul>
-     *
-     * @param scheduledExecutorService the service to use
-     * @return this builder instance
-     */
-    EnvironmentBuilder scheduledExecutorService(ScheduledExecutorService scheduledExecutorService);
+  /**
+   * Set the {@link ScheduledExecutorService} used to:
+   *
+   * <ul>
+   *   <li>Schedule producers batch sending
+   *   <li>Handle connection recovery
+   * </ul>
+   *
+   * @param scheduledExecutorService the service to use
+   * @return this builder instance
+   */
+  EnvironmentBuilder scheduledExecutorService(ScheduledExecutorService scheduledExecutorService);
 
-    EnvironmentBuilder recoveryBackOffDelayPolicy(BackOffDelayPolicy recoveryBackOffDelayPolicy);
+  EnvironmentBuilder recoveryBackOffDelayPolicy(BackOffDelayPolicy recoveryBackOffDelayPolicy);
 
-    EnvironmentBuilder topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy topologyUpdateBackOffDelayPolicy);
+  EnvironmentBuilder topologyUpdateBackOffDelayPolicy(
+      BackOffDelayPolicy topologyUpdateBackOffDelayPolicy);
 
-    Environment build();
-
+  Environment build();
 }

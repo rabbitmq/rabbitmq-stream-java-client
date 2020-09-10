@@ -18,46 +18,45 @@ import java.util.UUID;
 
 public interface Properties {
 
-    Object getMessageId();
+  Object getMessageId();
 
-    String getMessageIdAsString();
+  String getMessageIdAsString();
 
-    long getMessageIdAsLong();
+  long getMessageIdAsLong();
 
-    byte[] getMessageIdAsBinary();
+  byte[] getMessageIdAsBinary();
 
-    UUID getMessageIdAsUuid();
+  UUID getMessageIdAsUuid();
 
-    byte[] getUserId();
+  byte[] getUserId();
 
-    String getTo();
+  String getTo();
 
-    String getSubject();
+  String getSubject();
 
-    String getReplyTo();
+  String getReplyTo();
 
-    Object getCorrelationId();
+  Object getCorrelationId();
 
-    String getCorrelationIdAsString();
+  String getCorrelationIdAsString();
 
-    long getCorrelationIdAsLong();
+  long getCorrelationIdAsLong();
 
-    byte[] getCorrelationIdAsBinary();
+  byte[] getCorrelationIdAsBinary();
 
-    UUID getCorrelationIdAsUuid();
+  UUID getCorrelationIdAsUuid();
 
-    String getContentType();
+  String getContentType();
 
-    String getContentEncoding();
+  String getContentEncoding();
 
-    long getAbsoluteExpiryTime();
+  long getAbsoluteExpiryTime();
 
-    long getCreationTime();
+  long getCreationTime();
 
-    String getGroupId();
+  String getGroupId();
 
-    long getGroupSequence();
+  long getGroupSequence();
 
-    String getReplyToGroupId();
-
+  String getReplyToGroupId();
 }

@@ -16,17 +16,14 @@ package com.rabbitmq.stream.sasl;
 
 import java.util.List;
 
-/**
- * Contract to choose a {@link SaslMechanism} from the ones supported by the server.
- */
+/** Contract to choose a {@link SaslMechanism} from the ones supported by the server. */
 public interface SaslConfiguration {
 
-    /**
-     * Pick mechanism according to the ones passed in.
-     *
-     * @param mechanisms supported mechanisms by the server
-     * @return the mechanism to use for authentication
-     */
-    SaslMechanism getSaslMechanism(List<String> mechanisms);
-
+  /**
+   * Pick mechanism according to the ones passed in.
+   *
+   * @param mechanisms supported mechanisms by the server
+   * @return the mechanism to use for authentication
+   */
+  SaslMechanism getSaslMechanism(List<String> mechanisms);
 }

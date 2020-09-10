@@ -18,6 +18,5 @@ import io.netty.channel.Channel;
 
 public interface ChannelCustomizer {
 
-    void customize(Channel channel);
-
+  void customize(Channel channel);
 }

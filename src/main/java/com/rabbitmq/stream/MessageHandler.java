@@ -16,6 +16,5 @@ package com.rabbitmq.stream;
 
 public interface MessageHandler {
 
-    void handle(long offset, Message message);
-
+  void handle(long offset, Message message);
 }

@@ -18,16 +18,15 @@ import java.time.Duration;
 
 public interface ProducerBuilder {
 
-    ProducerBuilder stream(String stream);
+  ProducerBuilder stream(String stream);
 
-    ProducerBuilder subEntrySize(int subEntrySize);
+  ProducerBuilder subEntrySize(int subEntrySize);
 
-    ProducerBuilder batchSize(int batchSize);
+  ProducerBuilder batchSize(int batchSize);
 
-    ProducerBuilder batchPublishingDelay(Duration batchPublishingDelay);
+  ProducerBuilder batchPublishingDelay(Duration batchPublishingDelay);
 
-    ProducerBuilder maxUnconfirmedMessages(int maxUnconfirmedMessages);
+  ProducerBuilder maxUnconfirmedMessages(int maxUnconfirmedMessages);
 
-    Producer build();
-
+  Producer build();
 }

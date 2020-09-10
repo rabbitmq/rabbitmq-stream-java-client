@@ -19,150 +19,146 @@ import java.util.UUID;
 
 public interface MessageBuilder {
 
-    Message build();
+  Message build();
 
-    PropertiesBuilder properties();
+  PropertiesBuilder properties();
 
-    ApplicationPropertiesBuilder applicationProperties();
+  ApplicationPropertiesBuilder applicationProperties();
 
-    MessageAnnotationsBuilder messageAnnotations();
+  MessageAnnotationsBuilder messageAnnotations();
 
-    MessageBuilder addData(byte[] data);
+  MessageBuilder addData(byte[] data);
 
-    interface ApplicationPropertiesBuilder {
+  interface ApplicationPropertiesBuilder {
 
-        ApplicationPropertiesBuilder entry(String key, boolean value);
+    ApplicationPropertiesBuilder entry(String key, boolean value);
 
-        ApplicationPropertiesBuilder entry(String key, byte value);
+    ApplicationPropertiesBuilder entry(String key, byte value);
 
-        ApplicationPropertiesBuilder entry(String key, short value);
+    ApplicationPropertiesBuilder entry(String key, short value);
 
-        ApplicationPropertiesBuilder entry(String key, int value);
+    ApplicationPropertiesBuilder entry(String key, int value);
 
-        ApplicationPropertiesBuilder entry(String key, long value);
+    ApplicationPropertiesBuilder entry(String key, long value);
 
-        ApplicationPropertiesBuilder entryUnsigned(String key, byte value);
+    ApplicationPropertiesBuilder entryUnsigned(String key, byte value);
 
-        ApplicationPropertiesBuilder entryUnsigned(String key, short value);
+    ApplicationPropertiesBuilder entryUnsigned(String key, short value);
 
-        ApplicationPropertiesBuilder entryUnsigned(String key, int value);
+    ApplicationPropertiesBuilder entryUnsigned(String key, int value);
 
-        ApplicationPropertiesBuilder entryUnsigned(String key, long value);
+    ApplicationPropertiesBuilder entryUnsigned(String key, long value);
 
-        ApplicationPropertiesBuilder entry(String key, float value);
+    ApplicationPropertiesBuilder entry(String key, float value);
 
-        ApplicationPropertiesBuilder entry(String key, double value);
+    ApplicationPropertiesBuilder entry(String key, double value);
 
-        ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value);
+    ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value);
 
-        ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value);
+    ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value);
 
-        ApplicationPropertiesBuilder entryDecimal128(String key, BigDecimal value);
+    ApplicationPropertiesBuilder entryDecimal128(String key, BigDecimal value);
 
-        ApplicationPropertiesBuilder entry(String key, char value);
+    ApplicationPropertiesBuilder entry(String key, char value);
 
-        ApplicationPropertiesBuilder entryTimestamp(String key, long value);
+    ApplicationPropertiesBuilder entryTimestamp(String key, long value);
 
-        ApplicationPropertiesBuilder entry(String key, UUID value);
+    ApplicationPropertiesBuilder entry(String key, UUID value);
 
-        ApplicationPropertiesBuilder entry(String key, byte[] value);
+    ApplicationPropertiesBuilder entry(String key, byte[] value);
 
-        ApplicationPropertiesBuilder entry(String key, String value);
+    ApplicationPropertiesBuilder entry(String key, String value);
 
-        ApplicationPropertiesBuilder entrySymbol(String key, String value);
+    ApplicationPropertiesBuilder entrySymbol(String key, String value);
 
-        MessageBuilder messageBuilder();
+    MessageBuilder messageBuilder();
+  }
 
-    }
+  interface MessageAnnotationsBuilder {
 
-    interface MessageAnnotationsBuilder {
+    MessageAnnotationsBuilder entry(String key, boolean value);
 
-        MessageAnnotationsBuilder entry(String key, boolean value);
+    MessageAnnotationsBuilder entry(String key, byte value);
 
-        MessageAnnotationsBuilder entry(String key, byte value);
+    MessageAnnotationsBuilder entry(String key, short value);
 
-        MessageAnnotationsBuilder entry(String key, short value);
+    MessageAnnotationsBuilder entry(String key, int value);
 
-        MessageAnnotationsBuilder entry(String key, int value);
+    MessageAnnotationsBuilder entry(String key, long value);
 
-        MessageAnnotationsBuilder entry(String key, long value);
+    MessageAnnotationsBuilder entryUnsigned(String key, byte value);
 
-        MessageAnnotationsBuilder entryUnsigned(String key, byte value);
+    MessageAnnotationsBuilder entryUnsigned(String key, short value);
 
-        MessageAnnotationsBuilder entryUnsigned(String key, short value);
+    MessageAnnotationsBuilder entryUnsigned(String key, int value);
 
-        MessageAnnotationsBuilder entryUnsigned(String key, int value);
+    MessageAnnotationsBuilder entryUnsigned(String key, long value);
 
-        MessageAnnotationsBuilder entryUnsigned(String key, long value);
+    MessageAnnotationsBuilder entry(String key, float value);
 
-        MessageAnnotationsBuilder entry(String key, float value);
+    MessageAnnotationsBuilder entry(String key, double value);
 
-        MessageAnnotationsBuilder entry(String key, double value);
+    MessageAnnotationsBuilder entryDecimal32(String key, BigDecimal value);
 
-        MessageAnnotationsBuilder entryDecimal32(String key, BigDecimal value);
+    MessageAnnotationsBuilder entryDecimal64(String key, BigDecimal value);
 
-        MessageAnnotationsBuilder entryDecimal64(String key, BigDecimal value);
+    MessageAnnotationsBuilder entryDecimal128(String key, BigDecimal value);
 
-        MessageAnnotationsBuilder entryDecimal128(String key, BigDecimal value);
+    MessageAnnotationsBuilder entry(String key, char value);
 
-        MessageAnnotationsBuilder entry(String key, char value);
+    MessageAnnotationsBuilder entryTimestamp(String key, long value);
 
-        MessageAnnotationsBuilder entryTimestamp(String key, long value);
+    MessageAnnotationsBuilder entry(String key, UUID value);
 
-        MessageAnnotationsBuilder entry(String key, UUID value);
+    MessageAnnotationsBuilder entry(String key, byte[] value);
 
-        MessageAnnotationsBuilder entry(String key, byte[] value);
+    MessageAnnotationsBuilder entry(String key, String value);
 
-        MessageAnnotationsBuilder entry(String key, String value);
+    MessageAnnotationsBuilder entrySymbol(String key, String value);
 
-        MessageAnnotationsBuilder entrySymbol(String key, String value);
+    MessageBuilder messageBuilder();
+  }
 
-        MessageBuilder messageBuilder();
+  interface PropertiesBuilder {
 
-    }
+    PropertiesBuilder messageId(String id);
 
-    interface PropertiesBuilder {
+    PropertiesBuilder messageId(long id);
 
-        PropertiesBuilder messageId(String id);
+    PropertiesBuilder messageId(byte[] id);
 
-        PropertiesBuilder messageId(long id);
+    PropertiesBuilder messageId(UUID id);
 
-        PropertiesBuilder messageId(byte[] id);
+    PropertiesBuilder userId(byte[] userId);
 
-        PropertiesBuilder messageId(UUID id);
+    PropertiesBuilder to(String address);
 
-        PropertiesBuilder userId(byte[] userId);
+    PropertiesBuilder subject(String subject);
 
-        PropertiesBuilder to(String address);
+    PropertiesBuilder replyTo(String replyTo);
 
-        PropertiesBuilder subject(String subject);
+    PropertiesBuilder correlationId(String correlationId);
 
-        PropertiesBuilder replyTo(String replyTo);
+    PropertiesBuilder correlationId(long correlationId);
 
-        PropertiesBuilder correlationId(String correlationId);
+    PropertiesBuilder correlationId(byte[] correlationId);
 
-        PropertiesBuilder correlationId(long correlationId);
+    PropertiesBuilder correlationId(UUID correlationId);
 
-        PropertiesBuilder correlationId(byte[] correlationId);
+    PropertiesBuilder contentType(String contentType);
 
-        PropertiesBuilder correlationId(UUID correlationId);
+    PropertiesBuilder contentEncoding(String contentEncoding);
 
-        PropertiesBuilder contentType(String contentType);
+    PropertiesBuilder absoluteExpiryTime(long absoluteExpiryTime);
 
-        PropertiesBuilder contentEncoding(String contentEncoding);
+    PropertiesBuilder creationTime(long creationTime);
 
-        PropertiesBuilder absoluteExpiryTime(long absoluteExpiryTime);
+    PropertiesBuilder groupId(String groupId);
 
-        PropertiesBuilder creationTime(long creationTime);
+    PropertiesBuilder groupSequence(long groupSequence);
 
-        PropertiesBuilder groupId(String groupId);
+    PropertiesBuilder replyToGroupId(String replyToGroupId);
 
-        PropertiesBuilder groupSequence(long groupSequence);
-
-        PropertiesBuilder replyToGroupId(String replyToGroupId);
-
-        MessageBuilder messageBuilder();
-
-    }
-
+    MessageBuilder messageBuilder();
+  }
 }

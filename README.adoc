@@ -51,6 +51,13 @@ To launch the test suite (requires a local RabbitMQ node with stream plugin enab
 ./mvnw verify
 ----
 
+== Code Format
+
+The project uses the https://github.com/google/google-java-format[Google Java Format]. Read
+the documentation to support the format in your
+https://github.com/google/google-java-format#intellij-android-studio-and-other-jetbrains-ides[favorite]
+https://github.com/google/google-java-format#eclipse[IDE].
+
 == Copyright and License
 
 (c) 2020, VMware Inc or its affiliates.

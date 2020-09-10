@@ -16,464 +16,466 @@ package com.rabbitmq.stream.codec;
 
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
-import org.apache.qpid.proton.amqp.*;
-import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.qpid.proton.amqp.*;
+import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
+import org.apache.qpid.proton.amqp.messaging.Data;
+import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 
 class QpidProtonMessageBuilder implements MessageBuilder {
 
-    private final org.apache.qpid.proton.message.Message message = org.apache.qpid.proton.message.Message.Factory.create();
+  private final org.apache.qpid.proton.message.Message message =
+      org.apache.qpid.proton.message.Message.Factory.create();
 
-    private QpidProtonjPropertiesBuilder propertiesBuilder;
+  private QpidProtonjPropertiesBuilder propertiesBuilder;
 
-    private QpidProtonjApplicationPropertiesBuilder applicationPropertiesBuilder;
+  private QpidProtonjApplicationPropertiesBuilder applicationPropertiesBuilder;
 
-    private QpidProtonjMessageAnnotationsBuilder messageAnnotationsBuilder;
+  private QpidProtonjMessageAnnotationsBuilder messageAnnotationsBuilder;
 
-    @Override
-    public Message build() {
-        if (propertiesBuilder != null) {
-            message.setProperties(propertiesBuilder.properties);
-        }
-        if (applicationPropertiesBuilder != null) {
-            message.setApplicationProperties(new ApplicationProperties(applicationPropertiesBuilder.applicationProperties));
-        }
-        if (messageAnnotationsBuilder != null) {
-            message.setMessageAnnotations(new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
-        }
-        return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(message);
+  @Override
+  public Message build() {
+    if (propertiesBuilder != null) {
+      message.setProperties(propertiesBuilder.properties);
+    }
+    if (applicationPropertiesBuilder != null) {
+      message.setApplicationProperties(
+          new ApplicationProperties(applicationPropertiesBuilder.applicationProperties));
+    }
+    if (messageAnnotationsBuilder != null) {
+      message.setMessageAnnotations(
+          new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
+    }
+    return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(message);
+  }
+
+  @Override
+  public PropertiesBuilder properties() {
+    if (propertiesBuilder == null) {
+      propertiesBuilder = new QpidProtonjPropertiesBuilder(this);
+    }
+    return propertiesBuilder;
+  }
+
+  @Override
+  public ApplicationPropertiesBuilder applicationProperties() {
+    if (applicationPropertiesBuilder == null) {
+      applicationPropertiesBuilder = new QpidProtonjApplicationPropertiesBuilder(this);
+    }
+    return applicationPropertiesBuilder;
+  }
+
+  @Override
+  public MessageAnnotationsBuilder messageAnnotations() {
+    if (messageAnnotationsBuilder == null) {
+      messageAnnotationsBuilder = new QpidProtonjMessageAnnotationsBuilder(this);
+    }
+    return messageAnnotationsBuilder;
+  }
+
+  @Override
+  public MessageBuilder addData(byte[] data) {
+    message.setBody(new Data(new Binary(data)));
+    return this;
+  }
+
+  private static class QpidProtonjPropertiesBuilder implements PropertiesBuilder {
+
+    private final org.apache.qpid.proton.amqp.messaging.Properties properties =
+        new org.apache.qpid.proton.amqp.messaging.Properties();
+    private final MessageBuilder messageBuilder;
+
+    private QpidProtonjPropertiesBuilder(MessageBuilder messageBuilder) {
+      this.messageBuilder = messageBuilder;
     }
 
     @Override
-    public PropertiesBuilder properties() {
-        if (propertiesBuilder == null) {
-            propertiesBuilder = new QpidProtonjPropertiesBuilder(this);
-        }
-        return propertiesBuilder;
+    public PropertiesBuilder messageId(String id) {
+      properties.setMessageId(id);
+      return this;
     }
 
     @Override
-    public ApplicationPropertiesBuilder applicationProperties() {
-        if (applicationPropertiesBuilder == null) {
-            applicationPropertiesBuilder = new QpidProtonjApplicationPropertiesBuilder(this);
-        }
-        return applicationPropertiesBuilder;
+    public PropertiesBuilder messageId(long id) {
+      properties.setMessageId(new UnsignedLong(id));
+      return this;
     }
 
     @Override
-    public MessageAnnotationsBuilder messageAnnotations() {
-        if (messageAnnotationsBuilder == null) {
-            messageAnnotationsBuilder = new QpidProtonjMessageAnnotationsBuilder(this);
-        }
-        return messageAnnotationsBuilder;
+    public PropertiesBuilder messageId(byte[] id) {
+      properties.setMessageId(new Binary(id));
+      return this;
     }
 
     @Override
-    public MessageBuilder addData(byte[] data) {
-        message.setBody(new Data(new Binary(data)));
-        return this;
+    public PropertiesBuilder messageId(UUID id) {
+      properties.setMessageId(id);
+      return this;
     }
 
-    private static class QpidProtonjPropertiesBuilder implements PropertiesBuilder {
-
-        private final org.apache.qpid.proton.amqp.messaging.Properties properties = new org.apache.qpid.proton.amqp.messaging.Properties();
-        private final MessageBuilder messageBuilder;
-
-        private QpidProtonjPropertiesBuilder(MessageBuilder messageBuilder) {
-            this.messageBuilder = messageBuilder;
-        }
-
-        @Override
-        public PropertiesBuilder messageId(String id) {
-            properties.setMessageId(id);
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder messageId(long id) {
-            properties.setMessageId(new UnsignedLong(id));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder messageId(byte[] id) {
-            properties.setMessageId(new Binary(id));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder messageId(UUID id) {
-            properties.setMessageId(id);
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder userId(byte[] userId) {
-            properties.setUserId(new Binary(userId));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder to(String address) {
-            properties.setTo(address);
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder subject(String subject) {
-            properties.setSubject(subject);
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder replyTo(String replyTo) {
-            properties.setReplyTo(replyTo);
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder correlationId(String correlationId) {
-            properties.setCorrelationId(correlationId);
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder correlationId(long correlationId) {
-            properties.setCorrelationId(new UnsignedLong(correlationId));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder correlationId(byte[] correlationId) {
-            properties.setCorrelationId(new Binary(correlationId));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder correlationId(UUID correlationId) {
-            properties.setCorrelationId(correlationId);
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder contentType(String contentType) {
-            properties.setContentType(Symbol.valueOf(contentType));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder contentEncoding(String contentEncoding) {
-            properties.setContentEncoding(Symbol.valueOf(contentEncoding));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder absoluteExpiryTime(long absoluteExpiryTime) {
-            properties.setAbsoluteExpiryTime(new Date(absoluteExpiryTime));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder creationTime(long creationTime) {
-            properties.setCreationTime(new Date(creationTime));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder groupId(String groupId) {
-            properties.setGroupId(groupId);
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder groupSequence(long groupSequence) {
-            properties.setGroupSequence(UnsignedInteger.valueOf(groupSequence));
-            return this;
-        }
-
-        @Override
-        public PropertiesBuilder replyToGroupId(String replyToGroupId) {
-            properties.setReplyToGroupId(replyToGroupId);
-            return this;
-        }
-
-        @Override
-        public MessageBuilder messageBuilder() {
-            return messageBuilder;
-        }
+    @Override
+    public PropertiesBuilder userId(byte[] userId) {
+      properties.setUserId(new Binary(userId));
+      return this;
     }
 
-    private static class QpidProtonjMessageAnnotationsBuilder implements MessageAnnotationsBuilder {
-
-        private final Map<Symbol, Object> messageAnnotations = new LinkedHashMap<>();
-
-        private final MessageBuilder messageBuilder;
-
-        private QpidProtonjMessageAnnotationsBuilder(MessageBuilder messageBuilder) {
-            this.messageBuilder = messageBuilder;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, boolean value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, byte value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, short value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, int value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, long value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entryUnsigned(String key, byte value) {
-            messageAnnotations.put(Symbol.getSymbol(key), new UnsignedByte(value));
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entryUnsigned(String key, short value) {
-            messageAnnotations.put(Symbol.getSymbol(key), new UnsignedShort(value));
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entryUnsigned(String key, int value) {
-            messageAnnotations.put(Symbol.getSymbol(key), new UnsignedInteger(value));
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entryUnsigned(String key, long value) {
-            messageAnnotations.put(Symbol.getSymbol(key), new UnsignedLong(value));
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, float value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, double value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entryDecimal32(String key, BigDecimal value) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entryDecimal64(String key, BigDecimal value) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entryDecimal128(String key, BigDecimal value) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, char value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entryTimestamp(String key, long value) {
-            messageAnnotations.put(Symbol.getSymbol(key), new Date(value));
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, UUID uuid) {
-            messageAnnotations.put(Symbol.getSymbol(key), uuid);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, byte[] value) {
-            messageAnnotations.put(Symbol.getSymbol(key), new Binary(value));
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entry(String key, String value) {
-            messageAnnotations.put(Symbol.getSymbol(key), value);
-            return this;
-        }
-
-        @Override
-        public MessageAnnotationsBuilder entrySymbol(String key, String value) {
-            messageAnnotations.put(Symbol.getSymbol(key), Symbol.valueOf(value));
-            return this;
-        }
-
-        @Override
-        public MessageBuilder messageBuilder() {
-            return messageBuilder;
-        }
-
+    @Override
+    public PropertiesBuilder to(String address) {
+      properties.setTo(address);
+      return this;
     }
 
-    private static class QpidProtonjApplicationPropertiesBuilder implements ApplicationPropertiesBuilder {
-
-        private final Map<String, Object> applicationProperties = new LinkedHashMap<>();
-        private final MessageBuilder messageBuilder;
-
-        private QpidProtonjApplicationPropertiesBuilder(MessageBuilder messageBuilder) {
-            this.messageBuilder = messageBuilder;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, boolean value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, byte value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, short value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, int value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, long value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entryUnsigned(String key, byte value) {
-            applicationProperties.put(key, new UnsignedByte(value));
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entryUnsigned(String key, short value) {
-            applicationProperties.put(key, new UnsignedShort(value));
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entryUnsigned(String key, int value) {
-            applicationProperties.put(key, new UnsignedInteger(value));
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entryUnsigned(String key, long value) {
-            applicationProperties.put(key, new UnsignedLong(value));
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, float value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, double value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entryDecimal128(String key, BigDecimal value) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, char value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entryTimestamp(String key, long value) {
-            applicationProperties.put(key, new Date(value));
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, UUID uuid) {
-            applicationProperties.put(key, uuid);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, byte[] value) {
-            applicationProperties.put(key, new Binary(value));
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entry(String key, String value) {
-            applicationProperties.put(key, value);
-            return this;
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder entrySymbol(String key, String value) {
-            applicationProperties.put(key, Symbol.valueOf(value));
-            return this;
-        }
-
-        @Override
-        public MessageBuilder messageBuilder() {
-            return messageBuilder;
-        }
+    @Override
+    public PropertiesBuilder subject(String subject) {
+      properties.setSubject(subject);
+      return this;
     }
 
+    @Override
+    public PropertiesBuilder replyTo(String replyTo) {
+      properties.setReplyTo(replyTo);
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder correlationId(String correlationId) {
+      properties.setCorrelationId(correlationId);
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder correlationId(long correlationId) {
+      properties.setCorrelationId(new UnsignedLong(correlationId));
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder correlationId(byte[] correlationId) {
+      properties.setCorrelationId(new Binary(correlationId));
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder correlationId(UUID correlationId) {
+      properties.setCorrelationId(correlationId);
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder contentType(String contentType) {
+      properties.setContentType(Symbol.valueOf(contentType));
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder contentEncoding(String contentEncoding) {
+      properties.setContentEncoding(Symbol.valueOf(contentEncoding));
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder absoluteExpiryTime(long absoluteExpiryTime) {
+      properties.setAbsoluteExpiryTime(new Date(absoluteExpiryTime));
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder creationTime(long creationTime) {
+      properties.setCreationTime(new Date(creationTime));
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder groupId(String groupId) {
+      properties.setGroupId(groupId);
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder groupSequence(long groupSequence) {
+      properties.setGroupSequence(UnsignedInteger.valueOf(groupSequence));
+      return this;
+    }
+
+    @Override
+    public PropertiesBuilder replyToGroupId(String replyToGroupId) {
+      properties.setReplyToGroupId(replyToGroupId);
+      return this;
+    }
+
+    @Override
+    public MessageBuilder messageBuilder() {
+      return messageBuilder;
+    }
+  }
+
+  private static class QpidProtonjMessageAnnotationsBuilder implements MessageAnnotationsBuilder {
+
+    private final Map<Symbol, Object> messageAnnotations = new LinkedHashMap<>();
+
+    private final MessageBuilder messageBuilder;
+
+    private QpidProtonjMessageAnnotationsBuilder(MessageBuilder messageBuilder) {
+      this.messageBuilder = messageBuilder;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, boolean value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, byte value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, short value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, int value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, long value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryUnsigned(String key, byte value) {
+      messageAnnotations.put(Symbol.getSymbol(key), new UnsignedByte(value));
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryUnsigned(String key, short value) {
+      messageAnnotations.put(Symbol.getSymbol(key), new UnsignedShort(value));
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryUnsigned(String key, int value) {
+      messageAnnotations.put(Symbol.getSymbol(key), new UnsignedInteger(value));
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryUnsigned(String key, long value) {
+      messageAnnotations.put(Symbol.getSymbol(key), new UnsignedLong(value));
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, float value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, double value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryDecimal32(String key, BigDecimal value) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryDecimal64(String key, BigDecimal value) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryDecimal128(String key, BigDecimal value) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, char value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryTimestamp(String key, long value) {
+      messageAnnotations.put(Symbol.getSymbol(key), new Date(value));
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, UUID uuid) {
+      messageAnnotations.put(Symbol.getSymbol(key), uuid);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, byte[] value) {
+      messageAnnotations.put(Symbol.getSymbol(key), new Binary(value));
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, String value) {
+      messageAnnotations.put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entrySymbol(String key, String value) {
+      messageAnnotations.put(Symbol.getSymbol(key), Symbol.valueOf(value));
+      return this;
+    }
+
+    @Override
+    public MessageBuilder messageBuilder() {
+      return messageBuilder;
+    }
+  }
+
+  private static class QpidProtonjApplicationPropertiesBuilder
+      implements ApplicationPropertiesBuilder {
+
+    private final Map<String, Object> applicationProperties = new LinkedHashMap<>();
+    private final MessageBuilder messageBuilder;
+
+    private QpidProtonjApplicationPropertiesBuilder(MessageBuilder messageBuilder) {
+      this.messageBuilder = messageBuilder;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, boolean value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, byte value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, short value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, int value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, long value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entryUnsigned(String key, byte value) {
+      applicationProperties.put(key, new UnsignedByte(value));
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entryUnsigned(String key, short value) {
+      applicationProperties.put(key, new UnsignedShort(value));
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entryUnsigned(String key, int value) {
+      applicationProperties.put(key, new UnsignedInteger(value));
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entryUnsigned(String key, long value) {
+      applicationProperties.put(key, new UnsignedLong(value));
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, float value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, double value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entryDecimal32(String key, BigDecimal value) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entryDecimal64(String key, BigDecimal value) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entryDecimal128(String key, BigDecimal value) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, char value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entryTimestamp(String key, long value) {
+      applicationProperties.put(key, new Date(value));
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, UUID uuid) {
+      applicationProperties.put(key, uuid);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, byte[] value) {
+      applicationProperties.put(key, new Binary(value));
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entry(String key, String value) {
+      applicationProperties.put(key, value);
+      return this;
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder entrySymbol(String key, String value) {
+      applicationProperties.put(key, Symbol.valueOf(value));
+      return this;
+    }
+
+    @Override
+    public MessageBuilder messageBuilder() {
+      return messageBuilder;
+    }
+  }
 }

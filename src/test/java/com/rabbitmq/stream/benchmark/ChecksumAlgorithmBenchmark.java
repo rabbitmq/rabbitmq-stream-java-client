@@ -14,12 +14,6 @@
 
 package com.rabbitmq.stream.benchmark;
 
-import org.openjdk.jmh.annotations.*;
-import org.openjdk.jmh.runner.Runner;
-import org.openjdk.jmh.runner.RunnerException;
-import org.openjdk.jmh.runner.options.Options;
-import org.openjdk.jmh.runner.options.OptionsBuilder;
-
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
@@ -29,6 +23,11 @@ import java.util.function.Supplier;
 import java.util.zip.Adler32;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
+import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.runner.Runner;
+import org.openjdk.jmh.runner.RunnerException;
+import org.openjdk.jmh.runner.options.Options;
+import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -39,38 +38,41 @@ import java.util.zip.Checksum;
 @Threads(1)
 public class ChecksumAlgorithmBenchmark {
 
-    static Map<String, Supplier<Checksum>> CHECKSUMS = new ConcurrentHashMap<String, Supplier<Checksum>>() {{
-        put("crc32", () -> new CRC32());
-        put("adler32", () -> new Adler32());
-    }};
+  static Map<String, Supplier<Checksum>> CHECKSUMS =
+      new ConcurrentHashMap<String, Supplier<Checksum>>() {
+        {
+          put("crc32", () -> new CRC32());
+          put("adler32", () -> new Adler32());
+        }
+      };
 
-    @Param({"crc32", "adler32"})
-    String algorithm;
+  @Param({"crc32", "adler32"})
+  String algorithm;
 
-    Supplier<Checksum> supplier;
+  Supplier<Checksum> supplier;
 
-    byte[] content;
+  byte[] content;
 
-    public static void main(String[] args) throws RunnerException {
-        Options opt = new OptionsBuilder()
-                .include(ChecksumAlgorithmBenchmark.class.getSimpleName())
-                .forks(1)
-                .build();
+  public static void main(String[] args) throws RunnerException {
+    Options opt =
+        new OptionsBuilder()
+            .include(ChecksumAlgorithmBenchmark.class.getSimpleName())
+            .forks(1)
+            .build();
 
-        new Runner(opt).run();
-    }
+    new Runner(opt).run();
+  }
 
-    @Setup
-    public void setUp() {
-        supplier = CHECKSUMS.get(algorithm);
-        content = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
-    }
+  @Setup
+  public void setUp() {
+    supplier = CHECKSUMS.get(algorithm);
+    content = UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8);
+  }
 
-    @Benchmark
-    public void checksum() {
-        Checksum checksum = supplier.get();
-        checksum.update(content, 0, content.length);
-        checksum.getValue();
-    }
-
+  @Benchmark
+  public void checksum() {
+    Checksum checksum = supplier.get();
+    checksum.update(content, 0, content.length);
+    checksum.getValue();
+  }
 }

@@ -20,40 +20,43 @@ import com.rabbitmq.stream.StreamException;
 
 public class StreamStreamCreator implements StreamCreator {
 
-    private final StreamEnvironment environment;
-    private final Client.StreamParametersBuilder streamParametersBuilder = new Client.StreamParametersBuilder();
-    private String stream;
+  private final StreamEnvironment environment;
+  private final Client.StreamParametersBuilder streamParametersBuilder =
+      new Client.StreamParametersBuilder();
+  private String stream;
 
-    StreamStreamCreator(StreamEnvironment environment) {
-        this.environment = environment;
-    }
+  StreamStreamCreator(StreamEnvironment environment) {
+    this.environment = environment;
+  }
 
-    @Override
-    public StreamCreator stream(String stream) {
-        this.stream = stream;
-        return this;
-    }
+  @Override
+  public StreamCreator stream(String stream) {
+    this.stream = stream;
+    return this;
+  }
 
-    @Override
-    public StreamCreator maxLengthBytes(ByteCapacity byteCapacity) {
-        streamParametersBuilder.maxLengthBytes(byteCapacity);
-        return this;
-    }
+  @Override
+  public StreamCreator maxLengthBytes(ByteCapacity byteCapacity) {
+    streamParametersBuilder.maxLengthBytes(byteCapacity);
+    return this;
+  }
 
-    @Override
-    public StreamCreator maxSegmentSizeBytes(ByteCapacity byteCapacity) {
-        streamParametersBuilder.maxSegmentSizeBytes(byteCapacity);
-        return this;
-    }
+  @Override
+  public StreamCreator maxSegmentSizeBytes(ByteCapacity byteCapacity) {
+    streamParametersBuilder.maxSegmentSizeBytes(byteCapacity);
+    return this;
+  }
 
-    @Override
-    public void create() {
-        if (stream == null) {
-            throw new IllegalArgumentException("Stream cannot be null");
-        }
-        Client.Response response = environment.locator().create(stream, streamParametersBuilder.build());
-        if (!response.isOk()) {
-            throw new StreamException("Error while creating stream " + stream, response.getResponseCode());
-        }
+  @Override
+  public void create() {
+    if (stream == null) {
+      throw new IllegalArgumentException("Stream cannot be null");
     }
+    Client.Response response =
+        environment.locator().create(stream, streamParametersBuilder.build());
+    if (!response.isOk()) {
+      throw new StreamException(
+          "Error while creating stream " + stream, response.getResponseCode());
+    }
+  }
 }

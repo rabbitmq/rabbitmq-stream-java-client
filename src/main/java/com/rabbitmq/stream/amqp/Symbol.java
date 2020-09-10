@@ -16,20 +16,20 @@ package com.rabbitmq.stream.amqp;
 
 public class Symbol {
 
-    // FIXME maintain a cache
+  // FIXME maintain a cache
 
-    private final String value;
+  private final String value;
 
-    private Symbol(String value) {
-        this.value = value;
-    }
+  private Symbol(String value) {
+    this.value = value;
+  }
 
-    public static Symbol valueOf(String value) {
-        return new Symbol(value);
-    }
+  public static Symbol valueOf(String value) {
+    return new Symbol(value);
+  }
 
-    @Override
-    public String toString() {
-        return value;
-    }
+  @Override
+  public String toString() {
+    return value;
+  }
 }

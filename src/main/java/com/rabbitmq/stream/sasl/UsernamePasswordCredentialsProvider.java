@@ -14,23 +14,20 @@
 
 package com.rabbitmq.stream.sasl;
 
-/**
- * Contract for credentials based on a username/password pair.
- */
+/** Contract for credentials based on a username/password pair. */
 public interface UsernamePasswordCredentialsProvider extends CredentialsProvider {
 
-    /**
-     * The username
-     *
-     * @return
-     */
-    String getUsername();
+  /**
+   * The username
+   *
+   * @return
+   */
+  String getUsername();
 
-    /**
-     * The password
-     *
-     * @return
-     */
-    String getPassword();
-
+  /**
+   * The password
+   *
+   * @return
+   */
+  String getPassword();
 }

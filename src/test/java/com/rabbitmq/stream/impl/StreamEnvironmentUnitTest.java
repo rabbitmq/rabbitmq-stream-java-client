@@ -14,13 +14,10 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
@@ -29,105 +26,104 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 public class StreamEnvironmentUnitTest {
 
-    @Mock
-    BackOffDelayPolicy recoveryBackOffDelayPolicy;
-    @Mock
-    BackOffDelayPolicy topologyUpdateBackOffDelayPolicy;
-    @Mock
-    Function<Client.ClientParameters, Client> cf;
-    @Mock
-    Client client;
-    AutoCloseable mocks;
+  @Mock BackOffDelayPolicy recoveryBackOffDelayPolicy;
+  @Mock BackOffDelayPolicy topologyUpdateBackOffDelayPolicy;
+  @Mock Function<Client.ClientParameters, Client> cf;
+  @Mock Client client;
+  AutoCloseable mocks;
 
-    StreamEnvironment environment;
-    ScheduledExecutorService scheduledExecutorService;
-    volatile Client.ShutdownListener shutdownListener;
+  StreamEnvironment environment;
+  ScheduledExecutorService scheduledExecutorService;
+  volatile Client.ShutdownListener shutdownListener;
 
+  @BeforeEach
+  void init() {
+    AtomicReference<Client.ClientParameters> cpReference = new AtomicReference<>();
+    Client.ClientParameters clientParameters =
+        new Client.ClientParameters() {
+          @Override
+          public Client.ClientParameters shutdownListener(
+              Client.ShutdownListener shutdownListener) {
+            StreamEnvironmentUnitTest.this.shutdownListener = shutdownListener;
+            return super.shutdownListener(shutdownListener);
+          }
 
-    @BeforeEach
-    void init() {
-        AtomicReference<Client.ClientParameters> cpReference = new AtomicReference<>();
-        Client.ClientParameters clientParameters = new Client.ClientParameters() {
-            @Override
-            public Client.ClientParameters shutdownListener(Client.ShutdownListener shutdownListener) {
-                StreamEnvironmentUnitTest.this.shutdownListener = shutdownListener;
-                return super.shutdownListener(shutdownListener);
-            }
-
-            @Override
-            Client.ClientParameters duplicate() {
-                return cpReference.get();
-            }
+          @Override
+          Client.ClientParameters duplicate() {
+            return cpReference.get();
+          }
         };
-        cpReference.set(clientParameters);
-        mocks = MockitoAnnotations.openMocks(this);
-        when(cf.apply(any(Client.ClientParameters.class)))
-                .thenReturn(client);
-        this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
-        environment = new StreamEnvironment(
-                scheduledExecutorService,
-                clientParameters,
-                Collections.emptyList(),
-                recoveryBackOffDelayPolicy,
-                topologyUpdateBackOffDelayPolicy,
-                cf
-        );
-    }
+    cpReference.set(clientParameters);
+    mocks = MockitoAnnotations.openMocks(this);
+    when(cf.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    environment =
+        new StreamEnvironment(
+            scheduledExecutorService,
+            clientParameters,
+            Collections.emptyList(),
+            recoveryBackOffDelayPolicy,
+            topologyUpdateBackOffDelayPolicy,
+            cf);
+  }
 
-    @AfterEach
-    void tearDown() throws Exception {
-        environment.close();
-        scheduledExecutorService.shutdownNow();
-        mocks.close();
-    }
+  @AfterEach
+  void tearDown() throws Exception {
+    environment.close();
+    scheduledExecutorService.shutdownNow();
+    mocks.close();
+  }
 
-    @Test
-    void locatorRecoversAfterDisconnection() throws Exception {
-        verify(cf, times(1)).apply(any(Client.ClientParameters.class));
-        when(recoveryBackOffDelayPolicy.delay(anyInt())).thenReturn(Duration.ofMillis(50));
-        shutdownListener.handle(new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE));
-        Thread.sleep(50 * 3);
-        verify(cf, times(1 + 1)).apply(any(Client.ClientParameters.class));
-    }
+  @Test
+  void locatorRecoversAfterDisconnection() throws Exception {
+    verify(cf, times(1)).apply(any(Client.ClientParameters.class));
+    when(recoveryBackOffDelayPolicy.delay(anyInt())).thenReturn(Duration.ofMillis(50));
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE));
+    Thread.sleep(50 * 3);
+    verify(cf, times(1 + 1)).apply(any(Client.ClientParameters.class));
+  }
 
-    @Test
-    void retryLocatorRecovery() throws Exception {
-        verify(cf, times(1)).apply(any(Client.ClientParameters.class));
-        when(cf.apply(any(Client.ClientParameters.class)))
-                .thenThrow(new RuntimeException())
-                .thenThrow(new RuntimeException())
-                .thenReturn(client);
-        when(recoveryBackOffDelayPolicy.delay(anyInt())).thenReturn(Duration.ofMillis(50));
-        shutdownListener.handle(new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE));
-        Thread.sleep(50 * 5);
-        verify(cf, times(1 + 3)).apply(any(Client.ClientParameters.class));
-    }
+  @Test
+  void retryLocatorRecovery() throws Exception {
+    verify(cf, times(1)).apply(any(Client.ClientParameters.class));
+    when(cf.apply(any(Client.ClientParameters.class)))
+        .thenThrow(new RuntimeException())
+        .thenThrow(new RuntimeException())
+        .thenReturn(client);
+    when(recoveryBackOffDelayPolicy.delay(anyInt())).thenReturn(Duration.ofMillis(50));
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE));
+    Thread.sleep(50 * 5);
+    verify(cf, times(1 + 3)).apply(any(Client.ClientParameters.class));
+  }
 
-    @Test
-    @SuppressWarnings("unchecked")
-    void shouldTryUrisOnInitializationFailure() throws Exception {
-        reset(cf);
-        when(cf.apply(any(Client.ClientParameters.class)))
-                .thenThrow(new RuntimeException())
-                .thenThrow(new RuntimeException())
-                .thenReturn(client);
+  @Test
+  @SuppressWarnings("unchecked")
+  void shouldTryUrisOnInitializationFailure() throws Exception {
+    reset(cf);
+    when(cf.apply(any(Client.ClientParameters.class)))
+        .thenThrow(new RuntimeException())
+        .thenThrow(new RuntimeException())
+        .thenReturn(client);
 
-        URI uri = new URI("rabbitmq-stream://localhost:5555");
-        environment = new StreamEnvironment(
-                scheduledExecutorService,
-                new Client.ClientParameters(),
-                Arrays.asList(uri, uri, uri),
-                recoveryBackOffDelayPolicy,
-                topologyUpdateBackOffDelayPolicy,
-                cf
-        );
-        verify(cf, times(3)).apply(any(Client.ClientParameters.class));
-    }
-
+    URI uri = new URI("rabbitmq-stream://localhost:5555");
+    environment =
+        new StreamEnvironment(
+            scheduledExecutorService,
+            new Client.ClientParameters(),
+            Arrays.asList(uri, uri, uri),
+            recoveryBackOffDelayPolicy,
+            topologyUpdateBackOffDelayPolicy,
+            cf);
+    verify(cf, times(3)).apply(any(Client.ClientParameters.class));
+  }
 }

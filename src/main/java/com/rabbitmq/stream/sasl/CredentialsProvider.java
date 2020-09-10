@@ -14,8 +14,5 @@
 
 package com.rabbitmq.stream.sasl;
 
-/**
- * Marker interface for providing credentials.
- */
-public interface CredentialsProvider {
-}
+/** Marker interface for providing credentials. */
+public interface CredentialsProvider {}

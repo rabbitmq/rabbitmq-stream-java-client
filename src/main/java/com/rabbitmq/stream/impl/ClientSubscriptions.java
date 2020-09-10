@@ -19,10 +19,13 @@ import com.rabbitmq.stream.OffsetSpecification;
 
 interface ClientSubscriptions {
 
-    long subscribe(StreamConsumer consumer, String stream, OffsetSpecification offsetSpecification, MessageHandler messageHandler);
+  long subscribe(
+      StreamConsumer consumer,
+      String stream,
+      OffsetSpecification offsetSpecification,
+      MessageHandler messageHandler);
 
-    void unsubscribe(long id);
+  void unsubscribe(long id);
 
-    void close();
-
+  void close();
 }

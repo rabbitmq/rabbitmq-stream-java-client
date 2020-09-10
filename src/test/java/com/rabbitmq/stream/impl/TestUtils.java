@@ -14,11 +14,13 @@
 
 package com.rabbitmq.stream.impl;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import com.rabbitmq.stream.Host;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import org.junit.jupiter.api.extension.*;
-
 import java.lang.annotation.*;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
@@ -29,208 +31,212 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.fail;
+import org.junit.jupiter.api.extension.*;
 
 final class TestUtils {
 
-    private TestUtils() {
+  private TestUtils() {}
 
+  static void waitAtMost(int timeoutInSeconds, BooleanSupplier condition)
+      throws InterruptedException {
+    if (condition.getAsBoolean()) {
+      return;
+    }
+    int waitTime = 100;
+    int waitedTime = 0;
+    int timeoutInMs = timeoutInSeconds * 1000;
+    while (waitedTime <= timeoutInMs) {
+      Thread.sleep(waitTime);
+      if (condition.getAsBoolean()) {
+        return;
+      }
+      waitedTime += waitTime;
+    }
+    fail("Waited " + timeoutInSeconds + " second(s), condition never got true");
+  }
+
+  static void publishAndWaitForConfirms(
+      TestUtils.ClientFactory cf, int publishCount, String stream) {
+    publishAndWaitForConfirms(cf, "message", publishCount, stream);
+  }
+
+  static void publishAndWaitForConfirms(
+      TestUtils.ClientFactory cf, String messagePrefix, int publishCount, String stream) {
+    CountDownLatch latchConfirm = new CountDownLatch(publishCount);
+    Client.PublishConfirmListener publishConfirmListener =
+        (publisherId, correlationId) -> latchConfirm.countDown();
+
+    Client client =
+        cf.get(new Client.ClientParameters().publishConfirmListener(publishConfirmListener));
+
+    for (int i = 1; i <= publishCount; i++) {
+      client.publish(
+          stream,
+          (byte) 1,
+          Collections.singletonList(
+              client
+                  .messageBuilder()
+                  .addData((messagePrefix + i).getBytes(StandardCharsets.UTF_8))
+                  .build()));
     }
 
-    static void waitAtMost(int timeoutInSeconds, BooleanSupplier condition) throws InterruptedException {
-        if (condition.getAsBoolean()) {
-            return;
-        }
-        int waitTime = 100;
-        int waitedTime = 0;
-        int timeoutInMs = timeoutInSeconds * 1000;
-        while (waitedTime <= timeoutInMs) {
-            Thread.sleep(waitTime);
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            waitedTime += waitTime;
-        }
-        fail("Waited " + timeoutInSeconds + " second(s), condition never got true");
+    try {
+      assertThat(latchConfirm.await(60, SECONDS)).isTrue();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException(e);
     }
+  }
 
-    static void publishAndWaitForConfirms(TestUtils.ClientFactory cf, int publishCount, String stream) {
-        publishAndWaitForConfirms(cf, "message", publishCount, stream);
-    }
+  static Consumer<Object> namedTask(TaskWithException task, String description) {
+    return new Consumer<Object>() {
 
-    static void publishAndWaitForConfirms(TestUtils.ClientFactory cf, String messagePrefix, int publishCount, String stream) {
-        CountDownLatch latchConfirm = new CountDownLatch(publishCount);
-        Client.PublishConfirmListener publishConfirmListener = (publisherId, correlationId) -> latchConfirm.countDown();
-
-        Client client = cf.get(new Client.ClientParameters()
-                .publishConfirmListener(publishConfirmListener));
-
-        for (int i = 1; i <= publishCount; i++) {
-            client.publish(stream, (byte) 1, Collections.singletonList(client.messageBuilder().addData((messagePrefix + i).getBytes(StandardCharsets.UTF_8)).build()));
-        }
-
+      @Override
+      public void accept(Object o) {
         try {
-            assertThat(latchConfirm.await(60, SECONDS)).isTrue();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
+          task.run(o);
+        } catch (Exception e) {
+          throw new RuntimeException();
         }
+      }
+
+      @Override
+      public String toString() {
+        return description;
+      }
+    };
+  }
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
+  @ExtendWith(DisabledIfRabbitMqCtlNotSetCondition.class)
+  @interface DisabledIfRabbitMqCtlNotSet {}
+
+  interface TaskWithException {
+
+    void run(Object context) throws Exception;
+  }
+
+  static class StreamTestInfrastructureExtension
+      implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback {
+
+    private static final ExtensionContext.Namespace NAMESPACE =
+        ExtensionContext.Namespace.create(StreamTestInfrastructureExtension.class);
+
+    private static ExtensionContext.Store store(ExtensionContext extensionContext) {
+      return extensionContext.getRoot().getStore(NAMESPACE);
     }
 
-    static Consumer<Object> namedTask(TaskWithException task, String description) {
-        return new Consumer<Object>() {
-
-            @Override
-            public void accept(Object o) {
-                try {
-                    task.run(o);
-                } catch (Exception e) {
-                    throw new RuntimeException();
-                }
-            }
-
-            @Override
-            public String toString() {
-                return description;
-            }
-        };
+    private static EventLoopGroup eventLoopGroup(ExtensionContext context) {
+      return (EventLoopGroup) store(context).get("nettyEventLoopGroup");
     }
 
-    @Target({ElementType.TYPE, ElementType.METHOD})
-    @Retention(RetentionPolicy.RUNTIME)
-    @Documented
-    @ExtendWith(DisabledIfRabbitMqCtlNotSetCondition.class)
-    @interface DisabledIfRabbitMqCtlNotSet {
-
-
+    @Override
+    public void beforeAll(ExtensionContext context) {
+      store(context).put("nettyEventLoopGroup", new NioEventLoopGroup());
     }
 
-    interface TaskWithException {
+    @Override
+    public void beforeEach(ExtensionContext context) throws Exception {
+      try {
+        Field streamField =
+            context.getTestInstance().get().getClass().getDeclaredField("eventLoopGroup");
+        streamField.setAccessible(true);
+        streamField.set(context.getTestInstance().get(), eventLoopGroup(context));
+      } catch (NoSuchFieldException e) {
 
-        void run(Object context) throws Exception;
+      }
+      try {
+        Field streamField = context.getTestInstance().get().getClass().getDeclaredField("stream");
+        streamField.setAccessible(true);
+        String stream = UUID.randomUUID().toString();
+        streamField.set(context.getTestInstance().get(), stream);
+        Client client =
+            new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
+        Client.Response response = client.create(stream);
+        assertThat(response.isOk()).isTrue();
+        client.close();
+        store(context).put("testMethodStream", stream);
+      } catch (NoSuchFieldException e) {
 
+      }
+
+      for (Field declaredField : context.getTestInstance().get().getClass().getDeclaredFields()) {
+        if (declaredField.getType().equals(ClientFactory.class)) {
+          declaredField.setAccessible(true);
+          ClientFactory clientFactory = new ClientFactory(eventLoopGroup(context));
+          declaredField.set(context.getTestInstance().get(), clientFactory);
+          store(context).put("testClientFactory", clientFactory);
+          break;
+        }
+      }
     }
 
-    static class StreamTestInfrastructureExtension implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback {
+    @Override
+    public void afterEach(ExtensionContext context) throws Exception {
+      ClientFactory clientFactory = (ClientFactory) store(context).get("testClientFactory");
+      if (clientFactory != null) {
+        clientFactory.close();
+      }
 
-        private static final ExtensionContext.Namespace NAMESPACE = ExtensionContext.Namespace.create(StreamTestInfrastructureExtension.class);
+      try {
+        Field streamField = context.getTestInstance().get().getClass().getDeclaredField("stream");
+        streamField.setAccessible(true);
+        String stream = (String) streamField.get(context.getTestInstance().get());
+        Client client =
+            new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
+        Client.Response response = client.delete(stream);
+        assertThat(response.isOk()).isTrue();
+        client.close();
+        store(context).remove("testMethodStream");
+      } catch (NoSuchFieldException e) {
 
-        private static ExtensionContext.Store store(ExtensionContext extensionContext) {
-            return extensionContext.getRoot().getStore(NAMESPACE);
-        }
-
-        private static EventLoopGroup eventLoopGroup(ExtensionContext context) {
-            return (EventLoopGroup) store(context).get("nettyEventLoopGroup");
-        }
-
-        @Override
-        public void beforeAll(ExtensionContext context) {
-            store(context).put("nettyEventLoopGroup", new NioEventLoopGroup());
-        }
-
-        @Override
-        public void beforeEach(ExtensionContext context) throws Exception {
-            try {
-                Field streamField = context.getTestInstance().get().getClass().getDeclaredField("eventLoopGroup");
-                streamField.setAccessible(true);
-                streamField.set(context.getTestInstance().get(), eventLoopGroup(context));
-            } catch (NoSuchFieldException e) {
-
-            }
-            try {
-                Field streamField = context.getTestInstance().get().getClass().getDeclaredField("stream");
-                streamField.setAccessible(true);
-                String stream = UUID.randomUUID().toString();
-                streamField.set(context.getTestInstance().get(), stream);
-                Client client = new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
-                Client.Response response = client.create(stream);
-                assertThat(response.isOk()).isTrue();
-                client.close();
-                store(context).put("testMethodStream", stream);
-            } catch (NoSuchFieldException e) {
-
-            }
-
-            for (Field declaredField : context.getTestInstance().get().getClass().getDeclaredFields()) {
-                if (declaredField.getType().equals(ClientFactory.class)) {
-                    declaredField.setAccessible(true);
-                    ClientFactory clientFactory = new ClientFactory(eventLoopGroup(context));
-                    declaredField.set(context.getTestInstance().get(), clientFactory);
-                    store(context).put("testClientFactory", clientFactory);
-                    break;
-                }
-            }
-
-        }
-
-        @Override
-        public void afterEach(ExtensionContext context) throws Exception {
-            ClientFactory clientFactory = (ClientFactory) store(context).get("testClientFactory");
-            if (clientFactory != null) {
-                clientFactory.close();
-            }
-
-            try {
-                Field streamField = context.getTestInstance().get().getClass().getDeclaredField("stream");
-                streamField.setAccessible(true);
-                String stream = (String) streamField.get(context.getTestInstance().get());
-                Client client = new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
-                Client.Response response = client.delete(stream);
-                assertThat(response.isOk()).isTrue();
-                client.close();
-                store(context).remove("testMethodStream");
-            } catch (NoSuchFieldException e) {
-
-            }
-        }
-
-        @Override
-        public void afterAll(ExtensionContext context) throws Exception {
-            EventLoopGroup eventLoopGroup = eventLoopGroup(context);
-            eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
-        }
-
+      }
     }
 
-    static class ClientFactory {
+    @Override
+    public void afterAll(ExtensionContext context) throws Exception {
+      EventLoopGroup eventLoopGroup = eventLoopGroup(context);
+      eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+    }
+  }
 
-        private final EventLoopGroup eventLoopGroup;
-        private final Set<Client> clients = ConcurrentHashMap.newKeySet();
+  static class ClientFactory {
 
+    private final EventLoopGroup eventLoopGroup;
+    private final Set<Client> clients = ConcurrentHashMap.newKeySet();
 
-        public ClientFactory(EventLoopGroup eventLoopGroup) {
-            this.eventLoopGroup = eventLoopGroup;
-        }
-
-        public Client get() {
-            return get(new Client.ClientParameters());
-        }
-
-        public Client get(Client.ClientParameters parameters) {
-            Client client = new Client(parameters.eventLoopGroup(eventLoopGroup));
-            clients.add(client);
-            return client;
-        }
-
-        private void close() {
-            for (Client c : clients) {
-                c.close();
-            }
-        }
+    public ClientFactory(EventLoopGroup eventLoopGroup) {
+      this.eventLoopGroup = eventLoopGroup;
     }
 
-    static class DisabledIfRabbitMqCtlNotSetCondition implements ExecutionCondition {
-
-        @Override
-        public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
-            if (Host.rabbitmqctlCommand() == null) {
-                return ConditionEvaluationResult.disabled("rabbitmqctl.bin system property not set");
-            } else {
-                return ConditionEvaluationResult.enabled("rabbitmqctl.bin system property is set");
-            }
-        }
+    public Client get() {
+      return get(new Client.ClientParameters());
     }
+
+    public Client get(Client.ClientParameters parameters) {
+      Client client = new Client(parameters.eventLoopGroup(eventLoopGroup));
+      clients.add(client);
+      return client;
+    }
+
+    private void close() {
+      for (Client c : clients) {
+        c.close();
+      }
+    }
+  }
+
+  static class DisabledIfRabbitMqCtlNotSetCondition implements ExecutionCondition {
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      if (Host.rabbitmqctlCommand() == null) {
+        return ConditionEvaluationResult.disabled("rabbitmqctl.bin system property not set");
+      } else {
+        return ConditionEvaluationResult.enabled("rabbitmqctl.bin system property is set");
+      }
+    }
+  }
 }

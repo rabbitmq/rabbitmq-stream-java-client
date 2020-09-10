@@ -21,59 +21,60 @@ import com.codahale.metrics.MetricRegistry;
 
 public class DropwizardMetricsCollector implements MetricsCollector {
 
-    private final com.codahale.metrics.Meter publish;
-    private final com.codahale.metrics.Meter publishConfirm;
-    private final com.codahale.metrics.Meter publishError;
-    private final com.codahale.metrics.Meter chunk;
-    private final Meter consume;
+  private final com.codahale.metrics.Meter publish;
+  private final com.codahale.metrics.Meter publishConfirm;
+  private final com.codahale.metrics.Meter publishError;
+  private final com.codahale.metrics.Meter chunk;
+  private final Meter consume;
 
-    private final Counter outstandingPublishConfirm;
-    private final Histogram chunkSize;
+  private final Counter outstandingPublishConfirm;
+  private final Histogram chunkSize;
 
-    public DropwizardMetricsCollector(MetricRegistry registry, String metricsPrefix) {
-        this.publish = registry.meter(metricsPrefix + ".published");
-        this.publishConfirm = registry.meter(metricsPrefix + ".confirmed");
-        this.publishError = registry.meter(metricsPrefix + ".errored");
-        this.chunk = registry.meter(metricsPrefix + ".chunk");
-        this.chunkSize = registry.histogram(metricsPrefix + ".chunk_size");
-        this.consume = registry.meter(metricsPrefix + ".consumed");
-        this.outstandingPublishConfirm = registry.counter(metricsPrefix + ".outstanding_publish_confirm");
-    }
+  public DropwizardMetricsCollector(MetricRegistry registry, String metricsPrefix) {
+    this.publish = registry.meter(metricsPrefix + ".published");
+    this.publishConfirm = registry.meter(metricsPrefix + ".confirmed");
+    this.publishError = registry.meter(metricsPrefix + ".errored");
+    this.chunk = registry.meter(metricsPrefix + ".chunk");
+    this.chunkSize = registry.histogram(metricsPrefix + ".chunk_size");
+    this.consume = registry.meter(metricsPrefix + ".consumed");
+    this.outstandingPublishConfirm =
+        registry.counter(metricsPrefix + ".outstanding_publish_confirm");
+  }
 
-    public DropwizardMetricsCollector() {
-        this(new MetricRegistry());
-    }
+  public DropwizardMetricsCollector() {
+    this(new MetricRegistry());
+  }
 
-    public DropwizardMetricsCollector(MetricRegistry metricRegistry) {
-        this(metricRegistry, "rabbitmq.stream");
-    }
+  public DropwizardMetricsCollector(MetricRegistry metricRegistry) {
+    this(metricRegistry, "rabbitmq.stream");
+  }
 
-    @Override
-    public void publish(int count) {
-        publish.mark(count);
-        outstandingPublishConfirm.inc(count);
-    }
+  @Override
+  public void publish(int count) {
+    publish.mark(count);
+    outstandingPublishConfirm.inc(count);
+  }
 
-    @Override
-    public void publishConfirm(int count) {
-        publishConfirm.mark(count);
-        outstandingPublishConfirm.dec(count);
-    }
+  @Override
+  public void publishConfirm(int count) {
+    publishConfirm.mark(count);
+    outstandingPublishConfirm.dec(count);
+  }
 
-    @Override
-    public void publishError(int count) {
-        publishError.mark(count);
-        outstandingPublishConfirm.dec(count);
-    }
+  @Override
+  public void publishError(int count) {
+    publishError.mark(count);
+    outstandingPublishConfirm.dec(count);
+  }
 
-    @Override
-    public void chunk(int entriesCount) {
-        chunk.mark();
-        chunkSize.update(entriesCount);
-    }
+  @Override
+  public void chunk(int entriesCount) {
+    chunk.mark();
+    chunkSize.update(entriesCount);
+  }
 
-    @Override
-    public void consume(long count) {
-        consume.mark(count);
-    }
+  @Override
+  public void consume(long count) {
+    consume.mark(count);
+  }
 }

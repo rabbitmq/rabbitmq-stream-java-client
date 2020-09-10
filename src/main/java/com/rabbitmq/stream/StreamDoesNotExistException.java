@@ -16,14 +16,14 @@ package com.rabbitmq.stream;
 
 public class StreamDoesNotExistException extends StreamException {
 
-    private final String stream;
+  private final String stream;
 
-    public StreamDoesNotExistException(String stream) {
-        super("Stream " + stream + "  does not exist");
-        this.stream = stream;
-    }
+  public StreamDoesNotExistException(String stream) {
+    super("Stream " + stream + "  does not exist");
+    this.stream = stream;
+  }
 
-    public String getStream() {
-        return stream;
-    }
+  public String getStream() {
+    return stream;
+  }
 }

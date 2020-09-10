@@ -14,26 +14,23 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.impl.Client;
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Field;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 public class ClientParametersTest {
 
-    @Test
-    void duplicate() throws Exception {
-        Client.ClientParameters clientParameters = new Client.ClientParameters()
-                .host("rabbitmq").port(5556);
-        clientParameters = clientParameters.duplicate();
-        Field hostField = Client.ClientParameters.class.getDeclaredField("host");
-        hostField.setAccessible(true);
-        Field portField = Client.ClientParameters.class.getDeclaredField("port");
-        portField.setAccessible(true);
-        assertThat(hostField.get(clientParameters)).isEqualTo("rabbitmq");
-        assertThat(portField.get(clientParameters)).isEqualTo(5556);
-    }
-
+  @Test
+  void duplicate() throws Exception {
+    Client.ClientParameters clientParameters =
+        new Client.ClientParameters().host("rabbitmq").port(5556);
+    clientParameters = clientParameters.duplicate();
+    Field hostField = Client.ClientParameters.class.getDeclaredField("host");
+    hostField.setAccessible(true);
+    Field portField = Client.ClientParameters.class.getDeclaredField("port");
+    portField.setAccessible(true);
+    assertThat(hostField.get(clientParameters)).isEqualTo("rabbitmq");
+    assertThat(portField.get(clientParameters)).isEqualTo(5556);
+  }
 }

@@ -16,29 +16,28 @@ package com.rabbitmq.stream;
 
 public interface Codec {
 
-    EncodedMessage encode(Message message);
+  EncodedMessage encode(Message message);
 
-    Message decode(byte[] data);
+  Message decode(byte[] data);
 
-    MessageBuilder messageBuilder();
+  MessageBuilder messageBuilder();
 
-    class EncodedMessage {
+  class EncodedMessage {
 
-        private final int size;
-        private final byte[] data;
+    private final int size;
+    private final byte[] data;
 
-        public EncodedMessage(int size, byte[] data) {
-            this.size = size;
-            this.data = data;
-        }
-
-        public byte[] getData() {
-            return data;
-        }
-
-        public int getSize() {
-            return size;
-        }
+    public EncodedMessage(int size, byte[] data) {
+      this.size = size;
+      this.data = data;
     }
 
+    public byte[] getData() {
+      return data;
+    }
+
+    public int getSize() {
+      return size;
+    }
+  }
 }

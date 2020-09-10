@@ -21,38 +21,39 @@ import com.rabbitmq.stream.OffsetSpecification;
 
 public class StreamConsumerBuilder implements ConsumerBuilder {
 
-    private final StreamEnvironment environment;
+  private final StreamEnvironment environment;
 
-    private String stream;
-    private OffsetSpecification offsetSpecification = OffsetSpecification.first();
-    private MessageHandler messageHandler;
+  private String stream;
+  private OffsetSpecification offsetSpecification = OffsetSpecification.first();
+  private MessageHandler messageHandler;
 
-    public StreamConsumerBuilder(StreamEnvironment environment) {
-        this.environment = environment;
-    }
+  public StreamConsumerBuilder(StreamEnvironment environment) {
+    this.environment = environment;
+  }
 
-    @Override
-    public ConsumerBuilder stream(String stream) {
-        this.stream = stream;
-        return this;
-    }
+  @Override
+  public ConsumerBuilder stream(String stream) {
+    this.stream = stream;
+    return this;
+  }
 
-    @Override
-    public ConsumerBuilder offset(OffsetSpecification offsetSpecification) {
-        this.offsetSpecification = offsetSpecification;
-        return this;
-    }
+  @Override
+  public ConsumerBuilder offset(OffsetSpecification offsetSpecification) {
+    this.offsetSpecification = offsetSpecification;
+    return this;
+  }
 
-    @Override
-    public ConsumerBuilder messageHandler(MessageHandler messageHandler) {
-        this.messageHandler = messageHandler;
-        return this;
-    }
+  @Override
+  public ConsumerBuilder messageHandler(MessageHandler messageHandler) {
+    this.messageHandler = messageHandler;
+    return this;
+  }
 
-    @Override
-    public Consumer build() {
-        StreamConsumer consumer = new StreamConsumer(stream, offsetSpecification, messageHandler, environment);
-        environment.addConsumer(consumer);
-        return consumer;
-    }
+  @Override
+  public Consumer build() {
+    StreamConsumer consumer =
+        new StreamConsumer(stream, offsetSpecification, messageHandler, environment);
+    environment.addConsumer(consumer);
+    return consumer;
+  }
 }

@@ -18,31 +18,37 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * The <code>PLAIN</code> {@link SaslMechanism}.
- * <p>
- * This is the default mechanism used.
  *
- * @see <a href="https://tools.ietf.org/html/rfc4616">The PLAIN Simple Authentication and Security Layer (SASL) Mechanism (RFC 4616)</a>
+ * <p>This is the default mechanism used.
+ *
+ * @see <a href="https://tools.ietf.org/html/rfc4616">The PLAIN Simple Authentication and Security
+ *     Layer (SASL) Mechanism (RFC 4616)</a>
  */
 public class PlainSaslMechanism implements SaslMechanism {
 
-    public static final SaslMechanism INSTANCE = new PlainSaslMechanism();
-    private static final String UNICODE_NULL = "\u0000";
+  public static final SaslMechanism INSTANCE = new PlainSaslMechanism();
+  private static final String UNICODE_NULL = "\u0000";
 
-    @Override
-    public String getName() {
-        return "PLAIN";
-    }
+  @Override
+  public String getName() {
+    return "PLAIN";
+  }
 
-    @Override
-    public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
-        if (credentialsProvider instanceof UsernamePasswordCredentialsProvider) {
-            UsernamePasswordCredentialsProvider usernamePasswordCredentialsProvider = (UsernamePasswordCredentialsProvider) credentialsProvider;
-            String response = UNICODE_NULL + usernamePasswordCredentialsProvider.getUsername() +
-                    UNICODE_NULL + usernamePasswordCredentialsProvider.getPassword();
-            return response.getBytes(StandardCharsets.UTF_8);
-        } else {
-            throw new IllegalArgumentException("Only username/password credentials provider is supported, not " +
-                    CredentialsProvider.class.getSimpleName());
-        }
+  @Override
+  public byte[] handleChallenge(byte[] challenge, CredentialsProvider credentialsProvider) {
+    if (credentialsProvider instanceof UsernamePasswordCredentialsProvider) {
+      UsernamePasswordCredentialsProvider usernamePasswordCredentialsProvider =
+          (UsernamePasswordCredentialsProvider) credentialsProvider;
+      String response =
+          UNICODE_NULL
+              + usernamePasswordCredentialsProvider.getUsername()
+              + UNICODE_NULL
+              + usernamePasswordCredentialsProvider.getPassword();
+      return response.getBytes(StandardCharsets.UTF_8);
+    } else {
+      throw new IllegalArgumentException(
+          "Only username/password credentials provider is supported, not "
+              + CredentialsProvider.class.getSimpleName());
     }
+  }
 }

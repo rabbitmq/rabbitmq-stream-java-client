@@ -14,27 +14,25 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.StreamException;
 
 final class Codecs {
 
-    private Codecs() {
+  private Codecs() {}
 
+  static final Codec DEFAULT;
+
+  static {
+    DEFAULT = instanciateDefault();
+  }
+
+  private static Codec instanciateDefault() {
+    try {
+      return (Codec)
+          Class.forName("com.rabbitmq.stream.codec.QpidProtonCodec").getConstructor().newInstance();
+    } catch (Exception e) {
+      throw new StreamException(e);
     }
-
-    static final Codec DEFAULT;
-
-    static {
-        DEFAULT = instanciateDefault();
-    }
-
-    private static Codec instanciateDefault() {
-        try {
-            return (Codec) Class.forName("com.rabbitmq.stream.codec.QpidProtonCodec").getConstructor().newInstance();
-        } catch (Exception e) {
-            throw new StreamException(e);
-        }
-    }
-
+  }
 }

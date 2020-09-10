@@ -18,81 +18,78 @@ import java.util.Objects;
 
 public class OffsetSpecification {
 
-    private static final short TYPE_FIRST = 0;
-    private static final short TYPE_LAST = 1;
-    private static final short TYPE_NEXT = 2;
-    private static final short TYPE_OFFSET = 3;
-    private static final short TYPE_TIMESTAMP = 4;
+  private static final short TYPE_FIRST = 0;
+  private static final short TYPE_LAST = 1;
+  private static final short TYPE_NEXT = 2;
+  private static final short TYPE_OFFSET = 3;
+  private static final short TYPE_TIMESTAMP = 4;
 
-    private static final long UNUSED_OFFSET = -1;
+  private static final long UNUSED_OFFSET = -1;
 
-    private static final OffsetSpecification FIRST = new OffsetSpecification(TYPE_FIRST, UNUSED_OFFSET);
-    private static final OffsetSpecification LAST = new OffsetSpecification(TYPE_LAST, UNUSED_OFFSET);
-    private static final OffsetSpecification NEXT = new OffsetSpecification(TYPE_NEXT, UNUSED_OFFSET);
+  private static final OffsetSpecification FIRST =
+      new OffsetSpecification(TYPE_FIRST, UNUSED_OFFSET);
+  private static final OffsetSpecification LAST = new OffsetSpecification(TYPE_LAST, UNUSED_OFFSET);
+  private static final OffsetSpecification NEXT = new OffsetSpecification(TYPE_NEXT, UNUSED_OFFSET);
 
-    private final short type;
-    private final long offset;
+  private final short type;
+  private final long offset;
 
-    private OffsetSpecification(short type, long offset) {
-        this.type = type;
-        this.offset = offset;
-    }
+  private OffsetSpecification(short type, long offset) {
+    this.type = type;
+    this.offset = offset;
+  }
 
-    public static OffsetSpecification first() {
-        return FIRST;
-    }
+  public static OffsetSpecification first() {
+    return FIRST;
+  }
 
-    public static OffsetSpecification last() {
-        return LAST;
-    }
+  public static OffsetSpecification last() {
+    return LAST;
+  }
 
-    public static OffsetSpecification next() {
-        return NEXT;
-    }
+  public static OffsetSpecification next() {
+    return NEXT;
+  }
 
-    public static OffsetSpecification offset(long offset) {
-        return new OffsetSpecification(TYPE_OFFSET, offset);
-    }
+  public static OffsetSpecification offset(long offset) {
+    return new OffsetSpecification(TYPE_OFFSET, offset);
+  }
 
-    public static OffsetSpecification timestamp(long timestamp) {
-        return new OffsetSpecification(TYPE_TIMESTAMP, timestamp);
-    }
+  public static OffsetSpecification timestamp(long timestamp) {
+    return new OffsetSpecification(TYPE_TIMESTAMP, timestamp);
+  }
 
-    public boolean isOffset() {
-        return this.type == TYPE_OFFSET;
-    }
+  public boolean isOffset() {
+    return this.type == TYPE_OFFSET;
+  }
 
-    public boolean isTimestamp() {
-        return this.type == TYPE_TIMESTAMP;
-    }
+  public boolean isTimestamp() {
+    return this.type == TYPE_TIMESTAMP;
+  }
 
-    public short getType() {
-        return type;
-    }
+  public short getType() {
+    return type;
+  }
 
-    public long getOffset() {
-        return offset;
-    }
+  public long getOffset() {
+    return offset;
+  }
 
-    @Override
-    public String toString() {
-        return "OffsetSpecification{" +
-                "type=" + type +
-                ", offset=" + offset +
-                '}';
-    }
+  @Override
+  public String toString() {
+    return "OffsetSpecification{" + "type=" + type + ", offset=" + offset + '}';
+  }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        OffsetSpecification that = (OffsetSpecification) o;
-        return type == that.type &&
-                offset == that.offset;
-    }
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    OffsetSpecification that = (OffsetSpecification) o;
+    return type == that.type && offset == that.offset;
+  }
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(type, offset);
-    }
+  @Override
+  public int hashCode() {
+    return Objects.hash(type, offset);
+  }
 }

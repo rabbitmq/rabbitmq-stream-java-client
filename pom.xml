@@ -70,6 +70,7 @@
         <asciidoctorj.diagram.version>2.0.2</asciidoctorj.diagram.version>
         <jruby.version>9.2.11.1</jruby.version>
         <jmh.version>1.23</jmh.version>
+        <spotless.version>2.2.0</spotless.version>
         <!-- to sign artifacts when releasing -->
         <gpg.keyname>6026DFCA</gpg.keyname>
         <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
@@ -296,6 +297,29 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>1.6.0</version>
+            </plugin>
+
+            <plugin>
+            <groupId>com.diffplug.spotless</groupId>
+            <artifactId>spotless-maven-plugin</artifactId>
+            <version>${spotless.version}</version>
+                <configuration>
+                    <java>
+                        <!-- These are the defaults, you can override if you want -->
+<!--                        <includes>-->
+<!--                            <include>src/main/java/**/*.java</include>-->
+<!--                            <include>src/test/java/**/*.java</include>-->
+<!--                        </includes>-->
+                        <excludes>
+                            <exclude>src/test/java/com/rabbitmq/stream/docs/*.java</exclude>
+                        </excludes>
+
+                        <googleJavaFormat>
+                            <version>1.8</version>
+                            <style>GOOGLE</style>
+                        </googleJavaFormat>
+                    </java>
+                </configuration>
             </plugin>
 
         </plugins>

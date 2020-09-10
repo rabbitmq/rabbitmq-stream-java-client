@@ -14,40 +14,45 @@
 
 package com.rabbitmq.stream.impl;
 
-import io.netty.handler.traffic.ChannelTrafficShapingHandler;
-import io.netty.handler.traffic.TrafficCounter;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-
-import java.time.Duration;
-
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
+
+import io.netty.handler.traffic.ChannelTrafficShapingHandler;
+import io.netty.handler.traffic.TrafficCounter;
+import java.time.Duration;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class HeartbeatTest {
 
-    TestUtils.ClientFactory cf;
+  TestUtils.ClientFactory cf;
 
-    @Test
-    void heartbeat() throws Exception {
-        ChannelTrafficShapingHandler channelTrafficShapingHandler = new ChannelTrafficShapingHandler(0, 0);
-        try (Client client = cf.get(new Client.ClientParameters()
+  @Test
+  void heartbeat() throws Exception {
+    ChannelTrafficShapingHandler channelTrafficShapingHandler =
+        new ChannelTrafficShapingHandler(0, 0);
+    try (Client client =
+        cf.get(
+            new Client.ClientParameters()
                 .requestedHeartbeat(Duration.ofSeconds(2))
                 .channelCustomizer(ch -> ch.pipeline().addFirst(channelTrafficShapingHandler)))) {
-            TrafficCounter trafficCounter = channelTrafficShapingHandler.trafficCounter();
-            long writtenAfterOpening = trafficCounter.cumulativeWrittenBytes();
-            long readAfterOpening = trafficCounter.currentReadBytes();
+      TrafficCounter trafficCounter = channelTrafficShapingHandler.trafficCounter();
+      long writtenAfterOpening = trafficCounter.cumulativeWrittenBytes();
+      long readAfterOpening = trafficCounter.currentReadBytes();
 
-            int heartbeatFrameSize = 4 + 2 + 2;
-            int heartbeatFrameCount = 3;
-            int expectedAdditionalBytes = heartbeatFrameCount * heartbeatFrameSize;
+      int heartbeatFrameSize = 4 + 2 + 2;
+      int heartbeatFrameCount = 3;
+      int expectedAdditionalBytes = heartbeatFrameCount * heartbeatFrameSize;
 
-            waitAtMost(15, () -> trafficCounter.cumulativeWrittenBytes() >= writtenAfterOpening + expectedAdditionalBytes &&
-                    trafficCounter.cumulativeReadBytes() >= readAfterOpening + expectedAdditionalBytes
-            );
-            assertThat(client.isOpen()).isTrue();
-        }
+      waitAtMost(
+          15,
+          () ->
+              trafficCounter.cumulativeWrittenBytes()
+                      >= writtenAfterOpening + expectedAdditionalBytes
+                  && trafficCounter.cumulativeReadBytes()
+                      >= readAfterOpening + expectedAdditionalBytes);
+      assertThat(client.isOpen()).isTrue();
     }
-
+  }
 }

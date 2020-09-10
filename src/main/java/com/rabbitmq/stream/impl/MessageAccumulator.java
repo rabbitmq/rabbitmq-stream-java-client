@@ -19,17 +19,16 @@ import com.rabbitmq.stream.Message;
 
 interface MessageAccumulator {
 
-    boolean add(Message message, ConfirmationHandler confirmationHandler);
+  boolean add(Message message, ConfirmationHandler confirmationHandler);
 
-    AccumulatedEntity get();
+  AccumulatedEntity get();
 
-    boolean isEmpty();
+  boolean isEmpty();
 
-    interface AccumulatedEntity {
+  interface AccumulatedEntity {
 
-        Object encodedEntity();
+    Object encodedEntity();
 
-        StreamProducer.ConfirmationCallback confirmationCallback();
-
-    }
+    StreamProducer.ConfirmationCallback confirmationCallback();
+  }
 }

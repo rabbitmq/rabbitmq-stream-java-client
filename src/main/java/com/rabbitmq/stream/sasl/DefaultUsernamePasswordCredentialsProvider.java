@@ -14,26 +14,25 @@
 
 package com.rabbitmq.stream.sasl;
 
-/**
- * Default implementation of {@link UsernamePasswordCredentialsProvider}.
- */
-public class DefaultUsernamePasswordCredentialsProvider implements UsernamePasswordCredentialsProvider {
+/** Default implementation of {@link UsernamePasswordCredentialsProvider}. */
+public class DefaultUsernamePasswordCredentialsProvider
+    implements UsernamePasswordCredentialsProvider {
 
-    private final String username;
-    private final String password;
+  private final String username;
+  private final String password;
 
-    public DefaultUsernamePasswordCredentialsProvider(String username, String password) {
-        this.username = username;
-        this.password = password;
-    }
+  public DefaultUsernamePasswordCredentialsProvider(String username, String password) {
+    this.username = username;
+    this.password = password;
+  }
 
-    @Override
-    public String getUsername() {
-        return username;
-    }
+  @Override
+  public String getUsername() {
+    return username;
+  }
 
-    @Override
-    public String getPassword() {
-        return password;
-    }
+  @Override
+  public String getPassword() {
+    return password;
+  }
 }

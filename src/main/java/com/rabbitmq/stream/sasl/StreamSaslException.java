@@ -16,7 +16,7 @@ package com.rabbitmq.stream.sasl;
 
 public class StreamSaslException extends RuntimeException {
 
-    public StreamSaslException(Throwable cause) {
-        super(cause);
-    }
+  public StreamSaslException(Throwable cause) {
+    super(cause);
+  }
 }

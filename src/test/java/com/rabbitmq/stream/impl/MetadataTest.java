@@ -14,117 +14,123 @@
 
 package com.rabbitmq.stream.impl;
 
+import static java.util.Arrays.asList;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.rabbitmq.stream.Constants;
+import java.net.InetAddress;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.net.InetAddress;
-import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-
-import static java.util.Arrays.asList;
-import static org.assertj.core.api.Assertions.assertThat;
-
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class MetadataTest {
 
-    TestUtils.ClientFactory cf;
+  TestUtils.ClientFactory cf;
 
-    @ValueSource(ints = {1, 2, 3, 4, 5})
-    @ParameterizedTest
-    void metadataExistingStreams(int streamCount) throws Exception {
-        String hostname = InetAddress.getLocalHost().getHostName();
+  @ValueSource(ints = {1, 2, 3, 4, 5})
+  @ParameterizedTest
+  void metadataExistingStreams(int streamCount) throws Exception {
+    String hostname = InetAddress.getLocalHost().getHostName();
 
-        Client streamClient = cf.get();
-        String[] streams = IntStream.range(0, streamCount).mapToObj(i -> {
-            String t = UUID.randomUUID().toString();
-            streamClient.create(t);
-            return t;
-        }).toArray(String[]::new);
+    Client streamClient = cf.get();
+    String[] streams =
+        IntStream.range(0, streamCount)
+            .mapToObj(
+                i -> {
+                  String t = UUID.randomUUID().toString();
+                  streamClient.create(t);
+                  return t;
+                })
+            .toArray(String[]::new);
 
-        Client client = cf.get();
-        Map<String, Client.StreamMetadata> metadata = client.metadata(streams);
-        assertThat(metadata).hasSize(streamCount).containsKeys(streams);
-        asList(streams).forEach(t -> {
-            Client.StreamMetadata streamMetadata = metadata.get(t);
-            assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
-            assertThat(streamMetadata.getStream()).isEqualTo(t);
-            assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
-            assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
-            assertThat(streamMetadata.getReplicas()).isEmpty();
-        });
-        asList(streams).forEach(t -> streamClient.delete(t));
-    }
+    Client client = cf.get();
+    Map<String, Client.StreamMetadata> metadata = client.metadata(streams);
+    assertThat(metadata).hasSize(streamCount).containsKeys(streams);
+    asList(streams)
+        .forEach(
+            t -> {
+              Client.StreamMetadata streamMetadata = metadata.get(t);
+              assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+              assertThat(streamMetadata.getStream()).isEqualTo(t);
+              assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
+              assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
+              assertThat(streamMetadata.getReplicas()).isEmpty();
+            });
+    asList(streams).forEach(t -> streamClient.delete(t));
+  }
 
-    @Test
-    void metadataOneNonExistingStream() {
-        Client client = cf.get();
-        String nonExistingStream = UUID.randomUUID().toString();
-        Map<String, Client.StreamMetadata> metadata = client.metadata(nonExistingStream);
-        assertThat(metadata).hasSize(1).containsKey(nonExistingStream);
-        Client.StreamMetadata streamMetadata = metadata.get(nonExistingStream);
-        assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
-        assertThat(streamMetadata.getStream()).isEqualTo(nonExistingStream);
-        assertThat(streamMetadata.getLeader()).isNull();
-        assertThat(streamMetadata.getReplicas()).isEmpty();
-    }
+  @Test
+  void metadataOneNonExistingStream() {
+    Client client = cf.get();
+    String nonExistingStream = UUID.randomUUID().toString();
+    Map<String, Client.StreamMetadata> metadata = client.metadata(nonExistingStream);
+    assertThat(metadata).hasSize(1).containsKey(nonExistingStream);
+    Client.StreamMetadata streamMetadata = metadata.get(nonExistingStream);
+    assertThat(streamMetadata.getResponseCode())
+        .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    assertThat(streamMetadata.getStream()).isEqualTo(nonExistingStream);
+    assertThat(streamMetadata.getLeader()).isNull();
+    assertThat(streamMetadata.getReplicas()).isEmpty();
+  }
 
-    @ParameterizedTest
-    @CsvSource({
-            "1,1",
-            "2,1",
-            "5,1",
-            "1,2",
-            "2,2",
-            "5,2",
-            "1,3",
-            "2,3",
-            "5,3",
-    })
-    void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount) throws Exception {
-        String hostname = InetAddress.getLocalHost().getHostName();
-        Client streamClient = cf.get();
-        List<String> existingStreams = IntStream.range(0, existingCount).mapToObj(i -> {
-            String t = UUID.randomUUID().toString();
-            streamClient.create(t);
-            return t;
-        }).collect(Collectors.toList());
+  @ParameterizedTest
+  @CsvSource({
+    "1,1", "2,1", "5,1", "1,2", "2,2", "5,2", "1,3", "2,3", "5,3",
+  })
+  void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount)
+      throws Exception {
+    String hostname = InetAddress.getLocalHost().getHostName();
+    Client streamClient = cf.get();
+    List<String> existingStreams =
+        IntStream.range(0, existingCount)
+            .mapToObj(
+                i -> {
+                  String t = UUID.randomUUID().toString();
+                  streamClient.create(t);
+                  return t;
+                })
+            .collect(Collectors.toList());
 
-        List<String> nonExistingStreams = IntStream.range(0, nonExistingCount)
-                .mapToObj(i -> UUID.randomUUID().toString())
-                .collect(Collectors.toList());
+    List<String> nonExistingStreams =
+        IntStream.range(0, nonExistingCount)
+            .mapToObj(i -> UUID.randomUUID().toString())
+            .collect(Collectors.toList());
 
-        List<String> allStreams = new ArrayList<>(existingCount + nonExistingCount);
-        allStreams.addAll(existingStreams);
-        allStreams.addAll(nonExistingStreams);
-        Collections.shuffle(allStreams);
+    List<String> allStreams = new ArrayList<>(existingCount + nonExistingCount);
+    allStreams.addAll(existingStreams);
+    allStreams.addAll(nonExistingStreams);
+    Collections.shuffle(allStreams);
 
-        String[] streams = allStreams.toArray(new String[]{});
+    String[] streams = allStreams.toArray(new String[] {});
 
-
-        Client client = cf.get();
-        Map<String, Client.StreamMetadata> metadata = client.metadata(streams);
-        assertThat(metadata).hasSize(streams.length).containsKeys(streams);
-        metadata.keySet().forEach(t -> {
-            Client.StreamMetadata streamMetadata = metadata.get(t);
-            assertThat(streamMetadata.getStream()).isEqualTo(t);
-            if (existingStreams.contains(t)) {
+    Client client = cf.get();
+    Map<String, Client.StreamMetadata> metadata = client.metadata(streams);
+    assertThat(metadata).hasSize(streams.length).containsKeys(streams);
+    metadata
+        .keySet()
+        .forEach(
+            t -> {
+              Client.StreamMetadata streamMetadata = metadata.get(t);
+              assertThat(streamMetadata.getStream()).isEqualTo(t);
+              if (existingStreams.contains(t)) {
                 assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
                 assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
                 assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
                 assertThat(streamMetadata.getReplicas()).isEmpty();
-            } else {
-                assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+              } else {
+                assertThat(streamMetadata.getResponseCode())
+                    .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
                 assertThat(streamMetadata.getStream()).isEqualTo(t);
                 assertThat(streamMetadata.getLeader()).isNull();
                 assertThat(streamMetadata.getReplicas()).isEmpty();
-            }
-        });
-        existingStreams.forEach(t -> streamClient.delete(t));
-    }
-
+              }
+            });
+    existingStreams.forEach(t -> streamClient.delete(t));
+  }
 }

@@ -16,16 +16,15 @@ package com.rabbitmq.stream.metrics;
 
 public interface MetricsCollector {
 
-    // FIXME track also client instances (connections) once a shutdown notification system is in place
+  // FIXME track also client instances (connections) once a shutdown notification system is in place
 
-    void publish(int count);
+  void publish(int count);
 
-    void publishConfirm(int count);
+  void publishConfirm(int count);
 
-    void publishError(int count);
+  void publishError(int count);
 
-    void chunk(int entriesCount);
+  void chunk(int entriesCount);
 
-    void consume(long count);
-
+  void consume(long count);
 }

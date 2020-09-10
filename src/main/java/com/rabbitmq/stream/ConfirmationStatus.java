@@ -16,27 +16,27 @@ package com.rabbitmq.stream;
 
 public class ConfirmationStatus {
 
-    private final Message message;
+  private final Message message;
 
-    private final boolean confirmed;
+  private final boolean confirmed;
 
-    private final short code;
+  private final short code;
 
-    public ConfirmationStatus(Message message, boolean confirmed, short code) {
-        this.message = message;
-        this.confirmed = confirmed;
-        this.code = code;
-    }
+  public ConfirmationStatus(Message message, boolean confirmed, short code) {
+    this.message = message;
+    this.confirmed = confirmed;
+    this.code = code;
+  }
 
-    public Message getMessage() {
-        return message;
-    }
+  public Message getMessage() {
+    return message;
+  }
 
-    public boolean isConfirmed() {
-        return confirmed;
-    }
+  public boolean isConfirmed() {
+    return confirmed;
+  }
 
-    public short getCode() {
-        return code;
-    }
+  public short getCode() {
+    return code;
+  }
 }

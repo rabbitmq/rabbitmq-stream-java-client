@@ -14,71 +14,64 @@
 
 package com.rabbitmq.stream.perf;
 
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Helper to register callbacks and call them in reverse order.
- * Registered callbacks are made automatically idempotent.
- * <p>
- * This class can be used to register closing callbacks, call them
- * individually, and/or call all of them (in LIFO order) with
- * the {@link #close()} method.
- * <p>
- * From https://github.com/rabbitmq/rabbitmq-perf-test/blob/master/src/main/java/com/rabbitmq/perf/ShutdownService.java.
+ * Helper to register callbacks and call them in reverse order. Registered callbacks are made
+ * automatically idempotent.
  *
+ * <p>This class can be used to register closing callbacks, call them individually, and/or call all
+ * of them (in LIFO order) with the {@link #close()} method.
+ *
+ * <p>From
+ * https://github.com/rabbitmq/rabbitmq-perf-test/blob/master/src/main/java/com/rabbitmq/perf/ShutdownService.java.
  */
 public class ShutdownService implements AutoCloseable {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ShutdownService.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(ShutdownService.class);
 
-    private final List<AutoCloseable> closeables = Collections.synchronizedList(new ArrayList<>());
+  private final List<AutoCloseable> closeables = Collections.synchronizedList(new ArrayList<>());
 
-    /**
-     * Wrap and register the callback into an idempotent {@link AutoCloseable}.
-     *
-     * @param closeCallback
-     * @return the callback as an idempotent {@link AutoCloseable}
-     */
-    AutoCloseable wrap(CloseCallback closeCallback) {
-        AtomicBoolean closingOrAlreadyClosed = new AtomicBoolean(false);
-        AutoCloseable idempotentCloseCallback = () -> {
-            if (closingOrAlreadyClosed.compareAndSet(false, true)) {
-                closeCallback.run();
-            }
+  /**
+   * Wrap and register the callback into an idempotent {@link AutoCloseable}.
+   *
+   * @param closeCallback
+   * @return the callback as an idempotent {@link AutoCloseable}
+   */
+  AutoCloseable wrap(CloseCallback closeCallback) {
+    AtomicBoolean closingOrAlreadyClosed = new AtomicBoolean(false);
+    AutoCloseable idempotentCloseCallback =
+        () -> {
+          if (closingOrAlreadyClosed.compareAndSet(false, true)) {
+            closeCallback.run();
+          }
         };
-        closeables.add(idempotentCloseCallback);
-        return idempotentCloseCallback;
-    }
+    closeables.add(idempotentCloseCallback);
+    return idempotentCloseCallback;
+  }
 
-    /**
-     * Close all the registered callbacks, in the reverse order of registration.
-     */
-    @Override
-    public synchronized void close() {
-        if (closeables.size() > 0) {
-            for (int i = closeables.size() - 1; i >= 0; i--) {
-                try {
-                    closeables.get(i).close();
-                } catch (Exception e) {
-                    LOGGER.warn("Could not properly closed {}", closeables.get(i), e);
-                }
-            }
+  /** Close all the registered callbacks, in the reverse order of registration. */
+  @Override
+  public synchronized void close() {
+    if (closeables.size() > 0) {
+      for (int i = closeables.size() - 1; i >= 0; i--) {
+        try {
+          closeables.get(i).close();
+        } catch (Exception e) {
+          LOGGER.warn("Could not properly closed {}", closeables.get(i), e);
         }
+      }
     }
+  }
 
-    @FunctionalInterface
-    interface CloseCallback {
+  @FunctionalInterface
+  interface CloseCallback {
 
-        void run() throws Exception;
-
-    }
-
+    void run() throws Exception;
+  }
 }
-

@@ -16,12 +16,11 @@ package com.rabbitmq.stream;
 
 public interface ConsumerBuilder {
 
-    ConsumerBuilder stream(String stream);
+  ConsumerBuilder stream(String stream);
 
-    ConsumerBuilder offset(OffsetSpecification offsetSpecification);
+  ConsumerBuilder offset(OffsetSpecification offsetSpecification);
 
-    ConsumerBuilder messageHandler(MessageHandler messageHandler);
+  ConsumerBuilder messageHandler(MessageHandler messageHandler);
 
-    Consumer build();
-
+  Consumer build();
 }

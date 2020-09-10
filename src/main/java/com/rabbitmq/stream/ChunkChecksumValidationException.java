@@ -16,21 +16,20 @@ package com.rabbitmq.stream;
 
 public class ChunkChecksumValidationException extends StreamException {
 
-    private final long expected;
-    private final long computed;
+  private final long expected;
+  private final long computed;
 
+  public ChunkChecksumValidationException(long expected, long computed) {
+    super("Expecting " + expected + ", got " + computed);
+    this.expected = expected;
+    this.computed = computed;
+  }
 
-    public ChunkChecksumValidationException(long expected, long computed) {
-        super("Expecting " + expected + ", got " + computed);
-        this.expected = expected;
-        this.computed = computed;
-    }
+  public long getExpected() {
+    return expected;
+  }
 
-    public long getExpected() {
-        return expected;
-    }
-
-    public long getComputed() {
-        return computed;
-    }
+  public long getComputed() {
+    return computed;
+  }
 }

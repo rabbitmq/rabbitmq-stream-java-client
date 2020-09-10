@@ -16,34 +16,22 @@ package com.rabbitmq.stream.metrics;
 
 public final class NoOpMetricsCollector implements MetricsCollector {
 
-    public static final MetricsCollector SINGLETON = new NoOpMetricsCollector();
+  public static final MetricsCollector SINGLETON = new NoOpMetricsCollector();
 
-    private NoOpMetricsCollector() {
+  private NoOpMetricsCollector() {}
 
-    }
+  @Override
+  public void publish(int count) {}
 
-    @Override
-    public void publish(int count) {
+  @Override
+  public void publishConfirm(int count) {}
 
-    }
+  @Override
+  public void publishError(int count) {}
 
-    @Override
-    public void publishConfirm(int count) {
+  @Override
+  public void chunk(int entriesCount) {}
 
-    }
-
-    @Override
-    public void publishError(int count) {
-
-    }
-
-    @Override
-    public void chunk(int entriesCount) {
-
-    }
-
-    @Override
-    public void consume(long count) {
-
-    }
+  @Override
+  public void consume(long count) {}
 }

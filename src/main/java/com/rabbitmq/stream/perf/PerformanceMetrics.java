@@ -14,13 +14,11 @@
 
 package com.rabbitmq.stream.perf;
 
-
 import java.util.concurrent.TimeUnit;
 
 interface PerformanceMetrics extends AutoCloseable {
 
-    void start(String description) throws Exception;
+  void start(String description) throws Exception;
 
-    void latency(long latency, TimeUnit unit);
-
+  void latency(long latency, TimeUnit unit);
 }

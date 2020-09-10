@@ -14,18 +14,17 @@
 
 package com.rabbitmq.stream.benchmark;
 
+import static com.rabbitmq.stream.perf.StreamPerfTest.readLong;
+import static com.rabbitmq.stream.perf.StreamPerfTest.writeLong;
+
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
+import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
-
-import java.util.concurrent.TimeUnit;
-
-import static com.rabbitmq.stream.perf.StreamPerfTest.readLong;
-import static com.rabbitmq.stream.perf.StreamPerfTest.writeLong;
 
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -36,64 +35,67 @@ import static com.rabbitmq.stream.perf.StreamPerfTest.writeLong;
 @Threads(1)
 public class EncodeDecodeForPerformanceToolBenchmark {
 
-    @Param({"com.rabbitmq.stream.codec.QpidProtonCodec", "com.rabbitmq.stream.codec.SwiftMqCodec", "com.rabbitmq.stream.codec.SimpleCodec"})
-    String codecClass;
+  @Param({
+    "com.rabbitmq.stream.codec.QpidProtonCodec",
+    "com.rabbitmq.stream.codec.SwiftMqCodec",
+    "com.rabbitmq.stream.codec.SimpleCodec"
+  })
+  String codecClass;
 
-    @Param({"20"})
-    int payloadSize;
+  @Param({"20"})
+  int payloadSize;
 
-    @Param({"nanoTime", "fixed"})
-    String timestampSource;
+  @Param({"nanoTime", "fixed"})
+  String timestampSource;
 
-    Codec codec;
+  Codec codec;
 
-    TimestampProvider timestampProvider;
+  TimestampProvider timestampProvider;
 
-    byte[] messageToDecode;
+  byte[] messageToDecode;
 
-    @Setup
-    public void setUp() throws Exception {
-        codec = (Codec) Class.forName(codecClass).getConstructor().newInstance();
+  @Setup
+  public void setUp() throws Exception {
+    codec = (Codec) Class.forName(codecClass).getConstructor().newInstance();
 
-        if ("fixed".equals(timestampSource)) {
-            long fixedValue = System.nanoTime();
-            this.timestampProvider = () -> fixedValue;
-        } else {
-            this.timestampProvider = () -> System.nanoTime();
-        }
-
-        byte[] payload = new byte[payloadSize];
-        writeLong(payload, timestampProvider.get());
-        Codec.EncodedMessage encoded = codec.encode(codec.messageBuilder().addData(payload).build());
-        messageToDecode = new byte[encoded.getSize()];
-        System.arraycopy(encoded.getData(), 0, messageToDecode, 0, encoded.getSize());
+    if ("fixed".equals(timestampSource)) {
+      long fixedValue = System.nanoTime();
+      this.timestampProvider = () -> fixedValue;
+    } else {
+      this.timestampProvider = () -> System.nanoTime();
     }
 
-    @Benchmark
-    public void encode() {
-        byte[] payload = new byte[payloadSize];
-        writeLong(payload, timestampProvider.get());
-        codec.messageBuilder().addData(payload).build();
-    }
+    byte[] payload = new byte[payloadSize];
+    writeLong(payload, timestampProvider.get());
+    Codec.EncodedMessage encoded = codec.encode(codec.messageBuilder().addData(payload).build());
+    messageToDecode = new byte[encoded.getSize()];
+    System.arraycopy(encoded.getData(), 0, messageToDecode, 0, encoded.getSize());
+  }
 
-    @Benchmark
-    public void decode() {
-        Message message = codec.decode(messageToDecode);
-        long latency = timestampProvider.get() - readLong(message.getBodyAsBinary());
-    }
+  @Benchmark
+  public void encode() {
+    byte[] payload = new byte[payloadSize];
+    writeLong(payload, timestampProvider.get());
+    codec.messageBuilder().addData(payload).build();
+  }
 
-    public static void main(String[] args) throws RunnerException {
-        Options opt = new OptionsBuilder()
-                .include(EncodeDecodeForPerformanceToolBenchmark.class.getSimpleName())
-                .build();
+  @Benchmark
+  public void decode() {
+    Message message = codec.decode(messageToDecode);
+    long latency = timestampProvider.get() - readLong(message.getBodyAsBinary());
+  }
 
-        new Runner(opt).run();
-    }
+  public static void main(String[] args) throws RunnerException {
+    Options opt =
+        new OptionsBuilder()
+            .include(EncodeDecodeForPerformanceToolBenchmark.class.getSimpleName())
+            .build();
 
-    private interface TimestampProvider {
+    new Runner(opt).run();
+  }
 
-        long get();
+  private interface TimestampProvider {
 
-    }
-
+    long get();
+  }
 }

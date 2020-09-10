@@ -19,26 +19,23 @@ import java.util.function.Consumer;
 
 final class Utils {
 
-    private Utils() {
+  private Utils() {}
 
-    }
+  static Runnable makeIdempotent(Runnable action) {
+    AtomicBoolean executed = new AtomicBoolean(false);
+    return () -> {
+      if (executed.compareAndSet(false, true)) {
+        action.run();
+      }
+    };
+  }
 
-    static Runnable makeIdempotent(Runnable action) {
-        AtomicBoolean executed = new AtomicBoolean(false);
-        return () -> {
-            if (executed.compareAndSet(false, true)) {
-                action.run();
-            }
-        };
-    }
-
-    static <T> Consumer<T> makeIdempotent(Consumer<T> action) {
-        AtomicBoolean executed = new AtomicBoolean(false);
-        return t -> {
-            if (executed.compareAndSet(false, true)) {
-                action.accept(t);
-            }
-        };
-    }
-
+  static <T> Consumer<T> makeIdempotent(Consumer<T> action) {
+    AtomicBoolean executed = new AtomicBoolean(false);
+    return t -> {
+      if (executed.compareAndSet(false, true)) {
+        action.accept(t);
+      }
+    };
+  }
 }

@@ -16,12 +16,11 @@ package com.rabbitmq.stream;
 
 public interface StreamCreator {
 
-    StreamCreator stream(String stream);
+  StreamCreator stream(String stream);
 
-    StreamCreator maxLengthBytes(ByteCapacity byteCapacity);
+  StreamCreator maxLengthBytes(ByteCapacity byteCapacity);
 
-    StreamCreator maxSegmentSizeBytes(ByteCapacity byteCapacity);
+  StreamCreator maxSegmentSizeBytes(ByteCapacity byteCapacity);
 
-    void create();
-
+  void create();
 }

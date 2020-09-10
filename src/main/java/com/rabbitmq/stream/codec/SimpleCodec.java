@@ -18,89 +18,87 @@ import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Properties;
-
 import java.util.Map;
 
 public class SimpleCodec implements Codec {
 
-    @Override
-    public EncodedMessage encode(Message message) {
-        return new EncodedMessage(message.getBodyAsBinary().length, message.getBodyAsBinary());
+  @Override
+  public EncodedMessage encode(Message message) {
+    return new EncodedMessage(message.getBodyAsBinary().length, message.getBodyAsBinary());
+  }
+
+  @Override
+  public Message decode(byte[] data) {
+    return new SimpleMessage(data);
+  }
+
+  @Override
+  public MessageBuilder messageBuilder() {
+    return new SimpleMessageBuilder();
+  }
+
+  private static class SimpleMessage implements Message {
+
+    private final byte[] body;
+
+    private SimpleMessage(byte[] body) {
+      this.body = body;
     }
 
     @Override
-    public Message decode(byte[] data) {
-        return new SimpleMessage(data);
+    public byte[] getBodyAsBinary() {
+      return body;
     }
 
     @Override
-    public MessageBuilder messageBuilder() {
-        return new SimpleMessageBuilder();
+    public Object getBody() {
+      return body;
     }
 
-    private static class SimpleMessage implements Message {
-
-        private final byte[] body;
-
-        private SimpleMessage(byte[] body) {
-            this.body = body;
-        }
-
-        @Override
-        public byte[] getBodyAsBinary() {
-            return body;
-        }
-
-        @Override
-        public Object getBody() {
-            return body;
-        }
-
-        @Override
-        public Properties getProperties() {
-            return null;
-        }
-
-        @Override
-        public Map<String, Object> getApplicationProperties() {
-            return null;
-        }
-
-        @Override
-        public Map<String, Object> getMessageAnnotations() {
-            return null;
-        }
+    @Override
+    public Properties getProperties() {
+      return null;
     }
 
-    private static class SimpleMessageBuilder implements MessageBuilder {
-
-        private byte[] body;
-
-        @Override
-        public Message build() {
-            return new SimpleMessage(body);
-        }
-
-        @Override
-        public PropertiesBuilder properties() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public ApplicationPropertiesBuilder applicationProperties() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public MessageAnnotationsBuilder messageAnnotations() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public MessageBuilder addData(byte[] data) {
-            this.body = data;
-            return this;
-        }
+    @Override
+    public Map<String, Object> getApplicationProperties() {
+      return null;
     }
 
+    @Override
+    public Map<String, Object> getMessageAnnotations() {
+      return null;
+    }
+  }
+
+  private static class SimpleMessageBuilder implements MessageBuilder {
+
+    private byte[] body;
+
+    @Override
+    public Message build() {
+      return new SimpleMessage(body);
+    }
+
+    @Override
+    public PropertiesBuilder properties() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ApplicationPropertiesBuilder applicationProperties() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public MessageAnnotationsBuilder messageAnnotations() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public MessageBuilder addData(byte[] data) {
+      this.body = data;
+      return this;
+    }
+  }
 }

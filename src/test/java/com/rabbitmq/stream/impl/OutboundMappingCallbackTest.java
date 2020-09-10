@@ -14,10 +14,9 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Message;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.Message;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -26,73 +25,93 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class OutboundMappingCallbackTest {
 
-    TestUtils.ClientFactory cf;
-    String stream;
+  TestUtils.ClientFactory cf;
+  String stream;
 
-    @Test
-    void publishList() throws Exception {
-        int batchSize = 10;
-        int batchNumber = 1000;
-        int messageCount = batchSize * batchNumber;
-        CountDownLatch mappingLatch = new CountDownLatch(messageCount);
-        CountDownLatch confirmLatch = new CountDownLatch(messageCount);
-        Set<Long> mapped = ConcurrentHashMap.newKeySet(messageCount);
-        Client client = cf.get(new Client.ClientParameters()
+  @Test
+  void publishList() throws Exception {
+    int batchSize = 10;
+    int batchNumber = 1000;
+    int messageCount = batchSize * batchNumber;
+    CountDownLatch mappingLatch = new CountDownLatch(messageCount);
+    CountDownLatch confirmLatch = new CountDownLatch(messageCount);
+    Set<Long> mapped = ConcurrentHashMap.newKeySet(messageCount);
+    Client client =
+        cf.get(
+            new Client.ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> confirmLatch.countDown()));
-        IntStream.range(0, batchNumber).forEach(i -> {
-            List<Message> messages = IntStream.range(0, batchSize)
-                    .mapToObj(messageIndex -> String.valueOf(messageIndex).getBytes())
-                    .map(body -> client.messageBuilder().addData(body).build())
-                    .collect(Collectors.toList());
-            client.publish(stream, (byte) 1, messages, (publishingId, original) -> {
-                assertThat(original).isNotNull().isInstanceOf(Message.class);
-                mapped.add(publishingId);
-                mappingLatch.countDown();
+    IntStream.range(0, batchNumber)
+        .forEach(
+            i -> {
+              List<Message> messages =
+                  IntStream.range(0, batchSize)
+                      .mapToObj(messageIndex -> String.valueOf(messageIndex).getBytes())
+                      .map(body -> client.messageBuilder().addData(body).build())
+                      .collect(Collectors.toList());
+              client.publish(
+                  stream,
+                  (byte) 1,
+                  messages,
+                  (publishingId, original) -> {
+                    assertThat(original).isNotNull().isInstanceOf(Message.class);
+                    mapped.add(publishingId);
+                    mappingLatch.countDown();
+                  });
             });
-        });
 
-        assertThat(mappingLatch.await(10, TimeUnit.SECONDS)).isTrue();
-        assertThat(confirmLatch.await(10, TimeUnit.SECONDS)).isTrue();
-        assertThat(mapped).hasSize(messageCount);
-    }
+    assertThat(mappingLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(confirmLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(mapped).hasSize(messageCount);
+  }
 
-    @Test
-    void publishBatches() throws Exception {
-        int subEntryCount = 10;
-        int messagesInFrameCount = 100;
-        int frameCount = 1000;
-        CountDownLatch mappingLatch = new CountDownLatch(frameCount * messagesInFrameCount);
-        CountDownLatch confirmLatch = new CountDownLatch(frameCount * messagesInFrameCount);
-        Set<Long> mapped = ConcurrentHashMap.newKeySet(frameCount * messagesInFrameCount);
-        Client client = cf.get(new Client.ClientParameters()
+  @Test
+  void publishBatches() throws Exception {
+    int subEntryCount = 10;
+    int messagesInFrameCount = 100;
+    int frameCount = 1000;
+    CountDownLatch mappingLatch = new CountDownLatch(frameCount * messagesInFrameCount);
+    CountDownLatch confirmLatch = new CountDownLatch(frameCount * messagesInFrameCount);
+    Set<Long> mapped = ConcurrentHashMap.newKeySet(frameCount * messagesInFrameCount);
+    Client client =
+        cf.get(
+            new Client.ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> confirmLatch.countDown()));
-        IntStream.range(0, frameCount).forEach(frameIndex -> {
-            List<MessageBatch> batches = new ArrayList<>(messagesInFrameCount);
-            IntStream.range(0, messagesInFrameCount).forEach(batchIndex -> {
-                List<Message> messages = IntStream.range(0, subEntryCount)
-                        .mapToObj(messageIndex -> String.valueOf(messageIndex).getBytes())
-                        .map(body -> client.messageBuilder().addData(body).build())
-                        .collect(Collectors.toList());
-                MessageBatch batch = new MessageBatch(MessageBatch.Compression.NONE, messages);
-                batches.add(batch);
+    IntStream.range(0, frameCount)
+        .forEach(
+            frameIndex -> {
+              List<MessageBatch> batches = new ArrayList<>(messagesInFrameCount);
+              IntStream.range(0, messagesInFrameCount)
+                  .forEach(
+                      batchIndex -> {
+                        List<Message> messages =
+                            IntStream.range(0, subEntryCount)
+                                .mapToObj(messageIndex -> String.valueOf(messageIndex).getBytes())
+                                .map(body -> client.messageBuilder().addData(body).build())
+                                .collect(Collectors.toList());
+                        MessageBatch batch =
+                            new MessageBatch(MessageBatch.Compression.NONE, messages);
+                        batches.add(batch);
+                      });
+
+              client.publishBatches(
+                  stream,
+                  (byte) 1,
+                  batches,
+                  (publishingId, original) -> {
+                    assertThat(original).isNotNull().isInstanceOf(MessageBatch.class);
+                    mapped.add(publishingId);
+                    mappingLatch.countDown();
+                  });
             });
 
-            client.publishBatches(stream, (byte) 1, batches, (publishingId, original) -> {
-                assertThat(original).isNotNull().isInstanceOf(MessageBatch.class);
-                mapped.add(publishingId);
-                mappingLatch.countDown();
-            });
-        });
-
-        assertThat(mappingLatch.await(10, TimeUnit.SECONDS)).isTrue();
-        assertThat(confirmLatch.await(10, TimeUnit.SECONDS)).isTrue();
-        assertThat(mapped).hasSize(frameCount * messagesInFrameCount);
-    }
-
+    assertThat(mappingLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(confirmLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(mapped).hasSize(frameCount * messagesInFrameCount);
+  }
 }

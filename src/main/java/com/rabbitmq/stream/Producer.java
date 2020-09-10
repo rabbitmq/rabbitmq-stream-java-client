@@ -16,8 +16,7 @@ package com.rabbitmq.stream;
 
 public interface Producer extends AutoCloseable {
 
-    MessageBuilder messageBuilder();
+  MessageBuilder messageBuilder();
 
-    void send(Message message, ConfirmationHandler confirmationHandler);
-
+  void send(Message message, ConfirmationHandler confirmationHandler);
 }
