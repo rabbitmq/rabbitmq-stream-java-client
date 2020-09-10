@@ -210,7 +210,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
         private synchronized void maybeDisposeSubscriptionState(SubscriptionState subscriptionState) {
             if (subscriptionState.isEmpty()) {
                 subscriptionState.close();
-                this.removeSubscriptionState(subscriptionState);
+                this.remove(subscriptionState);
                 LOGGER.debug("Closed subscription state on {}, {} remaining", name, states.size());
                 if (states.isEmpty()) {
                     clientSubscriptionPools.remove(name);
@@ -219,11 +219,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
             }
         }
 
-        private synchronized void removeSubscriptionState(SubscriptionState subscriptionState) {
-            states.remove(subscriptionState);
-        }
-
-        synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
+        private synchronized void add(StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
             boolean added = false;
             // FIXME deal with state unavailability (state may be closing because of connection closing)
             // try all of them until it succeeds, throw exception if failure
@@ -240,6 +236,11 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 states.add(state);
                 state.add(streamSubscription, offsetSpecification);
             }
+        }
+
+        private synchronized void remove(SubscriptionState subscriptionState) {
+            // FIXME remove
+            states.remove(subscriptionState);
         }
 
         synchronized void close() {
@@ -287,7 +288,8 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                         }
                     })
                     .shutdownListener(shutdownContext -> {
-                        owner.removeSubscriptionState(this);
+                        // FIXME should the pool check if it's empty and so remove itself from the pools data structure?
+                        owner.remove(this);
                         if (shutdownContext.isShutdownUnexpected()) {
                             LOGGER.debug("Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment", name);
                             environment.scheduledExecutorService().execute(() -> {
@@ -324,7 +326,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                             affectedSubscriptions = subscriptions;
                         }
                         if (isEmpty()) {
-                            this.owner.removeSubscriptionState(this);
+                            this.owner.remove(this);
                         }
                         if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
                             environment.scheduledExecutorService().execute(() -> {

@@ -21,23 +21,25 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 class ProducersCoordinator {
 
+    static final int MAX_PRODUCERS_PER_CLIENT = 256;
     private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
-
     private final StreamEnvironment environment;
-    private final Map<String, ClientProducersManager> clientProducerManagers = new ConcurrentHashMap<>();
     private final AtomicLong globalPublisherIdSequence = new AtomicLong(0);
     private final Map<Long, ProducerTracker> producerRegistry = new ConcurrentHashMap<>();
     private final Function<Client.ClientParameters, Client> clientFactory;
+    private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
 
     ProducersCoordinator(StreamEnvironment environment) {
         this(environment, cp -> new Client(cp));
@@ -49,11 +51,24 @@ class ProducersCoordinator {
         this.environment.clientParametersCopy();
     }
 
+    private static String keyForManagerPool(Client.Broker broker) {
+        // FIXME make sure this is a reasonable key for brokers
+        return broker.getHost() + ":" + broker.getPort();
+    }
+
     Runnable registerProducer(StreamProducer producer, String stream) {
-        ClientProducersManager clientForPublisher = getClient(stream);
+        Client.Broker brokerForProducer = getBrokerForProducer(stream);
+
+        String key = keyForManagerPool(brokerForProducer);
+        ManagerPool pool = pools.computeIfAbsent(key, s -> new ManagerPool(key, environment.clientParametersCopy()
+                .host(brokerForProducer.getHost())
+                .port(brokerForProducer.getPort())));
+
         long globalProducerId = globalPublisherIdSequence.getAndIncrement();
         ProducerTracker producerTracker = new ProducerTracker(globalProducerId, stream, producer);
-        clientForPublisher.register(producerTracker);
+        pool.add(producerTracker);
+
+        // FIXME do we actually need the global producer ID (it's used for cleaning)?
         producerRegistry.put(globalProducerId, producerTracker);
 
         return () -> {
@@ -62,7 +77,7 @@ class ProducersCoordinator {
         };
     }
 
-    private ClientProducersManager getClient(String stream) {
+    private Client.Broker getBrokerForProducer(String stream) {
         Map<String, Client.StreamMetadata> metadata = this.environment.locator().metadata(stream);
         if (metadata.size() == 0 || metadata.get(stream) == null) {
             throw new StreamDoesNotExistException(stream);
@@ -83,22 +98,24 @@ class ProducersCoordinator {
         }
         LOGGER.debug("Using client on {}:{} to publish to {}", leader.getHost(), leader.getPort(), stream);
 
-        // FIXME make sure this is a reasonable key for brokers
-        String key = leader.getHost() + ":" + leader.getPort();
-
-        return clientProducerManagers.computeIfAbsent(key, s -> new ClientProducersManager(clientFactory, environment.clientParametersCopy()
-                .host(leader.getHost())
-                .port(leader.getPort())));
+        return leader;
     }
 
     void close() {
-        for (ClientProducersManager clientProducersManager : clientProducerManagers.values()) {
-            try {
-                clientProducersManager.client.close();
-            } catch (Exception e) {
-                LOGGER.warn("Error while closing producer connection: {}", e.getMessage());
-            }
+        for (ManagerPool pool : pools.values()) {
+            pool.close();
         }
+        pools.clear();
+    }
+
+    int poolSize() {
+        return pools.size();
+    }
+
+    int clientCount() {
+        return pools.values().stream()
+                .map(pool -> pool.managers.size())
+                .reduce(0, (acc, size) -> acc + size);
     }
 
     private static class ProducerTracker {
@@ -116,20 +133,68 @@ class ProducersCoordinator {
         }
     }
 
+    private class ManagerPool {
+
+        private final List<ClientProducersManager> managers = new CopyOnWriteArrayList<>();
+        private final String name;
+        private final Client.ClientParameters clientParameters;
+
+        private ManagerPool(String name, Client.ClientParameters clientParameters) {
+            this.name = name;
+            this.clientParameters = clientParameters;
+            this.managers.add(new ClientProducersManager(this, clientFactory, clientParameters));
+        }
+
+        private synchronized void add(ProducerTracker producerTracker) {
+            boolean added = false;
+            // FIXME deal with state unavailability (state may be closing because of connection closing)
+            // try all of them until it succeeds, throw exception if failure
+            for (ClientProducersManager manager : this.managers) {
+                if (!manager.isFull()) {
+                    manager.register(producerTracker);
+                    added = true;
+                    break;
+                }
+            }
+            if (!added) {
+                LOGGER.debug("Creating producers tracker on {}, this is subscription state #{}", name, managers.size() + 1);
+                ClientProducersManager manager = new ClientProducersManager(this, clientFactory, clientParameters);
+                this.managers.add(manager);
+                manager.register(producerTracker);
+            }
+        }
+
+        synchronized void maybeDisposeManager(ClientProducersManager manager) {
+            if (manager.isEmpty()) {
+                manager.close();
+                this.remove(manager);
+            }
+        }
+
+        private synchronized void remove(ClientProducersManager manager) {
+            this.managers.remove(manager);
+            if (this.managers.isEmpty()) {
+                pools.remove(this.name);
+            }
+        }
+
+        synchronized void close() {
+            for (ClientProducersManager manager : managers) {
+                manager.close();
+            }
+            managers.clear();
+        }
+    }
+
     private class ClientProducersManager {
 
-        private static final int MAX_PUBLISHERS_PER_CLIENT = 256;
-
-        private final Map<Byte, ProducerTracker> producers = new ConcurrentHashMap<>(MAX_PUBLISHERS_PER_CLIENT);
+        private final ConcurrentMap<Byte, ProducerTracker> producers = new ConcurrentHashMap<>(MAX_PRODUCERS_PER_CLIENT);
         private final Map<String, Set<ProducerTracker>> streamToProducerTrackers = new ConcurrentHashMap<>();
-
-        private final AtomicInteger producerSequence = new AtomicInteger(0);
-
         private final Client client;
+        private final ManagerPool owner;
 
-        private ClientProducersManager(Function<Client.ClientParameters, Client> cf, Client.ClientParameters clientParameters) {
-            // FIXME handle client disconnection
-            // FIXME handle stream unavailability
+        private ClientProducersManager(ManagerPool owner, Function<Client.ClientParameters, Client> cf, Client.ClientParameters clientParameters) {
+            this.owner = owner;
             AtomicReference<Client> ref = new AtomicReference<>();
             this.client = cf.apply(clientParameters
                     .publishConfirmListener((publisherId, publishingId) -> {
@@ -149,8 +214,9 @@ class ProducersCoordinator {
                         }
                     })
                     .shutdownListener(shutdownContext -> {
-                        clientProducerManagers.values().remove(this);
+                        owner.remove(this);
                         if (shutdownContext.isShutdownUnexpected()) {
+                            LOGGER.debug("Recovering {} producers after unexpected connection termination", producers.size());
                             producers.forEach((publishingId, tracker) -> tracker.producer.unavailable());
                             // execute in thread pool to free the IO thread
                             environment.scheduledExecutorService().execute(() -> {
@@ -173,9 +239,7 @@ class ProducersCoordinator {
                                 environment.scheduledExecutorService().execute(() -> {
                                     // close manager if no more trackers for it
                                     // needs to be done in another thread than the IO thread
-                                    if (streamToProducerTrackers.isEmpty()) {
-                                        close();
-                                    }
+                                    this.owner.maybeDisposeManager(this);
                                     assignProducersToNewManagers(affectedProducerTrackers, stream, environment.topologyUpdateBackOffDelayPolicy());
                                 });
                             }
@@ -187,16 +251,23 @@ class ProducersCoordinator {
         }
 
         private void assignProducersToNewManagers(Collection<ProducerTracker> trackers, String stream, BackOffDelayPolicy delayPolicy) {
-            AsyncRetry.asyncRetry(() -> getClient(stream))
+            AsyncRetry.asyncRetry(() -> getBrokerForProducer(stream))
                     .description("Candidate lookup to publish to " + stream)
                     .scheduler(environment.scheduledExecutorService())
                     .retry(ex -> !(ex instanceof StreamDoesNotExistException))
                     .delayPolicy(delayPolicy)
                     .build()
-                    .thenAccept(producersManager -> trackers.forEach(tracker -> {
-                        producersManager.register(tracker);
-                        tracker.producer.running();
-                    })).exceptionally(ex -> {
+                    .thenAccept(broker -> {
+                        String key = keyForManagerPool(broker);
+                        LOGGER.debug("Assigning {} producer(s) to {}", trackers.size(), key);
+                        ManagerPool pool = pools.computeIfAbsent(key, s -> new ManagerPool(key, environment.clientParametersCopy()
+                                .host(broker.getHost())
+                                .port(broker.getPort())));
+                        trackers.forEach(tracker -> {
+                            pool.add(tracker);
+                            tracker.producer.running();
+                        });
+                    }).exceptionally(ex -> {
                 for (ProducerTracker tracker : trackers) {
                     try {
                         tracker.producer.closeAfterStreamDeletion();
@@ -210,7 +281,14 @@ class ProducersCoordinator {
         }
 
         private synchronized void register(ProducerTracker producerTracker) {
-            producerTracker.publisherId = (byte) producerSequence.incrementAndGet();
+            // using the next available slot
+            for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
+                ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
+                if (previousValue == null) {
+                    producerTracker.publisherId = (byte) i;
+                    break;
+                }
+            }
             producerTracker.producer.setPublisherId(producerTracker.publisherId);
             producerTracker.producer.setClient(this.client);
             producerTracker.clientProducersManager = this;
@@ -230,6 +308,15 @@ class ProducersCoordinator {
                     return producerTrackersForThisStream.isEmpty() ? null : producerTrackersForThisStream;
                 }
             });
+            this.owner.maybeDisposeManager(this);
+        }
+
+        synchronized boolean isFull() {
+            return producers.size() == MAX_PRODUCERS_PER_CLIENT;
+        }
+
+        synchronized boolean isEmpty() {
+            return producers.isEmpty();
         }
 
         private void close() {
@@ -239,7 +326,6 @@ class ProducersCoordinator {
 
             }
         }
-        // FIXME close client
 
     }
 
