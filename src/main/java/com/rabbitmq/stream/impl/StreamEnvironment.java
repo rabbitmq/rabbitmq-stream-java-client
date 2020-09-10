@@ -48,7 +48,7 @@ class StreamEnvironment implements Environment {
   private final Codec codec;
   private final BackOffDelayPolicy recoveryBackOffDelayPolicy;
   private final BackOffDelayPolicy topologyUpdateBackOffDelayPolicy;
-  private final ClientSubscriptions clientSubscriptions;
+  private final ConsumersCoordinator consumersCoordinator;
   private final ProducersCoordinator producersCoordinator;
   private volatile Client locator;
 
@@ -109,7 +109,7 @@ class StreamEnvironment implements Environment {
     }
 
     this.producersCoordinator = new ProducersCoordinator(this);
-    this.clientSubscriptions = new DefaultClientSubscriptions(this);
+    this.consumersCoordinator = new ConsumersCoordinator(this);
 
     AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
     Client.ShutdownListener shutdownListener =
@@ -282,7 +282,7 @@ class StreamEnvironment implements Environment {
     }
 
     this.producersCoordinator.close();
-    this.clientSubscriptions.close();
+    this.consumersCoordinator.close();
 
     try {
       if (this.locator != null) {
@@ -331,8 +331,8 @@ class StreamEnvironment implements Environment {
       OffsetSpecification offsetSpecification,
       MessageHandler messageHandler) {
     long subscribeId =
-        this.clientSubscriptions.subscribe(consumer, stream, offsetSpecification, messageHandler);
-    return () -> this.clientSubscriptions.unsubscribe(subscribeId);
+        this.consumersCoordinator.subscribe(consumer, stream, offsetSpecification, messageHandler);
+    return () -> this.consumersCoordinator.unsubscribe(subscribeId);
   }
 
   Runnable registerProducer(StreamProducer producer, String stream) {

@@ -24,7 +24,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -35,8 +34,8 @@ class ProducersCoordinator {
   static final int MAX_PRODUCERS_PER_CLIENT = 256;
   private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
   private final StreamEnvironment environment;
-  private final AtomicLong globalPublisherIdSequence = new AtomicLong(0);
-  private final Map<Long, ProducerTracker> producerRegistry = new ConcurrentHashMap<>();
+  //  private final AtomicLong globalPublisherIdSequence = new AtomicLong(0);
+  //  private final Map<Long, ProducerTracker> producerRegistry = new ConcurrentHashMap<>();
   private final Function<Client.ClientParameters, Client> clientFactory;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
 
@@ -71,16 +70,11 @@ class ProducersCoordinator {
                         .host(brokerForProducer.getHost())
                         .port(brokerForProducer.getPort())));
 
-    long globalProducerId = globalPublisherIdSequence.getAndIncrement();
-    ProducerTracker producerTracker = new ProducerTracker(globalProducerId, stream, producer);
+    ProducerTracker producerTracker = new ProducerTracker(stream, producer);
     pool.add(producerTracker);
-
-    // FIXME do we actually need the global producer ID (it's used for cleaning)?
-    producerRegistry.put(globalProducerId, producerTracker);
 
     return () -> {
       producerTracker.clientProducersManager.unregister(producerTracker);
-      producerRegistry.remove(globalProducerId);
     };
   }
 
@@ -129,14 +123,12 @@ class ProducersCoordinator {
 
   private static class ProducerTracker {
 
-    private final long id;
     private final String stream;
     private final StreamProducer producer;
     private volatile byte publisherId;
     private volatile ClientProducersManager clientProducersManager;
 
-    private ProducerTracker(long id, String stream, StreamProducer producer) {
-      this.id = id;
+    private ProducerTracker(String stream, StreamProducer producer) {
       this.stream = stream;
       this.producer = producer;
     }
@@ -327,7 +319,6 @@ class ProducersCoordinator {
                 for (ProducerTracker tracker : trackers) {
                   try {
                     tracker.producer.closeAfterStreamDeletion();
-                    producerRegistry.remove(tracker.id);
                   } catch (Exception e) {
                     LOGGER.debug("Error while closing producer", e.getMessage());
                   }

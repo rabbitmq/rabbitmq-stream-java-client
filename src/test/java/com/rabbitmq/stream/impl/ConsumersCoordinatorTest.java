@@ -43,7 +43,7 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-public class DefaultClientSubscriptionsTest {
+public class ConsumersCoordinatorTest {
 
   @Mock StreamEnvironment environment;
   @Mock StreamConsumer consumer;
@@ -53,7 +53,7 @@ public class DefaultClientSubscriptionsTest {
   @Captor ArgumentCaptor<Byte> subscriptionIdCaptor;
   AutoCloseable mocks;
 
-  DefaultClientSubscriptions clientSubscriptions;
+  ConsumersCoordinator clientSubscriptions;
   ScheduledExecutorService scheduledExecutorService;
   volatile Client.MetadataListener metadataListener;
   volatile Client.MessageListener messageListener;
@@ -74,22 +74,22 @@ public class DefaultClientSubscriptionsTest {
           @Override
           public Client.ClientParameters metadataListener(
               Client.MetadataListener metadataListener) {
-            DefaultClientSubscriptionsTest.this.metadataListener = metadataListener;
-            DefaultClientSubscriptionsTest.this.metadataListeners.add(metadataListener);
+            ConsumersCoordinatorTest.this.metadataListener = metadataListener;
+            ConsumersCoordinatorTest.this.metadataListeners.add(metadataListener);
             return super.metadataListener(metadataListener);
           }
 
           @Override
           public Client.ClientParameters messageListener(Client.MessageListener messageListener) {
-            DefaultClientSubscriptionsTest.this.messageListener = messageListener;
+            ConsumersCoordinatorTest.this.messageListener = messageListener;
             return super.messageListener(messageListener);
           }
 
           @Override
           public Client.ClientParameters shutdownListener(
               Client.ShutdownListener shutdownListener) {
-            DefaultClientSubscriptionsTest.this.shutdownListener = shutdownListener;
-            DefaultClientSubscriptionsTest.this.shutdownListeners.add(shutdownListener);
+            ConsumersCoordinatorTest.this.shutdownListener = shutdownListener;
+            ConsumersCoordinatorTest.this.shutdownListeners.add(shutdownListener);
             return super.shutdownListener(shutdownListener);
           }
         };
@@ -97,7 +97,7 @@ public class DefaultClientSubscriptionsTest {
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
 
-    clientSubscriptions = new DefaultClientSubscriptions(environment, clientFactory);
+    clientSubscriptions = new ConsumersCoordinator(environment, clientFactory);
   }
 
   @AfterEach
@@ -238,7 +238,7 @@ public class DefaultClientSubscriptionsTest {
 
     Map<Byte, Integer> messageHandlerCalls = new ConcurrentHashMap<>();
     List<Long> subscriptionGlobalIds = new ArrayList<>();
-    for (int i = 0; i < DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+    for (int i = 0; i < ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
       byte subId = (byte) i;
       long subscriptionGlobalId =
           clientSubscriptions.subscribe(
@@ -252,7 +252,7 @@ public class DefaultClientSubscriptionsTest {
     }
 
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
-    verify(client, times(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT))
+    verify(client, times(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
     Runnable messageToEachSubscription =
@@ -265,8 +265,7 @@ public class DefaultClientSubscriptionsTest {
                           subscriptionId, 0, new WrapperMessageBuilder().build());
                     });
     messageToEachSubscription.run();
-    assertThat(messageHandlerCalls)
-        .hasSize(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT);
+    assertThat(messageHandlerCalls).hasSize(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
     messageHandlerCalls.values().forEach(messageCount -> assertThat(messageCount).isEqualTo(1));
 
     when(client.unsubscribe(anyByte())).thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -274,13 +273,11 @@ public class DefaultClientSubscriptionsTest {
     subscriptionGlobalIds.forEach(
         subscriptionGlobalId -> clientSubscriptions.unsubscribe(subscriptionGlobalId));
 
-    verify(client, times(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT))
-        .unsubscribe(anyByte());
+    verify(client, times(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT)).unsubscribe(anyByte());
 
     // simulating inbound messages again, but they should go nowhere
     messageToEachSubscription.run();
-    assertThat(messageHandlerCalls)
-        .hasSize(DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT);
+    assertThat(messageHandlerCalls).hasSize(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
     messageHandlerCalls.values().forEach(messageCount -> assertThat(messageCount).isEqualTo(1));
   }
 
@@ -591,9 +588,9 @@ public class DefaultClientSubscriptionsTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
     when(client.isOpen()).thenReturn(true);
 
-    int extraSubscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
+    int extraSubscriptionCount = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
     int subscriptionCount =
-        DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
+        ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
 
     List<Long> globalSubscriptionIds =
         IntStream.range(0, subscriptionCount)
@@ -629,7 +626,7 @@ public class DefaultClientSubscriptionsTest {
   }
 
   @Test
-  void shouldRemoveSubscriptionStateFromPoolAfterConnectionDies() throws Exception {
+  void shouldRemoveClientSubscriptionManagerFromPoolAfterConnectionDies() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
@@ -647,9 +644,9 @@ public class DefaultClientSubscriptionsTest {
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    int extraSubscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
+    int extraSubscriptionCount = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
     int subscriptionCount =
-        DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
+        ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
     IntStream.range(0, subscriptionCount)
         .forEach(
             i -> {
@@ -674,14 +671,12 @@ public class DefaultClientSubscriptionsTest {
         consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
 
     verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
-    verify(
-            client,
-            times(subscriptionCount + DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
+    verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
   }
 
   @Test
-  void shouldRemoveSubscriptionStateFromPoolIfEmptyAfterMetadataUpdate() throws Exception {
+  void shouldRemoveClientSubscriptionManagerFromPoolIfEmptyAfterMetadataUpdate() throws Exception {
     BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(50), ms(50));
     when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
@@ -699,9 +694,9 @@ public class DefaultClientSubscriptionsTest {
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    int extraSubscriptionCount = DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
+    int extraSubscriptionCount = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
     int subscriptionCount =
-        DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
+        ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
     IntStream.range(0, subscriptionCount)
         .forEach(
             i -> {
@@ -724,9 +719,7 @@ public class DefaultClientSubscriptionsTest {
         consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
 
     verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
-    verify(
-            client,
-            times(subscriptionCount + DefaultClientSubscriptions.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
+    verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
   }
 

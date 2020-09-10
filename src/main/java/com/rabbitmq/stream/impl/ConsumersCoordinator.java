@@ -14,8 +14,21 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
-import java.util.*;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.StreamException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
@@ -24,31 +37,30 @@ import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class DefaultClientSubscriptions implements ClientSubscriptions {
+class ConsumersCoordinator {
 
   static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(DefaultClientSubscriptions.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(ConsumersCoordinator.class);
   private final Random random = new Random();
   private final AtomicLong globalSubscriptionIdSequence = new AtomicLong(0);
   private final StreamEnvironment environment;
-  private final Map<String, ClientSubscriptionPool> clientSubscriptionPools =
-      new ConcurrentHashMap<>();
-  private final Map<Long, StreamSubscription> streamSubscriptionRegistry =
+  private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
+  private final Map<Long, SubscriptionTracker> subscriptionTrackerRegistry =
       new ConcurrentHashMap<>();
   private final Function<Client.ClientParameters, Client> clientFactory;
 
-  DefaultClientSubscriptions(
+  ConsumersCoordinator(
       StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
     this.environment = environment;
     this.clientFactory = clientFactory;
   }
 
-  DefaultClientSubscriptions(StreamEnvironment environment) {
+  ConsumersCoordinator(StreamEnvironment environment) {
     this(environment, cp -> new Client(cp));
   }
 
-  private static String keyForClientSubscriptionState(Client.Broker broker) {
+  private static String keyForClientSubscription(Client.Broker broker) {
     // FIXME make sure this is a reasonable key for brokers
     return broker.getHost() + ":" + broker.getPort();
   }
@@ -57,7 +69,6 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     return environment.topologyUpdateBackOffDelayPolicy();
   }
 
-  @Override
   public long subscribe(
       StreamConsumer consumer,
       String stream,
@@ -70,24 +81,24 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     long streamSubscriptionId = globalSubscriptionIdSequence.getAndIncrement();
     // create stream subscription to track final and changing state of this very subscription
     // we keep this instance when we move the subscription from a client to another one
-    StreamSubscription streamSubscription =
-        new StreamSubscription(streamSubscriptionId, consumer, stream, messageHandler);
+    SubscriptionTracker subscriptionTracker =
+        new SubscriptionTracker(streamSubscriptionId, consumer, stream, messageHandler);
 
-    String key = keyForClientSubscriptionState(newNode);
+    String key = keyForClientSubscription(newNode);
 
-    ClientSubscriptionPool clientSubscriptionPool =
-        clientSubscriptionPools.computeIfAbsent(
+    ManagerPool managerPool =
+        pools.computeIfAbsent(
             key,
             s ->
-                new ClientSubscriptionPool(
+                new ManagerPool(
                     key,
                     environment
                         .clientParametersCopy()
                         .host(newNode.getHost())
                         .port(newNode.getPort())));
 
-    clientSubscriptionPool.add(streamSubscription, offsetSpecification);
-    streamSubscriptionRegistry.put(streamSubscription.id, streamSubscription);
+    managerPool.add(subscriptionTracker, offsetSpecification);
+    subscriptionTrackerRegistry.put(subscriptionTracker.id, subscriptionTracker);
 
     return streamSubscriptionId;
   }
@@ -144,17 +155,15 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     }
   }
 
-  @Override
   public void unsubscribe(long id) {
-    StreamSubscription streamSubscription = this.streamSubscriptionRegistry.remove(id);
-    if (streamSubscription != null) {
-      streamSubscription.cancel();
+    SubscriptionTracker subscriptionTracker = this.subscriptionTrackerRegistry.remove(id);
+    if (subscriptionTracker != null) {
+      subscriptionTracker.cancel();
     }
   }
 
-  @Override
   public void close() {
-    for (ClientSubscriptionPool subscriptionPool : this.clientSubscriptionPools.values()) {
+    for (ManagerPool subscriptionPool : this.pools.values()) {
       subscriptionPool.close();
     }
   }
@@ -162,10 +171,10 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
   /**
    * Data structure that keeps track of a given {@link StreamConsumer} and its message callback.
    *
-   * <p>An instance is "moved" between {@link SubscriptionState} instances on stream failure or on
-   * disconnection.
+   * <p>An instance is "moved" between {@link ClientSubscriptionsManager} instances on stream
+   * failure or on disconnection.
    */
-  private static class StreamSubscription {
+  private static class SubscriptionTracker {
 
     private final long id;
     private final String stream;
@@ -173,9 +182,9 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     private final StreamConsumer consumer;
     private volatile long offset;
     private volatile byte subscriptionIdInClient;
-    private volatile SubscriptionState subscriptionState;
+    private volatile ClientSubscriptionsManager clientSubscriptionsManager;
 
-    private StreamSubscription(
+    private SubscriptionTracker(
         long id, StreamConsumer consumer, String stream, MessageHandler messageHandler) {
       this.id = id;
       this.consumer = consumer;
@@ -184,14 +193,18 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     }
 
     private void cancel() {
-      this.subscriptionState.remove(this);
+      this.clientSubscriptionsManager.remove(this);
     }
 
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      StreamSubscription that = (StreamSubscription) o;
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      SubscriptionTracker that = (SubscriptionTracker) o;
       return id == that.id;
     }
 
@@ -202,97 +215,99 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
   }
 
   /**
-   * Maintains {@link SubscriptionState} instances for a given host.
+   * Maintains {@link ClientSubscriptionsManager} instances for a given host.
    *
-   * <p>Creates new {@link SubscriptionState} instances (and so {@link Client}s, i.e. connections)
-   * when needed and disposes them when appropriate.
+   * <p>Creates new {@link ClientSubscriptionsManager} instances (and so {@link Client}s, i.e.
+   * connections) when needed and disposes them when appropriate.
    */
-  private class ClientSubscriptionPool {
+  private class ManagerPool {
 
-    private final List<SubscriptionState> states = new CopyOnWriteArrayList<>();
+    private final List<ClientSubscriptionsManager> managers = new CopyOnWriteArrayList<>();
     private final String name;
     private final Client.ClientParameters clientParameters;
 
-    private ClientSubscriptionPool(String name, Client.ClientParameters clientParameters) {
+    private ManagerPool(String name, Client.ClientParameters clientParameters) {
       this.name = name;
       this.clientParameters = clientParameters;
       LOGGER.debug("Creating client subscription pool on {}", name);
-      states.add(new SubscriptionState(this, clientParameters));
+      managers.add(new ClientSubscriptionsManager(this, clientParameters));
     }
 
-    private synchronized void maybeDisposeSubscriptionState(SubscriptionState subscriptionState) {
-      if (subscriptionState.isEmpty()) {
-        subscriptionState.close();
-        this.remove(subscriptionState);
-        LOGGER.debug("Closed subscription state on {}, {} remaining", name, states.size());
-        if (states.isEmpty()) {
-          clientSubscriptionPools.remove(name);
+    private synchronized void maybeDisposeManager(
+        ClientSubscriptionsManager clientSubscriptionsManager) {
+      if (clientSubscriptionsManager.isEmpty()) {
+        clientSubscriptionsManager.close();
+        this.remove(clientSubscriptionsManager);
+        LOGGER.debug("Closed subscription manager on {}, {} remaining", name, managers.size());
+        if (managers.isEmpty()) {
+          pools.remove(name);
           LOGGER.debug("Closed client subscription pool on {} because it was empty", name);
         }
       }
     }
 
     private synchronized void add(
-        StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
+        SubscriptionTracker subscriptionTracker, OffsetSpecification offsetSpecification) {
       boolean added = false;
-      // FIXME deal with state unavailability (state may be closing because of connection closing)
+      // FIXME deal with manager unavailability (manager may be closing because of connection
+      // closing)
       // try all of them until it succeeds, throw exception if failure
-      for (SubscriptionState state : states) {
-        if (!state.isFull()) {
-          state.add(streamSubscription, offsetSpecification);
+      for (ClientSubscriptionsManager manager : managers) {
+        if (!manager.isFull()) {
+          manager.add(subscriptionTracker, offsetSpecification);
           added = true;
           break;
         }
       }
       if (!added) {
         LOGGER.debug(
-            "Creating subscription state on {}, this is subscription state #{}",
+            "Creating subscription manager on {}, this is subscription manager #{}",
             name,
-            states.size() + 1);
-        SubscriptionState state = new SubscriptionState(this, clientParameters);
-        states.add(state);
-        state.add(streamSubscription, offsetSpecification);
+            managers.size() + 1);
+        ClientSubscriptionsManager manager = new ClientSubscriptionsManager(this, clientParameters);
+        managers.add(manager);
+        manager.add(subscriptionTracker, offsetSpecification);
       }
     }
 
-    private synchronized void remove(SubscriptionState subscriptionState) {
+    private synchronized void remove(ClientSubscriptionsManager clientSubscriptionsManager) {
       // FIXME remove
-      states.remove(subscriptionState);
+      managers.remove(clientSubscriptionsManager);
     }
 
     synchronized void close() {
-      Iterator<SubscriptionState> iterator = states.iterator();
+      Iterator<ClientSubscriptionsManager> iterator = managers.iterator();
       while (iterator.hasNext()) {
-        SubscriptionState state = iterator.next();
-        state.close();
+        ClientSubscriptionsManager manager = iterator.next();
+        manager.close();
       }
-      states.clear();
+      managers.clear();
     }
   }
 
   /**
-   * Maintains a set of {@link StreamSubscription} instances on a {@link Client}.
+   * Maintains a set of {@link SubscriptionTracker} instances on a {@link Client}.
    *
-   * <p>It dispatches inbound messages to the appropriate {@link StreamSubscription} and
-   * re-allocates {@link StreamSubscription}s in case of stream unavailability or disconnection.
+   * <p>It dispatches inbound messages to the appropriate {@link SubscriptionTracker} and
+   * re-allocates {@link SubscriptionTracker}s in case of stream unavailability or disconnection.
    */
-  private class SubscriptionState {
+  private class ClientSubscriptionsManager {
 
     private final Client client;
     // the 3 following data structures track the subscriptions, they must remain consistent
-    private final Map<String, Set<StreamSubscription>> streamToStreamSubscriptions =
+    private final Map<String, Set<SubscriptionTracker>> streamToStreamSubscriptions =
         new ConcurrentHashMap<>();
     private final Set<Long> globalStreamSubscriptionIds = ConcurrentHashMap.newKeySet();
-    private final ClientSubscriptionPool owner;
-    private volatile List<StreamSubscription> streamSubscriptions =
+    private final ManagerPool owner;
+    private volatile List<SubscriptionTracker> subscriptionTrackers =
         new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
 
-    private SubscriptionState(
-        ClientSubscriptionPool owner, Client.ClientParameters clientParameters) {
+    private ClientSubscriptionsManager(
+        ManagerPool owner, Client.ClientParameters clientParameters) {
       this.owner = owner;
       String name = owner.name;
-      LOGGER.debug("creating subscription state on {}", name);
-      IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> streamSubscriptions.add(null));
+      LOGGER.debug("creating subscription manager on {}", name);
+      IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> subscriptionTrackers.add(null));
       this.client =
           clientFactory.apply(
               clientParameters
@@ -308,11 +323,11 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                               responseCode))
                   .messageListener(
                       (subscriptionId, offset, message) -> {
-                        StreamSubscription streamSubscription =
-                            streamSubscriptions.get(subscriptionId & 0xFF);
-                        if (streamSubscription != null) {
-                          streamSubscription.offset = offset;
-                          streamSubscription.messageHandler.handle(offset, message);
+                        SubscriptionTracker subscriptionTracker =
+                            subscriptionTrackers.get(subscriptionId & 0xFF);
+                        if (subscriptionTracker != null) {
+                          subscriptionTracker.offset = offset;
+                          subscriptionTracker.messageHandler.handle(offset, message);
                           // FIXME set offset here as well, best effort to avoid duplicates
                         } else {
                           LOGGER.debug("Could not find stream subscription {}", subscriptionId);
@@ -331,7 +346,7 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                               .scheduledExecutorService()
                               .execute(
                                   () -> {
-                                    for (Map.Entry<String, Set<StreamSubscription>> entry :
+                                    for (Map.Entry<String, Set<SubscriptionTracker>> entry :
                                         streamToStreamSubscriptions.entrySet()) {
                                       String stream = entry.getKey();
                                       LOGGER.debug(
@@ -356,22 +371,22 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                             "Received metadata notification for {}, stream is likely to have become unavailable",
                             stream);
 
-                        Set<StreamSubscription> affectedSubscriptions;
-                        synchronized (SubscriptionState.this) {
-                          Set<StreamSubscription> subscriptions =
+                        Set<SubscriptionTracker> affectedSubscriptions;
+                        synchronized (ClientSubscriptionsManager.this) {
+                          Set<SubscriptionTracker> subscriptions =
                               streamToStreamSubscriptions.remove(stream);
                           if (subscriptions != null && !subscriptions.isEmpty()) {
-                            List<StreamSubscription> newSubscriptions =
+                            List<SubscriptionTracker> newSubscriptions =
                                 new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
                             for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-                              newSubscriptions.add(streamSubscriptions.get(i));
+                              newSubscriptions.add(subscriptionTrackers.get(i));
                             }
-                            for (StreamSubscription subscription : subscriptions) {
+                            for (SubscriptionTracker subscription : subscriptions) {
                               newSubscriptions.set(
                                   subscription.subscriptionIdInClient & 0xFF, null);
                               globalStreamSubscriptionIds.remove(subscription.id);
                             }
-                            this.streamSubscriptions = newSubscriptions;
+                            this.subscriptionTrackers = newSubscriptions;
                           }
                           affectedSubscriptions = subscriptions;
                         }
@@ -399,16 +414,16 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     }
 
     private void assignConsumersToStream(
-        Collection<StreamSubscription> subscriptions,
+        Collection<SubscriptionTracker> subscriptions,
         String stream,
         BackOffDelayPolicy delayPolicy,
         boolean closeClient) {
       Runnable consumersClosingCallback =
           () -> {
-            for (StreamSubscription affectedSubscription : subscriptions) {
+            for (SubscriptionTracker affectedSubscription : subscriptions) {
               try {
                 affectedSubscription.consumer.closeAfterStreamDeletion();
-                streamSubscriptionRegistry.remove(affectedSubscription.id);
+                subscriptionTrackerRegistry.remove(affectedSubscription.id);
               } catch (Exception e) {
                 LOGGER.debug("Error while closing consumer", e.getMessage());
               }
@@ -426,19 +441,19 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
                 if (candidates == null) {
                   consumersClosingCallback.run();
                 } else {
-                  for (StreamSubscription affectedSubscription : subscriptions) {
+                  for (SubscriptionTracker affectedSubscription : subscriptions) {
                     try {
                       Client.Broker broker = pickBroker(candidates);
                       LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
-                      String key = keyForClientSubscriptionState(broker);
+                      String key = keyForClientSubscription(broker);
                       // FIXME in case the broker is no longer there, we may have to deal with an
                       // error here
                       // we could renew the list of candidates for the stream
-                      ClientSubscriptionPool subscriptionPool =
-                          clientSubscriptionPools.computeIfAbsent(
+                      ManagerPool subscriptionPool =
+                          pools.computeIfAbsent(
                               key,
                               s ->
-                                  new ClientSubscriptionPool(
+                                  new ManagerPool(
                                       key,
                                       environment
                                           .clientParametersCopy()
@@ -473,86 +488,86 @@ class DefaultClientSubscriptions implements ClientSubscriptions {
     }
 
     synchronized void add(
-        StreamSubscription streamSubscription, OffsetSpecification offsetSpecification) {
-      // FIXME check state is still open (not closed because of connection failure)
+        SubscriptionTracker subscriptionTracker, OffsetSpecification offsetSpecification) {
+      // FIXME check manager is still open (not closed because of connection failure)
       byte subscriptionId = 0;
       for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-        if (streamSubscriptions.get(i) == null) {
+        if (subscriptionTrackers.get(i) == null) {
           subscriptionId = (byte) i;
           break;
         }
       }
 
-      List<StreamSubscription> previousSubscriptions = this.streamSubscriptions;
+      List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
 
-      LOGGER.debug("Subscribing to {}", streamSubscription.stream);
+      LOGGER.debug("Subscribing to {}", subscriptionTracker.stream);
       try {
         // updating data structures before subscribing
         // (to make sure they are up-to-date in case message would arrive super fast)
-        streamSubscription.subscriptionIdInClient = subscriptionId;
-        streamSubscription.subscriptionState = this;
+        subscriptionTracker.subscriptionIdInClient = subscriptionId;
+        subscriptionTracker.clientSubscriptionsManager = this;
         streamToStreamSubscriptions
-            .computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
-            .add(streamSubscription);
-        globalStreamSubscriptionIds.add(streamSubscription.id);
-        this.streamSubscriptions =
-            update(previousSubscriptions, subscriptionId, streamSubscription);
+            .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
+            .add(subscriptionTracker);
+        globalStreamSubscriptionIds.add(subscriptionTracker.id);
+        this.subscriptionTrackers =
+            update(previousSubscriptions, subscriptionId, subscriptionTracker);
         // FIXME consider using fewer initial credits
         Client.Response subscribeResponse =
-            client.subscribe(subscriptionId, streamSubscription.stream, offsetSpecification, 10);
+            client.subscribe(subscriptionId, subscriptionTracker.stream, offsetSpecification, 10);
         if (!subscribeResponse.isOk()) {
           String message =
               "Subscription to stream "
-                  + streamSubscription.stream
+                  + subscriptionTracker.stream
                   + " failed with code "
                   + subscribeResponse.getResponseCode();
           LOGGER.debug(message);
           throw new StreamException(message);
         }
       } catch (RuntimeException e) {
-        streamSubscription.subscriptionIdInClient = -1;
-        streamSubscription.subscriptionState = null;
-        this.streamSubscriptions = previousSubscriptions;
+        subscriptionTracker.subscriptionIdInClient = -1;
+        subscriptionTracker.clientSubscriptionsManager = null;
+        this.subscriptionTrackers = previousSubscriptions;
         streamToStreamSubscriptions
-            .computeIfAbsent(streamSubscription.stream, s -> ConcurrentHashMap.newKeySet())
-            .remove(streamSubscription);
-        globalStreamSubscriptionIds.remove(streamSubscription.id);
+            .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
+            .remove(subscriptionTracker);
+        globalStreamSubscriptionIds.remove(subscriptionTracker.id);
         throw e;
       }
 
-      LOGGER.debug("Subscribed to {}", streamSubscription.stream);
+      LOGGER.debug("Subscribed to {}", subscriptionTracker.stream);
     }
 
-    synchronized void remove(StreamSubscription streamSubscription) {
-      // FIXME check state is still open (not closed because of connection failure)
-      byte subscriptionIdInClient = streamSubscription.subscriptionIdInClient;
+    synchronized void remove(SubscriptionTracker subscriptionTracker) {
+      // FIXME check manager is still open (not closed because of connection failure)
+      byte subscriptionIdInClient = subscriptionTracker.subscriptionIdInClient;
       Client.Response unsubscribeResponse = client.unsubscribe(subscriptionIdInClient);
       if (!unsubscribeResponse.isOk()) {
         LOGGER.warn(
             "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
-            streamSubscription.stream,
+            subscriptionTracker.stream,
             unsubscribeResponse.getResponseCode(),
             subscriptionIdInClient);
       }
-      this.streamSubscriptions = update(this.streamSubscriptions, subscriptionIdInClient, null);
-      globalStreamSubscriptionIds.remove(streamSubscription.id);
+      this.subscriptionTrackers = update(this.subscriptionTrackers, subscriptionIdInClient, null);
+      globalStreamSubscriptionIds.remove(subscriptionTracker.id);
       streamToStreamSubscriptions.compute(
-          streamSubscription.stream,
+          subscriptionTracker.stream,
           (stream, subscriptionsForThisStream) -> {
             if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
               // should not happen
               return null;
             } else {
-              subscriptionsForThisStream.remove(streamSubscription);
+              subscriptionsForThisStream.remove(subscriptionTracker);
               return subscriptionsForThisStream.isEmpty() ? null : subscriptionsForThisStream;
             }
           });
-      this.owner.maybeDisposeSubscriptionState(this);
+      this.owner.maybeDisposeManager(this);
     }
 
-    private List<StreamSubscription> update(
-        List<StreamSubscription> original, byte index, StreamSubscription newValue) {
-      List<StreamSubscription> newSubcriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
+    private List<SubscriptionTracker> update(
+        List<SubscriptionTracker> original, byte index, SubscriptionTracker newValue) {
+      List<SubscriptionTracker> newSubcriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
       int intIndex = index & 0xFF;
       for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
         newSubcriptions.add(i == intIndex ? newValue : original.get(i));
