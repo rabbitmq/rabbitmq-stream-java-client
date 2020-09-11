@@ -48,7 +48,7 @@ To build the JAR file:
 To launch the test suite (requires a local RabbitMQ node with stream plugin enabled):
 
 ----
-./mvnw verify
+./mvnw verify -Drabbitmqctl.bin=/path/to/rabbitmqctl
 ----
 
 == Code Format
@@ -57,6 +57,8 @@ The project uses the https://github.com/google/google-java-format[Google Java Fo
 the documentation to support the format in your
 https://github.com/google/google-java-format#intellij-android-studio-and-other-jetbrains-ides[favorite]
 https://github.com/google/google-java-format#eclipse[IDE].
+
+Please the `./mvnw spotless:apply` command before committing.
 
 == Copyright and License
 
