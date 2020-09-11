@@ -53,7 +53,7 @@ public class ConsumersCoordinatorTest {
   @Captor ArgumentCaptor<Byte> subscriptionIdCaptor;
   AutoCloseable mocks;
 
-  ConsumersCoordinator clientSubscriptions;
+  ConsumersCoordinator coordinator;
   ScheduledExecutorService scheduledExecutorService;
   volatile Client.MetadataListener metadataListener;
   volatile Client.MessageListener messageListener;
@@ -97,13 +97,13 @@ public class ConsumersCoordinatorTest {
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
 
-    clientSubscriptions = new ConsumersCoordinator(environment, clientFactory);
+    coordinator = new ConsumersCoordinator(environment, clientFactory);
   }
 
   @AfterEach
   void tearDown() throws Exception {
     // just taking the opportunity to check toString() generates valid JSON
-    MonitoringTestUtils.extract(clientSubscriptions);
+    MonitoringTestUtils.extract(coordinator);
     if (scheduledExecutorService != null) {
       scheduledExecutorService.shutdownNow();
     }
@@ -114,7 +114,7 @@ public class ConsumersCoordinatorTest {
   void subscribeShouldThrowExceptionWhenNoMetadataForTheStream() {
     assertThatThrownBy(
             () ->
-                clientSubscriptions.subscribe(
+                coordinator.subscribe(
                     consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
@@ -129,7 +129,7 @@ public class ConsumersCoordinatorTest {
                     "stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, null)));
     assertThatThrownBy(
             () ->
-                clientSubscriptions.subscribe(
+                coordinator.subscribe(
                     consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
@@ -144,7 +144,7 @@ public class ConsumersCoordinatorTest {
                     "stream", Constants.RESPONSE_CODE_ACCESS_REFUSED, null, null)));
     assertThatThrownBy(
             () ->
-                clientSubscriptions.subscribe(
+                coordinator.subscribe(
                     consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
         .isInstanceOf(IllegalStateException.class);
   }
@@ -158,7 +158,7 @@ public class ConsumersCoordinatorTest {
                 new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, null)));
     assertThatThrownBy(
             () ->
-                clientSubscriptions.subscribe(
+                coordinator.subscribe(
                     consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
         .isInstanceOf(IllegalStateException.class);
   }
@@ -170,7 +170,7 @@ public class ConsumersCoordinatorTest {
             Collections.singletonMap(
                 "stream",
                 new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), null)));
-    assertThat(clientSubscriptions.findBrokersForStream("stream")).hasSize(1).contains(leader());
+    assertThat(coordinator.findBrokersForStream("stream")).hasSize(1).contains(leader());
   }
 
   @Test
@@ -180,9 +180,7 @@ public class ConsumersCoordinatorTest {
             Collections.singletonMap(
                 "stream",
                 new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
-    assertThat(clientSubscriptions.findBrokersForStream("stream"))
-        .hasSize(2)
-        .hasSameElementsAs(replicas());
+    assertThat(coordinator.findBrokersForStream("stream")).hasSize(2).hasSameElementsAs(replicas());
   }
 
   @Test
@@ -200,7 +198,7 @@ public class ConsumersCoordinatorTest {
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     long subscriptionGlobalId =
-        clientSubscriptions.subscribe(
+        coordinator.subscribe(
             consumer,
             "stream",
             OffsetSpecification.first(),
@@ -218,7 +216,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    clientSubscriptions.unsubscribe(subscriptionGlobalId);
+    coordinator.unsubscribe(subscriptionGlobalId);
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -243,7 +241,7 @@ public class ConsumersCoordinatorTest {
     for (int i = 0; i < ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
       byte subId = (byte) i;
       long subscriptionGlobalId =
-          clientSubscriptions.subscribe(
+          coordinator.subscribe(
               consumer,
               "stream",
               OffsetSpecification.first(),
@@ -273,7 +271,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(anyByte())).thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     subscriptionGlobalIds.forEach(
-        subscriptionGlobalId -> clientSubscriptions.unsubscribe(subscriptionGlobalId));
+        subscriptionGlobalId -> coordinator.unsubscribe(subscriptionGlobalId));
 
     verify(client, times(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT)).unsubscribe(anyByte());
 
@@ -317,7 +315,7 @@ public class ConsumersCoordinatorTest {
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     long subscriptionGlobalId =
-        clientSubscriptions.subscribe(
+        coordinator.subscribe(
             consumer,
             "stream",
             OffsetSpecification.first(),
@@ -347,7 +345,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    clientSubscriptions.unsubscribe(subscriptionGlobalId);
+    coordinator.unsubscribe(subscriptionGlobalId);
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -374,7 +372,7 @@ public class ConsumersCoordinatorTest {
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     long subscriptionGlobalId =
-        clientSubscriptions.subscribe(
+        coordinator.subscribe(
             consumer,
             "stream",
             OffsetSpecification.first(),
@@ -403,7 +401,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    clientSubscriptions.unsubscribe(subscriptionGlobalId);
+    coordinator.unsubscribe(subscriptionGlobalId);
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -446,7 +444,7 @@ public class ConsumersCoordinatorTest {
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     long subscriptionGlobalId =
-        clientSubscriptions.subscribe(
+        coordinator.subscribe(
             consumer,
             "stream",
             OffsetSpecification.first(),
@@ -475,7 +473,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    clientSubscriptions.unsubscribe(subscriptionGlobalId);
+    coordinator.unsubscribe(subscriptionGlobalId);
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -508,7 +506,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
-    clientSubscriptions.subscribe(
+    coordinator.subscribe(
         consumer,
         "stream",
         OffsetSpecification.first(),
@@ -556,7 +554,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
-    clientSubscriptions.subscribe(
+    coordinator.subscribe(
         consumer,
         "stream",
         OffsetSpecification.first(),
@@ -606,7 +604,7 @@ public class ConsumersCoordinatorTest {
         IntStream.range(0, subscriptionCount)
             .mapToObj(
                 i ->
-                    clientSubscriptions.subscribe(
+                    coordinator.subscribe(
                         consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
             .collect(Collectors.toList());
 
@@ -624,13 +622,13 @@ public class ConsumersCoordinatorTest {
             .limit(subscriptionCount - extraSubscriptionCount * 2)
             .forEach(
                 id -> {
-                  clientSubscriptions.unsubscribe(id);
+                  coordinator.unsubscribe(id);
                   globalSubscriptionIds.remove(id);
                 });
 
     verify(client, times(1)).close();
 
-    globalSubscriptionIds.stream().forEach(id -> clientSubscriptions.unsubscribe(id));
+    globalSubscriptionIds.stream().forEach(id -> coordinator.unsubscribe(id));
 
     verify(client, times(2)).close();
   }
@@ -660,7 +658,7 @@ public class ConsumersCoordinatorTest {
     IntStream.range(0, subscriptionCount)
         .forEach(
             i -> {
-              clientSubscriptions.subscribe(
+              coordinator.subscribe(
                   consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
             });
     // the extra is allocated on another client from the same pool
@@ -677,8 +675,7 @@ public class ConsumersCoordinatorTest {
 
     // the MAX consumers must have been re-allocated to the existing client and a new one
     // let's add a new subscription to make sure we are still using the same pool
-    clientSubscriptions.subscribe(
-        consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
+    coordinator.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
 
     verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
@@ -710,7 +707,7 @@ public class ConsumersCoordinatorTest {
     IntStream.range(0, subscriptionCount)
         .forEach(
             i -> {
-              clientSubscriptions.subscribe(
+              coordinator.subscribe(
                   consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
             });
     // the extra is allocated on another client from the same pool
@@ -725,8 +722,7 @@ public class ConsumersCoordinatorTest {
 
     // the MAX consumers must have been re-allocated to the existing client and a new one
     // let's add a new subscription to make sure we are still using the same pool
-    clientSubscriptions.subscribe(
-        consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
+    coordinator.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
 
     verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
