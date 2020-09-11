@@ -18,13 +18,26 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.AuthenticationFailureException;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterAll;
@@ -129,6 +142,112 @@ public class StreamEnvironmentTest {
     assertThat(environmentInfo.getLocator()).isNull();
     assertThat(environmentInfo.getProducers()).isEmpty();
     assertThat(environmentInfo.getConsumers()).isEmpty();
+  }
+
+  @Test
+  void growShrinkResourcesWhenProducersConsumersAreOpenedAndClosed() throws Exception {
+    int messageCount = 100;
+    int streamCount = 20;
+    int producersCount = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT * 3 + 10;
+    int consumersCount = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT * 2 + 10;
+
+    try (Environment environment = environmentBuilder.build()) {
+      List<String> streams =
+          IntStream.range(0, streamCount)
+              .mapToObj(i -> UUID.randomUUID().toString())
+              .map(
+                  s -> {
+                    environment.streamCreator().stream(s).create();
+                    return s;
+                  })
+              .collect(Collectors.toCollection(() -> new CopyOnWriteArrayList<>()));
+
+      CountDownLatch confirmLatch = new CountDownLatch(messageCount * producersCount);
+      CountDownLatch consumeLatch = new CountDownLatch(messageCount * producersCount);
+
+      List<Producer> producers =
+          IntStream.range(0, producersCount)
+              .mapToObj(
+                  i -> {
+                    String s = streams.get(i % streams.size());
+                    return environment.producerBuilder().stream(s).build();
+                  })
+              .collect(Collectors.toList());
+
+      List<Consumer> consumers =
+          IntStream.range(0, consumersCount)
+              .mapToObj(
+                  i -> {
+                    String s = streams.get(new Random().nextInt(streams.size()));
+                    return environment.consumerBuilder().stream(s)
+                        .messageHandler(
+                            (offset, message) -> consumeLatch.countDown())
+                        .build();
+                  })
+              .collect(Collectors.toList());
+
+      producers.stream()
+          .parallel()
+          .forEach(
+              producer -> {
+                IntStream.range(0, messageCount)
+                    .forEach(
+                        messageIndex -> {
+                          producer.send(
+                              producer.messageBuilder().addData("".getBytes()).build(),
+                              confirmationStatus -> {
+                                if (confirmationStatus.isConfirmed()) {
+                                  confirmLatch.countDown();
+                                }
+                              });
+                        });
+              });
+
+      assertThat(confirmLatch.await(10, SECONDS)).isTrue();
+      assertThat(consumeLatch.await(10, SECONDS)).isTrue();
+
+      EnvironmentInfo environmentInfo = MonitoringTestUtils.extract(environment);
+      assertThat(environmentInfo.getProducers()).hasSize(1);
+      int producerManagerCount = environmentInfo.getProducers().get(0).getClients().size();
+      assertThat(producerManagerCount).isPositive();
+      assertThat(environmentInfo.getConsumers()).hasSize(1);
+      int consumerManagerCount = environmentInfo.getConsumers().get(0).getClients().size();
+      assertThat(consumerManagerCount).isPositive();
+
+      java.util.function.Consumer<AutoCloseable> closing =
+          agent -> {
+            try {
+              agent.close();
+            } catch (Exception e) {
+              throw new RuntimeException(e);
+            }
+          };
+      Collections.reverse(producers);
+      List<Producer> subProducers =
+          producers.subList(0, ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT);
+      subProducers.forEach(closing);
+
+      Collections.reverse(consumers);
+      List<Consumer> subConsumers =
+          consumers.subList(0, ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
+      subConsumers.forEach(closing);
+
+      producers.removeAll(subProducers);
+      consumers.removeAll(subConsumers);
+
+      environmentInfo = MonitoringTestUtils.extract(environment);
+      assertThat(environmentInfo.getProducers()).hasSize(1);
+      assertThat(environmentInfo.getProducers().get(0).getClients())
+          .hasSizeLessThan(producerManagerCount);
+      assertThat(environmentInfo.getConsumers()).hasSize(1);
+      assertThat(environmentInfo.getConsumers().get(0).getClients())
+          .hasSizeLessThan(consumerManagerCount);
+
+      producers.forEach(closing);
+      consumers.forEach(closing);
+
+      streams.stream().forEach(stream -> environment.deleteStream(stream));
+    }
   }
 
   @Test
