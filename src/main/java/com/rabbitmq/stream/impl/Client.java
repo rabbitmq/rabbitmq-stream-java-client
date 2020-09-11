@@ -1392,8 +1392,6 @@ public class Client implements AutoCloseable {
     if (closing.compareAndSet(false, true)) {
       LOGGER.debug("Closing client");
 
-      // FIXME unsubscribe current subscriptions?
-
       sendClose(RESPONSE_CODE_OK, "OK");
 
       closingSequence(ShutdownContext.ShutdownReason.CLIENT_CLOSE);

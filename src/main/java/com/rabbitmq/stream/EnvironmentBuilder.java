@@ -25,8 +25,6 @@ import java.util.concurrent.ScheduledExecutorService;
 
 public interface EnvironmentBuilder {
 
-  // FIXME add urls parameters for the locator
-
   EnvironmentBuilder uri(String uri);
 
   EnvironmentBuilder uris(List<String> uris);

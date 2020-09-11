@@ -169,6 +169,34 @@ class ConsumersCoordinator {
     }
   }
 
+  int poolSize() {
+    return pools.size();
+  }
+
+  @Override
+  public String toString() {
+    return ("[ \n"
+            + pools.entrySet().stream()
+                .map(
+                    poolEntry ->
+                        "  { 'broker' : '"
+                            + poolEntry.getKey()
+                            + "', 'clients' : [ "
+                            + poolEntry.getValue().managers.stream()
+                                .map(
+                                    manager ->
+                                        "{ 'consumer_count' : "
+                                            + manager.subscriptionTrackers.stream()
+                                                .filter(tracker -> tracker != null)
+                                                .count()
+                                            + " }")
+                                .collect(Collectors.joining(", "))
+                            + " ] }")
+                .collect(Collectors.joining(", \n"))
+            + "\n]")
+        .replace("'", "\"");
+  }
+
   /**
    * Data structure that keeps track of a given {@link StreamConsumer} and its message callback.
    *
@@ -582,41 +610,25 @@ class ConsumersCoordinator {
       return this.globalStreamSubscriptionIds.isEmpty();
     }
 
-    void close() {
-      // FIXME consider cancelling subscriptions, this would avoid receiving messages interleaved
-      // with the closing response
-      // or make this on the server side, as soon as the close command is received
+    synchronized void close() {
       if (this.client.isOpen()) {
+        subscriptionTrackers.stream()
+            .filter(tracker -> tracker != null)
+            .forEach(
+                tracker -> {
+                  try {
+                    this.client.unsubscribe(tracker.subscriptionIdInClient);
+                  } catch (Exception e) {
+                    // OK, moving on
+                  }
+                });
+
+        streamToStreamSubscriptions.clear();
+        globalStreamSubscriptionIds.clear();
+        subscriptionTrackers.clear();
+
         this.client.close();
       }
     }
-  }
-
-  int poolSize() {
-    return pools.size();
-  }
-
-  @Override
-  public String toString() {
-    return ("[ \n"
-            + pools.entrySet().stream()
-                .map(
-                    poolEntry ->
-                        "  { 'broker' : '"
-                            + poolEntry.getKey()
-                            + "', 'clients' : [ "
-                            + poolEntry.getValue().managers.stream()
-                                .map(
-                                    manager ->
-                                        "{ 'consumer_count' : "
-                                            + manager.subscriptionTrackers.stream()
-                                                .filter(tracker -> tracker != null)
-                                                .count()
-                                            + " }")
-                                .collect(Collectors.joining(", "))
-                            + " ] }")
-                .collect(Collectors.joining(", \n"))
-            + "\n]")
-        .replace("'", "\"");
   }
 }
