@@ -64,6 +64,9 @@ public class StreamEnvironmentUnitTest {
     cpReference.set(clientParameters);
     mocks = MockitoAnnotations.openMocks(this);
     when(cf.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(client.getHost()).thenReturn("localhost");
+    when(client.getPort()).thenReturn(5555);
+
     this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     environment =
         new StreamEnvironment(
@@ -77,6 +80,8 @@ public class StreamEnvironmentUnitTest {
 
   @AfterEach
   void tearDown() throws Exception {
+    // just taking the opportunity to check toString() generates valid JSON
+    MonitoringTestUtils.extract(environment);
     environment.close();
     scheduledExecutorService.shutdownNow();
     mocks.close();

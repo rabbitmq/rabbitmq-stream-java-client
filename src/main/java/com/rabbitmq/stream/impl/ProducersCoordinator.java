@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -376,5 +377,25 @@ class ProducersCoordinator {
 
       }
     }
+  }
+
+  @Override
+  public String toString() {
+    return ("[ \n"
+            + pools.entrySet().stream()
+                .map(
+                    poolEntry ->
+                        "  { 'broker' : '"
+                            + poolEntry.getKey()
+                            + "', 'clients' : [ "
+                            + poolEntry.getValue().managers.stream()
+                                .map(
+                                    manager ->
+                                        "{ 'producer_count' : " + manager.producers.size() + " }")
+                                .collect(Collectors.joining(", "))
+                            + " ] }")
+                .collect(Collectors.joining(", \n"))
+            + "\n]")
+        .replace("'", "\"");
   }
 }

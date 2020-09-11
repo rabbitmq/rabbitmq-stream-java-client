@@ -17,7 +17,13 @@ package com.rabbitmq.stream.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyByte;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
@@ -48,7 +54,7 @@ public class ProducersCoordinatorTest {
   @Mock Function<Client.ClientParameters, Client> clientFactory;
   @Mock Client client;
   AutoCloseable mocks;
-  ProducersCoordinator producersCoordinator;
+  ProducersCoordinator coordinator;
   ScheduledExecutorService scheduledExecutorService;
 
   volatile Client.ShutdownListener shutdownListener;
@@ -79,11 +85,13 @@ public class ProducersCoordinatorTest {
     mocks = MockitoAnnotations.openMocks(this);
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
-    producersCoordinator = new ProducersCoordinator(environment, clientFactory);
+    coordinator = new ProducersCoordinator(environment, clientFactory);
   }
 
   @AfterEach
   void tearDown() throws Exception {
+    // just taking the opportunity to check toString() generates valid JSON
+    MonitoringTestUtils.extract(coordinator);
     if (scheduledExecutorService != null) {
       scheduledExecutorService.shutdownNow();
     }
@@ -92,7 +100,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void registerShouldThrowExceptionWhenNoMetadataForTheStream() {
-    assertThatThrownBy(() -> producersCoordinator.registerProducer(producer, "stream"))
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -104,7 +112,7 @@ public class ProducersCoordinatorTest {
                 "stream",
                 new Client.StreamMetadata(
                     "stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, null)));
-    assertThatThrownBy(() -> producersCoordinator.registerProducer(producer, "stream"))
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -116,7 +124,7 @@ public class ProducersCoordinatorTest {
                 "stream",
                 new Client.StreamMetadata(
                     "stream", Constants.RESPONSE_CODE_ACCESS_REFUSED, null, null)));
-    assertThatThrownBy(() -> producersCoordinator.registerProducer(producer, "stream"))
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -127,7 +135,7 @@ public class ProducersCoordinatorTest {
             Collections.singletonMap(
                 "stream",
                 new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
-    assertThatThrownBy(() -> producersCoordinator.registerProducer(producer, "stream"))
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -141,7 +149,7 @@ public class ProducersCoordinatorTest {
                     "stream", Constants.RESPONSE_CODE_OK, leader(), replicas())));
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
-    Runnable cleanTask = producersCoordinator.registerProducer(producer, "stream");
+    Runnable cleanTask = coordinator.registerProducer(producer, "stream");
 
     verify(producer, times(1)).setClient(client);
 
@@ -185,11 +193,11 @@ public class ProducersCoordinatorTest {
         .when(producer)
         .setClient(client);
 
-    producersCoordinator.registerProducer(producer, "stream");
+    coordinator.registerProducer(producer, "stream");
 
     verify(producer, times(1)).setClient(client);
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(1);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(1);
 
     shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
@@ -198,8 +206,8 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(2)).setClient(client);
     verify(producer, times(1)).running();
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(1);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(1);
   }
 
   @Test
@@ -230,11 +238,11 @@ public class ProducersCoordinatorTest {
         .when(producer)
         .closeAfterStreamDeletion();
 
-    producersCoordinator.registerProducer(producer, "stream");
+    coordinator.registerProducer(producer, "stream");
 
     verify(producer, times(1)).setClient(client);
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(1);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(1);
 
     shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
@@ -243,8 +251,8 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
-    assertThat(producersCoordinator.poolSize()).isEqualTo(0);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(0);
+    assertThat(coordinator.poolSize()).isEqualTo(0);
+    assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
@@ -294,13 +302,13 @@ public class ProducersCoordinatorTest {
         .when(movingProducer)
         .setClient(client);
 
-    producersCoordinator.registerProducer(movingProducer, movingStream);
-    producersCoordinator.registerProducer(fixedProducer, fixedStream);
+    coordinator.registerProducer(movingProducer, movingStream);
+    coordinator.registerProducer(fixedProducer, fixedStream);
 
     verify(movingProducer, times(1)).setClient(client);
     verify(fixedProducer, times(1)).setClient(client);
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(1);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(1);
 
     metadataListener.handle(movingStream, Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
@@ -312,8 +320,8 @@ public class ProducersCoordinatorTest {
     verify(fixedProducer, never()).unavailable();
     verify(fixedProducer, times(1)).setClient(client);
     verify(fixedProducer, never()).running();
-    assertThat(producersCoordinator.poolSize()).isEqualTo(2);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(2);
+    assertThat(coordinator.poolSize()).isEqualTo(2);
+    assertThat(coordinator.clientCount()).isEqualTo(2);
   }
 
   @Test
@@ -345,11 +353,11 @@ public class ProducersCoordinatorTest {
         .when(producer)
         .closeAfterStreamDeletion();
 
-    producersCoordinator.registerProducer(producer, "stream");
+    coordinator.registerProducer(producer, "stream");
 
     verify(producer, times(1)).setClient(client);
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(1);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(1);
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
@@ -358,8 +366,8 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
 
-    assertThat(producersCoordinator.poolSize()).isEqualTo(0);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(0);
+    assertThat(coordinator.poolSize()).isEqualTo(0);
+    assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
@@ -390,11 +398,11 @@ public class ProducersCoordinatorTest {
         .when(producer)
         .closeAfterStreamDeletion();
 
-    producersCoordinator.registerProducer(producer, "stream");
+    coordinator.registerProducer(producer, "stream");
 
     verify(producer, times(1)).setClient(client);
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(1);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(1);
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
@@ -402,8 +410,8 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
-    assertThat(producersCoordinator.poolSize()).isEqualTo(0);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(0);
+    assertThat(coordinator.poolSize()).isEqualTo(0);
+    assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
@@ -441,13 +449,13 @@ public class ProducersCoordinatorTest {
                       })
                   .when(p)
                   .setPublisherId(anyByte());
-              Runnable cleaningCallback = producersCoordinator.registerProducer(p, "stream");
+              Runnable cleaningCallback = coordinator.registerProducer(p, "stream");
               info.cleaningCallback = cleaningCallback;
               producerInfos.add(info);
             });
 
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(2);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(2);
 
     ProducerInfo info = producerInfos.get(10);
     info.cleaningCallback.run();
@@ -461,13 +469,13 @@ public class ProducersCoordinatorTest {
             })
         .when(p)
         .setPublisherId(anyByte());
-    producersCoordinator.registerProducer(p, "stream");
+    coordinator.registerProducer(p, "stream");
 
     verify(p, times(1)).setClient(client);
     assertThat(publishingIdForNewProducer.get()).isEqualTo(info.publishingId);
 
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(2);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(2);
 
     // close some of the last producers, this should free a whole producer manager and a bit of the
     // next one
@@ -476,23 +484,23 @@ public class ProducersCoordinatorTest {
       producerInfo.cleaningCallback.run();
     }
 
-    assertThat(producersCoordinator.poolSize()).isEqualTo(1);
-    assertThat(producersCoordinator.clientCount()).isEqualTo(1);
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(1);
   }
 
   Client.Broker leader() {
-    return new Client.Broker("leader", -1);
+    return new Client.Broker("leader", 5555);
   }
 
   Client.Broker leader1() {
-    return new Client.Broker("leader-1", -1);
+    return new Client.Broker("leader-1", 5555);
   }
 
   Client.Broker leader2() {
-    return new Client.Broker("leader-2", -1);
+    return new Client.Broker("leader-2", 5555);
   }
 
   List<Client.Broker> replicas() {
-    return Arrays.asList(new Client.Broker("replica1", -1), new Client.Broker("replica2", -1));
+    return Arrays.asList(new Client.Broker("replica1", 5555), new Client.Broker("replica2", 5555));
   }
 }

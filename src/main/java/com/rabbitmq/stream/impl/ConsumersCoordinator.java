@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -588,5 +589,29 @@ class ConsumersCoordinator {
         this.client.close();
       }
     }
+  }
+
+  @Override
+  public String toString() {
+    return ("[ \n"
+            + pools.entrySet().stream()
+                .map(
+                    poolEntry ->
+                        "  { 'broker' : '"
+                            + poolEntry.getKey()
+                            + "', 'clients' : [ "
+                            + poolEntry.getValue().managers.stream()
+                                .map(
+                                    manager ->
+                                        "{ 'consumer_count' : "
+                                            + manager.subscriptionTrackers.stream()
+                                                .filter(tracker -> tracker != null)
+                                                .count()
+                                            + " }")
+                                .collect(Collectors.joining(", "))
+                            + " ] }")
+                .collect(Collectors.joining(", \n"))
+            + "\n]")
+        .replace("'", "\"");
   }
 }

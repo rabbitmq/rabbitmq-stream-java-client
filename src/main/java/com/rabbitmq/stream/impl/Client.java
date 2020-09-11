@@ -109,6 +109,8 @@ public class Client implements AutoCloseable {
       LengthFieldBasedFrameDecoder.class.getSimpleName();
   private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
   private final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
+  private final String host;
+  private final int port;
 
   public Client() {
     this(new ClientParameters());
@@ -186,6 +188,8 @@ public class Client implements AutoCloseable {
     ChannelFuture f = null;
     try {
       f = b.connect(parameters.host, parameters.port).sync();
+      this.host = parameters.host;
+      this.port = parameters.port;
     } catch (InterruptedException e) {
       throw new StreamException(e);
     }
@@ -2238,5 +2242,13 @@ public class Client implements AutoCloseable {
       LOGGER.warn("Error in stream handler", cause);
       ctx.close();
     }
+  }
+
+  String getHost() {
+    return host;
+  }
+
+  int getPort() {
+    return port;
   }
 }

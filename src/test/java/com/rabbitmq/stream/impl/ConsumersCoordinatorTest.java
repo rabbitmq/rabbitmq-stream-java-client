@@ -102,6 +102,8 @@ public class ConsumersCoordinatorTest {
 
   @AfterEach
   void tearDown() throws Exception {
+    // just taking the opportunity to check toString() generates valid JSON
+    MonitoringTestUtils.extract(clientSubscriptions);
     if (scheduledExecutorService != null) {
       scheduledExecutorService.shutdownNow();
     }
@@ -406,6 +408,8 @@ public class ConsumersCoordinatorTest {
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
+
+    // FIXME the pool should be removed
   }
 
   @Test
@@ -476,6 +480,8 @@ public class ConsumersCoordinatorTest {
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
+
+    // FIXME the pool should be removed
   }
 
   @Test
@@ -525,6 +531,8 @@ public class ConsumersCoordinatorTest {
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
     verify(client, times(0)).unsubscribe(anyByte());
+
+    // FIXME the pool should be removed
   }
 
   @Test
@@ -571,6 +579,8 @@ public class ConsumersCoordinatorTest {
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
     verify(client, times(0)).unsubscribe(anyByte());
+
+    // FIXME the pool should be removed
   }
 
   @Test
@@ -721,6 +731,8 @@ public class ConsumersCoordinatorTest {
     verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+
+    // FIXME the pool should be removed
   }
 
   Client.Broker leader() {

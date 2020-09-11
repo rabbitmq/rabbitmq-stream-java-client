@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -51,6 +52,7 @@ class StreamEnvironment implements Environment {
   private final ConsumersCoordinator consumersCoordinator;
   private final ProducersCoordinator producersCoordinator;
   private volatile Client locator;
+  private final AtomicBoolean closed = new AtomicBoolean(false);
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -265,51 +267,54 @@ class StreamEnvironment implements Environment {
 
   @Override
   public void close() {
-    for (StreamProducer producer : producers) {
+    if (closed.compareAndSet(false, true)) {
+      for (StreamProducer producer : producers) {
+        try {
+          producer.closeFromEnvironment();
+        } catch (Exception e) {
+          LOGGER.warn("Error while closing producer, moving on to the next one", e);
+        }
+      }
+
+      for (StreamConsumer consumer : consumers) {
+        try {
+          consumer.closeFromEnvironment();
+        } catch (Exception e) {
+          LOGGER.warn("Error while closing consumer, moving on to the next one", e);
+        }
+      }
+
+      this.producersCoordinator.close();
+      this.consumersCoordinator.close();
+
       try {
-        producer.closeFromEnvironment();
-      } catch (Exception e) {
-        LOGGER.warn("Error while closing producer, moving on to the next one", e);
-      }
-    }
+        if (this.locator != null) {
+          this.locator.close();
+          this.locator = null;
+        }
 
-    for (StreamConsumer consumer : consumers) {
+        if (privateScheduleExecutorService) {
+          this.scheduledExecutorService.shutdownNow();
+        }
+
+      } catch (Exception e) {
+        LOGGER.warn("Error while closing locator client", e);
+      }
+
       try {
-        consumer.closeFromEnvironment();
-      } catch (Exception e) {
-        LOGGER.warn("Error while closing consumer, moving on to the next one", e);
+        if (this.eventLoopGroup != null
+            && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
+          LOGGER.debug("Closing Netty event loop group");
+          this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+        }
+      } catch (InterruptedException e) {
+        LOGGER.info("Event loop group closing has been interrupted");
+        Thread.currentThread().interrupt();
+      } catch (ExecutionException e) {
+        LOGGER.info("Event loop group closing failed", e);
+      } catch (TimeoutException e) {
+        LOGGER.info("Could not close event loop group in 10 seconds");
       }
-    }
-
-    this.producersCoordinator.close();
-    this.consumersCoordinator.close();
-
-    try {
-      if (this.locator != null) {
-        this.locator.close();
-      }
-
-      if (privateScheduleExecutorService) {
-        this.scheduledExecutorService.shutdownNow();
-      }
-
-    } catch (Exception e) {
-      LOGGER.warn("Error while closing locator client", e);
-    }
-
-    try {
-      if (this.eventLoopGroup != null
-          && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
-        LOGGER.debug("Closing Netty event loop group");
-        this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
-      }
-    } catch (InterruptedException e) {
-      LOGGER.info("Event loop group closing has been interrupted");
-      Thread.currentThread().interrupt();
-    } catch (ExecutionException e) {
-      LOGGER.info("Event loop group closing failed", e);
-    } catch (TimeoutException e) {
-      LOGGER.info("Could not close event loop group in 10 seconds");
     }
   }
 
@@ -376,5 +381,18 @@ class StreamEnvironment implements Environment {
     public String toString() {
       return "Address{" + "host='" + host + '\'' + ", port=" + port + '}';
     }
+  }
+
+  @Override
+  public String toString() {
+    Client locator = this.locator;
+    return "{ locator : "
+        + (locator == null ? "null" : ("'" + locator.getHost() + ":" + locator.getPort() + "'"))
+        + ", "
+        + "'producers' : "
+        + this.producersCoordinator
+        + ", 'consumers' : "
+        + this.consumersCoordinator
+        + "}";
   }
 }

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.time.Duration;
@@ -100,10 +101,34 @@ public class StreamEnvironmentTest {
     producers.forEach(producer -> assertThat(((StreamProducer) producer).isOpen()).isTrue());
     consumers.forEach(consumer -> assertThat(((StreamConsumer) consumer).isOpen()).isTrue());
 
+    EnvironmentInfo environmentInfo = MonitoringTestUtils.extract(environment);
+    assertThat(environmentInfo.getLocator()).isNotNull();
+    assertThat(environmentInfo.getProducers())
+        .hasSize(1)
+        .element(0)
+        .extracting(pool -> pool.getClients())
+        .asList()
+        .hasSize(1);
+    assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getProducerCount())
+        .isEqualTo(2);
+    assertThat(environmentInfo.getConsumers())
+        .hasSize(1)
+        .element(0)
+        .extracting(pool -> pool.getClients())
+        .asList()
+        .hasSize(1);
+    assertThat(environmentInfo.getConsumers().get(0).getClients().get(0).getConsumerCount())
+        .isEqualTo(2);
+
     environment.close();
 
     producers.forEach(producer -> assertThat(((StreamProducer) producer).isOpen()).isFalse());
     consumers.forEach(consumer -> assertThat(((StreamConsumer) consumer).isOpen()).isFalse());
+
+    environmentInfo = MonitoringTestUtils.extract(environment);
+    assertThat(environmentInfo.getLocator()).isNull();
+    assertThat(environmentInfo.getProducers()).isEmpty();
+    assertThat(environmentInfo.getConsumers()).isEmpty();
   }
 
   @Test
@@ -138,7 +163,6 @@ public class StreamEnvironmentTest {
         } catch (StreamException e) {
         }
       }
-
       assertThat(producer).isNotNull();
     }
   }
