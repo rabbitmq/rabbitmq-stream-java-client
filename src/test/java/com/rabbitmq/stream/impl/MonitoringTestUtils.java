@@ -24,6 +24,30 @@ import java.util.List;
 
 public class MonitoringTestUtils {
 
+  private static final Gson GSON = new Gson();
+
+  private static <T> List<T> arrayToList(T[] array) {
+    if (array == null || array.length == 0) {
+      return Collections.emptyList();
+    } else {
+      return Arrays.asList(array);
+    }
+  }
+
+  static List<ProducersPoolInfo> extract(ProducersCoordinator coordinator) {
+    Type type = new TypeToken<List<ProducersPoolInfo>>() {}.getType();
+    return GSON.fromJson(coordinator.toString(), type);
+  }
+
+  static List<ConsumersPoolInfo> extract(ConsumersCoordinator coordinator) {
+    Type type = new TypeToken<List<ConsumersPoolInfo>>() {}.getType();
+    return GSON.fromJson(coordinator.toString(), type);
+  }
+
+  static EnvironmentInfo extract(Environment environment) {
+    return GSON.fromJson(environment.toString(), EnvironmentInfo.class);
+  }
+
   public static class EnvironmentInfo {
 
     private final String locator;
@@ -63,14 +87,6 @@ public class MonitoringTestUtils {
     }
   }
 
-  private static <T> List<T> arrayToList(T[] array) {
-    if (array == null || array.length == 0) {
-      return Collections.emptyList();
-    } else {
-      return Arrays.asList(array);
-    }
-  }
-
   public static class ConsumersPoolInfo {
 
     private final String broker;
@@ -87,6 +103,12 @@ public class MonitoringTestUtils {
 
     public List<ConsumerManager> getClients() {
       return arrayToList(this.clients);
+    }
+
+    public int consumerCount() {
+      return getClients().stream()
+          .map(manager -> manager.getConsumerCount())
+          .reduce(0, (acc, count) -> acc + count);
     }
 
     @Override
@@ -165,21 +187,5 @@ public class MonitoringTestUtils {
     public String toString() {
       return "ProducerManager{" + "producerCount=" + producer_count + '}';
     }
-  }
-
-  private static final Gson GSON = new Gson();
-
-  static List<ProducersPoolInfo> extract(ProducersCoordinator coordinator) {
-    Type type = new TypeToken<List<ProducersPoolInfo>>() {}.getType();
-    return GSON.fromJson(coordinator.toString(), type);
-  }
-
-  static List<ConsumersPoolInfo> extract(ConsumersCoordinator coordinator) {
-    Type type = new TypeToken<List<ConsumersPoolInfo>>() {}.getType();
-    return GSON.fromJson(coordinator.toString(), type);
-  }
-
-  static EnvironmentInfo extract(Environment environment) {
-    return GSON.fromJson(environment.toString(), EnvironmentInfo.class);
   }
 }

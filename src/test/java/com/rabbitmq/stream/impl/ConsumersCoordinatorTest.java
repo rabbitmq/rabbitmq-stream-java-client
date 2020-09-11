@@ -25,6 +25,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
+import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumersPoolInfo;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -407,7 +408,7 @@ public class ConsumersCoordinatorTest {
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    // FIXME the pool should be removed
+    assertThat(coordinator.poolSize()).isZero();
   }
 
   @Test
@@ -479,7 +480,7 @@ public class ConsumersCoordinatorTest {
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    // FIXME the pool should be removed
+    assertThat(coordinator.poolSize()).isZero();
   }
 
   @Test
@@ -530,7 +531,7 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
     verify(client, times(0)).unsubscribe(anyByte());
 
-    // FIXME the pool should be removed
+    assertThat(coordinator.poolSize()).isZero();
   }
 
   @Test
@@ -578,7 +579,7 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
     verify(client, times(0)).unsubscribe(anyByte());
 
-    // FIXME the pool should be removed
+    assertThat(coordinator.poolSize()).isZero();
   }
 
   @Test
@@ -715,10 +716,24 @@ public class ConsumersCoordinatorTest {
     verify(client, times(subscriptionCount))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
+    List<ConsumersPoolInfo> info = MonitoringTestUtils.extract(coordinator);
+    assertThat(info)
+        .hasSize(1)
+        .element(0)
+        .extracting(pool -> pool.consumerCount())
+        .isEqualTo(subscriptionCount);
+
     // let's kill the first client connection
     metadataListeners.get(0).handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
     Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
+
+    info = MonitoringTestUtils.extract(coordinator);
+    assertThat(info)
+        .hasSize(1)
+        .element(0)
+        .extracting(pool -> pool.consumerCount())
+        .isEqualTo(subscriptionCount);
 
     // the MAX consumers must have been re-allocated to the existing client and a new one
     // let's add a new subscription to make sure we are still using the same pool
@@ -728,7 +743,12 @@ public class ConsumersCoordinatorTest {
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
-    // FIXME the pool should be removed
+    info = MonitoringTestUtils.extract(coordinator);
+    assertThat(info)
+        .hasSize(1)
+        .element(0)
+        .extracting(pool -> pool.consumerCount())
+        .isEqualTo(subscriptionCount + 1);
   }
 
   Client.Broker leader() {

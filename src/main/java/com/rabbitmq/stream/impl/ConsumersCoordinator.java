@@ -234,19 +234,6 @@ class ConsumersCoordinator {
       managers.add(new ClientSubscriptionsManager(this, clientParameters));
     }
 
-    private synchronized void maybeDisposeManager(
-        ClientSubscriptionsManager clientSubscriptionsManager) {
-      if (clientSubscriptionsManager.isEmpty()) {
-        clientSubscriptionsManager.close();
-        this.remove(clientSubscriptionsManager);
-        LOGGER.debug("Closed subscription manager on {}, {} remaining", name, managers.size());
-        if (managers.isEmpty()) {
-          pools.remove(name);
-          LOGGER.debug("Closed client subscription pool on {} because it was empty", name);
-        }
-      }
-    }
-
     private synchronized void add(
         SubscriptionTracker subscriptionTracker, OffsetSpecification offsetSpecification) {
       boolean added = false;
@@ -271,9 +258,20 @@ class ConsumersCoordinator {
       }
     }
 
+    private synchronized void maybeDisposeManager(
+        ClientSubscriptionsManager clientSubscriptionsManager) {
+      if (clientSubscriptionsManager.isEmpty()) {
+        clientSubscriptionsManager.close();
+        this.remove(clientSubscriptionsManager);
+      }
+    }
+
     private synchronized void remove(ClientSubscriptionsManager clientSubscriptionsManager) {
-      // FIXME remove
       managers.remove(clientSubscriptionsManager);
+      if (managers.isEmpty()) {
+        pools.remove(name);
+        LOGGER.debug("Disposed client subscription pool on {} because it was empty", name);
+      }
     }
 
     synchronized void close() {
@@ -585,10 +583,17 @@ class ConsumersCoordinator {
     }
 
     void close() {
+      // FIXME consider cancelling subscriptions, this would avoid receiving messages interleaved
+      // with the closing response
+      // or make this on the server side, as soon as the close command is received
       if (this.client.isOpen()) {
         this.client.close();
       }
     }
+  }
+
+  int poolSize() {
+    return pools.size();
   }
 
   @Override

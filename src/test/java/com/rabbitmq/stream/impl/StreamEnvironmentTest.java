@@ -180,8 +180,7 @@ public class StreamEnvironmentTest {
                   i -> {
                     String s = streams.get(new Random().nextInt(streams.size()));
                     return environment.consumerBuilder().stream(s)
-                        .messageHandler(
-                            (offset, message) -> consumeLatch.countDown())
+                        .messageHandler((offset, message) -> consumeLatch.countDown())
                         .build();
                   })
               .collect(Collectors.toList());
