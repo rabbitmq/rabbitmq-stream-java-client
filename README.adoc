@@ -58,7 +58,7 @@ the documentation to support the format in your
 https://github.com/google/google-java-format#intellij-android-studio-and-other-jetbrains-ides[favorite]
 https://github.com/google/google-java-format#eclipse[IDE].
 
-Please the `./mvnw spotless:apply` command before committing.
+Please launch the `./mvnw spotless:apply` command to format your changes before committing.
 
 == Copyright and License
 
