@@ -26,12 +26,10 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -44,11 +42,8 @@ class ConsumersCoordinator {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ConsumersCoordinator.class);
   private final Random random = new Random();
-  private final AtomicLong globalSubscriptionIdSequence = new AtomicLong(0);
   private final StreamEnvironment environment;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
-  private final Map<Long, SubscriptionTracker> subscriptionTrackerRegistry =
-      new ConcurrentHashMap<>();
   private final Function<Client.ClientParameters, Client> clientFactory;
 
   ConsumersCoordinator(
@@ -70,7 +65,7 @@ class ConsumersCoordinator {
     return environment.topologyUpdateBackOffDelayPolicy();
   }
 
-  public long subscribe(
+  Runnable subscribe(
       StreamConsumer consumer,
       String stream,
       OffsetSpecification offsetSpecification,
@@ -79,11 +74,10 @@ class ConsumersCoordinator {
     List<Client.Broker> candidates = findBrokersForStream(stream);
     Client.Broker newNode = pickBroker(candidates);
 
-    long streamSubscriptionId = globalSubscriptionIdSequence.getAndIncrement();
     // create stream subscription to track final and changing state of this very subscription
     // we keep this instance when we move the subscription from a client to another one
     SubscriptionTracker subscriptionTracker =
-        new SubscriptionTracker(streamSubscriptionId, consumer, stream, messageHandler);
+        new SubscriptionTracker(consumer, stream, messageHandler);
 
     String key = keyForClientSubscription(newNode);
 
@@ -99,9 +93,8 @@ class ConsumersCoordinator {
                         .port(newNode.getPort())));
 
     managerPool.add(subscriptionTracker, offsetSpecification);
-    subscriptionTrackerRegistry.put(subscriptionTracker.id, subscriptionTracker);
 
-    return streamSubscriptionId;
+    return () -> subscriptionTracker.cancel();
   }
 
   private Client locator() {
@@ -156,13 +149,6 @@ class ConsumersCoordinator {
     }
   }
 
-  public void unsubscribe(long id) {
-    SubscriptionTracker subscriptionTracker = this.subscriptionTrackerRegistry.remove(id);
-    if (subscriptionTracker != null) {
-      subscriptionTracker.cancel();
-    }
-  }
-
   public void close() {
     for (ManagerPool subscriptionPool : this.pools.values()) {
       subscriptionPool.close();
@@ -205,41 +191,33 @@ class ConsumersCoordinator {
    */
   private static class SubscriptionTracker {
 
-    private final long id;
     private final String stream;
     private final MessageHandler messageHandler;
     private final StreamConsumer consumer;
     private volatile long offset;
     private volatile byte subscriptionIdInClient;
-    private volatile ClientSubscriptionsManager clientSubscriptionsManager;
+    private volatile ClientSubscriptionsManager manager;
 
     private SubscriptionTracker(
-        long id, StreamConsumer consumer, String stream, MessageHandler messageHandler) {
-      this.id = id;
+        StreamConsumer consumer, String stream, MessageHandler messageHandler) {
       this.consumer = consumer;
       this.stream = stream;
       this.messageHandler = messageHandler;
     }
 
-    private void cancel() {
-      this.clientSubscriptionsManager.remove(this);
+    synchronized void cancel() {
+      if (this.manager != null) {
+        this.manager.remove(this);
+      }
     }
 
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) {
-        return true;
-      }
-      if (o == null || getClass() != o.getClass()) {
-        return false;
-      }
-      SubscriptionTracker that = (SubscriptionTracker) o;
-      return id == that.id;
+    synchronized void assign(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
+      this.subscriptionIdInClient = subscriptionIdInClient;
+      this.manager = manager;
     }
 
-    @Override
-    public int hashCode() {
-      return Objects.hash(id);
+    synchronized void detachFromManager() {
+      this.manager = null;
     }
   }
 
@@ -321,10 +299,9 @@ class ConsumersCoordinator {
   private class ClientSubscriptionsManager {
 
     private final Client client;
-    // the 3 following data structures track the subscriptions, they must remain consistent
+    // the 2 data structures track the subscriptions, they must remain consistent
     private final Map<String, Set<SubscriptionTracker>> streamToStreamSubscriptions =
         new ConcurrentHashMap<>();
-    private final Set<Long> globalStreamSubscriptionIds = ConcurrentHashMap.newKeySet();
     private final ManagerPool owner;
     private volatile List<SubscriptionTracker> subscriptionTrackers =
         new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
@@ -373,6 +350,9 @@ class ConsumersCoordinator {
                               .scheduledExecutorService()
                               .execute(
                                   () -> {
+                                    subscriptionTrackers.stream()
+                                        .filter(tracker -> tracker != null)
+                                        .forEach(tracker -> tracker.detachFromManager());
                                     for (Map.Entry<String, Set<SubscriptionTracker>> entry :
                                         streamToStreamSubscriptions.entrySet()) {
                                       String stream = entry.getKey();
@@ -411,7 +391,6 @@ class ConsumersCoordinator {
                             for (SubscriptionTracker subscription : subscriptions) {
                               newSubscriptions.set(
                                   subscription.subscriptionIdInClient & 0xFF, null);
-                              globalStreamSubscriptionIds.remove(subscription.id);
                             }
                             this.subscriptionTrackers = newSubscriptions;
                           }
@@ -450,7 +429,6 @@ class ConsumersCoordinator {
             for (SubscriptionTracker affectedSubscription : subscriptions) {
               try {
                 affectedSubscription.consumer.closeAfterStreamDeletion();
-                subscriptionTrackerRegistry.remove(affectedSubscription.id);
               } catch (Exception e) {
                 LOGGER.debug("Error while closing consumer", e.getMessage());
               }
@@ -531,12 +509,10 @@ class ConsumersCoordinator {
       try {
         // updating data structures before subscribing
         // (to make sure they are up-to-date in case message would arrive super fast)
-        subscriptionTracker.subscriptionIdInClient = subscriptionId;
-        subscriptionTracker.clientSubscriptionsManager = this;
+        subscriptionTracker.assign(subscriptionId, this);
         streamToStreamSubscriptions
             .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
             .add(subscriptionTracker);
-        globalStreamSubscriptionIds.add(subscriptionTracker.id);
         this.subscriptionTrackers =
             update(previousSubscriptions, subscriptionId, subscriptionTracker);
         // FIXME consider using fewer initial credits
@@ -552,13 +528,11 @@ class ConsumersCoordinator {
           throw new StreamException(message);
         }
       } catch (RuntimeException e) {
-        subscriptionTracker.subscriptionIdInClient = -1;
-        subscriptionTracker.clientSubscriptionsManager = null;
+        subscriptionTracker.assign((byte) -1, null);
         this.subscriptionTrackers = previousSubscriptions;
         streamToStreamSubscriptions
             .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
             .remove(subscriptionTracker);
-        globalStreamSubscriptionIds.remove(subscriptionTracker.id);
         throw e;
       }
 
@@ -577,7 +551,6 @@ class ConsumersCoordinator {
             subscriptionIdInClient);
       }
       this.subscriptionTrackers = update(this.subscriptionTrackers, subscriptionIdInClient, null);
-      globalStreamSubscriptionIds.remove(subscriptionTracker.id);
       streamToStreamSubscriptions.compute(
           subscriptionTracker.stream,
           (stream, subscriptionsForThisStream) -> {
@@ -602,12 +575,16 @@ class ConsumersCoordinator {
       return newSubcriptions;
     }
 
-    boolean isFull() {
-      return this.globalStreamSubscriptionIds.size() == MAX_SUBSCRIPTIONS_PER_CLIENT;
+    synchronized boolean isFull() {
+      return trackersCount() == MAX_SUBSCRIPTIONS_PER_CLIENT;
     }
 
-    boolean isEmpty() {
-      return this.globalStreamSubscriptionIds.isEmpty();
+    synchronized boolean isEmpty() {
+      return trackersCount() == 0;
+    }
+
+    private synchronized int trackersCount() {
+      return (int) this.subscriptionTrackers.stream().filter(tracker -> tracker != null).count();
     }
 
     synchronized void close() {
@@ -624,7 +601,6 @@ class ConsumersCoordinator {
                 });
 
         streamToStreamSubscriptions.clear();
-        globalStreamSubscriptionIds.clear();
         subscriptionTrackers.clear();
 
         this.client.close();

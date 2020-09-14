@@ -198,7 +198,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
-    long subscriptionGlobalId =
+    Runnable closingRunnable =
         coordinator.subscribe(
             consumer,
             "stream",
@@ -217,7 +217,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    coordinator.unsubscribe(subscriptionGlobalId);
+    closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -238,10 +238,10 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     Map<Byte, Integer> messageHandlerCalls = new ConcurrentHashMap<>();
-    List<Long> subscriptionGlobalIds = new ArrayList<>();
+    List<Runnable> closingRunnables = new ArrayList<>();
     for (int i = 0; i < ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
       byte subId = (byte) i;
-      long subscriptionGlobalId =
+      Runnable closingRunnable =
           coordinator.subscribe(
               consumer,
               "stream",
@@ -249,7 +249,7 @@ public class ConsumersCoordinatorTest {
               (offset, message) -> {
                 messageHandlerCalls.compute(subId, (k, v) -> (v == null) ? 1 : ++v);
               });
-      subscriptionGlobalIds.add(subscriptionGlobalId);
+      closingRunnables.add(closingRunnable);
     }
 
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
@@ -271,8 +271,7 @@ public class ConsumersCoordinatorTest {
 
     when(client.unsubscribe(anyByte())).thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    subscriptionGlobalIds.forEach(
-        subscriptionGlobalId -> coordinator.unsubscribe(subscriptionGlobalId));
+    closingRunnables.forEach(closingRunnable -> closingRunnable.run());
 
     verify(client, times(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT)).unsubscribe(anyByte());
 
@@ -315,7 +314,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
-    long subscriptionGlobalId =
+    Runnable closingRunnable =
         coordinator.subscribe(
             consumer,
             "stream",
@@ -346,7 +345,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    coordinator.unsubscribe(subscriptionGlobalId);
+    closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -372,7 +371,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
-    long subscriptionGlobalId =
+    Runnable closingRunnable =
         coordinator.subscribe(
             consumer,
             "stream",
@@ -402,7 +401,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    coordinator.unsubscribe(subscriptionGlobalId);
+    closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -444,7 +443,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
-    long subscriptionGlobalId =
+    Runnable closingRunnable =
         coordinator.subscribe(
             consumer,
             "stream",
@@ -474,7 +473,7 @@ public class ConsumersCoordinatorTest {
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    coordinator.unsubscribe(subscriptionGlobalId);
+    closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
@@ -601,7 +600,7 @@ public class ConsumersCoordinatorTest {
     int subscriptionCount =
         ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
 
-    List<Long> globalSubscriptionIds =
+    List<Runnable> closingRunnables =
         IntStream.range(0, subscriptionCount)
             .mapToObj(
                 i ->
@@ -617,19 +616,19 @@ public class ConsumersCoordinatorTest {
 
     // we reverse the subscription list to remove the lasts first
     // this frees the second client that should get closed
-    Collections.reverse(globalSubscriptionIds);
-    new ArrayList<>(globalSubscriptionIds)
+    Collections.reverse(closingRunnables);
+    new ArrayList<>(closingRunnables)
         .stream()
             .limit(subscriptionCount - extraSubscriptionCount * 2)
             .forEach(
-                id -> {
-                  coordinator.unsubscribe(id);
-                  globalSubscriptionIds.remove(id);
+                closingRunnable -> {
+                  closingRunnable.run();
+                  closingRunnables.remove(closingRunnable);
                 });
 
     verify(client, times(1)).close();
 
-    globalSubscriptionIds.stream().forEach(id -> coordinator.unsubscribe(id));
+    closingRunnables.forEach(closingRunnable -> closingRunnable.run());
 
     verify(client, times(2)).close();
   }

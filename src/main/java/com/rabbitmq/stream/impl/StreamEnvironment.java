@@ -247,7 +247,6 @@ class StreamEnvironment implements Environment {
   }
 
   void removeProducer(StreamProducer producer) {
-    // FIXME see if some client can be closed
     this.producers.remove(producer);
   }
 
@@ -256,7 +255,6 @@ class StreamEnvironment implements Environment {
   }
 
   void removeConsumer(StreamConsumer consumer) {
-    // FIXME see if some client can be closed
     this.consumers.remove(consumer);
   }
 
@@ -335,9 +333,9 @@ class StreamEnvironment implements Environment {
       String stream,
       OffsetSpecification offsetSpecification,
       MessageHandler messageHandler) {
-    long subscribeId =
+    Runnable closingCallback =
         this.consumersCoordinator.subscribe(consumer, stream, offsetSpecification, messageHandler);
-    return () -> this.consumersCoordinator.unsubscribe(subscribeId);
+    return closingCallback;
   }
 
   Runnable registerProducer(StreamProducer producer, String stream) {
