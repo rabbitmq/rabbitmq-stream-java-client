@@ -75,7 +75,7 @@ class ProducersCoordinator {
     pool.add(producerTracker);
 
     return () -> {
-      producerTracker.clientProducersManager.unregister(producerTracker);
+      producerTracker.cancel();
     };
   }
 
@@ -132,6 +132,28 @@ class ProducersCoordinator {
     private ProducerTracker(String stream, StreamProducer producer) {
       this.stream = stream;
       this.producer = producer;
+    }
+
+    void unavailable() {
+      synchronized (ProducerTracker.this) {
+        this.clientProducersManager = null;
+      }
+      this.producer.unavailable();
+    }
+
+    void assign(byte producerId, Client client, ClientProducersManager manager) {
+      synchronized (ProducerTracker.this) {
+        this.publisherId = producerId;
+        this.clientProducersManager = manager;
+      }
+      this.producer.setPublisherId(producerId);
+      this.producer.setClient(client);
+    }
+
+    synchronized void cancel() {
+      if (this.clientProducersManager != null) {
+        this.clientProducersManager.unregister(this);
+      }
     }
   }
 
@@ -235,8 +257,7 @@ class ProducersCoordinator {
                           LOGGER.debug(
                               "Recovering {} producers after unexpected connection termination",
                               producers.size());
-                          producers.forEach(
-                              (publishingId, tracker) -> tracker.producer.unavailable());
+                          producers.forEach((publishingId, tracker) -> tracker.unavailable());
                           // execute in thread pool to free the IO thread
                           environment
                               .scheduledExecutorService()
@@ -265,7 +286,7 @@ class ProducersCoordinator {
                               && !affectedProducerTrackers.isEmpty()) {
                             affectedProducerTrackers.forEach(
                                 tracker -> {
-                                  tracker.producer.unavailable();
+                                  tracker.unavailable();
                                   producers.remove(tracker.publisherId);
                                 });
                             environment
@@ -333,13 +354,10 @@ class ProducersCoordinator {
       for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
         ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
         if (previousValue == null) {
-          producerTracker.publisherId = (byte) i;
+          producerTracker.assign((byte) i, this.client, this);
           break;
         }
       }
-      producerTracker.producer.setPublisherId(producerTracker.publisherId);
-      producerTracker.producer.setClient(this.client);
-      producerTracker.clientProducersManager = this;
       producers.put(producerTracker.publisherId, producerTracker);
       streamToProducerTrackers
           .computeIfAbsent(producerTracker.stream, s -> ConcurrentHashMap.newKeySet())
