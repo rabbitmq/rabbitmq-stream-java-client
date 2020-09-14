@@ -663,32 +663,32 @@ library for <a href="#working-with-complex-messages">AMQP 1.0 message encoding a
 <div class="listingblock">
 <div class="title">pom.xml</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="xml"><span class="tag">&lt;dependencies&gt;</span>
+<pre class="prettyprint highlight"><code data-lang="xml">&lt;dependencies&gt;
 
-  <span class="tag">&lt;dependency&gt;</span>
-    <span class="tag">&lt;groupId&gt;</span>com.rabbitmq<span class="tag">&lt;/groupId&gt;</span>
-    <span class="tag">&lt;artifactId&gt;</span>stream-client<span class="tag">&lt;/artifactId&gt;</span>
-    <span class="tag">&lt;version&gt;</span>0.1.0-SNAPSHOT<span class="tag">&lt;/version&gt;</span>
-  <span class="tag">&lt;/dependency&gt;</span>
+  &lt;dependency&gt;
+    &lt;groupId&gt;com.rabbitmq&lt;/groupId&gt;
+    &lt;artifactId&gt;stream-client&lt;/artifactId&gt;
+    &lt;version&gt;0.1.0-SNAPSHOT&lt;/version&gt;
+  &lt;/dependency&gt;
 
-  <span class="tag">&lt;dependency&gt;</span>
-    <span class="tag">&lt;groupId&gt;</span>org.apache.qpid<span class="tag">&lt;/groupId&gt;</span>
-    <span class="tag">&lt;artifactId&gt;</span>proton-j<span class="tag">&lt;/artifactId&gt;</span>
-    <span class="tag">&lt;version&gt;</span>0.33.6<span class="tag">&lt;/version&gt;</span>
-  <span class="tag">&lt;/dependency&gt;</span>
+  &lt;dependency&gt;
+    &lt;groupId&gt;org.apache.qpid&lt;/groupId&gt;
+    &lt;artifactId&gt;proton-j&lt;/artifactId&gt;
+    &lt;version&gt;0.33.6&lt;/version&gt;
+  &lt;/dependency&gt;
 
-<span class="tag">&lt;/dependencies&gt;</span>
+&lt;/dependencies&gt;
 
-<span class="tag">&lt;repositories&gt;</span>
+&lt;repositories&gt;
 
-  <span class="tag">&lt;repository&gt;</span>
-    <span class="tag">&lt;id&gt;</span>ossrh<span class="tag">&lt;/id&gt;</span>
-    <span class="tag">&lt;url&gt;</span>https://oss.sonatype.org/content/repositories/snapshots<span class="tag">&lt;/url&gt;</span>
-    <span class="tag">&lt;snapshots&gt;</span><span class="tag">&lt;enabled&gt;</span>true<span class="tag">&lt;/enabled&gt;</span><span class="tag">&lt;/snapshots&gt;</span>
-    <span class="tag">&lt;releases&gt;</span><span class="tag">&lt;enabled&gt;</span>false<span class="tag">&lt;/enabled&gt;</span><span class="tag">&lt;/releases&gt;</span>
-  <span class="tag">&lt;/repository&gt;</span>
+  &lt;repository&gt;
+    &lt;id&gt;ossrh&lt;/id&gt;
+    &lt;url&gt;https://oss.sonatype.org/content/repositories/snapshots&lt;/url&gt;
+    &lt;snapshots&gt;&lt;enabled&gt;true&lt;/enabled&gt;&lt;/snapshots&gt;
+    &lt;releases&gt;&lt;enabled&gt;false&lt;/enabled&gt;&lt;/releases&gt;
+  &lt;/repository&gt;
 
-<span class="tag">&lt;/repositories&gt;</span></code></pre>
+&lt;/repositories&gt;</code></pre>
 </div>
 </div>
 </div>
@@ -697,13 +697,13 @@ library for <a href="#working-with-complex-messages">AMQP 1.0 message encoding a
 <div class="listingblock">
 <div class="title">build.gradle</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">com.rabbitmq:stream-client:0.1.0-SNAPSHOT</span><span class="delimiter">&quot;</span></span>
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">org.apache.qpid:proton-j:0.33.6</span><span class="delimiter">&quot;</span></span>
+<pre class="prettyprint highlight"><code data-lang="groovy">dependencies {
+  compile "com.rabbitmq:stream-client:0.1.0-SNAPSHOT"
+  compile "org.apache.qpid:proton-j:0.33.6"
 }
 
 repositories {
-  maven { url <span class="string"><span class="delimiter">'</span><span class="content">https://oss.sonatype.org/content/repositories/snapshots</span><span class="delimiter">'</span></span> }
+  maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
   mavenCentral()
 }</code></pre>
 </div>
@@ -729,12 +729,12 @@ a consumer to make some computations out of them. The
 <div class="listingblock">
 <div class="title">Imports for the sample application</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="keyword">import</span> <span class="include">com.rabbitmq.stream</span>.*;
-<span class="keyword">import</span> <span class="include">java.util.UUID</span>;
-<span class="keyword">import</span> <span class="include">java.util.concurrent.CountDownLatch</span>;
-<span class="keyword">import</span> <span class="include">java.util.concurrent.TimeUnit</span>;
-<span class="keyword">import</span> <span class="include">java.util.concurrent.atomic.AtomicLong</span>;
-<span class="keyword">import</span> <span class="include">java.util.stream.IntStream</span>;</code></pre>
+<pre class="prettyprint highlight"><code data-lang="java">import com.rabbitmq.stream.*;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.IntStream;</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -746,9 +746,9 @@ create the stream used in the application:</p>
 <div class="listingblock">
 <div class="title">Creating the environment</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Connecting...</span><span class="delimiter">&quot;</span></span>);
+<pre class="prettyprint highlight"><code data-lang="java">System.out.println("Connecting...");
 Environment environment = Environment.builder().build();  <i class="conum" data-value="1"></i><b>(1)</b>
-<span class="predefined-type">String</span> stream = <span class="predefined-type">UUID</span>.randomUUID().toString();
+String stream = UUID.randomUUID().toString();
 environment.streamCreator().stream(stream).create();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 </div>
 </div>
@@ -774,20 +774,20 @@ have been confirmed.</p>
 <div class="listingblock">
 <div class="title">Publishing messages</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting publishing...</span><span class="delimiter">&quot;</span></span>);
-<span class="type">int</span> messageCount = <span class="integer">10000</span>;
-<span class="predefined-type">CountDownLatch</span> publishConfirmLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
+<pre class="prettyprint highlight"><code data-lang="java">System.out.println("Starting publishing...");
+int messageCount = 10000;
+CountDownLatch publishConfirmLatch = new CountDownLatch(messageCount);
 Producer producer = environment.producerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
         .stream(stream)
         .build();
-IntStream.range(<span class="integer">0</span>, messageCount)
+IntStream.range(0, messageCount)
         .forEach(i -&gt; producer.send(  <i class="conum" data-value="2"></i><b>(2)</b>
-                producer.messageBuilder().addData(<span class="predefined-type">String</span>.valueOf(i).getBytes()).build(),  <i class="conum" data-value="3"></i><b>(3)</b>
+                producer.messageBuilder().addData(String.valueOf(i).getBytes()).build(),  <i class="conum" data-value="3"></i><b>(3)</b>
                 confirmationStatus -&gt; publishConfirmLatch.countDown()  <i class="conum" data-value="4"></i><b>(4)</b>
         ));
-publishConfirmLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
+publishConfirmLatch.await(10, TimeUnit.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
 producer.close();  <i class="conum" data-value="6"></i><b>(6)</b>
-<span class="predefined-type">System</span>.out.printf(<span class="string"><span class="delimiter">&quot;</span><span class="content">Published %,d messages%n</span><span class="delimiter">&quot;</span></span>, messageCount);</code></pre>
+System.out.printf("Published %,d messages%n", messageCount);</code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -827,20 +827,20 @@ have been received:</p>
 <div class="listingblock">
 <div class="title">Consuming messages</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting consuming...</span><span class="delimiter">&quot;</span></span>);
-<span class="predefined-type">AtomicLong</span> sum = <span class="keyword">new</span> <span class="predefined-type">AtomicLong</span>(<span class="integer">0</span>);
-<span class="predefined-type">CountDownLatch</span> consumeLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
+<pre class="prettyprint highlight"><code data-lang="java">System.out.println("Starting consuming...");
+AtomicLong sum = new AtomicLong(0);
+CountDownLatch consumeLatch = new CountDownLatch(messageCount);
 Consumer consumer = environment.consumerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
         .stream(stream)
         .messageHandler((offset, message) -&gt; {  <i class="conum" data-value="2"></i><b>(2)</b>
-            sum.addAndGet(<span class="predefined-type">Long</span>.parseLong(<span class="keyword">new</span> <span class="predefined-type">String</span>(message.getBodyAsBinary())));  <i class="conum" data-value="3"></i><b>(3)</b>
+            sum.addAndGet(Long.parseLong(new String(message.getBodyAsBinary())));  <i class="conum" data-value="3"></i><b>(3)</b>
             consumeLatch.countDown();  <i class="conum" data-value="4"></i><b>(4)</b>
         })
         .build();
 
-consumeLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
+consumeLatch.await(10, TimeUnit.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
 
-<span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Sum: </span><span class="delimiter">&quot;</span></span> + sum.get());  <i class="conum" data-value="6"></i><b>(6)</b>
+System.out.println("Sum: " + sum.get());  <i class="conum" data-value="6"></i><b>(6)</b>
 
 consumer.close();  <i class="conum" data-value="7"></i><b>(7)</b></code></pre>
 </div>
@@ -884,7 +884,7 @@ deleting the stream and closing the environment:</p>
 <div class="listingblock">
 <div class="title">Cleaning before terminating</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">environment.deleteStream(stream);  <i class="conum" data-value="1"></i><b>(1)</b>
+<pre class="prettyprint highlight"><code data-lang="java">environment.deleteStream(stream);  <i class="conum" data-value="1"></i><b>(1)</b>
 environment.close();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 </div>
 </div>
@@ -953,8 +953,8 @@ way to create an <code>Environment</code> instance:</p>
 <div class="listingblock">
 <div class="title">Creating an environment with all the defaults</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder().build();  <i class="conum" data-value="1"></i><b>(1)</b>
-<span class="comment">// ...</span>
+<pre class="prettyprint highlight"><code data-lang="java">Environment environment = Environment.builder().build();  <i class="conum" data-value="1"></i><b>(1)</b>
+// ...
 environment.close(); <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 </div>
 </div>
@@ -985,8 +985,8 @@ connect to a node:</p>
 <div class="listingblock">
 <div class="title">Creating an environment with a URI</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder()
-        .uri(<span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://guest:guest@localhost:5555/%2f</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+<pre class="prettyprint highlight"><code data-lang="java">Environment environment = Environment.builder()
+        .uri("rabbitmq-stream://guest:guest@localhost:5555/%2f")  <i class="conum" data-value="1"></i><b>(1)</b>
         .build();</code></pre>
 </div>
 </div>
@@ -1015,11 +1015,11 @@ several other URIs to try in case of failure of a node:</p>
 <div class="listingblock">
 <div class="title">Creating an environment with several URIs</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder()
-        .uris(<span class="predefined-type">Arrays</span>.asList(                     <i class="conum" data-value="1"></i><b>(1)</b>
-                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host1:5555</span><span class="delimiter">&quot;</span></span>,
-                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host2:5555</span><span class="delimiter">&quot;</span></span>,
-                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host3:5555</span><span class="delimiter">&quot;</span></span>)
+<pre class="prettyprint highlight"><code data-lang="java">Environment environment = Environment.builder()
+        .uris(Arrays.asList(                     <i class="conum" data-value="1"></i><b>(1)</b>
+                "rabbitmq-stream://host1:5555",
+                "rabbitmq-stream://host2:5555",
+                "rabbitmq-stream://host3:5555")
         )
         .build();</code></pre>
 </div>
@@ -1110,7 +1110,7 @@ purposes.</p>
 <div class="listingblock">
 <div class="title">Creating a stream</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">environment.streamCreator().stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>).create();  <i class="conum" data-value="1"></i><b>(1)</b></code></pre>
+<pre class="prettyprint highlight"><code data-lang="java">environment.streamCreator().stream("my-stream").create();  <i class="conum" data-value="1"></i><b>(1)</b></code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -1127,7 +1127,7 @@ purposes.</p>
 <div class="listingblock">
 <div class="title">Deleting a stream</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">environment.deleteStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>);  <i class="conum" data-value="1"></i><b>(1)</b></code></pre>
+<pre class="prettyprint highlight"><code data-lang="java">environment.deleteStream("my-stream");  <i class="conum" data-value="1"></i><b>(1)</b></code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -1174,10 +1174,10 @@ in mind that this means some data will be erased!</p>
 <div class="listingblock">
 <div class="title">Setting the retention policy when creating a stream</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">environment.streamCreator()
-        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
-        .maxLengthBytes(ByteCapacity.GB(<span class="integer">10</span>))  <i class="conum" data-value="1"></i><b>(1)</b>
-        .maxSegmentSizeBytes(ByteCapacity.MB(<span class="integer">500</span>))  <i class="conum" data-value="2"></i><b>(2)</b>
+<pre class="prettyprint highlight"><code data-lang="java">environment.streamCreator()
+        .stream("my-stream")
+        .maxLengthBytes(ByteCapacity.GB(10))  <i class="conum" data-value="1"></i><b>(1)</b>
+        .maxSegmentSizeBytes(ByteCapacity.MB(500))  <i class="conum" data-value="2"></i><b>(2)</b>
         .create();</code></pre>
 </div>
 </div>
@@ -1213,10 +1213,10 @@ setting to specify is the stream to publish to:</p>
 <div class="listingblock">
 <div class="title">Creating a producer from the environment</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
-        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
+<pre class="prettyprint highlight"><code data-lang="java">Producer producer = environment.producerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+        .stream("my-stream")  <i class="conum" data-value="2"></i><b>(2)</b>
         .build();  <i class="conum" data-value="3"></i><b>(3)</b>
-<span class="comment">// ...</span>
+// ...
 producer.close();  <i class="conum" data-value="4"></i><b>(4)</b></code></pre>
 </div>
 </div>
@@ -1302,14 +1302,14 @@ snippet shows how to publish a message with a byte array payload:</p>
 <div class="listingblock">
 <div class="title">Sending a message</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="type">byte</span><span class="type">[]</span> messagePayload = <span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8);  <i class="conum" data-value="1"></i><b>(1)</b>
+<pre class="prettyprint highlight"><code data-lang="java">byte[] messagePayload = "hello".getBytes(StandardCharsets.UTF_8);  <i class="conum" data-value="1"></i><b>(1)</b>
 producer.send(
         producer.messageBuilder().addData(messagePayload).build(),  <i class="conum" data-value="2"></i><b>(2)</b>
         confirmationStatus -&gt; {  <i class="conum" data-value="3"></i><b>(3)</b>
-            <span class="keyword">if</span> (confirmationStatus.isConfirmed()) {
-                <span class="comment">// the message made it to the broker</span>
-            } <span class="keyword">else</span> {
-                <span class="comment">// the message did not make it to the broker</span>
+            if (confirmationStatus.isConfirmed()) {
+                // the message made it to the broker
+            } else {
+                // the message did not make it to the broker
             }
         });</code></pre>
 </div>
@@ -1380,13 +1380,13 @@ the <code>Producer#send(Message,ConfirmationHandler)</code>:</p>
 <div class="listingblock">
 <div class="title">Creating a message with properties</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Message message = producer.messageBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+<pre class="prettyprint highlight"><code data-lang="java">Message message = producer.messageBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
         .properties()  <i class="conum" data-value="2"></i><b>(2)</b>
-            .messageId(<span class="predefined-type">UUID</span>.randomUUID())
-            .correlationId(<span class="predefined-type">UUID</span>.randomUUID())
-            .contentType(<span class="string"><span class="delimiter">&quot;</span><span class="content">text/plain</span><span class="delimiter">&quot;</span></span>)
+            .messageId(UUID.randomUUID())
+            .correlationId(UUID.randomUUID())
+            .contentType("text/plain")
         .messageBuilder()  <i class="conum" data-value="3"></i><b>(3)</b>
-            .addData(<span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8))  <i class="conum" data-value="4"></i><b>(4)</b>
+            .addData("hello".getBytes(StandardCharsets.UTF_8))  <i class="conum" data-value="4"></i><b>(4)</b>
         .build();  <i class="conum" data-value="5"></i><b>(5)</b>
 producer.send(message, confirmationStatus -&gt; { }); <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
 </div>
@@ -1461,14 +1461,14 @@ consuming from (the <em>offset</em>), and a callback when a message is received
 <div class="listingblock">
 <div class="title">Creating a consumer</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer = environment.consumerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
-        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
+<pre class="prettyprint highlight"><code data-lang="java">Consumer consumer = environment.consumerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+        .stream("my-stream")  <i class="conum" data-value="2"></i><b>(2)</b>
         .offset(OffsetSpecification.first())  <i class="conum" data-value="3"></i><b>(3)</b>
         .messageHandler((offset, message) -&gt; {
             message.getBodyAsBinary(); <i class="conum" data-value="4"></i><b>(4)</b>
         })
         .build();  <i class="conum" data-value="5"></i><b>(5)</b>
-<span class="comment">// ...</span>
+// ...
 consumer.close();  <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
 </div>
 </div>
@@ -1645,97 +1645,10 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-09-11 09:45:03 UTC
+Last updated 2020-09-14 15:02:30 UTC
 </div>
 </div>
-<style>
-/* Stylesheet for CodeRay to match GitHub theme | MIT License | http://foundation.zurb.com */
-pre.CodeRay{background:#f7f7f8}
-.CodeRay .line-numbers{border-right:1px solid currentColor;opacity:.35;padding:0 .5em 0 0}
-.CodeRay span.line-numbers{display:inline-block;margin-right:.75em}
-.CodeRay .line-numbers strong{color:#000}
-table.CodeRay{border-collapse:separate;border:0;margin-bottom:0;background:none}
-table.CodeRay td{vertical-align:top;line-height:inherit}
-table.CodeRay td.line-numbers{text-align:right}
-table.CodeRay td.code{padding:0 0 0 .75em}
-.CodeRay .debug{color:#fff !important;background:#000080 !important}
-.CodeRay .annotation{color:#007}
-.CodeRay .attribute-name{color:#000080}
-.CodeRay .attribute-value{color:#700}
-.CodeRay .binary{color:#509}
-.CodeRay .comment{color:#998;font-style:italic}
-.CodeRay .char{color:#04d}
-.CodeRay .char .content{color:#04d}
-.CodeRay .char .delimiter{color:#039}
-.CodeRay .class{color:#458;font-weight:bold}
-.CodeRay .complex{color:#a08}
-.CodeRay .constant,.CodeRay .predefined-constant{color:#008080}
-.CodeRay .color{color:#099}
-.CodeRay .class-variable{color:#369}
-.CodeRay .decorator{color:#b0b}
-.CodeRay .definition{color:#099}
-.CodeRay .delimiter{color:#000}
-.CodeRay .doc{color:#970}
-.CodeRay .doctype{color:#34b}
-.CodeRay .doc-string{color:#d42}
-.CodeRay .escape{color:#666}
-.CodeRay .entity{color:#800}
-.CodeRay .error{color:#808}
-.CodeRay .exception{color:inherit}
-.CodeRay .filename{color:#099}
-.CodeRay .function{color:#900;font-weight:bold}
-.CodeRay .global-variable{color:#008080}
-.CodeRay .hex{color:#058}
-.CodeRay .integer,.CodeRay .float{color:#099}
-.CodeRay .include{color:#555}
-.CodeRay .inline{color:#000}
-.CodeRay .inline .inline{background:#ccc}
-.CodeRay .inline .inline .inline{background:#bbb}
-.CodeRay .inline .inline-delimiter{color:#d14}
-.CodeRay .inline-delimiter{color:#d14}
-.CodeRay .important{color:#555;font-weight:bold}
-.CodeRay .interpreted{color:#b2b}
-.CodeRay .instance-variable{color:#008080}
-.CodeRay .label{color:#970}
-.CodeRay .local-variable{color:#963}
-.CodeRay .octal{color:#40e}
-.CodeRay .predefined{color:#369}
-.CodeRay .preprocessor{color:#579}
-.CodeRay .pseudo-class{color:#555}
-.CodeRay .directive{font-weight:bold}
-.CodeRay .type{font-weight:bold}
-.CodeRay .predefined-type{color:inherit}
-.CodeRay .reserved,.CodeRay .keyword {color:#000;font-weight:bold}
-.CodeRay .key{color:#808}
-.CodeRay .key .delimiter{color:#606}
-.CodeRay .key .char{color:#80f}
-.CodeRay .value{color:#088}
-.CodeRay .regexp .delimiter{color:#808}
-.CodeRay .regexp .content{color:#808}
-.CodeRay .regexp .modifier{color:#808}
-.CodeRay .regexp .char{color:#d14}
-.CodeRay .regexp .function{color:#404;font-weight:bold}
-.CodeRay .string{color:#d20}
-.CodeRay .string .string .string{background:#ffd0d0}
-.CodeRay .string .content{color:#d14}
-.CodeRay .string .char{color:#d14}
-.CodeRay .string .delimiter{color:#d14}
-.CodeRay .shell{color:#d14}
-.CodeRay .shell .delimiter{color:#d14}
-.CodeRay .symbol{color:#990073}
-.CodeRay .symbol .content{color:#a60}
-.CodeRay .symbol .delimiter{color:#630}
-.CodeRay .tag{color:#008080}
-.CodeRay .tag-special{color:#d70}
-.CodeRay .variable{color:#036}
-.CodeRay .insert{background:#afa}
-.CodeRay .delete{background:#faa}
-.CodeRay .change{color:#aaf;background:#007}
-.CodeRay .head{color:#f8f;background:#505}
-.CodeRay .insert .insert{color:#080}
-.CodeRay .delete .delete{color:#800}
-.CodeRay .change .change{color:#66f}
-.CodeRay .head .head{color:#f4f}
-</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/prettify.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.min.js"></script>
 </body>
 </html>
