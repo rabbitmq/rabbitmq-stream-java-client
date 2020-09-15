@@ -53,6 +53,8 @@ public final class Constants {
   public static final short COMMAND_CLOSE = 13;
   public static final short COMMAND_HEARTBEAT = 14;
   public static final short COMMAND_PEER_PROPERTIES = 15;
+  public static final short COMMAND_COMMIT_OFFSET = 16;
+  public static final short COMMAND_QUERY_OFFSET = 17;
 
   public static final short COMMAND_CREATE_STREAM = 998;
   public static final short COMMAND_DELETE_STREAM = 999;

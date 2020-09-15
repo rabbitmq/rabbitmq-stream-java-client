@@ -14,19 +14,66 @@
 
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.*;
+import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
+import static com.rabbitmq.stream.Constants.COMMAND_COMMIT_OFFSET;
+import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
+import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
+import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
+import static com.rabbitmq.stream.Constants.COMMAND_DELIVER;
+import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
+import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
+import static com.rabbitmq.stream.Constants.COMMAND_METADATA_UPDATE;
+import static com.rabbitmq.stream.Constants.COMMAND_OPEN;
+import static com.rabbitmq.stream.Constants.COMMAND_PEER_PROPERTIES;
+import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH;
+import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_CONFIRM;
+import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_ERROR;
+import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
+import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
+import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
+import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
+import static com.rabbitmq.stream.Constants.COMMAND_TUNE;
+import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
+import static com.rabbitmq.stream.Constants.VERSION_0;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.AuthenticationFailureException;
+import com.rabbitmq.stream.ByteCapacity;
+import com.rabbitmq.stream.ChannelCustomizer;
+import com.rabbitmq.stream.ChunkChecksum;
+import com.rabbitmq.stream.ChunkChecksumValidationException;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.Properties;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
-import com.rabbitmq.stream.sasl.*;
+import com.rabbitmq.stream.sasl.CredentialsProvider;
+import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
+import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;
+import com.rabbitmq.stream.sasl.SaslConfiguration;
+import com.rabbitmq.stream.sasl.SaslMechanism;
+import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -38,8 +85,23 @@ import io.netty.handler.timeout.IdleStateHandler;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -271,6 +333,32 @@ public class Client implements AutoCloseable {
     read += 1;
 
     creditNotification.handle(subscriptionId, responseCode);
+
+    if (read != frameSize) {
+      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+    }
+  }
+
+  static void handleQueryOffsetResponse(
+      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+    int read = 2 + 2; // already read the command id and version
+
+    int correlationId = bb.readInt();
+    read += 4;
+    short responseCode = bb.readShort();
+    read += 2;
+    long offset = bb.readLong();
+    read += 8;
+
+    OutstandingRequest<QueryOffsetResponse> outstandingRequest =
+        remove(outstandingRequests, correlationId, QueryOffsetResponse.class);
+    if (outstandingRequest == null) {
+      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+    } else {
+      QueryOffsetResponse response = new QueryOffsetResponse(responseCode, offset);
+      outstandingRequest.response.set(response);
+      outstandingRequest.latch.countDown();
+    }
 
     if (read != frameSize) {
       throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
@@ -1367,6 +1455,63 @@ public class Client implements AutoCloseable {
     }
   }
 
+  public void commitOffset(String reference, String stream, long offset) {
+    if (reference == null || reference.isEmpty() || reference.length() > 256) {
+      throw new IllegalArgumentException(
+          "Reference must a non-empty string of less than 256 characters");
+    }
+    if (stream == null || stream.isEmpty()) {
+      throw new IllegalArgumentException("Stream cannot be null or empty");
+    }
+    int length = 2 + 2 + 2 + reference.length() + 2 + stream.length() + 8;
+    ByteBuf bb = allocate(length + 4);
+    bb.writeInt(length);
+    bb.writeShort(COMMAND_COMMIT_OFFSET);
+    bb.writeShort(VERSION_0);
+    bb.writeShort(reference.length());
+    bb.writeBytes(reference.getBytes(StandardCharsets.UTF_8));
+    bb.writeShort(stream.length());
+    bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
+    bb.writeLong(offset);
+    channel.writeAndFlush(bb);
+  }
+
+  public long queryOffset(String reference, String stream) {
+    if (reference == null || reference.isEmpty() || reference.length() > 256) {
+      throw new IllegalArgumentException(
+          "Reference must a non-empty string of less than 256 characters");
+    }
+    if (stream == null || stream.isEmpty()) {
+      throw new IllegalArgumentException("Stream cannot be null or empty");
+    }
+
+    int length = 2 + 2 + 4 + 2 + reference.length() + 2 + stream.length();
+    int correlationId = correlationSequence.getAndIncrement();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(COMMAND_QUERY_OFFSET);
+      bb.writeShort(VERSION_0);
+      bb.writeInt(correlationId);
+      bb.writeShort(reference.length());
+      bb.writeBytes(reference.getBytes(StandardCharsets.UTF_8));
+      bb.writeShort(stream.length());
+      bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
+      OutstandingRequest<QueryOffsetResponse> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb);
+      request.block();
+      QueryOffsetResponse response = request.response.get();
+      if (!response.isOk()) {
+        LOGGER.info("Query offset failed with code {}", response.getResponseCode());
+      }
+      return response.getOffset();
+    } catch (RuntimeException e) {
+      outstandingRequests.remove(correlationId);
+      throw new StreamException(e);
+    }
+  }
+
   public Response unsubscribe(byte subscriptionId) {
     int length = 2 + 2 + 4 + 1;
     int correlationId = correlationSequence.getAndIncrement();
@@ -1440,6 +1585,14 @@ public class Client implements AutoCloseable {
 
   public boolean isOpen() {
     return !closing.get();
+  }
+
+  String getHost() {
+    return host;
+  }
+
+  int getPort() {
+    return port;
   }
 
   public interface OutboundEntityMappingCallback {
@@ -1714,6 +1867,20 @@ public class Client implements AutoCloseable {
     public boolean isAuthenticationFailure() {
       return this.getResponseCode() == RESPONSE_CODE_AUTHENTICATION_FAILURE
           || this.getResponseCode() == RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK;
+    }
+  }
+
+  private static class QueryOffsetResponse extends Response {
+
+    private final long offset;
+
+    public QueryOffsetResponse(short responseCode, long offset) {
+      super(responseCode);
+      this.offset = offset;
+    }
+
+    public long getOffset() {
+      return offset;
     }
   }
 
@@ -2125,7 +2292,6 @@ public class Client implements AutoCloseable {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
       ByteBuf m = (ByteBuf) msg;
-
       int frameSize = m.readableBytes();
       short commandId = m.readShort();
       short version = m.readShort();
@@ -2184,6 +2350,8 @@ public class Client implements AutoCloseable {
           task = () -> handlePeerProperties(m, frameSize, outstandingRequests);
         } else if (commandId == COMMAND_CREDIT) {
           task = () -> handleCreditNotification(m, frameSize, creditNotification);
+        } else if (commandId == COMMAND_QUERY_OFFSET) {
+          task = () -> handleQueryOffsetResponse(m, frameSize, outstandingRequests);
         } else if (commandId == COMMAND_SUBSCRIBE
             || commandId == COMMAND_UNSUBSCRIBE
             || commandId == COMMAND_CREATE_STREAM
@@ -2240,13 +2408,5 @@ public class Client implements AutoCloseable {
       LOGGER.warn("Error in stream handler", cause);
       ctx.close();
     }
-  }
-
-  String getHost() {
-    return host;
-  }
-
-  int getPort() {
-    return port;
   }
 }
