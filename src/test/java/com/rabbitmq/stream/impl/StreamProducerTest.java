@@ -186,6 +186,20 @@ public class StreamProducerTest {
     assertThat(((StreamProducer) producer).status()).isEqualTo(StreamProducer.Status.NOT_AVAILABLE);
 
     assertThat(confirmed.get()).isPositive();
+    waitAtMost(
+        5,
+        () -> confirmed.get() + errored.get() == published.get(),
+        () ->
+            String.format(
+                "confirmed %d / errored %d / published %d, %d + %d = %d != %d, difference %d",
+                confirmed.get(),
+                errored.get(),
+                published.get(),
+                confirmed.get(),
+                errored.get(),
+                (confirmed.get() + errored.get()),
+                published.get(),
+                (published.get() - (confirmed.get() + errored.get()))));
     assertThat(confirmed.get() + errored.get()).isEqualTo(published.get());
     int confirmedAfterUnavailability = confirmed.get();
     int errorAfterUnavailability = errored.get();

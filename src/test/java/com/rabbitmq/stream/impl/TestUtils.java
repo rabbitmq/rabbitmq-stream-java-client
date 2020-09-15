@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.extension.*;
 
 final class TestUtils {
@@ -38,6 +39,11 @@ final class TestUtils {
   private TestUtils() {}
 
   static void waitAtMost(int timeoutInSeconds, BooleanSupplier condition)
+      throws InterruptedException {
+    waitAtMost(timeoutInSeconds, condition, null);
+  }
+
+  static void waitAtMost(int timeoutInSeconds, BooleanSupplier condition, Supplier<String> message)
       throws InterruptedException {
     if (condition.getAsBoolean()) {
       return;
@@ -52,7 +58,11 @@ final class TestUtils {
       }
       waitedTime += waitTime;
     }
-    fail("Waited " + timeoutInSeconds + " second(s), condition never got true");
+    if (message == null) {
+      fail("Waited " + timeoutInSeconds + " second(s), condition never got true");
+    } else {
+      fail("Waited " + timeoutInSeconds + " second(s), " + message.get());
+    }
   }
 
   static void publishAndWaitForConfirms(
