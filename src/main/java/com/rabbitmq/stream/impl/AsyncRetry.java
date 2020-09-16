@@ -56,7 +56,9 @@ class AsyncRetry<V> {
                 this.completableFuture.completeExceptionally(new RetryTimeoutException());
               } else {
                 LOGGER.debug(
-                    "Retryable exception for task '{}', scheduling another attempt", description);
+                    "Retryable exception ({}) for task '{}', scheduling another attempt",
+                    e.getClass().getSimpleName(),
+                    description);
                 scheduler.schedule(
                     retryableTaskReference.get(),
                     delayPolicy.delay(attemptCount).toMillis(),

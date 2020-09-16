@@ -411,8 +411,7 @@ class ConsumersCoordinator {
                                     assignConsumersToStream(
                                         affectedSubscriptions,
                                         stream,
-                                        attempt ->
-                                            metadataUpdateBackOffDelayPolicy().delay(attempt),
+                                        metadataUpdateBackOffDelayPolicy(),
                                         isEmpty());
                                   });
                         }
@@ -487,6 +486,11 @@ class ConsumersCoordinator {
               })
           .exceptionally(
               ex -> {
+                LOGGER.debug(
+                    "Error while trying to assign {} consumer(s) to {}",
+                    subscriptions.size(),
+                    stream,
+                    ex);
                 consumersClosingCallback.run();
                 return null;
               });
