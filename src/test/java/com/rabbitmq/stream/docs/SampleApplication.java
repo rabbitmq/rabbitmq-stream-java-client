@@ -41,7 +41,9 @@ public class SampleApplication {
                 .build();
         IntStream.range(0, messageCount)
                 .forEach(i -> producer.send(  // <2>
-                        producer.messageBuilder().addData(String.valueOf(i).getBytes()).build(),  // <3>
+                        producer.messageBuilder()                    // <3>
+                            .addData(String.valueOf(i).getBytes())   // <3>
+                            .build(),                                // <3>
                         confirmationStatus -> publishConfirmLatch.countDown()  // <4>
                 ));
         publishConfirmLatch.await(10, TimeUnit.SECONDS);  // <5>
