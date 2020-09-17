@@ -1,5 +1,6 @@
 = RabbitMQ Stream Java Client
 :revnumber: {project-version}
+:revremark: {build-number}
 :example-caption!:
 ifndef::imagesdir[:imagesdir: images]
 ifndef::sourcedir[:sourcedir: ../../main/java]

@@ -71,6 +71,7 @@
         <asciidoctor.maven.plugin.version>2.0.0</asciidoctor.maven.plugin.version>
         <asciidoctorj.version>2.4.1</asciidoctorj.version>
         <asciidoctorj.diagram.version>2.0.2</asciidoctorj.diagram.version>
+        <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
         <jruby.version>9.2.13.0</jruby.version>
         <jmh.version>1.23</jmh.version>
         <spotless.version>2.2.0</spotless.version>
@@ -294,6 +295,7 @@
                     <attributes>
                         <project-version>${project.version}</project-version>
                         <protonj-version>${proton-j.version}</protonj-version>
+                        <build-number>${buildNumber}</build-number>
                         <imagesdir>./images</imagesdir>
                         <toc>left</toc>
                         <toclevels>5</toclevels>
@@ -307,6 +309,18 @@
                     </attributes>
                     <backend>html5</backend>
                     <embedAssets>true</embedAssets>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>buildnumber-maven-plugin</artifactId>
+                <version>${buildnumber.plugin.version}</version>
+                <configuration>
+                    <doCheck>false</doCheck>
+                    <doUpdate>false</doUpdate>
+                    <revisionOnScmFailure>unknown</revisionOnScmFailure>
+                    <shortRevisionLength>7</shortRevisionLength>
                 </configuration>
             </plugin>
 
