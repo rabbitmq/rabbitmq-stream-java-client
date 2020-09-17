@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(72f741a)</span>
+<br><span id="revremark">(e6efba5)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -485,7 +485,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#consumer">Consumer</a></li>
 </ul>
 </li>
-<li><a href="#builing-the-client">Builing the Client</a></li>
+<li><a href="#building-the-client">Building the Client</a></li>
 </ul>
 </li>
 <li><a href="#the-performance-tool">The Performance Tool</a>
@@ -782,7 +782,9 @@ Producer producer = environment.producerBuilder()  <i class="conum" data-value="
         .build();
 IntStream.range(<span class="integer">0</span>, messageCount)
         .forEach(i -&gt; producer.send(  <i class="conum" data-value="2"></i><b>(2)</b>
-                producer.messageBuilder().addData(<span class="predefined-type">String</span>.valueOf(i).getBytes()).build(),  <i class="conum" data-value="3"></i><b>(3)</b>
+                producer.messageBuilder()                    <i class="conum" data-value="3"></i><b>(3)</b>
+                    .addData(<span class="predefined-type">String</span>.valueOf(i).getBytes())   <i class="conum" data-value="3"></i><b>(3)</b>
+                    .build(),                                <i class="conum" data-value="3"></i><b>(3)</b>
                 confirmationStatus -&gt; publishConfirmLatch.countDown()  <i class="conum" data-value="4"></i><b>(4)</b>
         ));
 publishConfirmLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
@@ -1092,6 +1094,13 @@ will pick a new URI randomly in case of disconnection.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>recoveryBackOffDelayPolicy</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Delay policy to use for backoff on connection recovery.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Fixed delay of 5 seconds</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>topologyUpdateBackOffDelayPolicy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Delay policy to use for backoff on topology update, e.g.
+when a stream replica moves and a consumer needs to connect to another
+node.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Initial delay of 5 seconds then delay of 1 second.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1538,7 +1547,7 @@ after the specified timestamp.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="builing-the-client"><a class="anchor" href="#builing-the-client"></a>Builing the Client</h3>
+<h3 id="building-the-client"><a class="anchor" href="#building-the-client"></a>Building the Client</h3>
 <div class="paragraph">
 <p>You need JDK 1.8 or more installed.</p>
 </div>
@@ -1555,7 +1564,7 @@ after the specified timestamp.</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre>./mvnw verify</pre>
+<pre>./mvnw verify -Drabbitmqctl.bin=/path/to/rabbitmqctl</pre>
 </div>
 </div>
 </div>
@@ -1645,7 +1654,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-09-17 13:57:18 UTC
+Last updated 2020-09-17 16:20:48 UTC
 </div>
 </div>
 <style>
