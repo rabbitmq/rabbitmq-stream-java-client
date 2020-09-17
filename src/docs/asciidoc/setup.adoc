@@ -1,0 +1,96 @@
+=== Setting up RabbitMQ
+
+A RabbitMQ node with the stream plugin enabled is required. The easiest way
+to get up and running is to use Docker. It is also possible to use the
+generic Unix package.
+
+==== With Docker
+
+The following command creates a one-time Docker container to run RabbitMQ
+with the stream plugin enabled:
+
+.Running the stream plugin with Docker
+----
+docker run -it --rm --name rabbitmq -p 5555:5555 pivotalrabbitmq/rabbitmq-stream
+----
+
+The previous command exposes only the stream port (5555), you can expose
+ports for other protocols:
+
+.Exposing the AMQP 0.9.1 and management ports:
+----
+docker run -it --rm --name rabbitmq -p 5555:5555 -p 5672:5672 -p 15672:15672 \
+    pivotalrabbitmq/rabbitmq-stream
+----
+
+Refer to the official https://hub.docker.com/_/rabbitmq[RabbitMQ Docker image web page]
+to find out more about its usage. Make sure to use the `pivotalrabbitmq/rabbitmq-stream`
+image in the command line.
+
+The `pivotalrabbitmq/rabbitmq-stream` Docker image is meant for development usage only. It does not
+support all the features of the official Docker image, like TLS.
+
+==== With the Generic Unix Package
+
+The generic Unix package requires https://www.rabbitmq.com/which-erlang.html[Erlang] to be installed.
+
+* Download the https://bintray.com/rabbitmq/all-dev/rabbitmq-stream[latest generic Unix alpha from Bintray].
+* Follow the https://www.rabbitmq.com/install-generic-unix.html[instructions to install the generic Unix package].
+* Enable the plugin `./rabbitmq-plugins enable rabbitmq_stream`.
+* Start the broker `./rabbitmq-server -detached`. This starts the stream listener on port 5555.
+
+=== Dependencies
+
+Use your favorite build management tool to add the client dependencies to your project.
+
+Note the client uses the https://github.com/apache/qpid-proton-j[Apache QPid Proton-J]
+library for <<api.adoc#working-with-complex-messages,AMQP 1.0 message encoding and decoding>>.
+
+==== Maven
+
+.pom.xml
+[source,xml,subs="attributes,specialcharacters"]
+----
+<dependencies>
+
+  <dependency>
+    <groupId>com.rabbitmq</groupId>
+    <artifactId>stream-client</artifactId>
+    <version>{project-version}</version>
+  </dependency>
+
+  <dependency>
+    <groupId>org.apache.qpid</groupId>
+    <artifactId>proton-j</artifactId>
+    <version>{protonj-version}</version>
+  </dependency>
+
+</dependencies>
+
+<repositories>
+
+  <repository>
+    <id>ossrh</id>
+    <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+    <snapshots><enabled>true</enabled></snapshots>
+    <releases><enabled>false</enabled></releases>
+  </repository>
+
+</repositories>
+----
+
+==== Gradle
+
+.build.gradle
+[source,groovy,subs="attributes,specialcharacters"]
+----
+dependencies {
+  compile "com.rabbitmq:stream-client:{project-version}"
+  compile "org.apache.qpid:proton-j:{protonj-version}"
+}
+
+repositories {
+  maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+  mavenCentral()
+}
+----

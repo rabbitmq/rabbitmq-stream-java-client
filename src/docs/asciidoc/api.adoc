@@ -1,0 +1,341 @@
+:test-examples: ../../test/java/com/rabbitmq/stream/docs
+
+[[rabbitmq-stream-java-api]]
+=== RabbitMQ Stream Java API
+
+==== Overview
+
+This section describes the API to connect to the RabbitMQ Stream Plugin, publish messages, and
+consume messages. There are 3 main interfaces:
+
+* `com.rabbitmq.stream.Environment` for connecting to a node and optionally
+managing streams.
+* `com.rabbitmq.stream.Producer` to publish messages.
+* `com.rabbitmq.stream.Consumer` to consume messages.
+
+==== Environment
+===== Creating the Environment
+
+The environment is the main entry point to a node or a cluster of nodes. `Producer` and
+`Consumer` instances are created from an `Environment` instance. Here is the simplest
+way to create an `Environment` instance:
+
+.Creating an environment with all the defaults
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation]
+--------
+<1> Create an environment that will connect to localhost:5555
+<2> Close the environment after usage
+
+Note the environment must be closed to release resources when it is no
+longer needed.
+
+Consider the environment like a long-lived object. An application will usually
+create one `Environment` instance when it starts up and close it when it exits.
+
+It is possible to use a URI to specify all the necessary information to
+connect to a node:
+
+.Creating an environment with a URI
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uri]
+--------
+<1> Use the `uri` method to specify the URI to connect to
+
+The previous snippet uses a URI that specifies the following information: host, port,
+username, password, and virtual host (`/`, which is encoded as `%2f`).
+The URI follows the same rules as the
+https://www.rabbitmq.com/uri-spec.html[AMQP 0.9.1 URI],
+except the protocol must be `rabbitmq-stream` and TLS is not supported.
+
+When using one URI, the corresponding node will be the main entry point to connect to. The
+`Environment` will then use the stream protocol to find out more about streams topology
+(leaders and replicas) when asked to create `Producer`s and `Consumer`s. The `Environment`
+may become blind if this node goes down though, so it may be more appropriate to specify
+several other URIs to try in case of failure of a node:
+
+.Creating an environment with several URIs
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uris]
+--------
+<1> Use the `uris` method to specify several URIs
+
+By specifying several URIs, the environment will try to connect to the first one, and
+will pick a new URI randomly in case of disconnection.
+
+The following table sums up the main settings to create a `Environment`:
+
+[%header,cols=3*]
+|===
+|Parameter Name
+|Description
+|Default
+
+|`uri`
+|The URI of the node to connect to (single node).
+|`rabbitmq-stream://guest:guest@localhost:5555/%2f`
+
+|`uris`
+|The URI of the nodes to try to connect to (cluster).
+|`rabbitmq-stream://guest:guest@localhost:5555/%2f` singleton list
+
+|`host`
+|Host to connect to.
+|`localhost`
+
+|`port`
+|Port to use.
+|`5555`
+
+|`username`
+|Username to use to connect.
+|`guest`
+
+|`password`
+|Password to use to connect.
+|`guest`
+
+|`virtualHost`
+|Virtual host to connect to.
+|`/`
+
+|`recoveryBackOffDelayPolicy`
+|Delay policy to use for backoff on connection recovery.
+|Fixed delay of 5 seconds
+
+|`topologyUpdateBackOffDelayPolicy`
+|Delay policy to use for backoff on topology update, e.g.
+when a stream replica moves and a consumer needs to connect to another
+node.
+|Initial delay of 5 seconds then delay of 1 second.
+|===
+
+===== Managing Streams
+
+Streams are usually long-lived, centrally-managed entities, that is, applications
+are not supposed to create and delete them. It is nevertheless possible to create and
+delete stream with the `Environment`. This comes in handy for development and testing
+purposes.
+
+Streams are created with the `Environment#streamCreator()` method:
+
+.Creating a stream
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=stream-creation]
+--------
+<1> Create the `my-stream` stream
+
+Streams can be deleted with the `Environment#delete(String)` method:
+
+.Deleting a stream
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=stream-deletion]
+--------
+<1> Delete the `my-stream` stream
+
+Note you should avoid stream churn (creating and deleting streams repetitively)
+as their creation and deletion imply some significant housekeeping on
+the server side (interactions with the file system, communication between nodes of the cluster).
+
+[[limiting-the-size-of-a-stream]]It is also possible to limit the size of a stream
+when creating it. A stream
+is an append-only data structure and reading from it does not remove data.
+This means a stream can grow indefinitely. RabbitMQ Stream supports a
+size-based retention policy: once the stream reaches a given size,
+it is truncated (starting from the beginning).
+
+[IMPORTANT]
+.Limit the size of streams if appropriate!
+====
+Make sure to set up a retention policy on potentially large streams
+if you don't want to saturate the storage devices of your servers. Keep
+in mind that this means some data will be erased!
+====
+
+It is possible to set up the retention policy when creating the stream:
+
+.Setting the retention policy when creating a stream
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=stream-creation-retention]
+--------
+<1> Set the maximum size to 10 GB
+<2> Set the segment size to 500 MB
+
+The previous snippet mentions a segment size. RabbitMQ Stream does not store a stream
+in a big, single file, it uses segment files for technical reasons.
+A stream is truncated by deleting whole segment files (and not part of them),
+so the maximum size of a stream is usually significantly higher than the size of
+segment files. 500 MB is a reasonable segment file size to begin with.
+
+==== Producer
+
+===== Creating a Producer
+
+A `Producer` instance is created from the `Environment`. The only mandatory
+setting to specify is the stream to publish to:
+
+.Creating a producer from the environment
+[source,java,indent=0]
+--------
+include::{test-examples}/ProducerUsage.java[tag=producer-creation]
+--------
+<1> Use `Environment#producerBuilder()` to define the producer
+<2> Specify the stream to publish to
+<3> Create the producer instance with `build()`
+<4> Close the producer after usage
+
+Consider a `Producer` instance like a long-lived object, do not create one
+to send just one message.
+
+Internally, the `Environment` will query the broker to find out about
+the topology of the stream and will create or re-use a connection to
+publish to the leader node of the stream.
+
+The following table sums up the main settings to create a `Producer`:
+
+[%header,cols=3*]
+|===
+|Parameter Name
+|Description
+|Default
+
+|`batchSize`
+|The maximum number of messages to accumulate before sending them to the broker.
+|100
+
+|`subEntrySize`
+|The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
+frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
+as well. Use this feature to increase throughput at the cost of increased latency.
+|1 (meaning no use of sub-entry batching)
+
+|`maxUnconfirmedMessages`
+|The maximum number of unconfirmed outbound messages. `Producer#send` will start
+blocking when the limit is reached.
+|10,000
+
+|`batchPublishingDelay`
+|Period to send a batch of messages.
+|100 ms
+|===
+
+===== Sending Messages
+
+Once a `Producer` has been created, it is possible to send a message with
+the `Producer#send(Message, ConfirmationHandler)` method. The following
+snippet shows how to publish a message with a byte array payload:
+
+.Sending a message
+[source,java,indent=0]
+--------
+include::{test-examples}/ProducerUsage.java[tag=producer-publish]
+--------
+<1> The payload of a message is an array of bytes
+<2> Create the message with `Producer#messageBuilder()`
+<3> Define the behavior on publish confirmation
+
+Messages are not only made of a `byte[]` payload, we will see in
+<<working-with-complex-messages,the next section>>
+they can also carry pre-defined and application properties.
+
+The `ConfirmationHandler` defines an asynchronous callback invoked
+when the client received from the broker the confirmation the message
+has been taken into account. The `ConfirmationHandler` is the place
+for any logic on publishing confirmation, including
+re-publishing the message if it is negatively acknowledged.
+
+[[working-with-complex-messages]]
+===== Working with Complex Messages
+
+The publishing example above showed that messages are made of
+a byte array payload, but it did not go much further. Messages in RabbitMQ Stream
+can actually be more sophisticated, as they comply to the
+https://www.amqp.org/resources/specifications[AMQP 1.0 message format].
+
+In a nutshell, a message in RabbitMQ Stream has the following structure:
+
+* properties: _a defined set of standard properties of the message_ (e.g.
+message ID, correlation ID, content type, etc).
+* application properties: a set of arbitrary key/value pairs.
+* body: typically an array of bytes.
+* message annotations: a set of key/value pairs (aimed at the infrastructure).
+
+The RabbitMQ Stream Java client uses the `Message` interface to abstract
+a message and the recommended way to create `Message` instances is to
+use the `Producer#messageBuilder()` method. To publish a `Message`, use
+the `Producer#send(Message,ConfirmationHandler)`:
+
+.Creating a message with properties
+[source,java,indent=0]
+--------
+include::{test-examples}/ProducerUsage.java[tag=producer-publish-complex-message]
+--------
+<1> Get the message builder from the producer
+<2> Get the properties builder and set some properties
+<3> Go back to message builder
+<4> Set byte array payload
+<5> Build the message instance
+<6> Publish the message
+
+[NOTE]
+.Is RabbitMQ Stream based on AMQP 1.0?
+====
+AMQP 1.0 is a standard that defines _an efficient binary peer-to-peer
+protocol for transporting messages between two processes over a network_.
+It also defines _an abstract message format, with concrete standard encoding_.
+This is only the latter part that RabbitMQ Stream uses. The AMQP 1.0 protocol is not used,
+only AMQP 1.0 encoded messages are wrapped into the RabbitMQ Stream binary protocol.
+
+The actual AMQP 1.0 message encoding and decoding happen on the client side, the
+RabbitMQ Stream plugin stores only bytes, it has no idea that AMQP 1.0 message format
+is used.
+
+AMQP 1.0 message format was chosen because of its flexibility and its advanced
+type system. It provides good interoperability, which allows streams
+to be accessed as AMQP 0-9-1 queues, without data loss.
+====
+
+==== Consumer
+
+A `Consumer` instance is created with `Environment#consumerBuilder()`. The main
+settings are the stream to consume from, the place in the stream to start
+consuming from (the _offset_), and a callback when a message is received
+(the `MessageHandler`). The next snippet shows how to create a `Consumer`:
+
+.Creating a consumer
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=producer-creation]
+--------
+<1> Use `Environment#consumerBuilder()` to define the consumer
+<2> Specify the stream to consume from
+<3> Specify where to start consuming from
+<4> Define behavior on message consumption
+<5> Build the consumer
+<6> Close consumer after usage
+
+The broker start sending messages as soon as the `Consumer` instance is created.
+
+The possible values for the offset parameter are the following:
+
+* `OffsetSpecification.first()`: starting from the first available offset. If
+the stream has not been <<limiting-the-size-of-a-stream,truncated>>, this
+means the beginning of the stream (offset 0).
+* `OffsetSpecification.last()`: starting from the end of the stream and returning
+the last chunk of messages immediately (if the stream is not empty).
+* `OffsetSpecification.next()`: starting from the next offset to be written. Contrary
+to `OffsetSpecification.last()`, consuming with `OffsetSpecification.next()`
+will not return anything if no-one is publishing to the stream. The broker will start
+sending messages to the consumer when messages are published to the stream.
+* `OffsetSpecification.offset(offset)`: starting from the specified offset. 0 means consuming
+from the beginning of the stream (first messages). The client
+can also specify any number, for example the offset where it left off
+in a previous incarnation of the application.
+* `OffsetSpecification.timestamp(timestamp)`: starting from the messages stored
+after the specified timestamp.

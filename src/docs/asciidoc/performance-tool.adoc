@@ -1,0 +1,61 @@
+== The Performance Tool
+
+The library contains also a performance tool to test the RabbitMQ Stream plugin.
+It is https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test[downloadable from Bintray]
+as an uber JAR and can be built separately as well.
+
+=== Using the Performance Tool
+
+To launch a run:
+
+----
+$ java -jar stream-perf-test-{version}.jar
+10:11:54.324 [main] INFO  c.r.stream.perf.StreamPerfTest - Created stream stream1
+10:11:54.385 [main] INFO  c.r.stream.perf.StreamPerfTest - Producer will stream stream1
+10:11:54.387 [main] INFO  c.r.stream.perf.StreamPerfTest - Starting consuming on stream1
+10:11:54.390 [main] INFO  c.r.stream.perf.StreamPerfTest - Starting producer
+1, published 155230 msg/s, confirmed 147824 msg/s, consumed 124487 msg/s, latency min/median/75th/95th/99th 1121/8225/17647/62468/73991 µs, chunk size 109
+2, published 359193 msg/s, confirmed 336535 msg/s, consumed 306748 msg/s, latency min/median/75th/95th/99th 1398/56590/80607/127818/135925 µs, chunk size 345
+3, published 523429 msg/s, confirmed 509044 msg/s, consumed 478710 msg/s, latency min/median/75th/95th/99th 1478/29996/69536/111946/135079 µs, chunk size 529
+4, published 599735 msg/s, confirmed 594707 msg/s, consumed 568315 msg/s, latency min/median/75th/95th/99th 964/21032/52977/98643/133399 µs, chunk size 548
+5, published 632114 msg/s, confirmed 609804 msg/s, consumed 591426 msg/s, latency min/median/75th/95th/99th 964/34303/74318/110684/127440 µs, chunk size 588
+6, published 619328 msg/s, confirmed 618229 msg/s, consumed 598410 msg/s, latency min/median/75th/95th/99th 964/45918/86391/114714/138207 µs, chunk size 657
+^C
+Summary: published 641792 msg/s, confirmed 635240 msg/s, consumed 636256 msg/s, latency 95th 112730 µs, chunk size 711
+----
+
+The previous command will start publishing to and consuming from a stream created
+only for the test. The tool outputs live metrics on the console and write more
+detailed metrics in a `stream-perf-test-current.txt` file that get renamed to
+`stream-perf-test-yyyy-MM-dd-HHmmss.txt` when the run ends.
+
+To see the options:
+
+----
+java -jar stream-perf-test-{version}.jar --help
+----
+
+The performance tool comes also with a completion script. You can download it and enable it in
+your `~/.zshrc` file:
+
+----
+alias stream-perf-test='java -jar target/stream-perf-test.jar'
+source ~/.zsh/stream-perf-test_completion
+----
+
+Note the activation requires an alias which must be `stream-perf-test`. The command can be anything
+though.
+
+=== Building the Performance Tool
+
+To build the uber JAR:
+
+----
+./mvnw clean package -Dmaven.test.skip -P performance-tool
+----
+
+Then run the tool:
+
+----
+java -jar target/stream-perf-test.jar
+----

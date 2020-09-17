@@ -311,6 +311,7 @@
             <idprefix/>
             <idseparator>-</idseparator>
             <source-highlighter>coderay</source-highlighter>
+            <test-examples>../../test/java/com/rabbitmq/stream/docs</test-examples>
           </attributes>
 
         </configuration>
@@ -326,6 +327,7 @@
               <attributes>
                 <title-page />
                 <toc/>
+                <toclevels>4</toclevels>
                 <pagenums/>
               </attributes>
             </configuration>

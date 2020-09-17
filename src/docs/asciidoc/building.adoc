@@ -1,0 +1,15 @@
+=== Building the Client
+
+You need JDK 1.8 or more installed.
+
+To build the JAR file:
+
+----
+./mvnw clean package -DskipITs -DskipTests
+----
+
+To launch the test suite (requires a local RabbitMQ node with stream plugin enabled):
+
+----
+./mvnw verify -Drabbitmqctl.bin=/path/to/rabbitmqctl
+----
