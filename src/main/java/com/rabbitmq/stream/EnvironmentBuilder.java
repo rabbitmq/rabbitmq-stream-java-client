@@ -67,6 +67,7 @@ public interface EnvironmentBuilder {
    * <ul>
    *   <li>Schedule producers batch sending
    *   <li>Handle connection recovery
+   *   <li>Handle topology update
    * </ul>
    *
    * @param scheduledExecutorService the service to use

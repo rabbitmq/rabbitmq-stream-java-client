@@ -1,6 +1,6 @@
 = RabbitMQ Stream Java Client
 :revnumber: {project-version}
-:revremark: ({build-number})
+:revremark: ({build-number}
 ifndef::imagesdir[:imagesdir: images]
 ifndef::sourcedir[:sourcedir: ../../main/java]
 :source-highlighter: prettify
@@ -269,7 +269,6 @@ managing streams.
  * `com.rabbitmq.stream.Consumer` to consume messages.
 
 ==== Environment
-
 ===== Creating the Environment
 
 The environment is the main entry point to a node or a cluster of nodes. `Producer` and
@@ -361,6 +360,12 @@ The following table sums up the main settings to create a `Environment`:
 |`recoveryBackOffDelayPolicy`
 |Delay policy to use for backoff on connection recovery.
 |Fixed delay of 5 seconds
+
+|`topologyUpdateBackOffDelayPolicy`
+|Delay policy to use for backoff on topology update, e.g.
+when a stream replica moves and a consumer needs to connect to another
+node.
+|Initial delay of 5 seconds then delay of 1 second.
 |===
 
 ===== Managing Streams
