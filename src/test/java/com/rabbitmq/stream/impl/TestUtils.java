@@ -24,6 +24,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import java.lang.annotation.*;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
@@ -248,5 +249,17 @@ final class TestUtils {
         return ConditionEvaluationResult.enabled("rabbitmqctl.bin system property is set");
       }
     }
+  }
+
+  static <T> void forEach(Collection<T> in, CallableIndexConsumer<T> consumer) throws Exception {
+    int count = 0;
+    for (T t : in) {
+      consumer.accept(count++, t);
+    }
+  }
+
+  interface CallableIndexConsumer<T> {
+
+    void accept(int index, T t) throws Exception;
   }
 }
