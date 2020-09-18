@@ -332,9 +332,11 @@ class StreamEnvironment implements Environment {
       StreamConsumer consumer,
       String stream,
       OffsetSpecification offsetSpecification,
+      String trackingReference,
       MessageHandler messageHandler) {
     Runnable closingCallback =
-        this.consumersCoordinator.subscribe(consumer, stream, offsetSpecification, messageHandler);
+        this.consumersCoordinator.subscribe(
+            consumer, stream, offsetSpecification, trackingReference, messageHandler);
     return closingCallback;
   }
 
@@ -357,6 +359,10 @@ class StreamEnvironment implements Environment {
 
   Client.ClientParameters clientParametersCopy() {
     return this.clientParametersPrototype.duplicate();
+  }
+
+  public Runnable registerCommittingConsumer(StreamConsumer streamConsumer, String stream) {
+    return this.producersCoordinator.registerCommittingConsumer(streamConsumer, stream);
   }
 
   private static final class Address {

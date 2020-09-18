@@ -14,4 +14,7 @@
 
 package com.rabbitmq.stream;
 
-public interface Consumer extends AutoCloseable {}
+public interface Consumer extends AutoCloseable {
+
+  void commit(long offset);
+}

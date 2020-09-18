@@ -22,5 +22,7 @@ public interface ConsumerBuilder {
 
   ConsumerBuilder messageHandler(MessageHandler messageHandler);
 
+  ConsumerBuilder name(String name);
+
   Consumer build();
 }

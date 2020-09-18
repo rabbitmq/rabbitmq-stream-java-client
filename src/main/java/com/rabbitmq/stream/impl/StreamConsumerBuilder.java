@@ -19,13 +19,14 @@ import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 
-public class StreamConsumerBuilder implements ConsumerBuilder {
+class StreamConsumerBuilder implements ConsumerBuilder {
 
   private final StreamEnvironment environment;
 
   private String stream;
   private OffsetSpecification offsetSpecification = OffsetSpecification.first();
   private MessageHandler messageHandler;
+  private String name;
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -50,9 +51,20 @@ public class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
+  public ConsumerBuilder name(String name) {
+    this.name = name;
+    return this;
+  }
+
+  @Override
   public Consumer build() {
     StreamConsumer consumer =
-        new StreamConsumer(stream, offsetSpecification, messageHandler, environment);
+        new StreamConsumer(
+            this.stream,
+            this.offsetSpecification,
+            this.messageHandler,
+            this.name,
+            this.environment);
     environment.addConsumer(consumer);
     return consumer;
   }

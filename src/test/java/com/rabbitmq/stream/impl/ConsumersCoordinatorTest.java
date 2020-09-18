@@ -116,7 +116,7 @@ public class ConsumersCoordinatorTest {
     assertThatThrownBy(
             () ->
                 coordinator.subscribe(
-                    consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
+                    consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {}))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -131,7 +131,7 @@ public class ConsumersCoordinatorTest {
     assertThatThrownBy(
             () ->
                 coordinator.subscribe(
-                    consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
+                    consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {}))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -146,7 +146,7 @@ public class ConsumersCoordinatorTest {
     assertThatThrownBy(
             () ->
                 coordinator.subscribe(
-                    consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
+                    consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {}))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -160,7 +160,7 @@ public class ConsumersCoordinatorTest {
     assertThatThrownBy(
             () ->
                 coordinator.subscribe(
-                    consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
+                    consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {}))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -203,9 +203,8 @@ public class ConsumersCoordinatorTest {
             consumer,
             "stream",
             OffsetSpecification.first(),
-            (offset, message) -> {
-              messageHandlerCalls.incrementAndGet();
-            });
+            null,
+            (offset, message) -> messageHandlerCalls.incrementAndGet());
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
@@ -246,9 +245,9 @@ public class ConsumersCoordinatorTest {
               consumer,
               "stream",
               OffsetSpecification.first(),
-              (offset, message) -> {
-                messageHandlerCalls.compute(subId, (k, v) -> (v == null) ? 1 : ++v);
-              });
+              null,
+              (offset, message) ->
+                  messageHandlerCalls.compute(subId, (k, v) -> (v == null) ? 1 : ++v));
       closingRunnables.add(closingRunnable);
     }
 
@@ -319,9 +318,8 @@ public class ConsumersCoordinatorTest {
             consumer,
             "stream",
             OffsetSpecification.first(),
-            (offset, message) -> {
-              messageHandlerCalls.incrementAndGet();
-            });
+            null,
+            (offset, message) -> messageHandlerCalls.incrementAndGet());
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
@@ -376,9 +374,8 @@ public class ConsumersCoordinatorTest {
             consumer,
             "stream",
             OffsetSpecification.first(),
-            (offset, message) -> {
-              messageHandlerCalls.incrementAndGet();
-            });
+            null,
+            (offset, message) -> messageHandlerCalls.incrementAndGet());
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
@@ -448,9 +445,8 @@ public class ConsumersCoordinatorTest {
             consumer,
             "stream",
             OffsetSpecification.first(),
-            (offset, message) -> {
-              messageHandlerCalls.incrementAndGet();
-            });
+            null,
+            (offset, message) -> messageHandlerCalls.incrementAndGet());
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
@@ -510,9 +506,8 @@ public class ConsumersCoordinatorTest {
         consumer,
         "stream",
         OffsetSpecification.first(),
-        (offset, message) -> {
-          messageHandlerCalls.incrementAndGet();
-        });
+        null,
+        (offset, message) -> messageHandlerCalls.incrementAndGet());
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
@@ -558,9 +553,8 @@ public class ConsumersCoordinatorTest {
         consumer,
         "stream",
         OffsetSpecification.first(),
-        (offset, message) -> {
-          messageHandlerCalls.incrementAndGet();
-        });
+        null,
+        (offset, message) -> messageHandlerCalls.incrementAndGet());
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
@@ -605,7 +599,11 @@ public class ConsumersCoordinatorTest {
             .mapToObj(
                 i ->
                     coordinator.subscribe(
-                        consumer, "stream", OffsetSpecification.first(), (offset, message) -> {}))
+                        consumer,
+                        "stream",
+                        OffsetSpecification.first(),
+                        null,
+                        (offset, message) -> {}))
             .collect(Collectors.toList());
 
     verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
@@ -659,7 +657,7 @@ public class ConsumersCoordinatorTest {
         .forEach(
             i -> {
               coordinator.subscribe(
-                  consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
+                  consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
             });
     // the extra is allocated on another client from the same pool
     verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
@@ -675,7 +673,8 @@ public class ConsumersCoordinatorTest {
 
     // the MAX consumers must have been re-allocated to the existing client and a new one
     // let's add a new subscription to make sure we are still using the same pool
-    coordinator.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
+    coordinator.subscribe(
+        consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
 
     verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
@@ -708,7 +707,7 @@ public class ConsumersCoordinatorTest {
         .forEach(
             i -> {
               coordinator.subscribe(
-                  consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
+                  consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
             });
     // the extra is allocated on another client from the same pool
     verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
@@ -736,7 +735,8 @@ public class ConsumersCoordinatorTest {
 
     // the MAX consumers must have been re-allocated to the existing client and a new one
     // let's add a new subscription to make sure we are still using the same pool
-    coordinator.subscribe(consumer, "stream", OffsetSpecification.first(), (offset, message) -> {});
+    coordinator.subscribe(
+        consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
 
     verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))

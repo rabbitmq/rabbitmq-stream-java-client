@@ -33,10 +33,9 @@ import org.slf4j.LoggerFactory;
 class ProducersCoordinator {
 
   static final int MAX_PRODUCERS_PER_CLIENT = 256;
+  static final int MAX_COMMITTING_CONSUMERS_PER_CLIENT = 50;
   private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
   private final StreamEnvironment environment;
-  //  private final AtomicLong globalPublisherIdSequence = new AtomicLong(0);
-  //  private final Map<Long, ProducerTracker> producerRegistry = new ConcurrentHashMap<>();
   private final Function<Client.ClientParameters, Client> clientFactory;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
 
@@ -57,6 +56,14 @@ class ProducersCoordinator {
   }
 
   Runnable registerProducer(StreamProducer producer, String stream) {
+    return registerAgentTracker(new ProducerTracker(stream, producer), stream);
+  }
+
+  Runnable registerCommittingConsumer(StreamConsumer consumer, String stream) {
+    return registerAgentTracker(new CommittingConsumerTracker(stream, consumer), stream);
+  }
+
+  private Runnable registerAgentTracker(AgentTracker tracker, String stream) {
     Client.Broker brokerForProducer = getBrokerForProducer(stream);
 
     String key = keyForManagerPool(brokerForProducer);
@@ -71,12 +78,9 @@ class ProducersCoordinator {
                         .host(brokerForProducer.getHost())
                         .port(brokerForProducer.getPort())));
 
-    ProducerTracker producerTracker = new ProducerTracker(stream, producer);
-    pool.add(producerTracker);
+    pool.add(tracker);
 
-    return () -> {
-      producerTracker.cancel();
-    };
+    return () -> tracker.cancel();
   }
 
   private Client.Broker getBrokerForProducer(String stream) {
@@ -122,7 +126,26 @@ class ProducersCoordinator {
         .reduce(0, (acc, size) -> acc + size);
   }
 
-  private static class ProducerTracker {
+  private interface AgentTracker {
+
+    void assign(byte producerId, Client client, ClientProducersManager manager);
+
+    boolean identifiable();
+
+    byte id();
+
+    void unavailable();
+
+    void running();
+
+    void cancel();
+
+    void closeAfterStreamDeletion();
+
+    String stream();
+  }
+
+  private static class ProducerTracker implements AgentTracker {
 
     private final String stream;
     private final StreamProducer producer;
@@ -134,14 +157,8 @@ class ProducersCoordinator {
       this.producer = producer;
     }
 
-    void unavailable() {
-      synchronized (ProducerTracker.this) {
-        this.clientProducersManager = null;
-      }
-      this.producer.unavailable();
-    }
-
-    void assign(byte producerId, Client client, ClientProducersManager manager) {
+    @Override
+    public void assign(byte producerId, Client client, ClientProducersManager manager) {
       synchronized (ProducerTracker.this) {
         this.publisherId = producerId;
         this.clientProducersManager = manager;
@@ -150,10 +167,105 @@ class ProducersCoordinator {
       this.producer.setClient(client);
     }
 
-    synchronized void cancel() {
+    @Override
+    public boolean identifiable() {
+      return true;
+    }
+
+    @Override
+    public byte id() {
+      return this.publisherId;
+    }
+
+    @Override
+    public String stream() {
+      return this.stream;
+    }
+
+    @Override
+    public void unavailable() {
+      synchronized (ProducerTracker.this) {
+        this.clientProducersManager = null;
+      }
+      this.producer.unavailable();
+    }
+
+    @Override
+    public void running() {
+      this.producer.running();
+    }
+
+    @Override
+    public synchronized void cancel() {
       if (this.clientProducersManager != null) {
         this.clientProducersManager.unregister(this);
       }
+    }
+
+    @Override
+    public void closeAfterStreamDeletion() {
+      this.producer.closeAfterStreamDeletion();
+    }
+  }
+
+  private static class CommittingConsumerTracker implements AgentTracker {
+
+    private final String stream;
+    private final StreamConsumer consumer;
+    private volatile ClientProducersManager clientProducersManager;
+
+    private CommittingConsumerTracker(String stream, StreamConsumer consumer) {
+      this.stream = stream;
+      this.consumer = consumer;
+    }
+
+    @Override
+    public void assign(byte producerId, Client client, ClientProducersManager manager) {
+      synchronized (CommittingConsumerTracker.this) {
+        this.clientProducersManager = manager;
+      }
+      this.consumer.setClient(client);
+    }
+
+    @Override
+    public boolean identifiable() {
+      return false;
+    }
+
+    @Override
+    public byte id() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String stream() {
+      return this.stream;
+    }
+
+    @Override
+    public void unavailable() {
+      synchronized (CommittingConsumerTracker.this) {
+        this.clientProducersManager = null;
+      }
+      this.consumer.unavailable();
+    }
+
+    @Override
+    public void running() {
+      this.consumer.running();
+    }
+
+    @Override
+    public synchronized void cancel() {
+      if (this.clientProducersManager != null) {
+        this.clientProducersManager.unregister(this);
+      }
+    }
+
+    @Override
+    public void closeAfterStreamDeletion() {
+      // nothing to do here, the consumer will be closed by the consumers coordinator if
+      // the stream has been deleted
     }
   }
 
@@ -169,12 +281,12 @@ class ProducersCoordinator {
       this.managers.add(new ClientProducersManager(this, clientFactory, clientParameters));
     }
 
-    private synchronized void add(ProducerTracker producerTracker) {
+    private synchronized void add(AgentTracker producerTracker) {
       boolean added = false;
       // FIXME deal with state unavailability (state may be closing because of connection closing)
       // try all of them until it succeeds, throw exception if failure
       for (ClientProducersManager manager : this.managers) {
-        if (!manager.isFull()) {
+        if (!manager.isFullFor(producerTracker)) {
           manager.register(producerTracker);
           added = true;
           break;
@@ -218,8 +330,9 @@ class ProducersCoordinator {
 
     private final ConcurrentMap<Byte, ProducerTracker> producers =
         new ConcurrentHashMap<>(MAX_PRODUCERS_PER_CLIENT);
-    private final Map<String, Set<ProducerTracker>> streamToProducerTrackers =
-        new ConcurrentHashMap<>();
+    private final Set<AgentTracker> committingConsumerTrackers =
+        ConcurrentHashMap.newKeySet(MAX_COMMITTING_CONSUMERS_PER_CLIENT);
+    private final Map<String, Set<AgentTracker>> streamToTrackers = new ConcurrentHashMap<>();
     private final Client client;
     private final ManagerPool owner;
 
@@ -263,12 +376,12 @@ class ProducersCoordinator {
                               .scheduledExecutorService()
                               .execute(
                                   () -> {
-                                    streamToProducerTrackers
+                                    streamToTrackers
                                         .entrySet()
                                         .forEach(
                                             entry -> {
                                               String stream = entry.getKey();
-                                              Set<ProducerTracker> trackers = entry.getValue();
+                                              Set<AgentTracker> trackers = entry.getValue();
                                               assignProducersToNewManagers(
                                                   trackers,
                                                   stream,
@@ -280,14 +393,16 @@ class ProducersCoordinator {
                   .metadataListener(
                       (stream, code) -> {
                         synchronized (ClientProducersManager.this) {
-                          Set<ProducerTracker> affectedProducerTrackers =
-                              streamToProducerTrackers.remove(stream);
+                          Set<AgentTracker> affectedProducerTrackers =
+                              streamToTrackers.remove(stream);
                           if (affectedProducerTrackers != null
                               && !affectedProducerTrackers.isEmpty()) {
                             affectedProducerTrackers.forEach(
                                 tracker -> {
                                   tracker.unavailable();
-                                  producers.remove(tracker.publisherId);
+                                  if (tracker.identifiable()) {
+                                    producers.remove(tracker.id());
+                                  }
                                 });
                             environment
                                 .scheduledExecutorService()
@@ -309,7 +424,7 @@ class ProducersCoordinator {
     }
 
     private void assignProducersToNewManagers(
-        Collection<ProducerTracker> trackers, String stream, BackOffDelayPolicy delayPolicy) {
+        Collection<AgentTracker> trackers, String stream, BackOffDelayPolicy delayPolicy) {
       AsyncRetry.asyncRetry(() -> getBrokerForProducer(stream))
           .description("Candidate lookup to publish to " + stream)
           .scheduler(environment.scheduledExecutorService())
@@ -333,14 +448,14 @@ class ProducersCoordinator {
                 trackers.forEach(
                     tracker -> {
                       pool.add(tracker);
-                      tracker.producer.running();
+                      tracker.running();
                     });
               })
           .exceptionally(
               ex -> {
-                for (ProducerTracker tracker : trackers) {
+                for (AgentTracker tracker : trackers) {
                   try {
-                    tracker.producer.closeAfterStreamDeletion();
+                    tracker.closeAfterStreamDeletion();
                   } catch (Exception e) {
                     LOGGER.debug("Error while closing producer", e.getMessage());
                   }
@@ -349,43 +464,58 @@ class ProducersCoordinator {
               });
     }
 
-    private synchronized void register(ProducerTracker producerTracker) {
-      // using the next available slot
-      for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
-        ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
-        if (previousValue == null) {
-          producerTracker.assign((byte) i, this.client, this);
-          break;
+    private synchronized void register(AgentTracker tracker) {
+      if (tracker.identifiable()) {
+        ProducerTracker producerTracker = (ProducerTracker) tracker;
+        // using the next available slot
+        for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
+          ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
+          if (previousValue == null) {
+            tracker.assign((byte) i, this.client, this);
+            break;
+          }
         }
+        producers.put(tracker.id(), producerTracker);
+      } else {
+        tracker.assign((byte) 0, this.client, this);
+        committingConsumerTrackers.add(tracker);
       }
-      producers.put(producerTracker.publisherId, producerTracker);
-      streamToProducerTrackers
-          .computeIfAbsent(producerTracker.stream, s -> ConcurrentHashMap.newKeySet())
-          .add(producerTracker);
+
+      streamToTrackers
+          .computeIfAbsent(tracker.stream(), s -> ConcurrentHashMap.newKeySet())
+          .add(tracker);
     }
 
-    private synchronized void unregister(ProducerTracker producerTracker) {
-      producers.remove(producerTracker.publisherId);
-      streamToProducerTrackers.compute(
-          producerTracker.stream,
-          (s, producerTrackersForThisStream) -> {
-            if (s == null || producerTrackersForThisStream == null) {
+    private synchronized void unregister(AgentTracker tracker) {
+      if (tracker.identifiable()) {
+        producers.remove(tracker.id());
+      } else {
+        committingConsumerTrackers.remove(tracker);
+      }
+      streamToTrackers.compute(
+          tracker.stream(),
+          (s, trackersForThisStream) -> {
+            if (s == null || trackersForThisStream == null) {
               // should not happen
               return null;
             } else {
-              producerTrackersForThisStream.remove(producerTracker);
-              return producerTrackersForThisStream.isEmpty() ? null : producerTrackersForThisStream;
+              trackersForThisStream.remove(tracker);
+              return trackersForThisStream.isEmpty() ? null : trackersForThisStream;
             }
           });
       this.owner.maybeDisposeManager(this);
     }
 
-    synchronized boolean isFull() {
-      return producers.size() == MAX_PRODUCERS_PER_CLIENT;
+    synchronized boolean isFullFor(AgentTracker tracker) {
+      if (tracker.identifiable()) {
+        return producers.size() == MAX_PRODUCERS_PER_CLIENT;
+      } else {
+        return committingConsumerTrackers.size() == MAX_COMMITTING_CONSUMERS_PER_CLIENT;
+      }
     }
 
     synchronized boolean isEmpty() {
-      return producers.isEmpty();
+      return producers.isEmpty() && committingConsumerTrackers.isEmpty();
     }
 
     private void close() {

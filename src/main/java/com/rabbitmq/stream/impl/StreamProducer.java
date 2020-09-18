@@ -43,7 +43,7 @@ class StreamProducer implements Producer {
   private final StreamEnvironment environment;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final int maxUnconfirmedMessages;
-  private Client client;
+  private volatile Client client;
   private volatile byte publisherId;
   private volatile Status status;
 
@@ -183,7 +183,6 @@ class StreamProducer implements Producer {
   @Override
   public void close() {
     if (this.closed.compareAndSet(false, true)) {
-      this.status = Status.CLOSED;
       this.environment.removeProducer(this);
       closeFromEnvironment();
     }
@@ -192,11 +191,13 @@ class StreamProducer implements Producer {
   void closeFromEnvironment() {
     this.closingCallback.run();
     this.closed.set(true);
+    this.status = Status.CLOSED;
   }
 
   void closeAfterStreamDeletion() {
     if (closed.compareAndSet(false, true)) {
       this.environment.removeProducer(this);
+      this.status = Status.CLOSED;
     }
   }
 

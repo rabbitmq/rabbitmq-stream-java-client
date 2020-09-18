@@ -18,7 +18,7 @@ import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
 
-public class StreamStreamCreator implements StreamCreator {
+class StreamStreamCreator implements StreamCreator {
 
   private final StreamEnvironment environment;
   private final Client.StreamParametersBuilder streamParametersBuilder =

@@ -14,10 +14,13 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Host;
@@ -30,6 +33,8 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -243,5 +248,103 @@ public class StreamConsumerTest {
     } finally {
       environment.deleteStream(s);
     }
+  }
+
+  @Test
+  void committingConsumerShouldRestartWhereItLeftOff() throws Exception {
+    Producer producer = environment.producerBuilder().stream(stream).build();
+
+    int messageCountFirstWave = 10_000;
+    int messageCountSecondWave = 5_000;
+    int messageCount = messageCountFirstWave + messageCountSecondWave;
+
+    CountDownLatch latchConfirmFirstWave = new CountDownLatch(messageCountFirstWave);
+    CountDownLatch latchConfirmSecondWave = new CountDownLatch(messageCount);
+
+    ConfirmationHandler confirmationHandler =
+        confirmationStatus -> {
+          latchConfirmFirstWave.countDown();
+          latchConfirmSecondWave.countDown();
+        };
+
+    AtomicLong messageIdSequence = new AtomicLong();
+
+    java.util.function.Consumer<Integer> messageSending =
+        messageCountToSend -> {
+          IntStream.range(0, messageCountToSend)
+              .forEach(
+                  i ->
+                      producer.send(
+                          producer
+                              .messageBuilder()
+                              .addData("".getBytes())
+                              .properties()
+                              .messageId(messageIdSequence.getAndIncrement())
+                              .messageBuilder()
+                              .build(),
+                          confirmationHandler));
+        };
+
+    messageSending.accept(messageCountFirstWave);
+
+    assertThat(latchAssert(latchConfirmFirstWave)).completes();
+
+    int commitEvery = 100;
+    AtomicInteger consumedMessageCount = new AtomicInteger();
+    AtomicReference<Consumer> consumerReference = new AtomicReference<>();
+    AtomicLong lastCommittedOffset = new AtomicLong(0);
+    AtomicLong lastProcessedMessage = new AtomicLong(0);
+
+    AtomicInteger commitCount = new AtomicInteger(0);
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .name("application-1")
+            .messageHandler(
+                (offset, message) -> {
+                  consumedMessageCount.incrementAndGet();
+                  lastProcessedMessage.set(message.getProperties().getMessageIdAsLong());
+                  if (consumedMessageCount.get() % commitEvery == 0) {
+                    consumerReference.get().commit(offset);
+                    lastCommittedOffset.set(offset);
+                    commitCount.incrementAndGet();
+                  }
+                })
+            .build();
+
+    consumerReference.set(consumer);
+
+    waitAtMost(10, () -> consumedMessageCount.get() == messageCountFirstWave);
+
+    assertThat(lastCommittedOffset.get()).isPositive();
+
+    consumer.close();
+
+    messageSending.accept(messageCountSecondWave);
+
+    assertThat(latchAssert(latchConfirmSecondWave)).completes();
+
+    AtomicLong firstOffset = new AtomicLong(0);
+    consumer =
+        environment.consumerBuilder().stream(stream)
+            .name("application-1")
+            .messageHandler(
+                (offset, message) -> {
+                  firstOffset.compareAndSet(0, offset);
+                  if (message.getProperties().getMessageIdAsLong() > lastProcessedMessage.get()) {
+                    consumedMessageCount.incrementAndGet();
+                  }
+                })
+            .build();
+
+    waitAtMost(
+        3,
+        () -> consumedMessageCount.get() == messageCount,
+        () -> "Expected " + consumedMessageCount.get() + " to reach " + messageCount);
+
+    // there will be the tracking records after the first wave of messages,
+    // messages offset won't be contiguous
+    assertThat(firstOffset.get()).isGreaterThanOrEqualTo(lastCommittedOffset.get());
+
+    consumer.close();
   }
 }

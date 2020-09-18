@@ -24,15 +24,18 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import java.lang.annotation.*;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.assertj.core.api.AssertDelegateTarget;
 import org.junit.jupiter.api.extension.*;
 
 final class TestUtils {
@@ -261,5 +264,37 @@ final class TestUtils {
   interface CallableIndexConsumer<T> {
 
     void accept(int index, T t) throws Exception;
+  }
+
+  static class CountDownLatchAssert implements AssertDelegateTarget {
+
+    private static final Duration TIMEOUT = Duration.ofSeconds(10);
+
+    private final CountDownLatch latch;
+
+    CountDownLatchAssert(CountDownLatch latch) {
+      this.latch = latch;
+    }
+
+    void completes() {
+      completes(TIMEOUT);
+    }
+
+    void completes(int timeoutInSeconds) {
+      completes(Duration.ofSeconds(timeoutInSeconds));
+    }
+
+    void completes(Duration timeout) {
+      try {
+        assertThat(latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS)).isTrue();
+      } catch (InterruptedException e) {
+        Thread.interrupted();
+        throw new RuntimeException(e);
+      }
+    }
+  }
+
+  static CountDownLatchAssert latchAssert(CountDownLatch latch) {
+    return new CountDownLatchAssert(latch);
   }
 }

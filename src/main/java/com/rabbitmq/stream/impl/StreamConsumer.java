@@ -17,24 +17,57 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.impl.StreamProducer.Status;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class StreamConsumer implements Consumer {
+class StreamConsumer implements Consumer {
 
   private final Runnable closingCallback;
 
+  private final Runnable closingCommitCallback;
+
   private final AtomicBoolean closed = new AtomicBoolean(false);
 
+  private final String name;
+
+  private final String stream;
+
   private final StreamEnvironment environment;
+
+  private volatile Client commitClient;
+
+  private volatile Status status;
 
   StreamConsumer(
       String stream,
       OffsetSpecification offsetSpecification,
       MessageHandler messageHandler,
+      String name,
       StreamEnvironment environment) {
+    this.name = name;
+    this.stream = stream;
     this.closingCallback =
-        environment.registerConsumer(this, stream, offsetSpecification, messageHandler);
+        environment.registerConsumer(this, stream, offsetSpecification, this.name, messageHandler);
     this.environment = environment;
+
+    // FIXME set commit client if necessary (if consumer has a registration name)
+    if (this.name != null) {
+      this.closingCommitCallback = environment.registerCommittingConsumer(this, stream);
+    } else {
+      this.closingCommitCallback = () -> {};
+    }
+    this.status = Status.RUNNING;
+  }
+
+  @Override
+  public void commit(long offset) {
+    if (canCommit()) {
+      this.commitClient.commitOffset(this.name, this.stream, offset);
+    }
+  }
+
+  private boolean canCommit() {
+    return this.status == Status.RUNNING;
   }
 
   @Override
@@ -47,16 +80,41 @@ public class StreamConsumer implements Consumer {
 
   void closeFromEnvironment() {
     this.closingCallback.run();
+    this.closingCommitCallback.run();
     closed.set(true);
+    this.status = Status.CLOSED;
   }
 
   void closeAfterStreamDeletion() {
     if (closed.compareAndSet(false, true)) {
       this.environment.removeConsumer(this);
+      this.status = Status.CLOSED;
     }
   }
 
   boolean isOpen() {
     return !this.closed.get();
+  }
+
+  synchronized void setClient(Client client) {
+    this.commitClient = client;
+  }
+
+  void unavailable() {
+    this.status = Status.NOT_AVAILABLE;
+  }
+
+  void running() {
+    this.status = Status.RUNNING;
+  }
+
+  Status status() {
+    return this.status;
+  }
+
+  enum Status {
+    RUNNING,
+    NOT_AVAILABLE,
+    CLOSED
   }
 }
