@@ -9,6 +9,7 @@ The client ships also with a
 https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/#the-performance-tool[performance tool].
 
 Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[documentation]
+(https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/pdf/index.pdf[PDF])
 to find out more.
 
 == Project Maturity
