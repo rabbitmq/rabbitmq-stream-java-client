@@ -15,6 +15,9 @@
 package com.rabbitmq.stream.docs;
 
 import com.rabbitmq.stream.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ConsumerUsage {
 
@@ -31,6 +34,33 @@ public class ConsumerUsage {
         // ...
         consumer.close();  // <6>
         // end::producer-creation[]
+    }
+
+    void offsetTracking() {
+      Environment environment = Environment.builder().build();
+      // tag::offset-tracking[]
+      int commitEvery = 100;   // <1>
+      AtomicInteger consumedMessageCount = new AtomicInteger();
+      AtomicReference<Consumer> consumerReference = new AtomicReference<>();
+
+      Consumer consumer =
+          environment.consumerBuilder()
+              .stream("my-stream")
+              .name("application-1")   // <2>
+              .messageHandler(
+                  (offset, message) -> {
+                    // business code
+                    // ...
+
+                    consumedMessageCount.incrementAndGet();   // <3>
+                    if (consumedMessageCount.get() % commitEvery == 0) {
+                      consumerReference.get().commit(offset);   // <4>
+                    }
+                  })
+              .build();
+
+      consumerReference.set(consumer);
+      // end::offset-tracking[]
     }
 
 }
