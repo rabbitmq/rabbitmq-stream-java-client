@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(cc53b36)</span>
+<br><span id="revremark">(c6e3138)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -482,7 +482,13 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#working-with-complex-messages">Working with Complex Messages</a></li>
 </ul>
 </li>
-<li><a href="#consumer">Consumer</a></li>
+<li><a href="#consumer">Consumer</a>
+<ul class="sectlevel4">
+<li><a href="#creating-a-consumer">Creating a Consumer</a></li>
+<li><a href="#specifying-an-offset">Specifying an Offset</a></li>
+<li><a href="#tracking-the-offset-for-a-consumer">Tracking the Offset for a Consumer</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li><a href="#building-the-client">Building the Client</a></li>
@@ -1478,6 +1484,11 @@ to be accessed as AMQP 0-9-1 queues, without data loss.</p>
 <div class="sect3">
 <h4 id="consumer"><a class="anchor" href="#consumer"></a>Consumer</h4>
 <div class="paragraph">
+<p><code>Consumer</code> is the API to consume messages from a stream.</p>
+</div>
+<div class="sect4">
+<h5 id="creating-a-consumer"><a class="anchor" href="#creating-a-consumer"></a>Creating a Consumer</h5>
+<div class="paragraph">
 <p>A <code>Consumer</code> instance is created with <code>Environment#consumerBuilder()</code>. The main
 settings are the stream to consume from, the place in the stream to start
 consuming from (the <em>offset</em>), and a callback when a message is received
@@ -1528,8 +1539,12 @@ consumer.close();  <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
 <div class="paragraph">
 <p>The broker start sending messages as soon as the <code>Consumer</code> instance is created.</p>
 </div>
+</div>
+<div class="sect4">
+<h5 id="specifying-an-offset"><a class="anchor" href="#specifying-an-offset"></a>Specifying an Offset</h5>
 <div class="paragraph">
-<p>The possible values for the offset parameter are the following:</p>
+<p>The offset is the place in the stream where the consumer starts consuming from.
+The possible values for the offset parameter are the following:</p>
 </div>
 <div class="ulist">
 <ul>
@@ -1559,6 +1574,129 @@ in a previous incarnation of the application.</p>
 after the specified timestamp.</p>
 </li>
 </ul>
+</div>
+</div>
+<div class="sect4">
+<h5 id="tracking-the-offset-for-a-consumer"><a class="anchor" href="#tracking-the-offset-for-a-consumer"></a>Tracking the Offset for a Consumer</h5>
+<div class="paragraph">
+<p>A consumer can track the offset it has reached in a stream. This allows a new incarnation
+of the consumer to restart consuming where it left off. Offset tracking works in 2 steps:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>the consumer must have a <strong>name</strong>. The name is set with <code>ConsumerBuilder#name(String)</code>. The name
+can be any value (under 256 characters) and is expected to be unique (from the application
+point of view). Note neither the client library, nor the broker
+enforces uniqueness of the name: if 2 <code>Consumer</code> Java instances share the same name, their
+offset tracking will likely be interleaved, which applications usually do not expect.</p>
+</li>
+<li>
+<p>the consumer must periodically <strong>commit the offset</strong> it has reached so far. This is not done
+automatically, it must be done in the application code.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The following snippet is an example of offset tracking:</p>
+</div>
+<div class="listingblock">
+<div class="title">Tracking consumer offset</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="type">int</span> commitEvery = <span class="integer">100</span>;   <i class="conum" data-value="1"></i><b>(1)</b>
+<span class="predefined-type">AtomicInteger</span> consumedMessageCount = <span class="keyword">new</span> <span class="predefined-type">AtomicInteger</span>();
+<span class="predefined-type">AtomicReference</span>&lt;Consumer&gt; consumerReference = <span class="keyword">new</span> <span class="predefined-type">AtomicReference</span>&lt;&gt;();
+
+Consumer consumer =
+    environment.consumerBuilder()
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+        .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="2"></i><b>(2)</b>
+        .messageHandler(
+            (offset, message) -&gt; {
+              <span class="comment">// business code</span>
+              <span class="comment">// ...</span>
+
+              consumedMessageCount.incrementAndGet();   <i class="conum" data-value="3"></i><b>(3)</b>
+              <span class="keyword">if</span> (consumedMessageCount.get() % commitEvery == <span class="integer">0</span>) {
+                consumerReference.get().commit(offset);   <i class="conum" data-value="4"></i><b>(4)</b>
+              }
+            })
+        .build();
+
+consumerReference.set(consumer);</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the commit interval to 100</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Set the consumer name (mandatory for offset tracking)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Count messages</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Commit at the specified offset</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">When to commit offsets?</div>
+<div class="paragraph">
+<p>Avoid committing the offset for each message. Even though offset tracking is a small and
+fast operation, it will make the stream grow unnecessarily, as the broker persists offset
+tracking entries in the stream itself.</p>
+</div>
+<div class="paragraph">
+<p>A good rule of thumb is to commit every few hundreds
+of messages. Of course, when the consumer will restart consuming in a new incarnation, the
+last tracked offset may be a little behind the very last message the previous incarnation
+actually processed, so the consumer may see some messages that have been already processed.</p>
+</div>
+<div class="paragraph">
+<p>A solution to this problem is to make sure processing is idempotent or filter out the
+last duplicate messages.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Is the offset a reliable absolute value?</div>
+<div class="paragraph">
+<p>Message offsets may not be contiguous. This implies that the message at offset 500 in a stream may
+not be the 501 message in the stream (offsets start at 0). There can be different types of entries
+in a stream storage, a message is just one of them. Committing an offset creates an offset tracking
+entry, which has its own offset.</p>
+</div>
+<div class="paragraph">
+<p>In the snippet above, we use a separate counter to count messages and make sure to commit every 100
+messages. We could have avoided this counter and do the modulo operation on the offset directly,
+but we would have had no guarantees that we committed every 100 messages (in practice this should
+not make much difference in most cases).</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
 </div>
 </div>
 </div>
@@ -1670,7 +1808,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-09-21 08:25:17 UTC
+Last updated 2020-09-21 09:34:02 UTC
 </div>
 </div>
 <style>
