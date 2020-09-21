@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(e6efba5)</span>
+<br><span id="revremark">(cc53b36)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1102,6 +1102,22 @@ when a stream replica moves and a consumer needs to connect to another
 node.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Initial delay of 5 seconds then delay of 1 second.</p></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>scheduledExecutorService</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Executor used to schedule infrastructure tasks like background publishing, producers
+and consumers migration after disconnection or topology update. If a custom executor is provided,
+it is the developer&#8217;s responsibility to close it once it is no longer necessary.</p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">Executors</span>
+  .newScheduledThreadPool(
+    <span class="predefined-type">Runtime</span>
+      .getRuntime()
+      .availableProcessors()
+);</code></pre>
+</div>
+</div></div></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -1654,7 +1670,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-09-17 16:20:48 UTC
+Last updated 2020-09-21 08:25:17 UTC
 </div>
 </div>
 <style>
