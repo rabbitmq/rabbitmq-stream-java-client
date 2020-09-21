@@ -111,6 +111,21 @@ The following table sums up the main settings to create a `Environment`:
 when a stream replica moves and a consumer needs to connect to another
 node.
 |Initial delay of 5 seconds then delay of 1 second.
+
+|`scheduledExecutorService`
+|Executor used to schedule infrastructure tasks like background publishing, producers
+and consumers migration after disconnection or topology update. If a custom executor is provided,
+it is the developer's responsibility to close it once it is no longer necessary.
+a|
+[source%autofit,java]
+----
+Executors
+  .newScheduledThreadPool(
+    Runtime
+      .getRuntime()
+      .availableProcessors()
+);
+----
 |===
 
 ===== Managing Streams

@@ -101,9 +101,8 @@ class StreamEnvironment implements Environment {
               .eventLoopGroup(clientParametersPrototype.eventLoopGroup);
     }
     if (scheduledExecutorService == null) {
-      // FIXME find a more appropriate default scheduled executor
-      // (more thread could be needed, especially when recovery kicks in (potentially long process)
-      this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+      this.scheduledExecutorService =
+          Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
       this.privateScheduleExecutorService = true;
     } else {
       this.scheduledExecutorService = scheduledExecutorService;
