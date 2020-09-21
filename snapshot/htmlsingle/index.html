@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(49cabc4)</span>
+<br><span id="revremark">(3447a9e)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1605,25 +1605,22 @@ automatically, it must be done in the application code.</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java"><span class="type">int</span> commitEvery = <span class="integer">100</span>;   <i class="conum" data-value="1"></i><b>(1)</b>
 <span class="predefined-type">AtomicInteger</span> consumedMessageCount = <span class="keyword">new</span> <span class="predefined-type">AtomicInteger</span>();
-<span class="predefined-type">AtomicReference</span>&lt;Consumer&gt; consumerReference = <span class="keyword">new</span> <span class="predefined-type">AtomicReference</span>&lt;&gt;();
 
 Consumer consumer =
     environment.consumerBuilder()
         .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
         .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="2"></i><b>(2)</b>
         .messageHandler(
-            (offset, message) -&gt; {
+            (context, message) -&gt; {
               <span class="comment">// business code</span>
               <span class="comment">// ...</span>
 
               consumedMessageCount.incrementAndGet();   <i class="conum" data-value="3"></i><b>(3)</b>
               <span class="keyword">if</span> (consumedMessageCount.get() % commitEvery == <span class="integer">0</span>) {
-                consumerReference.get().commit(offset);   <i class="conum" data-value="4"></i><b>(4)</b>
+                context.commit();   <i class="conum" data-value="4"></i><b>(4)</b>
               }
             })
-        .build();
-
-consumerReference.set(consumer);</code></pre>
+        .build();</code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -1642,9 +1639,15 @@ consumerReference.set(consumer);</code></pre>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Commit at the specified offset</td>
+<td>Commit at the current offset</td>
 </tr>
 </table>
+</div>
+<div class="paragraph">
+<p>The snippet above uses <code>MessageHandler.Context#commit()</code> to commit at the
+offset of the current message, but it is possible to commit anywhere
+in the stream with <code>MessageHandler.Context#consumer()#commit(long)</code> or
+simply <code>Consumer#commit(long)</code>.</p>
 </div>
 <div class="admonitionblock note">
 <table>
@@ -1808,7 +1811,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-09-21 09:38:03 UTC
+Last updated 2020-09-21 14:32:31 UTC
 </div>
 </div>
 <style>
