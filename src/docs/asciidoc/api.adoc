@@ -377,6 +377,7 @@ automatically, it must be done in the application code.
 
 The following snippet is an example of offset tracking:
 
+[[tracking-consumer-offset-snippet]]
 .Tracking consumer offset
 [source,java,indent=0]
 --------
