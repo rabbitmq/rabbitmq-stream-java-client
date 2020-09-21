@@ -16,7 +16,9 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
@@ -334,7 +336,9 @@ class ConsumersCoordinator {
                             subscriptionTrackers.get(subscriptionId & 0xFF);
                         if (subscriptionTracker != null) {
                           subscriptionTracker.offset = offset;
-                          subscriptionTracker.messageHandler.handle(offset, message);
+                          subscriptionTracker.messageHandler.handle(
+                              new MessageHandlerContext(offset, subscriptionTracker.consumer),
+                              message);
                           // FIXME set offset here as well, best effort to avoid duplicates
                         } else {
                           LOGGER.debug("Could not find stream subscription {}", subscriptionId);
@@ -630,6 +634,32 @@ class ConsumersCoordinator {
 
         this.client.close();
       }
+    }
+  }
+
+  private static final class MessageHandlerContext implements Context {
+
+    private final long offset;
+    private final Consumer consumer;
+
+    private MessageHandlerContext(long offset, Consumer consumer) {
+      this.offset = offset;
+      this.consumer = consumer;
+    }
+
+    @Override
+    public long offset() {
+      return this.offset;
+    }
+
+    @Override
+    public void commit() {
+      this.consumer.commit(this.offset);
+    }
+
+    @Override
+    public Consumer consumer() {
+      return this.consumer;
     }
   }
 }

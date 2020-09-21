@@ -386,7 +386,12 @@ include::{test-examples}/ConsumerUsage.java[tag=offset-tracking]
 <1> Set the commit interval to 100
 <2> Set the consumer name (mandatory for offset tracking)
 <3> Count messages
-<4> Commit at the specified offset
+<4> Commit at the current offset
+
+The snippet above uses `MessageHandler.Context#commit()` to commit at the
+offset of the current message, but it is possible to commit anywhere
+in the stream with `MessageHandler.Context#consumer()#commit(long)` or
+simply `Consumer#commit(long)`.
 
 [NOTE]
 .When to commit offsets?

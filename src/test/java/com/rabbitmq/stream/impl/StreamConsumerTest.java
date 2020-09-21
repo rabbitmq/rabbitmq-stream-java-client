@@ -300,12 +300,12 @@ public class StreamConsumerTest {
         environment.consumerBuilder().stream(stream)
             .name("application-1")
             .messageHandler(
-                (offset, message) -> {
+                (context, message) -> {
                   consumedMessageCount.incrementAndGet();
                   lastProcessedMessage.set(message.getProperties().getMessageIdAsLong());
                   if (consumedMessageCount.get() % commitEvery == 0) {
-                    consumerReference.get().commit(offset);
-                    lastCommittedOffset.set(offset);
+                    context.commit();
+                    lastCommittedOffset.set(context.offset());
                     commitCount.incrementAndGet();
                   }
                 })
@@ -328,8 +328,8 @@ public class StreamConsumerTest {
         environment.consumerBuilder().stream(stream)
             .name("application-1")
             .messageHandler(
-                (offset, message) -> {
-                  firstOffset.compareAndSet(0, offset);
+                (context, message) -> {
+                  firstOffset.compareAndSet(0, context.offset());
                   if (message.getProperties().getMessageIdAsLong() > lastProcessedMessage.get()) {
                     consumedMessageCount.incrementAndGet();
                   }

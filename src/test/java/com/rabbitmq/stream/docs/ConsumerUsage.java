@@ -41,25 +41,23 @@ public class ConsumerUsage {
       // tag::offset-tracking[]
       int commitEvery = 100;   // <1>
       AtomicInteger consumedMessageCount = new AtomicInteger();
-      AtomicReference<Consumer> consumerReference = new AtomicReference<>();
 
       Consumer consumer =
           environment.consumerBuilder()
               .stream("my-stream")
               .name("application-1")   // <2>
               .messageHandler(
-                  (offset, message) -> {
+                  (context, message) -> {
                     // business code
                     // ...
 
                     consumedMessageCount.incrementAndGet();   // <3>
                     if (consumedMessageCount.get() % commitEvery == 0) {
-                      consumerReference.get().commit(offset);   // <4>
+                      context.commit();   // <4>
                     }
                   })
               .build();
 
-      consumerReference.set(consumer);
       // end::offset-tracking[]
     }
 
