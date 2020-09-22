@@ -539,7 +539,12 @@ class ProducersCoordinator {
                             + poolEntry.getValue().managers.stream()
                                 .map(
                                     manager ->
-                                        "{ 'producer_count' : " + manager.producers.size() + " }")
+                                        "{ 'producer_count' : "
+                                            + manager.producers.size()
+                                            + ", "
+                                            + "  'committing_consumer_count' : "
+                                            + manager.committingConsumerTrackers.size()
+                                            + " }")
                                 .collect(Collectors.joining(", "))
                             + " ] }")
                 .collect(Collectors.joining(", \n"))

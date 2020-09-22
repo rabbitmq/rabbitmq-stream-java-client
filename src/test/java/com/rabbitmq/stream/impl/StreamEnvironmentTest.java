@@ -107,6 +107,7 @@ public class StreamEnvironmentTest {
             .mapToObj(
                 i ->
                     environment.consumerBuilder().stream(stream)
+                        .name(UUID.randomUUID().toString())
                         .messageHandler((offset, message) -> {})
                         .build())
             .collect(Collectors.toList());
@@ -123,6 +124,9 @@ public class StreamEnvironmentTest {
         .asList()
         .hasSize(1);
     assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getProducerCount())
+        .isEqualTo(2);
+    assertThat(
+            environmentInfo.getProducers().get(0).getClients().get(0).getCommittingConsumerCount())
         .isEqualTo(2);
     assertThat(environmentInfo.getConsumers())
         .hasSize(1)

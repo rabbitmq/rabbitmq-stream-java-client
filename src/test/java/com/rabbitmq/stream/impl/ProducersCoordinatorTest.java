@@ -415,7 +415,7 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
-  void growShrinkResourcesBasedOnProducersCount() {
+  void growShrinkResourcesBasedOnProducersAndCommittingConsumersCount() {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(locator.metadata("stream"))
@@ -455,6 +455,48 @@ public class ProducersCoordinatorTest {
             });
 
     assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(2);
+
+    // let's add some committing consumers
+    int extraCommittingConsumerCount = ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT / 5;
+    int committingConsumerCount =
+        ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT * 2 + extraCommittingConsumerCount;
+
+    class CommittingConsumerInfo {
+      StreamConsumer consumer;
+      Runnable cleaningCallback;
+    }
+    List<CommittingConsumerInfo> committingConsumerInfos = new ArrayList<>(committingConsumerCount);
+    IntStream.range(0, committingConsumerCount)
+        .forEach(
+            i -> {
+              StreamConsumer c = mock(StreamConsumer.class);
+              CommittingConsumerInfo info = new CommittingConsumerInfo();
+              info.consumer = c;
+              Runnable cleaningCallback = coordinator.registerCommittingConsumer(c, "stream");
+              info.cleaningCallback = cleaningCallback;
+              committingConsumerInfos.add(info);
+            });
+
+    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.clientCount())
+        .as("new committing consumers needs yet another client")
+        .isEqualTo(3);
+
+    Collections.reverse(committingConsumerInfos);
+    // let's remove some committing consumers to free 1 client
+    IntStream.range(0, extraCommittingConsumerCount)
+        .forEach(
+            i -> {
+              committingConsumerInfos.get(0).cleaningCallback.run();
+              committingConsumerInfos.remove(0);
+            });
+
+    assertThat(coordinator.clientCount()).isEqualTo(2);
+
+    // let's free the rest of committing consumers
+    committingConsumerInfos.forEach(info -> info.cleaningCallback.run());
+
     assertThat(coordinator.clientCount()).isEqualTo(2);
 
     ProducerInfo info = producerInfos.get(10);
