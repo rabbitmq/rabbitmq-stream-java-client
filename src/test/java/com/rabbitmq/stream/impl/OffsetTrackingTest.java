@@ -239,7 +239,10 @@ public class OffsetTrackingTest {
 
                                 assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS))
                                     .isTrue();
-                                assertThat(firstOffset.get()).isEqualTo(offsetToStartFrom);
+                                // there can be a non-message entry that is skipped and makes
+                                // the first received message offset higher
+                                assertThat(firstOffset.get())
+                                    .isGreaterThanOrEqualTo(offsetToStartFrom);
 
                                 response = consumer.unsubscribe((byte) 0);
                                 assertThat(response.isOk()).isTrue();
