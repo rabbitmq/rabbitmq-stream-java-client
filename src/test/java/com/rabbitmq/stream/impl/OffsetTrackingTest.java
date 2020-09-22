@@ -21,13 +21,18 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import io.vavr.Tuple;
 import io.vavr.Tuple3;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,6 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -139,121 +145,121 @@ public class OffsetTrackingTest {
               Tuple.of(50, messageCount / 20, "ref-2"),
               Tuple.of(10, messageCount / 100, "ref-3"));
 
-      List<Future<Void>> tasks =
+      Function<Tuple3<Integer, Integer, String>, Callable<Void>> testConfigurationToTask =
+          testConfiguration ->
+              () -> {
+                int commitEvery = testConfiguration._1;
+                int consumeCountFirst = testConfiguration._2;
+                String reference = testConfiguration._3;
+
+                AtomicInteger consumeCount = new AtomicInteger();
+                AtomicLong lastCommittedOffset = new AtomicLong();
+                AtomicLong lastConsumedMessageId = new AtomicLong();
+                AtomicReference<Client> consumerReference = new AtomicReference<>();
+                Set<Long> messageIdsSet = ConcurrentHashMap.newKeySet(messageCount);
+                Collection<Long> messageIdsCollection = new ConcurrentLinkedQueue<>();
+                CountDownLatch consumeLatch = new CountDownLatch(1);
+                MessageListener messageListener =
+                    (subscriptionId, offset, message) -> {
+                      if (consumeCount.get() <= consumeCountFirst) {
+                        consumeCount.incrementAndGet();
+                        long messageId = message.getProperties().getMessageIdAsLong();
+                        messageIdsSet.add(messageId);
+                        messageIdsCollection.add(messageId);
+                        lastConsumedMessageId.set(messageId);
+                        if (consumeCount.get() % commitEvery == 0) {
+                          consumerReference.get().commitOffset(reference, s, offset);
+                          lastCommittedOffset.set(offset);
+                        }
+                      } else {
+                        consumeLatch.countDown();
+                      }
+                    };
+                Client consumer =
+                    cf.get(
+                        new ClientParameters()
+                            .chunkListener(
+                                (client, subscriptionId, offset, messageCount1, dataSize) ->
+                                    client.credit(subscriptionId, 1))
+                            .messageListener(messageListener));
+                consumerReference.set(consumer);
+
+                consumer.subscribe((byte) 0, s, OffsetSpecification.offset(0), 1);
+
+                assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+                Response response = consumer.unsubscribe((byte) 0);
+                assertThat(response.isOk()).isTrue();
+
+                assertThat(lastCommittedOffset.get()).isPositive();
+
+                waitAtMost(
+                    5,
+                    () ->
+                        lastCommittedOffset.get()
+                            == consumerReference.get().queryOffset(reference, s),
+                    () ->
+                        "expecting last committed offset to be "
+                            + lastCommittedOffset
+                            + ", but got "
+                            + consumerReference.get().queryOffset(reference, s));
+
+                consumer.close();
+
+                CountDownLatch consumeLatchSecondWave = new CountDownLatch(1);
+                AtomicLong firstOffset = new AtomicLong(-1);
+
+                messageListener =
+                    (subscriptionId, offset, message) -> {
+                      firstOffset.compareAndSet(-1, offset);
+                      long messageId = message.getProperties().getMessageIdAsLong();
+                      if (lastConsumedMessageId.get() < messageId) {
+
+                        messageIdsSet.add(messageId);
+                        messageIdsCollection.add(messageId);
+                        consumeCount.incrementAndGet();
+
+                        if (message.getProperties().getMessageIdAsLong() == lastMessageId.get()) {
+                          consumeLatchSecondWave.countDown();
+                        }
+                      }
+                    };
+
+                consumer =
+                    cf.get(
+                        new ClientParameters()
+                            .chunkListener(
+                                (client, subscriptionId, offset, messageCount1, dataSize) ->
+                                    client.credit(subscriptionId, 1))
+                            .messageListener(messageListener));
+
+                long offsetToStartFrom = consumer.queryOffset(reference, s) + 1;
+                consumer.subscribe((byte) 0, s, OffsetSpecification.offset(offsetToStartFrom), 1);
+
+                assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+                // there can be a non-message entry that is skipped and makes
+                // the first received message offset higher
+                assertThat(firstOffset.get()).isGreaterThanOrEqualTo(offsetToStartFrom);
+
+                response = consumer.unsubscribe((byte) 0);
+                assertThat(response.isOk()).isTrue();
+
+                assertThat(consumeCount.get())
+                    .as("check received all messages")
+                    .isEqualTo(messageCount);
+                assertThat(messageIdsCollection)
+                    .as("check there are no duplicates")
+                    .hasSameSizeAs(messageIdsSet);
+
+                return null;
+              };
+      List<Future<Void>> futures =
           testConfigurations
-              .map(
-                  testConfiguration ->
-                      executorService.submit(
-                          (Callable<Void>)
-                              () -> {
-                                int commitEvery = testConfiguration._1;
-                                int consumeCountFirst = testConfiguration._2;
-                                String reference = testConfiguration._3;
-
-                                AtomicInteger consumeCount = new AtomicInteger();
-                                AtomicLong lastCommittedOffset = new AtomicLong();
-                                AtomicLong lastConsumedMessageId = new AtomicLong();
-                                AtomicReference<Client> consumerReference = new AtomicReference<>();
-                                CountDownLatch consumeLatch = new CountDownLatch(1);
-                                Client consumer =
-                                    cf.get(
-                                        new ClientParameters()
-                                            .chunkListener(
-                                                (client,
-                                                    subscriptionId,
-                                                    offset,
-                                                    messageCount1,
-                                                    dataSize) -> client.credit(subscriptionId, 1))
-                                            .messageListener(
-                                                (subscriptionId, offset, message) -> {
-                                                  if (consumeCount.get() <= consumeCountFirst) {
-                                                    consumeCount.incrementAndGet();
-                                                    lastConsumedMessageId.set(
-                                                        message
-                                                            .getProperties()
-                                                            .getMessageIdAsLong());
-                                                    if (consumeCount.get() % commitEvery == 0) {
-                                                      consumerReference
-                                                          .get()
-                                                          .commitOffset(reference, s, offset);
-                                                      lastCommittedOffset.set(offset);
-                                                    }
-                                                  } else {
-                                                    consumeLatch.countDown();
-                                                  }
-                                                }));
-                                consumerReference.set(consumer);
-
-                                consumer.subscribe((byte) 0, s, OffsetSpecification.offset(0), 1);
-
-                                assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
-                                Response response = consumer.unsubscribe((byte) 0);
-                                assertThat(response.isOk()).isTrue();
-
-                                assertThat(lastCommittedOffset.get()).isPositive();
-
-                                waitAtMost(
-                                    5,
-                                    () ->
-                                        lastCommittedOffset.get()
-                                            == consumerReference.get().queryOffset(reference, s),
-                                    () ->
-                                        "expecting last committed offset to be "
-                                            + lastCommittedOffset
-                                            + ", but got "
-                                            + consumerReference.get().queryOffset(reference, s));
-
-                                consumer.close();
-
-                                CountDownLatch consumeLatchSecondWave = new CountDownLatch(1);
-                                AtomicLong firstOffset = new AtomicLong(-1);
-                                consumer =
-                                    cf.get(
-                                        new ClientParameters()
-                                            .chunkListener(
-                                                (client,
-                                                    subscriptionId,
-                                                    offset,
-                                                    messageCount1,
-                                                    dataSize) -> client.credit(subscriptionId, 1))
-                                            .messageListener(
-                                                (subscriptionId, offset, message) -> {
-                                                  firstOffset.compareAndSet(-1, offset);
-                                                  if (lastConsumedMessageId.get()
-                                                      < message
-                                                          .getProperties()
-                                                          .getMessageIdAsLong()) {
-
-                                                    consumeCount.incrementAndGet();
-
-                                                    if (message.getProperties().getMessageIdAsLong()
-                                                        == lastMessageId.get()) {
-                                                      consumeLatchSecondWave.countDown();
-                                                    }
-                                                  }
-                                                }));
-
-                                long offsetToStartFrom = consumer.queryOffset(reference, s) + 1;
-                                consumer.subscribe(
-                                    (byte) 0, s, OffsetSpecification.offset(offsetToStartFrom), 1);
-
-                                assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS))
-                                    .isTrue();
-                                // there can be a non-message entry that is skipped and makes
-                                // the first received message offset higher
-                                assertThat(firstOffset.get())
-                                    .isGreaterThanOrEqualTo(offsetToStartFrom);
-
-                                response = consumer.unsubscribe((byte) 0);
-                                assertThat(response.isOk()).isTrue();
-
-                                assertThat(consumeCount.get()).isEqualTo(messageCount);
-                                return null;
-                              }))
+              .map(testConfigurationToTask)
+              .map(task -> executorService.submit(task))
               .collect(Collectors.toList());
 
       forEach(
-          tasks,
+          futures,
           (i, task) -> {
             assertThatNoException()
                 .as("task " + i + " failed")
