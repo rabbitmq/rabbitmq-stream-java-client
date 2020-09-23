@@ -296,7 +296,7 @@ public class AuthorisationTest {
       Thread.sleep(timeToCheckOffsetCommit.toMillis() * 2);
       assertThat(configurationClient.queryOffset("default-client", s)).isNotEqualTo(10);
 
-      // querying is not even authorised of for the default client, it should return 0
+      // querying is not even authorised for the default client, it should return 0
       assertThat(client.queryOffset("configuration", s)).isZero();
 
     } finally {

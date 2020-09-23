@@ -380,7 +380,7 @@
             </excludes>
 
             <googleJavaFormat>
-              <version>1.8</version>
+              <version>1.9</version>
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
