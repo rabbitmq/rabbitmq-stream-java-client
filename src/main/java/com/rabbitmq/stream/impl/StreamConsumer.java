@@ -61,6 +61,7 @@ class StreamConsumer implements Consumer {
 
   @Override
   public void commit(long offset) {
+    // FIXME appropriate behavior if commit is not possible
     if (canCommit()) {
       this.commitClient.commitOffset(this.name, this.stream, offset);
     }

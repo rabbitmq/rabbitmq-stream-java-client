@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,6 +22,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -271,6 +273,35 @@ public class AuthorisationTest {
               assertThat(response.isOk()).isTrue();
               assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
             });
+  }
+
+  @Test
+  void commitQueryOffsetShouldSucceedOnAuthorisedStreamShouldFailOnUnauthorisedStream()
+      throws Exception {
+    Client configurationClient = configurationClient();
+    String s = "commit-not-always-authorized";
+    try {
+      assertThat(configurationClient.create(s).isOk()).isTrue();
+
+      configurationClient.commitOffset("configuration", s, 10);
+
+      Duration timeToCheckOffsetCommit =
+          waitAtMost(5, () -> configurationClient.queryOffset("configuration", s) == 10);
+
+      Client client = client();
+
+      client.commitOffset("default-client", s, 10);
+
+      // commit offset is fire-and-forget, let's wait a bit to make sure nothing is written
+      Thread.sleep(timeToCheckOffsetCommit.toMillis() * 2);
+      assertThat(configurationClient.queryOffset("default-client", s)).isNotEqualTo(10);
+
+      // querying is not even authorised of for the default client, it should return 0
+      assertThat(client.queryOffset("configuration", s)).isZero();
+
+    } finally {
+      assertThat(configurationClient.delete(s).isOk()).isTrue();
+    }
   }
 
   Client configurationClient() {

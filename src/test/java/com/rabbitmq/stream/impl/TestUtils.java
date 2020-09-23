@@ -42,31 +42,33 @@ final class TestUtils {
 
   private TestUtils() {}
 
-  static void waitAtMost(int timeoutInSeconds, BooleanSupplier condition)
+  static Duration waitAtMost(int timeoutInSeconds, BooleanSupplier condition)
       throws InterruptedException {
-    waitAtMost(timeoutInSeconds, condition, null);
+    return waitAtMost(timeoutInSeconds, condition, null);
   }
 
-  static void waitAtMost(int timeoutInSeconds, BooleanSupplier condition, Supplier<String> message)
+  static Duration waitAtMost(
+      int timeoutInSeconds, BooleanSupplier condition, Supplier<String> message)
       throws InterruptedException {
     if (condition.getAsBoolean()) {
-      return;
+      return Duration.ZERO;
     }
     int waitTime = 100;
     int waitedTime = 0;
     int timeoutInMs = timeoutInSeconds * 1000;
     while (waitedTime <= timeoutInMs) {
       Thread.sleep(waitTime);
-      if (condition.getAsBoolean()) {
-        return;
-      }
       waitedTime += waitTime;
+      if (condition.getAsBoolean()) {
+        return Duration.ofMillis(waitedTime);
+      }
     }
     if (message == null) {
       fail("Waited " + timeoutInSeconds + " second(s), condition never got true");
     } else {
       fail("Waited " + timeoutInSeconds + " second(s), " + message.get());
     }
+    return Duration.ofMillis(waitedTime);
   }
 
   static void publishAndWaitForConfirms(
