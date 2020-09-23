@@ -28,11 +28,14 @@ import static org.mockito.Mockito.when;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.impl.Client.Broker;
+import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -45,12 +48,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.stubbing.Answer;
 
 public class ProducersCoordinatorTest {
 
   @Mock StreamEnvironment environment;
   @Mock Client locator;
   @Mock StreamProducer producer;
+  @Mock StreamConsumer committingConsumer;
   @Mock Function<Client.ClientParameters, Client> clientFactory;
   @Mock Client client;
   AutoCloseable mocks;
@@ -156,46 +161,41 @@ public class ProducersCoordinatorTest {
     cleanTask.run();
   }
 
+  Map<String, StreamMetadata> metadata(String stream, Broker leader, List<Broker> replicas) {
+    return Collections.singletonMap(
+        stream, new Client.StreamMetadata(stream, Constants.RESPONSE_CODE_OK, leader, replicas));
+  }
+
+  Map<String, StreamMetadata> metadata(Broker leader, List<Broker> replicas) {
+    return metadata("stream", leader, replicas);
+  }
+
   @Test
-  void shouldRedistributeProducerIfConnectionIsLost() throws Exception {
+  void shouldRedistributeProducerAndCommittingConsumerIfConnectionIsLost() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, leader(), replicas())));
+        .thenReturn(metadata(leader(), replicas()))
+        .thenReturn(metadata(leader(), replicas()))
+        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata(leader(), replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
-    CountDownLatch setClientLatch = new CountDownLatch(2);
-    doAnswer(
-            invocation -> {
-              setClientLatch.countDown();
-              return null;
-            })
-        .when(producer)
-        .setClient(client);
+    CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
+
+    doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
+
+    doAnswer(answer(() -> setClientLatch.countDown())).when(committingConsumer).setClient(client);
 
     coordinator.registerProducer(producer, "stream");
+    coordinator.registerCommittingConsumer(committingConsumer, "stream");
 
     verify(producer, times(1)).setClient(client);
+    verify(committingConsumer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -206,41 +206,41 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(2)).setClient(client);
     verify(producer, times(1)).running();
+    verify(committingConsumer, times(1)).unavailable();
+    verify(committingConsumer, times(2)).setClient(client);
+    verify(committingConsumer, times(1)).running();
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
   }
 
+  private static Answer<Void> answer(Runnable task) {
+    return invocationOnMock -> {
+      task.run();
+      return null;
+    };
+  }
+
   @Test
-  void shouldDisposeProducerIfRecoveryTimesOut() throws Exception {
+  void shouldDisposeProducerAndNotCommittingConsumerIfRecoveryTimesOut() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.recoveryBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+        .thenReturn(metadata(leader(), replicas()))
+        .thenReturn(metadata(leader(), replicas())) // for the 2 registrations
+        .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
-    doAnswer(
-            invocation -> {
-              closeClientLatch.countDown();
-              return null;
-            })
-        .when(producer)
-        .closeAfterStreamDeletion();
+    doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
 
     coordinator.registerProducer(producer, "stream");
+    coordinator.registerCommittingConsumer(committingConsumer, "stream");
 
     verify(producer, times(1)).setClient(client);
+    verify(committingConsumer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -251,12 +251,16 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
+    verify(committingConsumer, times(1)).unavailable();
+    verify(committingConsumer, times(1)).setClient(client);
+    verify(committingConsumer, never()).running();
+    verify(committingConsumer, never()).closeAfterStreamDeletion();
     assertThat(coordinator.poolSize()).isEqualTo(0);
     assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
-  void shouldRedistributeProducersOnMetadataUpdate() throws Exception {
+  void shouldRedistributeProducersAndCommittingConsumersOnMetadataUpdate() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
@@ -264,49 +268,38 @@ public class ProducersCoordinatorTest {
         .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
     String movingStream = "moving-stream";
     when(locator.metadata(movingStream))
-        .thenReturn(
-            Collections.singletonMap(
-                movingStream,
-                new Client.StreamMetadata(
-                    movingStream, Constants.RESPONSE_CODE_OK, leader1(), replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                movingStream,
-                new Client.StreamMetadata(
-                    movingStream, Constants.RESPONSE_CODE_OK, null, replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                movingStream,
-                new Client.StreamMetadata(
-                    movingStream, Constants.RESPONSE_CODE_OK, leader2(), replicas())));
+        .thenReturn(metadata(movingStream, leader1(), replicas()))
+        .thenReturn(metadata(movingStream, leader1(), replicas())) // for the first 2 registrations
+        .thenReturn(metadata(movingStream, null, replicas()))
+        .thenReturn(metadata(movingStream, leader2(), replicas()));
 
     String fixedStream = "fixed-stream";
-    when(locator.metadata(fixedStream))
-        .thenReturn(
-            Collections.singletonMap(
-                fixedStream,
-                new Client.StreamMetadata(
-                    fixedStream, Constants.RESPONSE_CODE_OK, leader1(), replicas())));
+    when(locator.metadata(fixedStream)).thenReturn(metadata(fixedStream, leader1(), replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
     StreamProducer movingProducer = mock(StreamProducer.class);
     StreamProducer fixedProducer = mock(StreamProducer.class);
+    StreamConsumer movingCommittingConsumer = mock(StreamConsumer.class);
+    StreamConsumer fixedCommittingConsumer = mock(StreamConsumer.class);
 
-    CountDownLatch setClientLatch = new CountDownLatch(2);
-    doAnswer(
-            invocation -> {
-              setClientLatch.countDown();
-              return null;
-            })
-        .when(movingProducer)
+    CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
+
+    doAnswer(answer(() -> setClientLatch.countDown())).when(movingProducer).setClient(client);
+
+    doAnswer(answer(() -> setClientLatch.countDown()))
+        .when(movingCommittingConsumer)
         .setClient(client);
 
     coordinator.registerProducer(movingProducer, movingStream);
     coordinator.registerProducer(fixedProducer, fixedStream);
+    coordinator.registerCommittingConsumer(movingCommittingConsumer, movingStream);
+    coordinator.registerCommittingConsumer(fixedCommittingConsumer, fixedStream);
 
     verify(movingProducer, times(1)).setClient(client);
     verify(fixedProducer, times(1)).setClient(client);
+    verify(movingCommittingConsumer, times(1)).setClient(client);
+    verify(fixedCommittingConsumer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -316,10 +309,16 @@ public class ProducersCoordinatorTest {
     verify(movingProducer, times(1)).unavailable();
     verify(movingProducer, times(2)).setClient(client);
     verify(movingProducer, times(1)).running();
+    verify(movingCommittingConsumer, times(1)).unavailable();
+    verify(movingCommittingConsumer, times(2)).setClient(client);
+    verify(movingCommittingConsumer, times(1)).running();
 
     verify(fixedProducer, never()).unavailable();
     verify(fixedProducer, times(1)).setClient(client);
     verify(fixedProducer, never()).running();
+    verify(fixedCommittingConsumer, never()).unavailable();
+    verify(fixedCommittingConsumer, times(1)).setClient(client);
+    verify(fixedCommittingConsumer, never()).running();
     assertThat(coordinator.poolSize()).isEqualTo(2);
     assertThat(coordinator.clientCount()).isEqualTo(2);
   }
@@ -371,36 +370,26 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
-  void shouldDisposeProducerIfMetadataUpdateTimesOut() throws Exception {
+  void shouldDisposeProducerAndNotCommittingConsumerIfMetadataUpdateTimesOut() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+        .thenReturn(metadata(leader(), replicas()))
+        .thenReturn(metadata(leader(), replicas())) // for the 2 registrations
+        .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
-    doAnswer(
-            invocation -> {
-              closeClientLatch.countDown();
-              return null;
-            })
-        .when(producer)
-        .closeAfterStreamDeletion();
+    doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
 
     coordinator.registerProducer(producer, "stream");
+    coordinator.registerCommittingConsumer(committingConsumer, "stream");
 
     verify(producer, times(1)).setClient(client);
+    verify(committingConsumer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -410,6 +399,10 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
+    verify(committingConsumer, times(1)).unavailable();
+    verify(committingConsumer, times(1)).setClient(client);
+    verify(committingConsumer, never()).running();
+    verify(committingConsumer, never()).closeAfterStreamDeletion();
     assertThat(coordinator.poolSize()).isEqualTo(0);
     assertThat(coordinator.clientCount()).isEqualTo(0);
   }

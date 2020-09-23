@@ -371,6 +371,7 @@ class ProducersCoordinator {
                               "Recovering {} producers after unexpected connection termination",
                               producers.size());
                           producers.forEach((publishingId, tracker) -> tracker.unavailable());
+                          committingConsumerTrackers.forEach(tracker -> tracker.unavailable());
                           // execute in thread pool to free the IO thread
                           environment
                               .scheduledExecutorService()
@@ -393,15 +394,15 @@ class ProducersCoordinator {
                   .metadataListener(
                       (stream, code) -> {
                         synchronized (ClientProducersManager.this) {
-                          Set<AgentTracker> affectedProducerTrackers =
-                              streamToTrackers.remove(stream);
-                          if (affectedProducerTrackers != null
-                              && !affectedProducerTrackers.isEmpty()) {
-                            affectedProducerTrackers.forEach(
+                          Set<AgentTracker> affectedTrackers = streamToTrackers.remove(stream);
+                          if (affectedTrackers != null && !affectedTrackers.isEmpty()) {
+                            affectedTrackers.forEach(
                                 tracker -> {
                                   tracker.unavailable();
                                   if (tracker.identifiable()) {
                                     producers.remove(tracker.id());
+                                  } else {
+                                    committingConsumerTrackers.remove(tracker);
                                   }
                                 });
                             environment
@@ -412,7 +413,7 @@ class ProducersCoordinator {
                                       // needs to be done in another thread than the IO thread
                                       this.owner.maybeDisposeManager(this);
                                       assignProducersToNewManagers(
-                                          affectedProducerTrackers,
+                                          affectedTrackers,
                                           stream,
                                           environment.topologyUpdateBackOffDelayPolicy());
                                     });
@@ -454,6 +455,12 @@ class ProducersCoordinator {
           .exceptionally(
               ex -> {
                 for (AgentTracker tracker : trackers) {
+                  // FIXME what to do with committing consumers after a timeout?
+                  // here they are left as "unavailable" and not, meaning they will not be
+                  // able to commit. Yet recovery mechanism could try to reconnect them, but
+                  // that seems far-fetched (the first recovery already failed). They could
+                  // be put in a state whereby they refuse all new commit commands and inform
+                  // with an exception they should be restarted.
                   try {
                     tracker.closeAfterStreamDeletion();
                   } catch (Exception e) {
