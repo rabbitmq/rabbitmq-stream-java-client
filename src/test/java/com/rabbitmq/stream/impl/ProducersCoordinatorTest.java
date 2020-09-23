@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,19 +29,17 @@ import static org.mockito.Mockito.when;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
-import com.rabbitmq.stream.impl.Client.Broker;
-import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -48,6 +47,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 public class ProducersCoordinatorTest {
@@ -112,46 +112,28 @@ public class ProducersCoordinatorTest {
   @Test
   void registerShouldThrowExceptionWhenStreamDoesNotExist() {
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, null)));
+        .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
     assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
   @Test
   void registerShouldThrowExceptionWhenMetadataResponseIsNotOk() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_ACCESS_REFUSED, null, null)));
+    when(locator.metadata("stream")).thenReturn(metadata(null, null));
     assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
         .isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void registerShouldThrowExceptionWhenNoLeader() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
     assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
         .isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void registerShouldAllowPublishing() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, leader(), replicas())));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
     Runnable cleanTask = coordinator.registerProducer(producer, "stream");
@@ -159,15 +141,6 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).setClient(client);
 
     cleanTask.run();
-  }
-
-  Map<String, StreamMetadata> metadata(String stream, Broker leader, List<Broker> replicas) {
-    return Collections.singletonMap(
-        stream, new Client.StreamMetadata(stream, Constants.RESPONSE_CODE_OK, leader, replicas));
-  }
-
-  Map<String, StreamMetadata> metadata(Broker leader, List<Broker> replicas) {
-    return metadata("stream", leader, replicas);
   }
 
   @Test
@@ -211,13 +184,6 @@ public class ProducersCoordinatorTest {
     verify(committingConsumer, times(1)).running();
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
-  }
-
-  private static Answer<Void> answer(Runnable task) {
-    return invocationOnMock -> {
-      task.run();
-      return null;
-    };
   }
 
   @Test
@@ -330,27 +296,13 @@ public class ProducersCoordinatorTest {
     when(environment.topologyUpdateBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, leader(), replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, replicas())));
+        .thenReturn(metadata(leader(), replicas()))
+        .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
-    doAnswer(
-            invocation -> {
-              closeClientLatch.countDown();
-              return null;
-            })
-        .when(producer)
-        .closeAfterStreamDeletion();
+    doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
 
     coordinator.registerProducer(producer, "stream");
 
@@ -411,12 +363,7 @@ public class ProducersCoordinatorTest {
   void growShrinkResourcesBasedOnProducersAndCommittingConsumersCount() {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, leader(), replicas())));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
@@ -435,11 +382,7 @@ public class ProducersCoordinatorTest {
               StreamProducer p = mock(StreamProducer.class);
               ProducerInfo info = new ProducerInfo();
               info.producer = p;
-              doAnswer(
-                      invocation -> {
-                        info.publishingId = invocation.getArgument(0);
-                        return null;
-                      })
+              doAnswer(answer(invocation -> info.publishingId = invocation.getArgument(0)))
                   .when(p)
                   .setPublisherId(anyByte());
               Runnable cleaningCallback = coordinator.registerProducer(p, "stream");
@@ -497,11 +440,7 @@ public class ProducersCoordinatorTest {
 
     StreamProducer p = mock(StreamProducer.class);
     AtomicReference<Byte> publishingIdForNewProducer = new AtomicReference<>();
-    doAnswer(
-            invocation -> {
-              publishingIdForNewProducer.set(invocation.getArgument(0));
-              return null;
-            })
+    doAnswer(answer(invoc -> publishingIdForNewProducer.set(invoc.getArgument(0))))
         .when(p)
         .setPublisherId(anyByte());
     coordinator.registerProducer(p, "stream");
@@ -523,19 +462,33 @@ public class ProducersCoordinatorTest {
     assertThat(coordinator.clientCount()).isEqualTo(1);
   }
 
-  Client.Broker leader() {
+  static Client.Broker leader() {
     return new Client.Broker("leader", 5555);
   }
 
-  Client.Broker leader1() {
+  static Client.Broker leader1() {
     return new Client.Broker("leader-1", 5555);
   }
 
-  Client.Broker leader2() {
+  static Client.Broker leader2() {
     return new Client.Broker("leader-2", 5555);
   }
 
-  List<Client.Broker> replicas() {
+  static List<Client.Broker> replicas() {
     return Arrays.asList(new Client.Broker("replica1", 5555), new Client.Broker("replica2", 5555));
+  }
+
+  static Answer<Void> answer(Runnable task) {
+    return invocationOnMock -> {
+      task.run();
+      return null;
+    };
+  }
+
+  static Answer<Void> answer(Consumer<InvocationOnMock> invocation) {
+    return invocationOnMock -> {
+      invocation.accept(invocationOnMock);
+      return null;
+    };
   }
 }

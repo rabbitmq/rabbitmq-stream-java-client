@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
+import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
@@ -123,11 +124,7 @@ public class ConsumersCoordinatorTest {
   @Test
   void subscribeShouldThrowExceptionWhenStreamDoesNotExist() {
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, null)));
+        .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
     assertThatThrownBy(
             () ->
                 coordinator.subscribe(
@@ -138,11 +135,7 @@ public class ConsumersCoordinatorTest {
   @Test
   void subscribeShouldThrowExceptionWhenMetadataResponseIsNotOk() {
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_ACCESS_REFUSED, null, null)));
+        .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_ACCESS_REFUSED));
     assertThatThrownBy(
             () ->
                 coordinator.subscribe(
@@ -152,11 +145,7 @@ public class ConsumersCoordinatorTest {
 
   @Test
   void subscribeShouldThrowExceptionIfNoNodeAvailableForStream() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, null)));
+    when(locator.metadata("stream")).thenReturn(metadata(null, null));
     assertThatThrownBy(
             () ->
                 coordinator.subscribe(
@@ -166,31 +155,19 @@ public class ConsumersCoordinatorTest {
 
   @Test
   void findBrokersForStreamShouldReturnLeaderIfNoReplicas() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), null)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
     assertThat(coordinator.findBrokersForStream("stream")).hasSize(1).contains(leader());
   }
 
   @Test
   void findBrokersForStreamShouldReturnReplicasIfThereAreSome() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
     assertThat(coordinator.findBrokersForStream("stream")).hasSize(2).hasSameElementsAs(replicas());
   }
 
   @Test
   void subscribeShouldSubscribeToStreamAndDispatchesMessage_UnsubscribeShouldUnsubscribe() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.subscribe(
@@ -225,11 +202,7 @@ public class ConsumersCoordinatorTest {
 
   @Test
   void subscribeShouldSubscribeToStreamAndDispatchesMessageWithManySubscriptions() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), null)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.subscribe(
@@ -288,24 +261,10 @@ public class ConsumersCoordinatorTest {
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, null, Collections.emptyList())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, null, Collections.emptyList())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.subscribe(
@@ -357,11 +316,7 @@ public class ConsumersCoordinatorTest {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.subscribe(
@@ -415,24 +370,10 @@ public class ConsumersCoordinatorTest {
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, null, Collections.emptyList())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, null, Collections.emptyList())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())));
+        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.subscribe(
@@ -486,15 +427,8 @@ public class ConsumersCoordinatorTest {
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST, null, null)));
+        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.subscribe(
@@ -537,10 +471,7 @@ public class ConsumersCoordinatorTest {
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, null, replicas())))
+        .thenReturn(metadata(null, replicas()))
         .thenThrow(new IllegalStateException());
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
@@ -577,11 +508,7 @@ public class ConsumersCoordinatorTest {
 
   @Test
   void shouldUseNewClientsForMoreThanMaxSubscriptionsAndCloseClientAfterUnsubscriptions() {
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata("stream", Constants.RESPONSE_CODE_OK, leader(), null)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
@@ -638,12 +565,7 @@ public class ConsumersCoordinatorTest {
     Duration retryDelay = Duration.ofMillis(100);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
     when(consumer.isOpen()).thenReturn(true);
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, null, replicas().subList(0, 1))));
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas().subList(0, 1)));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.subscribe(
@@ -688,12 +610,7 @@ public class ConsumersCoordinatorTest {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
-    when(locator.metadata("stream"))
-        .thenReturn(
-            Collections.singletonMap(
-                "stream",
-                new Client.StreamMetadata(
-                    "stream", Constants.RESPONSE_CODE_OK, null, replicas().subList(0, 1))));
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas().subList(0, 1)));
 
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.subscribe(

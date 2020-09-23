@@ -18,7 +18,10 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.impl.Client.Broker;
+import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.lang.annotation.*;
@@ -27,6 +30,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -298,5 +303,19 @@ final class TestUtils {
 
   static CountDownLatchAssert latchAssert(CountDownLatch latch) {
     return new CountDownLatchAssert(latch);
+  }
+
+  static Map<String, StreamMetadata> metadata(String stream, Broker leader, List<Broker> replicas) {
+    return metadata(stream, leader, replicas, Constants.RESPONSE_CODE_OK);
+  }
+
+  static Map<String, StreamMetadata> metadata(
+      String stream, Broker leader, List<Broker> replicas, short code) {
+    return Collections.singletonMap(
+        stream, new Client.StreamMetadata(stream, code, leader, replicas));
+  }
+
+  static Map<String, StreamMetadata> metadata(Broker leader, List<Broker> replicas) {
+    return metadata("stream", leader, replicas);
   }
 }
