@@ -128,6 +128,20 @@ final class TestUtils {
     };
   }
 
+  static <T> Consumer<T> namedConsumer(Consumer<T> delegate, String description) {
+    return new Consumer<T>() {
+      @Override
+      public void accept(T t) {
+        delegate.accept(t);
+      }
+
+      @Override
+      public String toString() {
+        return description;
+      }
+    };
+  }
+
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented

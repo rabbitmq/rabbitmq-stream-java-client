@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -360,7 +361,7 @@ class ConsumersCoordinator {
                                     subscriptionTrackers.stream()
                                         .filter(tracker -> tracker != null)
                                         .forEach(tracker -> tracker.detachFromManager());
-                                    for (Map.Entry<String, Set<SubscriptionTracker>> entry :
+                                    for (Entry<String, Set<SubscriptionTracker>> entry :
                                         streamToStreamSubscriptions.entrySet()) {
                                       String stream = entry.getKey();
                                       LOGGER.debug(
@@ -532,7 +533,6 @@ class ConsumersCoordinator {
         // FIXME consider using fewer initial credits
 
         if (trackingReference != null) {
-          ;
           long trackedOffset = client.queryOffset(trackingReference, subscriptionTracker.stream);
           if (trackedOffset != 0) {
             LOGGER.debug(

@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
+import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
@@ -34,12 +35,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
@@ -665,6 +670,80 @@ public class ConsumersCoordinatorTest {
         .element(0)
         .extracting(pool -> pool.consumerCount())
         .isEqualTo(subscriptionCount + 1);
+  }
+
+  static Stream<Consumer<ConsumersCoordinatorTest>> shouldRestartWhereItLeftOffAfterDisruption() {
+    return Stream.of(
+        namedConsumer(
+            test ->
+                test.shutdownListener.handle(
+                    new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN)),
+            "disconnection"),
+        namedConsumer(
+            test ->
+                test.metadataListener.handle(
+                    "stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE),
+            "topology change"));
+  }
+  ;
+
+  @ParameterizedTest
+  @MethodSource
+  void shouldRestartWhereItLeftOffAfterDisruption(Consumer<ConsumersCoordinatorTest> configurator)
+      throws Exception {
+    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, replicas()));
+
+    ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
+        ArgumentCaptor.forClass(OffsetSpecification.class);
+
+    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            offsetSpecificationArgumentCaptor.capture(),
+            anyInt()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    Runnable closingRunnable =
+        coordinator.subscribe(
+            consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
+    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+    assertThat(offsetSpecificationArgumentCaptor.getAllValues())
+        .element(0)
+        .isEqualTo(OffsetSpecification.first());
+
+    int lastReceivedOffset = 10;
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), lastReceivedOffset, new WrapperMessageBuilder().build());
+
+    configurator.accept(this);
+
+    Thread.sleep(retryDelay.toMillis() * 5);
+
+    verify(client, times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+
+    assertThat(offsetSpecificationArgumentCaptor.getAllValues())
+        .element(1)
+        .isEqualTo(OffsetSpecification.offset(lastReceivedOffset));
+
+    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    closingRunnable.run();
+    verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
   }
 
   Client.Broker leader() {
