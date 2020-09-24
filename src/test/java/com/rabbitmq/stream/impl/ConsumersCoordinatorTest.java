@@ -672,7 +672,7 @@ public class ConsumersCoordinatorTest {
         .isEqualTo(subscriptionCount + 1);
   }
 
-  static Stream<Consumer<ConsumersCoordinatorTest>> shouldRestartWhereItLeftOffAfterDisruption() {
+  static Stream<Consumer<ConsumersCoordinatorTest>> disruptionArguments() {
     return Stream.of(
         namedConsumer(
             test ->
@@ -685,10 +685,9 @@ public class ConsumersCoordinatorTest {
                     "stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE),
             "topology change"));
   }
-  ;
 
   @ParameterizedTest
-  @MethodSource
+  @MethodSource("disruptionArguments")
   void shouldRestartWhereItLeftOffAfterDisruption(Consumer<ConsumersCoordinatorTest> configurator)
       throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
@@ -724,7 +723,7 @@ public class ConsumersCoordinatorTest {
         .element(0)
         .isEqualTo(OffsetSpecification.first());
 
-    int lastReceivedOffset = 10;
+    long lastReceivedOffset = 10;
     messageListener.handle(
         subscriptionIdCaptor.getValue(), lastReceivedOffset, new WrapperMessageBuilder().build());
 
@@ -738,6 +737,72 @@ public class ConsumersCoordinatorTest {
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
         .element(1)
         .isEqualTo(OffsetSpecification.offset(lastReceivedOffset));
+
+    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    closingRunnable.run();
+    verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+  }
+
+  @ParameterizedTest
+  @MethodSource("disruptionArguments")
+  void shouldUseCommittedOffsetOnRecovery(Consumer<ConsumersCoordinatorTest> configurator)
+      throws Exception {
+    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, replicas()));
+
+    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+
+    String consumerName = "consumer-name";
+    long lastCommittedOffset = 5;
+    long lastReceivedOffset = 10;
+    when(client.queryOffset(consumerName, "stream"))
+        .thenReturn((long) 0)
+        .thenReturn(lastCommittedOffset);
+
+    ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
+        ArgumentCaptor.forClass(OffsetSpecification.class);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            offsetSpecificationArgumentCaptor.capture(),
+            anyInt()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    Runnable closingRunnable =
+        coordinator.subscribe(
+            consumer, "stream", OffsetSpecification.first(), consumerName, (offset, message) -> {});
+    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+    assertThat(offsetSpecificationArgumentCaptor.getAllValues())
+        .element(0)
+        .isEqualTo(OffsetSpecification.first());
+
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), lastReceivedOffset, new WrapperMessageBuilder().build());
+
+    configurator.accept(this);
+
+    Thread.sleep(retryDelay.toMillis() * 5);
+
+    verify(client, times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+
+    assertThat(offsetSpecificationArgumentCaptor.getAllValues())
+        .element(1)
+        .isEqualTo(OffsetSpecification.offset(lastCommittedOffset + 1))
+        .isNotEqualTo(OffsetSpecification.offset(lastReceivedOffset));
 
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
