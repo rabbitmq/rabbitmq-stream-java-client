@@ -59,8 +59,9 @@ class ProducersCoordinator {
     return registerAgentTracker(new ProducerTracker(stream, producer), stream);
   }
 
-  Runnable registerCommittingConsumer(StreamConsumer consumer, String stream) {
-    return registerAgentTracker(new CommittingConsumerTracker(stream, consumer), stream);
+  Runnable registerCommittingConsumer(StreamConsumer consumer) {
+    return registerAgentTracker(
+        new CommittingConsumerTracker(consumer.stream(), consumer), consumer.stream());
   }
 
   private Runnable registerAgentTracker(AgentTracker tracker, String stream) {

@@ -42,6 +42,8 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.assertj.core.api.AssertDelegateTarget;
 import org.junit.jupiter.api.extension.*;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 final class TestUtils {
 
@@ -139,6 +141,20 @@ final class TestUtils {
       public String toString() {
         return description;
       }
+    };
+  }
+
+  static Answer<Void> answer(Runnable task) {
+    return invocationOnMock -> {
+      task.run();
+      return null;
+    };
+  }
+
+  static Answer<Void> answer(Consumer<InvocationOnMock> invocation) {
+    return invocationOnMock -> {
+      invocation.accept(invocationOnMock);
+      return null;
     };
   }
 

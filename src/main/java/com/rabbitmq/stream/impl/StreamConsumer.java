@@ -16,8 +16,10 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.impl.StreamProducer.Status;
+import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
+import com.rabbitmq.stream.impl.StreamEnvironment.CommittingConsumerRegistration;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 class StreamConsumer implements Consumer {
@@ -43,20 +45,48 @@ class StreamConsumer implements Consumer {
       OffsetSpecification offsetSpecification,
       MessageHandler messageHandler,
       String name,
-      StreamEnvironment environment) {
-    this.name = name;
-    this.stream = stream;
-    this.closingCallback =
-        environment.registerConsumer(this, stream, offsetSpecification, this.name, messageHandler);
-    this.environment = environment;
+      StreamEnvironment environment,
+      CommitConfiguration commitConfiguration) {
 
-    // FIXME set commit client if necessary (if consumer has a registration name)
-    if (this.name != null) {
-      this.closingCommitCallback = environment.registerCommittingConsumer(this, stream);
-    } else {
-      this.closingCommitCallback = () -> {};
+    try {
+      this.name = name;
+      this.stream = stream;
+      this.environment = environment;
+
+      MessageHandler messageHandlerWithOrWithoutCommit;
+      if (commitConfiguration.enabled()) {
+        CommittingConsumerRegistration committingConsumerRegistration =
+            environment.registerCommittingConsumer(this, commitConfiguration);
+
+        this.closingCommitCallback = committingConsumerRegistration.closingCallback();
+
+        java.util.function.Consumer<Context> postMessageProcessingCallback =
+            committingConsumerRegistration.postMessageProcessingCallback();
+        if (postMessageProcessingCallback == null) {
+          // no callback, no need to decorate
+          messageHandlerWithOrWithoutCommit = messageHandler;
+        } else {
+          messageHandlerWithOrWithoutCommit =
+              (context, message) -> {
+                messageHandler.handle(context, message);
+                postMessageProcessingCallback.accept(context);
+              };
+        }
+
+      } else {
+        this.closingCommitCallback = () -> {};
+        messageHandlerWithOrWithoutCommit = messageHandler;
+      }
+
+      this.closingCallback =
+          environment.registerConsumer(
+              this, stream, offsetSpecification, this.name, messageHandlerWithOrWithoutCommit);
+
+      this.status = Status.RUNNING;
+    } catch (RuntimeException e) {
+      this.closed.set(true);
+      throw e;
     }
-    this.status = Status.RUNNING;
   }
 
   @Override
@@ -109,8 +139,16 @@ class StreamConsumer implements Consumer {
     this.status = Status.RUNNING;
   }
 
-  Status status() {
+  private Status status() {
     return this.status;
+  }
+
+  String name() {
+    return this.name;
+  }
+
+  String stream() {
+    return this.stream;
   }
 
   enum Status {

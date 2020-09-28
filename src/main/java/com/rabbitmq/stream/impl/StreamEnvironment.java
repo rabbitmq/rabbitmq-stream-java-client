@@ -17,6 +17,8 @@ package com.rabbitmq.stream.impl;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.io.IOException;
@@ -28,6 +30,7 @@ import java.util.Random;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -51,6 +54,7 @@ class StreamEnvironment implements Environment {
   private final BackOffDelayPolicy topologyUpdateBackOffDelayPolicy;
   private final ConsumersCoordinator consumersCoordinator;
   private final ProducersCoordinator producersCoordinator;
+  private final OffsetCommittingCoordinator offsetCommittingCoordinator;
   private volatile Client locator;
   private final AtomicBoolean closed = new AtomicBoolean(false);
 
@@ -111,6 +115,7 @@ class StreamEnvironment implements Environment {
 
     this.producersCoordinator = new ProducersCoordinator(this);
     this.consumersCoordinator = new ConsumersCoordinator(this);
+    this.offsetCommittingCoordinator = new OffsetCommittingCoordinator(this);
 
     AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
     Client.ShutdownListener shutdownListener =
@@ -283,6 +288,7 @@ class StreamEnvironment implements Environment {
 
       this.producersCoordinator.close();
       this.consumersCoordinator.close();
+      this.offsetCommittingCoordinator.close();
 
       try {
         if (this.locator != null) {
@@ -360,8 +366,41 @@ class StreamEnvironment implements Environment {
     return this.clientParametersPrototype.duplicate();
   }
 
-  public Runnable registerCommittingConsumer(StreamConsumer streamConsumer, String stream) {
-    return this.producersCoordinator.registerCommittingConsumer(streamConsumer, stream);
+  public boolean needCommitRegistration(CommitConfiguration commitConfiguration) {
+    return this.offsetCommittingCoordinator.needCommitRegistration(commitConfiguration);
+  }
+
+  static class CommittingConsumerRegistration {
+
+    private final Runnable closingCallback;
+    private final Consumer<Context> postMessageProcessingCallback;
+
+    CommittingConsumerRegistration(
+        Runnable closingCallback, Consumer<Context> postMessageProcessingCallback) {
+      this.closingCallback = closingCallback;
+      this.postMessageProcessingCallback = postMessageProcessingCallback;
+    }
+
+    public Runnable closingCallback() {
+      return closingCallback;
+    }
+
+    public Consumer<Context> postMessageProcessingCallback() {
+      return postMessageProcessingCallback;
+    }
+  }
+
+  CommittingConsumerRegistration registerCommittingConsumer(
+      StreamConsumer streamConsumer, CommitConfiguration configuration) {
+    Runnable closingCallable = this.producersCoordinator.registerCommittingConsumer(streamConsumer);
+    Consumer<Context> postMessageProcessingCallback = null;
+    if (this.offsetCommittingCoordinator.needCommitRegistration(configuration)) {
+      postMessageProcessingCallback =
+          this.offsetCommittingCoordinator.registerCommittingConsumer(
+              streamConsumer, configuration);
+    }
+
+    return new CommittingConsumerRegistration(closingCallable, postMessageProcessingCallback);
   }
 
   private static final class Address {

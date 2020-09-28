@@ -39,7 +39,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -47,8 +46,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 
 public class ProducersCoordinatorTest {
 
@@ -90,6 +87,7 @@ public class ProducersCoordinatorTest {
     mocks = MockitoAnnotations.openMocks(this);
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
+    when(committingConsumer.stream()).thenReturn("stream");
     coordinator = new ProducersCoordinator(environment, clientFactory);
   }
 
@@ -165,7 +163,7 @@ public class ProducersCoordinatorTest {
     doAnswer(answer(() -> setClientLatch.countDown())).when(committingConsumer).setClient(client);
 
     coordinator.registerProducer(producer, "stream");
-    coordinator.registerCommittingConsumer(committingConsumer, "stream");
+    coordinator.registerCommittingConsumer(committingConsumer);
 
     verify(producer, times(1)).setClient(client);
     verify(committingConsumer, times(1)).setClient(client);
@@ -203,7 +201,7 @@ public class ProducersCoordinatorTest {
     doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
 
     coordinator.registerProducer(producer, "stream");
-    coordinator.registerCommittingConsumer(committingConsumer, "stream");
+    coordinator.registerCommittingConsumer(committingConsumer);
 
     verify(producer, times(1)).setClient(client);
     verify(committingConsumer, times(1)).setClient(client);
@@ -248,6 +246,8 @@ public class ProducersCoordinatorTest {
     StreamProducer fixedProducer = mock(StreamProducer.class);
     StreamConsumer movingCommittingConsumer = mock(StreamConsumer.class);
     StreamConsumer fixedCommittingConsumer = mock(StreamConsumer.class);
+    when(movingCommittingConsumer.stream()).thenReturn(movingStream);
+    when(fixedCommittingConsumer.stream()).thenReturn(fixedStream);
 
     CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
 
@@ -259,8 +259,8 @@ public class ProducersCoordinatorTest {
 
     coordinator.registerProducer(movingProducer, movingStream);
     coordinator.registerProducer(fixedProducer, fixedStream);
-    coordinator.registerCommittingConsumer(movingCommittingConsumer, movingStream);
-    coordinator.registerCommittingConsumer(fixedCommittingConsumer, fixedStream);
+    coordinator.registerCommittingConsumer(movingCommittingConsumer);
+    coordinator.registerCommittingConsumer(fixedCommittingConsumer);
 
     verify(movingProducer, times(1)).setClient(client);
     verify(fixedProducer, times(1)).setClient(client);
@@ -338,7 +338,7 @@ public class ProducersCoordinatorTest {
     doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
 
     coordinator.registerProducer(producer, "stream");
-    coordinator.registerCommittingConsumer(committingConsumer, "stream");
+    coordinator.registerCommittingConsumer(committingConsumer);
 
     verify(producer, times(1)).setClient(client);
     verify(committingConsumer, times(1)).setClient(client);
@@ -407,9 +407,10 @@ public class ProducersCoordinatorTest {
         .forEach(
             i -> {
               StreamConsumer c = mock(StreamConsumer.class);
+              when(c.stream()).thenReturn("stream");
               CommittingConsumerInfo info = new CommittingConsumerInfo();
               info.consumer = c;
-              Runnable cleaningCallback = coordinator.registerCommittingConsumer(c, "stream");
+              Runnable cleaningCallback = coordinator.registerCommittingConsumer(c);
               info.cleaningCallback = cleaningCallback;
               committingConsumerInfos.add(info);
             });
@@ -476,19 +477,5 @@ public class ProducersCoordinatorTest {
 
   static List<Client.Broker> replicas() {
     return Arrays.asList(new Client.Broker("replica1", 5555), new Client.Broker("replica2", 5555));
-  }
-
-  static Answer<Void> answer(Runnable task) {
-    return invocationOnMock -> {
-      task.run();
-      return null;
-    };
-  }
-
-  static Answer<Void> answer(Consumer<InvocationOnMock> invocation) {
-    return invocationOnMock -> {
-      invocation.accept(invocationOnMock);
-      return null;
-    };
   }
 }

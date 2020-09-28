@@ -14,6 +14,8 @@
 
 package com.rabbitmq.stream;
 
+import java.time.Duration;
+
 public interface ConsumerBuilder {
 
   ConsumerBuilder stream(String stream);
@@ -24,5 +26,25 @@ public interface ConsumerBuilder {
 
   ConsumerBuilder name(String name);
 
+  ManualCommitStrategy manualCommitStrategy();
+
+  AutoCommitStrategy autoCommitStrategy();
+
   Consumer build();
+
+  interface ManualCommitStrategy {
+
+    ManualCommitStrategy checkInterval(Duration checkInterval);
+
+    ConsumerBuilder builder();
+  }
+
+  interface AutoCommitStrategy {
+
+    AutoCommitStrategy messageCountBeforeCommit(int messageCountBeforeCommit);
+
+    AutoCommitStrategy flushInterval(Duration flushInterval);
+
+    ConsumerBuilder builder();
+  }
 }

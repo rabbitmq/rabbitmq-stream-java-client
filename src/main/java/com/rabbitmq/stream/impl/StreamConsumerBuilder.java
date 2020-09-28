@@ -18,6 +18,7 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
+import java.time.Duration;
 
 class StreamConsumerBuilder implements ConsumerBuilder {
 
@@ -27,6 +28,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private OffsetSpecification offsetSpecification = OffsetSpecification.first();
   private MessageHandler messageHandler;
   private String name;
+  private DefaultAutoCommitStrategy autoCommitStrategy;
+  private DefaultManualCommitStrategy manualCommitStrategy;
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -57,15 +60,144 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
+  public ManualCommitStrategy manualCommitStrategy() {
+    this.manualCommitStrategy = new DefaultManualCommitStrategy(this);
+    this.autoCommitStrategy = null;
+    return this.manualCommitStrategy;
+  }
+
+  @Override
+  public AutoCommitStrategy autoCommitStrategy() {
+    this.autoCommitStrategy = new DefaultAutoCommitStrategy(this);
+    this.manualCommitStrategy = null;
+    return this.autoCommitStrategy;
+  }
+
+  @Override
   public Consumer build() {
+    if (this.stream == null) {
+      throw new IllegalArgumentException("stream cannot be null");
+    }
+    if (this.name == null
+        && (this.autoCommitStrategy != null || this.manualCommitStrategy != null)) {
+      throw new IllegalArgumentException("A name must be set if a commit strategy is specified");
+    }
+
+    CommitConfiguration commitConfiguration;
+    if (this.autoCommitStrategy != null) {
+      commitConfiguration =
+          new CommitConfiguration(
+              true,
+              true,
+              this.autoCommitStrategy.messageCountBeforeCommit,
+              this.autoCommitStrategy.flushInterval);
+    } else if (this.name != null) {
+      commitConfiguration = new CommitConfiguration(true, false, -1, Duration.ZERO);
+    } else {
+      commitConfiguration = new CommitConfiguration(false, false, -1, Duration.ZERO);
+    }
+
     StreamConsumer consumer =
         new StreamConsumer(
             this.stream,
             this.offsetSpecification,
             this.messageHandler,
             this.name,
-            this.environment);
+            this.environment,
+            commitConfiguration);
     environment.addConsumer(consumer);
     return consumer;
+  }
+
+  static class CommitConfiguration {
+
+    private final boolean enabled;
+    private final boolean auto;
+
+    private final int autoMessageCountBeforeCommit;
+    private final Duration autoFlushInterval;
+
+    CommitConfiguration(
+        boolean enabled,
+        boolean auto,
+        int autoMessageCountBeforeCommit,
+        Duration autoFlushInterval) {
+      this.enabled = enabled;
+      this.auto = auto;
+      this.autoMessageCountBeforeCommit = autoMessageCountBeforeCommit;
+      this.autoFlushInterval = autoFlushInterval;
+    }
+
+    boolean auto() {
+      return this.auto;
+    }
+
+    boolean enabled() {
+      return this.enabled;
+    }
+
+    public int autoMessageCountBeforeCommit() {
+      return autoMessageCountBeforeCommit;
+    }
+
+    public Duration autoFlushInterval() {
+      return autoFlushInterval;
+    }
+  }
+
+  private static final class DefaultAutoCommitStrategy implements AutoCommitStrategy {
+
+    private final StreamConsumerBuilder builder;
+    private int messageCountBeforeCommit = 10_000;
+    private Duration flushInterval = Duration.ofSeconds(5);
+
+    private DefaultAutoCommitStrategy(StreamConsumerBuilder builder) {
+      this.builder = builder;
+    }
+
+    @Override
+    public AutoCommitStrategy messageCountBeforeCommit(int messageCountBeforeCommit) {
+      if (messageCountBeforeCommit <= 0) {
+        throw new IllegalArgumentException(
+            "the number of messages before committing must be positive");
+      }
+      this.messageCountBeforeCommit = messageCountBeforeCommit;
+      return this;
+    }
+
+    @Override
+    public AutoCommitStrategy flushInterval(Duration flushInterval) {
+      if (flushInterval.toMillis() >= 1000) {
+        throw new IllegalArgumentException("the flush interval cannot be shorter than 1 second");
+      }
+      this.flushInterval = flushInterval;
+      return this;
+    }
+
+    @Override
+    public ConsumerBuilder builder() {
+      return this.builder;
+    }
+  }
+
+  private static final class DefaultManualCommitStrategy implements ManualCommitStrategy {
+
+    private final StreamConsumerBuilder builder;
+    private Duration checkInterval = Duration.ofSeconds(5);
+
+    private DefaultManualCommitStrategy(StreamConsumerBuilder builder) {
+      this.builder = builder;
+    }
+
+    @Override
+    public ManualCommitStrategy checkInterval(Duration checkInterval) {
+      this.checkInterval = checkInterval;
+      return this;
+    }
+
+    @Override
+    public ConsumerBuilder builder() {
+      return this.builder;
+    }
   }
 }
