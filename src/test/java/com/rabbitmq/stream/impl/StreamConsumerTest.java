@@ -54,107 +54,12 @@ public class StreamConsumerTest {
   static final Duration RECOVERY_DELAY = Duration.ofSeconds(2);
   static final Duration TOPOLOGY_DELAY = Duration.ofSeconds(2);
 
-  @ParameterizedTest
-  @MethodSource
-  @TestUtils.DisabledIfRabbitMqCtlNotSet
-  void consumerShouldKeepConsumingAfterDisruption(java.util.function.Consumer<Object> disruption)
-      throws Exception {
-    String s = UUID.randomUUID().toString();
-    environment.streamCreator().stream(s).create();
-    try {
-      int messageCount = 10_000;
-      CountDownLatch publishLatch = new CountDownLatch(messageCount);
-      Producer producer = environment.producerBuilder().stream(s).build();
-      IntStream.range(0, messageCount)
-          .forEach(
-              i ->
-                  producer.send(
-                      producer.messageBuilder().addData("".getBytes()).build(),
-                      confirmationStatus -> publishLatch.countDown()));
-
-      assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
-      producer.close();
-
-      AtomicInteger receivedMessageCount = new AtomicInteger(0);
-      CountDownLatch consumeLatch = new CountDownLatch(messageCount);
-      CountDownLatch consumeLatchSecondWave = new CountDownLatch(messageCount * 2);
-      StreamConsumer consumer =
-          (StreamConsumer)
-              environment.consumerBuilder().stream(s)
-                  .messageHandler(
-                      (offset, message) -> {
-                        receivedMessageCount.incrementAndGet();
-                        consumeLatch.countDown();
-                        consumeLatchSecondWave.countDown();
-                      })
-                  .build();
-
-      assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
-
-      assertThat(consumer.isOpen()).isTrue();
-
-      disruption.accept(s);
-
-      Client client = cf.get();
-      TestUtils.waitAtMost(
-          10,
-          () -> {
-            Client.StreamMetadata metadata = client.metadata(s).get(s);
-            return metadata.getLeader() != null || !metadata.getReplicas().isEmpty();
-          });
-
-      CountDownLatch publishLatchSecondWave = new CountDownLatch(messageCount);
-      Producer producerSecondWave = environment.producerBuilder().stream(s).build();
-      IntStream.range(0, messageCount)
-          .forEach(
-              i ->
-                  producerSecondWave.send(
-                      producerSecondWave.messageBuilder().addData("".getBytes()).build(),
-                      confirmationStatus -> publishLatchSecondWave.countDown()));
-
-      assertThat(publishLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
-      producerSecondWave.close();
-
-      assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
-      assertThat(receivedMessageCount.get())
-          .isBetween(messageCount * 2, messageCount * 2 + 1); // there can be a duplicate
-      assertThat(consumer.isOpen()).isTrue();
-
-      consumer.close();
-    } finally {
-      environment.deleteStream(s);
-    }
-  }
-
   String stream;
   EventLoopGroup eventLoopGroup;
 
   TestUtils.ClientFactory cf;
 
   Environment environment;
-
-  static Stream<java.util.function.Consumer<Object>> consumerShouldKeepConsumingAfterDisruption() {
-    return Stream.of(
-        TestUtils.namedTask(
-            o -> {
-              Host.killStreamLeaderProcess(o.toString());
-              Thread.sleep(TOPOLOGY_DELAY.toMillis());
-            },
-            "stream leader process is killed"),
-        TestUtils.namedTask(
-            o -> Host.killConnection("rabbitmq-stream-consumer"), "consumer connection is killed"),
-        TestUtils.namedTask(
-            o -> {
-              try {
-                Host.rabbitmqctl("stop_app");
-                Thread.sleep(1000L);
-              } finally {
-                Host.rabbitmqctl("start_app");
-              }
-              Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
-            },
-            "broker is restarted"));
-  }
 
   @BeforeEach
   void init() {
@@ -365,5 +270,145 @@ public class StreamConsumerTest {
     assertThat(firstOffset.get()).isGreaterThanOrEqualTo(lastCommittedOffset.get());
 
     consumer.close();
+  }
+
+  static Stream<java.util.function.Consumer<Object>> consumerShouldKeepConsumingAfterDisruption() {
+    return Stream.of(
+        TestUtils.namedTask(
+            o -> {
+              Host.killStreamLeaderProcess(o.toString());
+              Thread.sleep(TOPOLOGY_DELAY.toMillis());
+            },
+            "stream leader process is killed"),
+        TestUtils.namedTask(
+            o -> Host.killConnection("rabbitmq-stream-consumer"), "consumer connection is killed"),
+        TestUtils.namedTask(
+            o -> {
+              try {
+                Host.rabbitmqctl("stop_app");
+                Thread.sleep(1000L);
+              } finally {
+                Host.rabbitmqctl("start_app");
+              }
+              Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
+            },
+            "broker is restarted"));
+  }
+
+  @ParameterizedTest
+  @MethodSource
+  @TestUtils.DisabledIfRabbitMqCtlNotSet
+  void consumerShouldKeepConsumingAfterDisruption(java.util.function.Consumer<Object> disruption)
+      throws Exception {
+    String s = UUID.randomUUID().toString();
+    environment.streamCreator().stream(s).create();
+    try {
+      int messageCount = 10_000;
+      CountDownLatch publishLatch = new CountDownLatch(messageCount);
+      Producer producer = environment.producerBuilder().stream(s).build();
+      IntStream.range(0, messageCount)
+          .forEach(
+              i ->
+                  producer.send(
+                      producer.messageBuilder().addData("".getBytes()).build(),
+                      confirmationStatus -> publishLatch.countDown()));
+
+      assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+      producer.close();
+
+      AtomicInteger receivedMessageCount = new AtomicInteger(0);
+      CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+      CountDownLatch consumeLatchSecondWave = new CountDownLatch(messageCount * 2);
+      StreamConsumer consumer =
+          (StreamConsumer)
+              environment.consumerBuilder().stream(s)
+                  .messageHandler(
+                      (offset, message) -> {
+                        receivedMessageCount.incrementAndGet();
+                        consumeLatch.countDown();
+                        consumeLatchSecondWave.countDown();
+                      })
+                  .build();
+
+      assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+      assertThat(consumer.isOpen()).isTrue();
+
+      disruption.accept(s);
+
+      Client client = cf.get();
+      TestUtils.waitAtMost(
+          10,
+          () -> {
+            Client.StreamMetadata metadata = client.metadata(s).get(s);
+            return metadata.getLeader() != null || !metadata.getReplicas().isEmpty();
+          });
+
+      CountDownLatch publishLatchSecondWave = new CountDownLatch(messageCount);
+      Producer producerSecondWave = environment.producerBuilder().stream(s).build();
+      IntStream.range(0, messageCount)
+          .forEach(
+              i ->
+                  producerSecondWave.send(
+                      producerSecondWave.messageBuilder().addData("".getBytes()).build(),
+                      confirmationStatus -> publishLatchSecondWave.countDown()));
+
+      assertThat(publishLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+      producerSecondWave.close();
+
+      assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+      assertThat(receivedMessageCount.get())
+          .isBetween(messageCount * 2, messageCount * 2 + 1); // there can be a duplicate
+      assertThat(consumer.isOpen()).isTrue();
+
+      consumer.close();
+    } finally {
+      environment.deleteStream(s);
+    }
+  }
+
+  @Test
+  void autoCommitShouldPeriodicallyAndAfterInactivity() throws Exception {
+    AtomicInteger messageCount = new AtomicInteger(0);
+    int commitEvery = 10_000;
+    String reference = "ref-1";
+    AtomicLong lastReceivedOffset = new AtomicLong(0);
+    Consumer consumer =
+        environment.consumerBuilder().name(reference).stream(stream)
+            .messageHandler(
+                (context, message) -> {
+                  lastReceivedOffset.set(context.offset());
+                  messageCount.incrementAndGet();
+                })
+            .autoCommitStrategy()
+            .flushInterval(Duration.ofSeconds(1).plusMillis(100))
+            .messageCountBeforeCommit(commitEvery)
+            .builder()
+            .build();
+
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    IntStream.range(0, commitEvery * 2)
+        .forEach(
+            i ->
+                producer.send(
+                    producer.messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> {}));
+
+    waitAtMost(5, () -> messageCount.get() == commitEvery * 2);
+
+    Client client = cf.get();
+    waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
+
+    int extraMessages = commitEvery / 10;
+    IntStream.range(0, extraMessages)
+        .forEach(
+            i ->
+                producer.send(
+                    producer.messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> {}));
+
+    waitAtMost(5, () -> messageCount.get() == commitEvery * 2 + extraMessages);
+
+    waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
   }
 }

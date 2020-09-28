@@ -107,7 +107,6 @@ class OffsetCommittingCoordinator {
   private static final class Tracker {
 
     private volatile long count = 0;
-    private volatile long lastRequestCommittedOffset = 0;
     private volatile long lastProcessedOffset = 0;
     private volatile long lastCommitActivity = 0;
     private final StreamConsumer consumer;
@@ -126,7 +125,6 @@ class OffsetCommittingCoordinator {
       return context -> {
         if (++count % messageCountBeforeCommit == 0) {
           context.commit();
-          lastRequestCommittedOffset = context.offset();
           lastCommitActivity = clock.time();
         }
         lastProcessedOffset = context.offset();
@@ -137,10 +135,8 @@ class OffsetCommittingCoordinator {
       if (this.count > 0) {
         if (this.clock.time() - this.lastCommitActivity > this.flushIntervalInNs) {
           long lastCommittedOffset = consumer.lastCommittedOffset();
-          if (lastCommittedOffset <= lastProcessedOffset
-              && lastCommittedOffset != lastRequestCommittedOffset) {
+          if (lastCommittedOffset < lastProcessedOffset) {
             this.consumer.commit(this.lastProcessedOffset);
-            this.lastRequestCommittedOffset = this.lastProcessedOffset;
             this.lastCommitActivity = clock.time();
           }
         }

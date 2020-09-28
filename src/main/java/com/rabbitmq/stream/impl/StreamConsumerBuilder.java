@@ -167,7 +167,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
     @Override
     public AutoCommitStrategy flushInterval(Duration flushInterval) {
-      if (flushInterval.toMillis() >= 1000) {
+      if (flushInterval.toMillis() <= 1000) {
         throw new IllegalArgumentException("the flush interval cannot be shorter than 1 second");
       }
       this.flushInterval = flushInterval;

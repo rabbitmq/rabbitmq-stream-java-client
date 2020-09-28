@@ -123,7 +123,7 @@ public class OffsetCommittingCoordinatorTest {
   }
 
   @Test
-  void autoShouldNoCommitIfOffsetAlreadyCommitted() throws Exception {
+  void autoShouldNotCommitIfOffsetAlreadyCommitted() throws Exception {
     Duration checkInterval = Duration.ofMillis(100);
     OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
 
@@ -175,7 +175,7 @@ public class OffsetCommittingCoordinatorTest {
     int extraMessages = 3;
 
     long expectedLastCommittedOffset = commitEvery + extraMessages - 1;
-    when(consumer.lastCommittedOffset()).thenReturn(expectedLastCommittedOffset);
+    when(consumer.lastCommittedOffset()).thenReturn((long) (commitEvery - 1));
 
     ArgumentCaptor<Long> lastCommittedOffsetCaptor = ArgumentCaptor.forClass(Long.class);
     CountDownLatch flushLatch = new CountDownLatch(1);
