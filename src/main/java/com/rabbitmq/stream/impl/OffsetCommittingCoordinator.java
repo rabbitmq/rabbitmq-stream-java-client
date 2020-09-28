@@ -24,7 +24,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 class OffsetCommittingCoordinator {
@@ -83,6 +82,10 @@ class OffsetCommittingCoordinator {
                       } finally {
                         flushingOnGoing.set(false);
                       }
+
+                      // TODO consider cancelling the task if there are no more consumers to track
+                      // it should then be restarted on demand.
+
                     }
                   },
                   this.checkInterval.toMillis(),
@@ -103,10 +106,10 @@ class OffsetCommittingCoordinator {
 
   private static final class Tracker {
 
-    final AtomicLong count = new AtomicLong(0);
-    final AtomicLong lastRequestCommittedOffset = new AtomicLong(0);
-    final AtomicLong lastProcessedOffset = new AtomicLong(0);
-    final AtomicLong lastCommitActivity = new AtomicLong(0);
+    private volatile long count = 0;
+    private volatile long lastRequestCommittedOffset = 0;
+    private volatile long lastProcessedOffset = 0;
+    private volatile long lastCommitActivity = 0;
     private final StreamConsumer consumer;
     private final int messageCountBeforeCommit;
     private final long flushIntervalInNs;
@@ -121,22 +124,24 @@ class OffsetCommittingCoordinator {
 
     Consumer<Context> procProcessingCallback() {
       return context -> {
-        if (count.incrementAndGet() % messageCountBeforeCommit == 0) {
+        if (++count % messageCountBeforeCommit == 0) {
           context.commit();
-          lastRequestCommittedOffset.set(context.offset());
-          lastCommitActivity.set(clock.time());
+          lastRequestCommittedOffset = context.offset();
+          lastCommitActivity = clock.time();
         }
-        lastProcessedOffset.set(context.offset());
+        lastProcessedOffset = context.offset();
       };
     }
 
     void flushIfNecessary() {
-      if (this.count.get() > 0) {
-        if (this.clock.time() - this.lastCommitActivity.get() > this.flushIntervalInNs) {
-          // we should check the value of the last commit before trying to commit
-          this.consumer.commit(this.lastProcessedOffset.get());
-          this.lastRequestCommittedOffset.set(this.lastProcessedOffset.get());
-          this.lastCommitActivity.set(clock.time());
+      if (this.count > 0) {
+        if (this.clock.time() - this.lastCommitActivity > this.flushIntervalInNs) {
+          long lastCommittedOffset = consumer.lastCommittedOffset();
+          if (lastCommittedOffset < lastRequestCommittedOffset) {
+            this.consumer.commit(this.lastProcessedOffset);
+            this.lastRequestCommittedOffset = this.lastProcessedOffset;
+            this.lastCommitActivity = clock.time();
+          }
         }
       }
     }

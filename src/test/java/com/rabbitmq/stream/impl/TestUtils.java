@@ -329,6 +329,23 @@ final class TestUtils {
         throw new RuntimeException(e);
       }
     }
+
+    void doesNotComplete() {
+      doesNotComplete(TIMEOUT);
+    }
+
+    void doesNotComplete(int timeoutInSeconds) {
+      doesNotComplete(Duration.ofSeconds(timeoutInSeconds));
+    }
+
+    void doesNotComplete(Duration timeout) {
+      try {
+        assertThat(latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS)).isFalse();
+      } catch (InterruptedException e) {
+        Thread.interrupted();
+        throw new RuntimeException(e);
+      }
+    }
   }
 
   static CountDownLatchAssert latchAssert(CountDownLatch latch) {

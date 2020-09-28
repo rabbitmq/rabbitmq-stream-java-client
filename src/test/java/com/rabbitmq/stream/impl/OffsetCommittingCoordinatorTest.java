@@ -38,6 +38,7 @@ public class OffsetCommittingCoordinatorTest {
 
   @Mock StreamEnvironment env;
   @Mock StreamConsumer consumer;
+  @Mock Client client;
 
   ScheduledExecutorService executorService;
 
@@ -77,7 +78,7 @@ public class OffsetCommittingCoordinatorTest {
   }
 
   @Test
-  void autoCommitAfterSomeInactivity() {
+  void autoShouldCommitAfterSomeInactivity() {
     Duration checkInterval = Duration.ofMillis(100);
     OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
 
@@ -86,7 +87,7 @@ public class OffsetCommittingCoordinatorTest {
 
     Consumer<Context> postProcessedMessageCallback =
         coordinator.registerCommittingConsumer(
-            consumer, new CommitConfiguration(true, true, 100, Duration.ofMillis(200)));
+            consumer, new CommitConfiguration(true, true, 1, Duration.ofMillis(200)));
 
     postProcessedMessageCallback.accept(context(1, () -> {}));
 
@@ -95,7 +96,7 @@ public class OffsetCommittingCoordinatorTest {
 
   @Test
   void autoShouldCommitFixedMessageCountAndAutoCommitAfterInactivity() {
-    Duration checkInterval = Duration.ofMillis(500);
+    Duration checkInterval = Duration.ofMillis(100);
     coordinator = new OffsetCommittingCoordinator(env, checkInterval);
 
     CountDownLatch flushLatch = new CountDownLatch(1);
@@ -106,8 +107,7 @@ public class OffsetCommittingCoordinatorTest {
 
     Consumer<Context> postProcessedMessageCallback =
         coordinator.registerCommittingConsumer(
-            consumer,
-            new CommitConfiguration(true, true, messageInterval, Duration.ofMillis(1000)));
+            consumer, new CommitConfiguration(true, true, messageInterval, Duration.ofMillis(200)));
 
     AtomicInteger committedCountAfterProcessing = new AtomicInteger(0);
     IntStream.range(0, messageCount)
@@ -119,6 +119,26 @@ public class OffsetCommittingCoordinatorTest {
 
     assertThat(latchAssert(flushLatch)).completes(5);
     assertThat(committedCountAfterProcessing.get()).isEqualTo(messageCount / messageInterval);
+  }
+
+  @Test
+  void autoShouldNoCommitIfOffsetAlreadyCommitted() {
+    Duration checkInterval = Duration.ofMillis(100);
+    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+
+    long committedOffset = 10;
+
+    CountDownLatch flushLatch = new CountDownLatch(2);
+    doAnswer(answer(inv -> flushLatch.countDown())).when(consumer).commit(anyLong());
+    when(consumer.lastCommittedOffset()).thenReturn(committedOffset);
+
+    Consumer<Context> postProcessedMessageCallback =
+        coordinator.registerCommittingConsumer(
+            consumer, new CommitConfiguration(true, true, 1, Duration.ofMillis(200)));
+
+    postProcessedMessageCallback.accept(context(10, () -> {}));
+
+    assertThat(latchAssert(flushLatch)).doesNotComplete(1);
   }
 
   Context context(long offset, Runnable action) {

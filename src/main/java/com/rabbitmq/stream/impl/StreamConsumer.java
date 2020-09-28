@@ -93,6 +93,7 @@ class StreamConsumer implements Consumer {
   public void commit(long offset) {
     // FIXME appropriate behavior if commit is not possible
     if (canCommit()) {
+      // FIXME the commit client can be null by now
       this.commitClient.commitOffset(this.name, this.stream, offset);
     }
   }
@@ -139,12 +140,13 @@ class StreamConsumer implements Consumer {
     this.status = Status.RUNNING;
   }
 
-  private Status status() {
-    return this.status;
-  }
-
-  String name() {
-    return this.name;
+  long lastCommittedOffset() {
+    if (canCommit()) {
+      // FIXME the commit client can be null by now
+      return this.commitClient.queryOffset(this.name, this.stream);
+    } else {
+      return 0;
+    }
   }
 
   String stream() {
