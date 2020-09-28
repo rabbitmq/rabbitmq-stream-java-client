@@ -137,7 +137,8 @@ class OffsetCommittingCoordinator {
       if (this.count > 0) {
         if (this.clock.time() - this.lastCommitActivity > this.flushIntervalInNs) {
           long lastCommittedOffset = consumer.lastCommittedOffset();
-          if (lastCommittedOffset < lastRequestCommittedOffset) {
+          if (lastCommittedOffset <= lastProcessedOffset
+              && lastCommittedOffset != lastRequestCommittedOffset) {
             this.consumer.commit(this.lastProcessedOffset);
             this.lastRequestCommittedOffset = this.lastProcessedOffset;
             this.lastCommitActivity = clock.time();

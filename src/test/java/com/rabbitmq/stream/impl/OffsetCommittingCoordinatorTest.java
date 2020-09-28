@@ -31,6 +31,7 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -122,23 +123,80 @@ public class OffsetCommittingCoordinatorTest {
   }
 
   @Test
-  void autoShouldNoCommitIfOffsetAlreadyCommitted() {
+  void autoShouldNoCommitIfOffsetAlreadyCommitted() throws Exception {
     Duration checkInterval = Duration.ofMillis(100);
     OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
 
     long committedOffset = 10;
 
-    CountDownLatch flushLatch = new CountDownLatch(2);
-    doAnswer(answer(inv -> flushLatch.countDown())).when(consumer).commit(anyLong());
     when(consumer.lastCommittedOffset()).thenReturn(committedOffset);
 
+    Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
         coordinator.registerCommittingConsumer(
-            consumer, new CommitConfiguration(true, true, 1, Duration.ofMillis(200)));
+            consumer, new CommitConfiguration(true, true, 1, autoFlushInterval));
 
     postProcessedMessageCallback.accept(context(10, () -> {}));
 
-    assertThat(latchAssert(flushLatch)).doesNotComplete(1);
+    Thread.sleep(autoFlushInterval.multipliedBy(4).toMillis());
+    verify(consumer, never()).commit(anyLong());
+  }
+
+  @Test
+  void autoShouldNotFlushAfterInactivityIfLastCommitIsOnModulo() throws Exception {
+    Duration checkInterval = Duration.ofMillis(100);
+    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+
+    int commitEvery = 10;
+
+    when(consumer.lastCommittedOffset()).thenReturn((long) commitEvery - 1);
+
+    Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
+    Consumer<Context> postProcessedMessageCallback =
+        coordinator.registerCommittingConsumer(
+            consumer, new CommitConfiguration(true, true, commitEvery, autoFlushInterval));
+
+    IntStream.range(0, commitEvery)
+        .forEach(
+            offset -> {
+              postProcessedMessageCallback.accept(context(offset, () -> {}));
+            });
+
+    Thread.sleep(autoFlushInterval.multipliedBy(4).toMillis());
+    verify(consumer, never()).commit(anyLong());
+  }
+
+  @Test
+  void autoShouldCommitLastProcessedAfterInactivity() {
+    Duration checkInterval = Duration.ofMillis(100);
+    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+
+    int commitEvery = 10;
+    int extraMessages = 3;
+
+    long expectedLastCommittedOffset = commitEvery + extraMessages - 1;
+    when(consumer.lastCommittedOffset()).thenReturn(expectedLastCommittedOffset);
+
+    ArgumentCaptor<Long> lastCommittedOffsetCaptor = ArgumentCaptor.forClass(Long.class);
+    CountDownLatch flushLatch = new CountDownLatch(1);
+    doAnswer(answer(inv -> flushLatch.countDown()))
+        .when(consumer)
+        .commit(lastCommittedOffsetCaptor.capture());
+
+    Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
+    Consumer<Context> postProcessedMessageCallback =
+        coordinator.registerCommittingConsumer(
+            consumer, new CommitConfiguration(true, true, commitEvery, autoFlushInterval));
+
+    IntStream.range(0, commitEvery + extraMessages)
+        .forEach(
+            offset -> {
+              postProcessedMessageCallback.accept(context(offset, () -> {}));
+            });
+
+    assertThat(latchAssert(flushLatch)).completes(5);
+    verify(consumer, times(1)).commit(anyLong());
+    assertThat(lastCommittedOffsetCaptor.getValue()).isEqualTo(expectedLastCommittedOffset);
   }
 
   Context context(long offset, Runnable action) {
