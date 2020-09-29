@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,12 +68,37 @@ public class OffsetCommittingCoordinatorTest {
   }
 
   @Test
+  void needCommitRegistration() {
+    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env);
+    assertThat(
+            coordinator.needCommitRegistration(
+                new CommitConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO)))
+        .as("commit is disabled, no registration needed")
+        .isFalse();
+    assertThat(
+            coordinator.needCommitRegistration(
+                new CommitConfiguration(true, true, 100, Duration.ofSeconds(5), Duration.ZERO)))
+        .as("auto commit enabled, registration needed")
+        .isTrue();
+    assertThat(
+            coordinator.needCommitRegistration(
+                new CommitConfiguration(true, false, -1, Duration.ZERO, Duration.ofSeconds(5))))
+        .as("manual commit with check interval, registration needed")
+        .isTrue();
+    assertThat(
+            coordinator.needCommitRegistration(
+                new CommitConfiguration(true, false, -1, Duration.ZERO, Duration.ZERO)))
+        .as("manual commit without check interval, no registration needed")
+        .isFalse();
+  }
+
+  @Test
   void autoShouldNotCommitIfNoMessagesArrive() throws Exception {
     Duration checkInterval = Duration.ofMillis(10);
     OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
 
     coordinator.registerCommittingConsumer(
-        consumer, new CommitConfiguration(true, true, 100, Duration.ofMillis(200)));
+        consumer, new CommitConfiguration(true, true, 100, Duration.ofMillis(200), Duration.ZERO));
 
     Thread.sleep(3 * checkInterval.toMillis());
     verify(consumer, never()).commit(anyLong());
@@ -87,8 +113,11 @@ public class OffsetCommittingCoordinatorTest {
     doAnswer(answer(inv -> flushLatch.countDown())).when(consumer).commit(anyLong());
 
     Consumer<Context> postProcessedMessageCallback =
-        coordinator.registerCommittingConsumer(
-            consumer, new CommitConfiguration(true, true, 1, Duration.ofMillis(200)));
+        coordinator
+            .registerCommittingConsumer(
+                consumer,
+                new CommitConfiguration(true, true, 1, Duration.ofMillis(200), Duration.ZERO))
+            .postMessageProcessingCallback();
 
     postProcessedMessageCallback.accept(context(1, () -> {}));
 
@@ -107,8 +136,12 @@ public class OffsetCommittingCoordinatorTest {
     int messageCount = 5 * messageInterval + messageInterval / 5;
 
     Consumer<Context> postProcessedMessageCallback =
-        coordinator.registerCommittingConsumer(
-            consumer, new CommitConfiguration(true, true, messageInterval, Duration.ofMillis(200)));
+        coordinator
+            .registerCommittingConsumer(
+                consumer,
+                new CommitConfiguration(
+                    true, true, messageInterval, Duration.ofMillis(200), Duration.ZERO))
+            .postMessageProcessingCallback();
 
     AtomicInteger committedCountAfterProcessing = new AtomicInteger(0);
     IntStream.range(0, messageCount)
@@ -133,8 +166,10 @@ public class OffsetCommittingCoordinatorTest {
 
     Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
-        coordinator.registerCommittingConsumer(
-            consumer, new CommitConfiguration(true, true, 1, autoFlushInterval));
+        coordinator
+            .registerCommittingConsumer(
+                consumer, new CommitConfiguration(true, true, 1, autoFlushInterval, Duration.ZERO))
+            .postMessageProcessingCallback();
 
     postProcessedMessageCallback.accept(context(10, () -> {}));
 
@@ -153,8 +188,11 @@ public class OffsetCommittingCoordinatorTest {
 
     Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
-        coordinator.registerCommittingConsumer(
-            consumer, new CommitConfiguration(true, true, commitEvery, autoFlushInterval));
+        coordinator
+            .registerCommittingConsumer(
+                consumer,
+                new CommitConfiguration(true, true, commitEvery, autoFlushInterval, Duration.ZERO))
+            .postMessageProcessingCallback();
 
     IntStream.range(0, commitEvery)
         .forEach(
@@ -185,8 +223,11 @@ public class OffsetCommittingCoordinatorTest {
 
     Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
-        coordinator.registerCommittingConsumer(
-            consumer, new CommitConfiguration(true, true, commitEvery, autoFlushInterval));
+        coordinator
+            .registerCommittingConsumer(
+                consumer,
+                new CommitConfiguration(true, true, commitEvery, autoFlushInterval, Duration.ZERO))
+            .postMessageProcessingCallback();
 
     IntStream.range(0, commitEvery + extraMessages)
         .forEach(
@@ -197,6 +238,59 @@ public class OffsetCommittingCoordinatorTest {
     assertThat(latchAssert(flushLatch)).completes(5);
     verify(consumer, times(1)).commit(anyLong());
     assertThat(lastCommittedOffsetCaptor.getValue()).isEqualTo(expectedLastCommittedOffset);
+  }
+
+  @Test
+  void manualShouldNotCommitIfAlreadyUpToDate() throws Exception {
+    Duration checkInterval = Duration.ofMillis(100);
+    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+
+    long lastCommittedOffset = 50;
+    when(consumer.lastCommittedOffset()).thenReturn(lastCommittedOffset);
+
+    LongConsumer commitCallback =
+        coordinator
+            .registerCommittingConsumer(
+                consumer,
+                new CommitConfiguration(
+                    true, false, -1, Duration.ZERO, checkInterval.multipliedBy(2)))
+            .commitCallback();
+
+    commitCallback.accept(lastCommittedOffset);
+
+    Thread.sleep(3 * checkInterval.toMillis());
+
+    verify(consumer, never()).commit(anyLong());
+  }
+
+  @Test
+  void manualShouldCommitIfRequestedCommittedOffsetIsBehind() {
+    Duration checkInterval = Duration.ofMillis(100);
+    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+
+    long lastRequestedOffset = 50;
+    long lastCommittedOffset = 40;
+    when(consumer.lastCommittedOffset()).thenReturn(lastCommittedOffset);
+
+    ArgumentCaptor<Long> lastCommittedOffsetCaptor = ArgumentCaptor.forClass(Long.class);
+    CountDownLatch commitLatch = new CountDownLatch(1);
+    doAnswer(answer(inv -> commitLatch.countDown()))
+        .when(consumer)
+        .commit(lastCommittedOffsetCaptor.capture());
+
+    LongConsumer commitCallback =
+        coordinator
+            .registerCommittingConsumer(
+                consumer,
+                new CommitConfiguration(
+                    true, false, -1, Duration.ZERO, checkInterval.multipliedBy(2)))
+            .commitCallback();
+
+    commitCallback.accept(lastRequestedOffset);
+
+    assertThat(latchAssert(commitLatch)).completes(5);
+
+    verify(consumer, times(1)).commit(anyLong());
   }
 
   Context context(long offset, Runnable action) {

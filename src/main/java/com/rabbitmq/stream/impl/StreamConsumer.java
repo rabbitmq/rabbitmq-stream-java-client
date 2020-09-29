@@ -21,6 +21,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.CommittingConsumerRegistration;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongConsumer;
 
 class StreamConsumer implements Consumer {
 
@@ -39,6 +40,8 @@ class StreamConsumer implements Consumer {
   private volatile Client commitClient;
 
   private volatile Status status;
+
+  private final LongConsumer commitCallback;
 
   StreamConsumer(
       String stream,
@@ -73,8 +76,11 @@ class StreamConsumer implements Consumer {
               };
         }
 
+        this.commitCallback = committingConsumerRegistration.commitCallback();
+
       } else {
         this.closingCommitCallback = () -> {};
+        this.commitCallback = Utils.NO_OP_LONG_CONSUMER;
         messageHandlerWithOrWithoutCommit = messageHandler;
       }
 
@@ -91,6 +97,7 @@ class StreamConsumer implements Consumer {
 
   @Override
   public void commit(long offset) {
+    commitCallback.accept(offset);
     // FIXME appropriate behavior if commit is not possible
     if (canCommit()) {
       // FIXME the commit client can be null by now

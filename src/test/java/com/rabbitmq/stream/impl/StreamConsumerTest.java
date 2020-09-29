@@ -223,6 +223,9 @@ public class StreamConsumerTest {
     Consumer consumer =
         environment.consumerBuilder().stream(stream)
             .name("application-1")
+            .manualCommitStrategy()
+            .checkInterval(Duration.ZERO)
+            .builder()
             .messageHandler(
                 (context, message) -> {
                   consumedMessageCount.incrementAndGet();
@@ -251,6 +254,9 @@ public class StreamConsumerTest {
     consumer =
         environment.consumerBuilder().stream(stream)
             .name("application-1")
+            .manualCommitStrategy()
+            .checkInterval(Duration.ZERO)
+            .builder()
             .messageHandler(
                 (context, message) -> {
                   firstOffset.compareAndSet(0, context.offset());
@@ -373,18 +379,17 @@ public class StreamConsumerTest {
     int commitEvery = 10_000;
     String reference = "ref-1";
     AtomicLong lastReceivedOffset = new AtomicLong(0);
-    Consumer consumer =
-        environment.consumerBuilder().name(reference).stream(stream)
-            .messageHandler(
-                (context, message) -> {
-                  lastReceivedOffset.set(context.offset());
-                  messageCount.incrementAndGet();
-                })
-            .autoCommitStrategy()
-            .flushInterval(Duration.ofSeconds(1).plusMillis(100))
-            .messageCountBeforeCommit(commitEvery)
-            .builder()
-            .build();
+    environment.consumerBuilder().name(reference).stream(stream)
+        .messageHandler(
+            (context, message) -> {
+              lastReceivedOffset.set(context.offset());
+              messageCount.incrementAndGet();
+            })
+        .autoCommitStrategy()
+        .flushInterval(Duration.ofSeconds(1).plusMillis(100))
+        .messageCountBeforeCommit(commitEvery)
+        .builder()
+        .build();
 
     Producer producer = environment.producerBuilder().stream(stream).build();
     IntStream.range(0, commitEvery * 2)

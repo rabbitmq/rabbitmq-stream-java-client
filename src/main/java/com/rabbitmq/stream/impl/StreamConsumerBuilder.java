@@ -90,11 +90,18 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               true,
               true,
               this.autoCommitStrategy.messageCountBeforeCommit,
-              this.autoCommitStrategy.flushInterval);
+              this.autoCommitStrategy.flushInterval,
+              Duration.ZERO);
+    } else if (this.manualCommitStrategy != null) {
+      commitConfiguration =
+          new CommitConfiguration(
+              true, false, -1, Duration.ZERO, this.manualCommitStrategy.checkInterval);
     } else if (this.name != null) {
-      commitConfiguration = new CommitConfiguration(true, false, -1, Duration.ZERO);
+      // the default commit strategy
+      commitConfiguration =
+          new CommitConfiguration(true, true, 10_000, Duration.ofSeconds(5), Duration.ZERO);
     } else {
-      commitConfiguration = new CommitConfiguration(false, false, -1, Duration.ZERO);
+      commitConfiguration = new CommitConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
     }
 
     StreamConsumer consumer =
@@ -116,20 +123,27 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
     private final int autoMessageCountBeforeCommit;
     private final Duration autoFlushInterval;
+    private final Duration manualCheckInterval;
 
     CommitConfiguration(
         boolean enabled,
         boolean auto,
         int autoMessageCountBeforeCommit,
-        Duration autoFlushInterval) {
+        Duration autoFlushInterval,
+        Duration manualCheckInterval) {
       this.enabled = enabled;
       this.auto = auto;
       this.autoMessageCountBeforeCommit = autoMessageCountBeforeCommit;
       this.autoFlushInterval = autoFlushInterval;
+      this.manualCheckInterval = manualCheckInterval;
     }
 
     boolean auto() {
       return this.auto;
+    }
+
+    boolean manual() {
+      return !auto();
     }
 
     boolean enabled() {
@@ -142,6 +156,10 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
     public Duration autoFlushInterval() {
       return autoFlushInterval;
+    }
+
+    public Duration manualCheckInterval() {
+      return manualCheckInterval;
     }
   }
 
@@ -191,6 +209,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
     @Override
     public ManualCommitStrategy checkInterval(Duration checkInterval) {
+      if (checkInterval.toMillis() <= 1000 && !checkInterval.isZero()) {
+        throw new IllegalArgumentException("the check interval cannot be shorter than 1 second");
+      }
       this.checkInterval = checkInterval;
       return this;
     }

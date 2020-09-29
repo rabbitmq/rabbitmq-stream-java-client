@@ -25,6 +25,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 class OffsetCommittingCoordinator {
 
@@ -51,10 +52,23 @@ class OffsetCommittingCoordinator {
     this.checkInterval = checkInterval;
   }
 
-  java.util.function.Consumer<Context> registerCommittingConsumer(
+  Registration registerCommittingConsumer(
       StreamConsumer consumer, CommitConfiguration configuration) {
 
-    Tracker tracker = new Tracker(consumer, configuration, clock);
+    if (!configuration.enabled()) {
+      throw new IllegalArgumentException("Commit must be enabled");
+    }
+
+    Tracker tracker;
+    if (configuration.auto()) {
+      tracker = new AutoCommitTracker(consumer, configuration, clock);
+    } else {
+      if (configuration.manualCheckInterval().isZero()) {
+        throw new IllegalArgumentException(
+            "There should be no registration if the check interval is 0");
+      }
+      tracker = new ManualCommitTracker(consumer, configuration, clock);
+    }
     trackers.add(tracker);
 
     if (started.compareAndSet(false, true)) {
@@ -73,7 +87,7 @@ class OffsetCommittingCoordinator {
                             break;
                           }
                           Tracker t = iterator.next();
-                          if (t.consumer.isOpen()) {
+                          if (t.consumer().isOpen()) {
                             t.flushIfNecessary();
                           } else {
                             iterator.remove();
@@ -93,7 +107,7 @@ class OffsetCommittingCoordinator {
                   TimeUnit.MILLISECONDS);
     }
 
-    return tracker.procProcessingCallback();
+    return new Registration(tracker.postProcessingCallback(), tracker.commitCallback());
   }
 
   private ScheduledExecutorService executor() {
@@ -101,27 +115,66 @@ class OffsetCommittingCoordinator {
   }
 
   public boolean needCommitRegistration(CommitConfiguration commitConfiguration) {
-    return commitConfiguration.auto();
+    return commitConfiguration.enabled()
+        && !(commitConfiguration.manual()
+            && Duration.ZERO.equals(commitConfiguration.manualCheckInterval()));
   }
 
-  private static final class Tracker {
+  void close() {
+    if (this.checkFuture != null) {
+      checkFuture.cancel(true);
+    }
+  }
 
-    private volatile long count = 0;
-    private volatile long lastProcessedOffset = 0;
-    private volatile long lastCommitActivity = 0;
+  private interface Tracker {
+
+    Consumer<Context> postProcessingCallback();
+
+    void flushIfNecessary();
+
+    StreamConsumer consumer();
+
+    LongConsumer commitCallback();
+  }
+
+  static class Registration {
+
+    private final java.util.function.Consumer<Context> postMessageProcessingCallback;
+    private final LongConsumer commitCallback;
+
+    Registration(Consumer<Context> postMessageProcessingCallback, LongConsumer commitCallback) {
+      this.postMessageProcessingCallback = postMessageProcessingCallback;
+      this.commitCallback = commitCallback;
+    }
+
+    public Consumer<Context> postMessageProcessingCallback() {
+      return postMessageProcessingCallback;
+    }
+
+    public LongConsumer commitCallback() {
+      return commitCallback;
+    }
+  }
+
+  private static final class AutoCommitTracker implements Tracker {
+
     private final StreamConsumer consumer;
     private final int messageCountBeforeCommit;
     private final long flushIntervalInNs;
     private final Clock clock;
+    private volatile long count = 0;
+    private volatile long lastProcessedOffset = 0;
+    private volatile long lastCommitActivity = 0;
 
-    private Tracker(StreamConsumer consumer, CommitConfiguration configuration, Clock clock) {
+    private AutoCommitTracker(
+        StreamConsumer consumer, CommitConfiguration configuration, Clock clock) {
       this.consumer = consumer;
       this.messageCountBeforeCommit = configuration.autoMessageCountBeforeCommit();
       this.flushIntervalInNs = configuration.autoFlushInterval().toNanos();
       this.clock = clock;
     }
 
-    Consumer<Context> procProcessingCallback() {
+    public Consumer<Context> postProcessingCallback() {
       return context -> {
         if (++count % messageCountBeforeCommit == 0) {
           context.commit();
@@ -131,7 +184,7 @@ class OffsetCommittingCoordinator {
       };
     }
 
-    void flushIfNecessary() {
+    public void flushIfNecessary() {
       if (this.count > 0) {
         if (this.clock.time() - this.lastCommitActivity > this.flushIntervalInNs) {
           long lastCommittedOffset = consumer.lastCommittedOffset();
@@ -142,11 +195,60 @@ class OffsetCommittingCoordinator {
         }
       }
     }
+
+    @Override
+    public StreamConsumer consumer() {
+      return this.consumer;
+    }
+
+    @Override
+    public LongConsumer commitCallback() {
+      return Utils.NO_OP_LONG_CONSUMER;
+    }
   }
 
-  void close() {
-    if (this.checkFuture != null) {
-      checkFuture.cancel(true);
+  private static final class ManualCommitTracker implements Tracker {
+
+    private final StreamConsumer consumer;
+    private final Clock clock;
+    private final long checkIntervalInNs;
+    private volatile long lastRequestedOffset = 0;
+    private volatile long lastCommitActivity = 0;
+
+    private ManualCommitTracker(
+        StreamConsumer consumer, CommitConfiguration configuration, Clock clock) {
+      this.consumer = consumer;
+      this.clock = clock;
+      this.checkIntervalInNs = configuration.manualCheckInterval().toNanos();
+    }
+
+    @Override
+    public Consumer<Context> postProcessingCallback() {
+      return null;
+    }
+
+    @Override
+    public void flushIfNecessary() {
+      if (this.clock.time() - this.lastCommitActivity > this.checkIntervalInNs) {
+        long lastCommittedOffset = consumer.lastCommittedOffset();
+        if (lastCommittedOffset < lastRequestedOffset) {
+          this.consumer.commit(this.lastRequestedOffset);
+          this.lastCommitActivity = clock.time();
+        }
+      }
+    }
+
+    @Override
+    public StreamConsumer consumer() {
+      return this.consumer;
+    }
+
+    @Override
+    public LongConsumer commitCallback() {
+      return requestedOffset -> {
+        lastRequestedOffset = requestedOffset;
+        lastCommitActivity = clock.time();
+      };
     }
   }
 

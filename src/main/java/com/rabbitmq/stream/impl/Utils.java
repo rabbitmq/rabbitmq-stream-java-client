@@ -16,8 +16,11 @@ package com.rabbitmq.stream.impl;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 final class Utils {
+
+  static final LongConsumer NO_OP_LONG_CONSUMER = someLong -> {};
 
   private Utils() {}
 

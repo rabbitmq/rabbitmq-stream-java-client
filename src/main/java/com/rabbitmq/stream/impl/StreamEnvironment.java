@@ -18,6 +18,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.impl.OffsetCommittingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -366,23 +368,27 @@ class StreamEnvironment implements Environment {
     return this.clientParametersPrototype.duplicate();
   }
 
-  public boolean needCommitRegistration(CommitConfiguration commitConfiguration) {
-    return this.offsetCommittingCoordinator.needCommitRegistration(commitConfiguration);
-  }
-
   static class CommittingConsumerRegistration {
 
     private final Runnable closingCallback;
     private final Consumer<Context> postMessageProcessingCallback;
+    private final LongConsumer commitCallback;
 
     CommittingConsumerRegistration(
-        Runnable closingCallback, Consumer<Context> postMessageProcessingCallback) {
+        Runnable closingCallback,
+        Consumer<Context> postMessageProcessingCallback,
+        LongConsumer commitCallback) {
       this.closingCallback = closingCallback;
       this.postMessageProcessingCallback = postMessageProcessingCallback;
+      this.commitCallback = commitCallback;
     }
 
     public Runnable closingCallback() {
       return closingCallback;
+    }
+
+    public LongConsumer commitCallback() {
+      return commitCallback;
     }
 
     public Consumer<Context> postMessageProcessingCallback() {
@@ -393,14 +399,21 @@ class StreamEnvironment implements Environment {
   CommittingConsumerRegistration registerCommittingConsumer(
       StreamConsumer streamConsumer, CommitConfiguration configuration) {
     Runnable closingCallable = this.producersCoordinator.registerCommittingConsumer(streamConsumer);
-    Consumer<Context> postMessageProcessingCallback = null;
+    Registration offsetCommittingRegistration = null;
     if (this.offsetCommittingCoordinator.needCommitRegistration(configuration)) {
-      postMessageProcessingCallback =
+      offsetCommittingRegistration =
           this.offsetCommittingCoordinator.registerCommittingConsumer(
               streamConsumer, configuration);
     }
 
-    return new CommittingConsumerRegistration(closingCallable, postMessageProcessingCallback);
+    return new CommittingConsumerRegistration(
+        closingCallable,
+        offsetCommittingRegistration == null
+            ? null
+            : offsetCommittingRegistration.postMessageProcessingCallback(),
+        offsetCommittingRegistration == null
+            ? Utils.NO_OP_LONG_CONSUMER
+            : offsetCommittingRegistration.commitCallback());
   }
 
   private static final class Address {
