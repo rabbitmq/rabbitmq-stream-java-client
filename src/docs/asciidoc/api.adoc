@@ -465,7 +465,7 @@ offset of the current message, but it is possible to commit anywhere
 in the stream with `MessageHandler.Context#consumer()#commit(long)` or
 simply `Consumer#commit(long)`.
 
-===== Considerations On Offset Tracking
+====== Considerations On Offset Tracking
 
 
 _When to commit offsets?_ Avoid committing offsets too often or, worse, for each message.
