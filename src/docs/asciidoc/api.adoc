@@ -14,6 +14,7 @@ managing streams.
 * `com.rabbitmq.stream.Consumer` to consume messages.
 
 ==== Environment
+
 ===== Creating the Environment
 
 The environment is the main entry point to a node or a cluster of nodes. `Producer` and
@@ -372,53 +373,123 @@ can be any value (under 256 characters) and is expected to be unique (from the a
 point of view). Note neither the client library, nor the broker
 enforces uniqueness of the name: if 2 `Consumer` Java instances share the same name, their
 offset tracking will likely be interleaved, which applications usually do not expect.
-* the consumer must periodically *commit the offset* it has reached so far. This is not done
-automatically, it must be done in the application code.
+* the consumer must periodically *commit the offset* it has reached so far. The way
+offsets are committed depends on the commit strategy: automatic or manual.
 
-The following snippet is an example of offset tracking:
+Whatever commit strategy you use, *a consumer must have a name to be able to commit offsets*.
 
-[[tracking-consumer-offset-snippet]]
-.Tracking consumer offset
+====== Automatic Offset Commit
+
+The following snippet shows how to enable automatic commit with the defaults:
+
+.Using automatic commit strategy with the defaults
 [source,java,indent=0]
 --------
-include::{test-examples}/ConsumerUsage.java[tag=offset-tracking]
+include::{test-examples}/ConsumerUsage.java[tag=auto-commit-defaults]
 --------
-<1> Set the commit interval to 100
-<2> Set the consumer name (mandatory for offset tracking)
-<3> Count messages
-<4> Commit at the current offset
+<1> Set the consumer name (mandatory for offset tracking)
+<2> Use automatic commit strategy with defaults
+
+The automatic commit strategy has the following available settings:
+
+* *message count before commit*: the client will commit the offset
+after the specified number of messages, right after the execution
+of the message handler. _The default is every 10,000 messages_.
+* *flush interval*: the client will make sure to commit the last received offset
+at the specified interval. This avoids having pending, not committed offsets in
+case of inactivity. _The default is 5 seconds_.
+
+Those settings are configurable, as shown in the following snippet:
+
+.Configuring the automatic commit strategy
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=auto-commit-with-settings]
+--------
+<1> Set the consumer name (mandatory for offset tracking)
+<2> Use automatic commit strategy
+<3> Commit every 50,000 messages
+<4> Make sure to commit offset at least every 10 seconds
+
+Note the automatic commit is the default commit strategy, so if you are fine
+with its defaults, it is enabled as soon as you specify a name
+for the consumer:
+
+.Setting only the consumer name to enable automatic commit
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=auto-commit-only-with-name]
+--------
+<1> Set only the consumer name to enable automatic commit with defaults
+
+Automatic commit is simple and provides good guarantees. It is nevertheless
+possible to have more fine-grained control over offset commit by using
+manual commit.
+
+====== Manual Offset Commit
+
+The manual commit strategy lets the developer in charge of committing offsets
+whenever they want, not only after a given number of messages has been received
+and supposedly processed, like automatic commit does.
+
+The following snippet shows how to enable manual commit and how to commit
+the offset at some point:
+
+.Using manual commit with defaults
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=manual-commit-defaults]
+--------
+<1> Set the consumer name (mandatory for offset tracking)
+<2> Use manual commit with defaults
+<3> Set the check interval to 5 seconds
+<4> Commit at the current offset on some condition
+
+Manual commit has only one setting: the *check interval*. The client checks
+that the last requested committed offset has been actually committed at the
+specified interval. _The default check interval is 5 seconds_.
+
+The following snippet shows the configuration of manual commit:
+
+.Configuring manual commit strategy
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=manual-commit-with-settings]
+--------
+<1> Set the consumer name (mandatory for offset tracking)
+<2> Use manual commit with defaults
+<3> Check last requested offset every 10 seconds
 
 The snippet above uses `MessageHandler.Context#commit()` to commit at the
 offset of the current message, but it is possible to commit anywhere
 in the stream with `MessageHandler.Context#consumer()#commit(long)` or
 simply `Consumer#commit(long)`.
 
-[NOTE]
-.When to commit offsets?
-====
-Avoid committing the offset for each message. Even though offset tracking is a small and
-fast operation, it will make the stream grow unnecessarily, as the broker persists offset
+===== Considerations On Offset Tracking
+
+
+_When to commit offsets?_ Avoid committing offsets too often or, worse, for each message.
+Even though offset tracking is a small and fast operation, it will
+make the stream grow unnecessarily, as the broker persists offset
 tracking entries in the stream itself.
 
-A good rule of thumb is to commit every few hundreds
+A good rule of thumb is to commit every few thousands
 of messages. Of course, when the consumer will restart consuming in a new incarnation, the
 last tracked offset may be a little behind the very last message the previous incarnation
 actually processed, so the consumer may see some messages that have been already processed.
 
 A solution to this problem is to make sure processing is idempotent or filter out the
-last duplicate messages.
-====
+last duplicated messages.
 
-[NOTE]
-.Is the offset a reliable absolute value?
-====
-Message offsets may not be contiguous. This implies that the message at offset 500 in a stream may
-not be the 501 message in the stream (offsets start at 0). There can be different types of entries
-in a stream storage, a message is just one of them. Committing an offset creates an offset tracking
+'''
+
+_Is the offset a reliable absolute value?_ Message offsets may not be contiguous.
+This implies that the message at offset 500 in a stream may
+not be the 501 message in the stream (offsets start at 0).
+There can be different types of entries in a stream storage, a message is
+just one of them. For example, committing an offset creates an offset tracking
 entry, which has its own offset.
 
-In the snippet above, we use a separate counter to count messages and make sure to commit every 100
-messages. We could have avoided this counter and do the modulo operation on the offset directly,
-but we would have had no guarantees that we committed every 100 messages (in practice this should
-not make much difference in most cases).
-====
+This means one must be careful when basing some decision on offset values, like
+a modulo to perform an operation every X messages. As the message offsets have
+no guarantee to be contiguous, the operation may not happen exactly every X messages.

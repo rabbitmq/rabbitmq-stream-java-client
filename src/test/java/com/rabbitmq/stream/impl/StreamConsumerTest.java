@@ -175,7 +175,7 @@ public class StreamConsumerTest {
   }
 
   @Test
-  void committingConsumerShouldRestartWhereItLeftOff() throws Exception {
+  void manualCommittingConsumerShouldRestartWhereItLeftOff() throws Exception {
     Producer producer = environment.producerBuilder().stream(stream).build();
 
     int messageCountFirstWave = 10_000;
@@ -272,7 +272,7 @@ public class StreamConsumerTest {
         () -> "Expected " + consumedMessageCount.get() + " to reach " + messageCount);
 
     // there will be the tracking records after the first wave of messages,
-    // messages offset won't be contiguous
+    // messages offset won't be contiguous, so it's not an exact match
     assertThat(firstOffset.get()).isGreaterThanOrEqualTo(lastCommittedOffset.get());
 
     consumer.close();
@@ -374,7 +374,7 @@ public class StreamConsumerTest {
   }
 
   @Test
-  void autoCommitShouldPeriodicallyAndAfterInactivity() throws Exception {
+  void autoCommitShouldCommitPeriodicallyAndAfterInactivity() throws Exception {
     AtomicInteger messageCount = new AtomicInteger(0);
     int commitEvery = 10_000;
     String reference = "ref-1";

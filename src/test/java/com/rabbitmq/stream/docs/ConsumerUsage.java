@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.docs;
 
 import com.rabbitmq.stream.*;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -36,29 +37,97 @@ public class ConsumerUsage {
         // end::producer-creation[]
     }
 
-    void offsetTracking() {
+    void defaultAutoCommit() {
       Environment environment = Environment.builder().build();
-      // tag::offset-tracking[]
-      int commitEvery = 100;   // <1>
-      AtomicInteger consumedMessageCount = new AtomicInteger();
-
+      // tag::auto-commit-defaults[]
       Consumer consumer =
           environment.consumerBuilder()
               .stream("my-stream")
-              .name("application-1")   // <2>
-              .messageHandler(
-                  (context, message) -> {
-                    // business code
-                    // ...
-
-                    consumedMessageCount.incrementAndGet();   // <3>
-                    if (consumedMessageCount.get() % commitEvery == 0) {
-                      context.commit();   // <4>
-                    }
-                  })
+              .name("application-1")   // <1>
+              .autoCommitStrategy()   // <2>
+              .builder()
+              .messageHandler((context, message) -> {
+                // message handling code...
+              })
               .build();
-
-      // end::offset-tracking[]
+      // end::auto-commit-defaults[]
     }
+
+  void autoCommitWithSettings() {
+    Environment environment = Environment.builder().build();
+    // tag::auto-commit-with-settings[]
+    Consumer consumer =
+        environment.consumerBuilder()
+            .stream("my-stream")
+            .name("application-1")   // <1>
+            .autoCommitStrategy()   // <2>
+                .messageCountBeforeCommit(50_000)   // <3>
+                .flushInterval(Duration.ofSeconds(10))   // <4>
+            .builder()
+            .messageHandler((context, message) -> {
+              // message handling code...
+            })
+            .build();
+    // end::auto-commit-with-settings[]
+  }
+
+  void autoCommitOnlyWithName() {
+    Environment environment = Environment.builder().build();
+    // tag::auto-commit-only-with-name[]
+    Consumer consumer =
+        environment.consumerBuilder()
+            .stream("my-stream")
+            .name("application-1")   // <1>
+            .messageHandler((context, message) -> {
+              // message handling code...
+            })
+            .build();
+    // end::auto-commit-only-with-name[]
+  }
+
+  void manualCommitDefaults() {
+    Environment environment = Environment.builder().build();
+    // tag::manual-commit-defaults[]
+    Consumer consumer =
+        environment.consumerBuilder()
+            .stream("my-stream")
+            .name("application-1")   // <1>
+            .manualCommitStrategy()   // <2>
+            .builder()
+            .messageHandler((context, message) -> {
+              // message handling code...
+
+              if (conditionToCommit()) {
+                context.commit();   // <3>
+              }
+            })
+            .build();
+    // end::manual-commit-defaults[]
+  }
+
+  boolean conditionToCommit() {
+      return true;
+  }
+
+  void manualCommitWithSettings() {
+    Environment environment = Environment.builder().build();
+    // tag::manual-commit-with-settings[]
+    Consumer consumer =
+        environment.consumerBuilder()
+            .stream("my-stream")
+            .name("application-1")   // <1>
+            .manualCommitStrategy()   // <2>
+                .checkInterval(Duration.ofSeconds(10))   // <3>
+            .builder()
+            .messageHandler((context, message) -> {
+              // message handling code...
+
+              if (conditionToCommit()) {
+                context.commit();   // <4>
+              }
+            })
+            .build();
+    // end::manual-commit-with-settings[]
+  }
 
 }
