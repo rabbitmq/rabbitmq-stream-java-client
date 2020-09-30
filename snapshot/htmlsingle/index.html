@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(9f29bce)</span>
+<br><span id="revremark">(a8eeee8)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -486,7 +486,13 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <ul class="sectlevel4">
 <li><a href="#creating-a-consumer">Creating a Consumer</a></li>
 <li><a href="#specifying-an-offset">Specifying an Offset</a></li>
-<li><a href="#tracking-the-offset-for-a-consumer">Tracking the Offset for a Consumer</a></li>
+<li><a href="#tracking-the-offset-for-a-consumer">Tracking the Offset for a Consumer</a>
+<ul class="sectlevel5">
+<li><a href="#automatic-offset-commit">Automatic Offset Commit</a></li>
+<li><a href="#manual-offset-commit">Manual Offset Commit</a></li>
+</ul>
+</li>
+<li><a href="#considerations-on-offset-tracking">Considerations On Offset Tracking</a></li>
 </ul>
 </li>
 </ul>
@@ -1592,34 +1598,31 @@ enforces uniqueness of the name: if 2 <code>Consumer</code> Java instances share
 offset tracking will likely be interleaved, which applications usually do not expect.</p>
 </li>
 <li>
-<p>the consumer must periodically <strong>commit the offset</strong> it has reached so far. This is not done
-automatically, it must be done in the application code.</p>
+<p>the consumer must periodically <strong>commit the offset</strong> it has reached so far. The way
+offsets are committed depends on the commit strategy: automatic or manual.</p>
 </li>
 </ul>
 </div>
 <div class="paragraph">
-<p>The following snippet is an example of offset tracking:</p>
+<p>Whatever commit strategy you use, <strong>a consumer must have a name to be able to commit offsets</strong>.</p>
 </div>
-<div id="tracking-consumer-offset-snippet" class="listingblock">
-<div class="title">Tracking consumer offset</div>
+<div class="sect5">
+<h6 id="automatic-offset-commit"><a class="anchor" href="#automatic-offset-commit"></a>Automatic Offset Commit</h6>
+<div class="paragraph">
+<p>The following snippet shows how to enable automatic commit with the defaults:</p>
+</div>
+<div class="listingblock">
+<div class="title">Using automatic commit strategy with the defaults</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="type">int</span> commitEvery = <span class="integer">100</span>;   <i class="conum" data-value="1"></i><b>(1)</b>
-<span class="predefined-type">AtomicInteger</span> consumedMessageCount = <span class="keyword">new</span> <span class="predefined-type">AtomicInteger</span>();
-
-Consumer consumer =
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
     environment.consumerBuilder()
         .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
-        .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="2"></i><b>(2)</b>
-        .messageHandler(
-            (context, message) -&gt; {
-              <span class="comment">// business code</span>
-              <span class="comment">// ...</span>
-
-              consumedMessageCount.incrementAndGet();   <i class="conum" data-value="3"></i><b>(3)</b>
-              <span class="keyword">if</span> (consumedMessageCount.get() % commitEvery == <span class="integer">0</span>) {
-                context.commit();   <i class="conum" data-value="4"></i><b>(4)</b>
-              }
-            })
+        .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
+        .autoCommitStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
+        .builder()
+        .messageHandler((context, message) -&gt; {
+          <span class="comment">// message handling code...</span>
+        })
         .build();</code></pre>
 </div>
 </div>
@@ -1627,19 +1630,194 @@ Consumer consumer =
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Set the commit interval to 100</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="2"></i><b>2</b></td>
 <td>Set the consumer name (mandatory for offset tracking)</td>
 </tr>
 <tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Use automatic commit strategy with defaults</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The automatic commit strategy has the following available settings:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>message count before commit</strong>: the client will commit the offset
+after the specified number of messages, right after the execution
+of the message handler. <em>The default is every 10,000 messages</em>.</p>
+</li>
+<li>
+<p><strong>flush interval</strong>: the client will make sure to commit the last received offset
+at the specified interval. This avoids having pending, not committed offsets in
+case of inactivity. <em>The default is 5 seconds</em>.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Those settings are configurable, as shown in the following snippet:</p>
+</div>
+<div class="listingblock">
+<div class="title">Configuring the automatic commit strategy</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
+    environment.consumerBuilder()
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+        .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
+        .autoCommitStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
+            .messageCountBeforeCommit(<span class="integer">50</span>_000)   <i class="conum" data-value="3"></i><b>(3)</b>
+            .flushInterval(<span class="predefined-type">Duration</span>.ofSeconds(<span class="integer">10</span>))   <i class="conum" data-value="4"></i><b>(4)</b>
+        .builder()
+        .messageHandler((context, message) -&gt; {
+          <span class="comment">// message handling code...</span>
+        })
+        .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the consumer name (mandatory for offset tracking)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Use automatic commit strategy</td>
+</tr>
+<tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Count messages</td>
+<td>Commit every 50,000 messages</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Commit at the current offset</td>
+<td>Make sure to commit offset at least every 10 seconds</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Note the automatic commit is the default commit strategy, so if you are fine
+with its defaults, it is enabled as soon as you specify a name
+for the consumer:</p>
+</div>
+<div class="listingblock">
+<div class="title">Setting only the consumer name to enable automatic commit</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
+    environment.consumerBuilder()
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+        .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
+        .messageHandler((context, message) -&gt; {
+          <span class="comment">// message handling code...</span>
+        })
+        .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set only the consumer name to enable automatic commit with defaults</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Automatic commit is simple and provides good guarantees. It is nevertheless
+possible to have more fine-grained control over offset commit by using
+manual commit.</p>
+</div>
+</div>
+<div class="sect5">
+<h6 id="manual-offset-commit"><a class="anchor" href="#manual-offset-commit"></a>Manual Offset Commit</h6>
+<div class="paragraph">
+<p>The manual commit strategy lets the developer in charge of committing offsets
+whenever they want, not only after a given number of messages has been received
+and supposedly processed, like automatic commit does.</p>
+</div>
+<div class="paragraph">
+<p>The following snippet shows how to enable manual commit and how to commit
+the offset at some point:</p>
+</div>
+<div class="listingblock">
+<div class="title">Using manual commit with defaults</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
+    environment.consumerBuilder()
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+        .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
+        .manualCommitStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
+        .builder()
+        .messageHandler((context, message) -&gt; {
+          <span class="comment">// message handling code...</span>
+
+          <span class="keyword">if</span> (conditionToCommit()) {
+            context.commit();   <i class="conum" data-value="3"></i><b>(3)</b>
+          }
+        })
+        .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the consumer name (mandatory for offset tracking)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Use manual commit with defaults</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Set the check interval to 5 seconds</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Commit at the current offset on some condition</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Manual commit has only one setting: the <strong>check interval</strong>. The client checks
+that the last requested committed offset has been actually committed at the
+specified interval. <em>The default check interval is 5 seconds</em>.</p>
+</div>
+<div class="paragraph">
+<p>The following snippet shows the configuration of manual commit:</p>
+</div>
+<div class="listingblock">
+<div class="title">Configuring manual commit strategy</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
+    environment.consumerBuilder()
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+        .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
+        .manualCommitStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
+            .checkInterval(<span class="predefined-type">Duration</span>.ofSeconds(<span class="integer">10</span>))   <i class="conum" data-value="3"></i><b>(3)</b>
+        .builder()
+        .messageHandler((context, message) -&gt; {
+          <span class="comment">// message handling code...</span>
+
+          <span class="keyword">if</span> (conditionToCommit()) {
+            context.commit();   <i class="conum" data-value="4"></i><b>(4)</b>
+          }
+        })
+        .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the consumer name (mandatory for offset tracking)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Use manual commit with defaults</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Check last requested offset every 10 seconds</td>
 </tr>
 </table>
 </div>
@@ -1649,56 +1827,39 @@ offset of the current message, but it is possible to commit anywhere
 in the stream with <code>MessageHandler.Context#consumer()#commit(long)</code> or
 simply <code>Consumer#commit(long)</code>.</p>
 </div>
-<div class="admonitionblock note">
-<table>
-<tr>
-<td class="icon">
-<i class="fa icon-note" title="Note"></i>
-</td>
-<td class="content">
-<div class="title">When to commit offsets?</div>
+</div>
+</div>
+<div class="sect4">
+<h5 id="considerations-on-offset-tracking"><a class="anchor" href="#considerations-on-offset-tracking"></a>Considerations On Offset Tracking</h5>
 <div class="paragraph">
-<p>Avoid committing the offset for each message. Even though offset tracking is a small and
-fast operation, it will make the stream grow unnecessarily, as the broker persists offset
+<p><em>When to commit offsets?</em> Avoid committing offsets too often or, worse, for each message.
+Even though offset tracking is a small and fast operation, it will
+make the stream grow unnecessarily, as the broker persists offset
 tracking entries in the stream itself.</p>
 </div>
 <div class="paragraph">
-<p>A good rule of thumb is to commit every few hundreds
+<p>A good rule of thumb is to commit every few thousands
 of messages. Of course, when the consumer will restart consuming in a new incarnation, the
 last tracked offset may be a little behind the very last message the previous incarnation
 actually processed, so the consumer may see some messages that have been already processed.</p>
 </div>
 <div class="paragraph">
 <p>A solution to this problem is to make sure processing is idempotent or filter out the
-last duplicate messages.</p>
+last duplicated messages.</p>
 </div>
-</td>
-</tr>
-</table>
-</div>
-<div class="admonitionblock note">
-<table>
-<tr>
-<td class="icon">
-<i class="fa icon-note" title="Note"></i>
-</td>
-<td class="content">
-<div class="title">Is the offset a reliable absolute value?</div>
+<hr>
 <div class="paragraph">
-<p>Message offsets may not be contiguous. This implies that the message at offset 500 in a stream may
-not be the 501 message in the stream (offsets start at 0). There can be different types of entries
-in a stream storage, a message is just one of them. Committing an offset creates an offset tracking
+<p><em>Is the offset a reliable absolute value?</em> Message offsets may not be contiguous.
+This implies that the message at offset 500 in a stream may
+not be the 501 message in the stream (offsets start at 0).
+There can be different types of entries in a stream storage, a message is
+just one of them. For example, committing an offset creates an offset tracking
 entry, which has its own offset.</p>
 </div>
 <div class="paragraph">
-<p>In the snippet above, we use a separate counter to count messages and make sure to commit every 100
-messages. We could have avoided this counter and do the modulo operation on the offset directly,
-but we would have had no guarantees that we committed every 100 messages (in practice this should
-not make much difference in most cases).</p>
-</div>
-</td>
-</tr>
-</table>
+<p>This means one must be careful when basing some decision on offset values, like
+a modulo to perform an operation every X messages. As the message offsets have
+no guarantee to be contiguous, the operation may not happen exactly every X messages.</p>
 </div>
 </div>
 </div>
@@ -1811,7 +1972,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-09-23 13:58:27 UTC
+Last updated 2020-09-30 14:45:03 UTC
 </div>
 </div>
 <style>
