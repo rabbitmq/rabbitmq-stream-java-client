@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(a8eeee8)</span>
+<br><span id="revremark">(926c3ea)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -490,9 +490,9 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <ul class="sectlevel5">
 <li><a href="#automatic-offset-commit">Automatic Offset Commit</a></li>
 <li><a href="#manual-offset-commit">Manual Offset Commit</a></li>
+<li><a href="#considerations-on-offset-tracking">Considerations On Offset Tracking</a></li>
 </ul>
 </li>
-<li><a href="#considerations-on-offset-tracking">Considerations On Offset Tracking</a></li>
 </ul>
 </li>
 </ul>
@@ -1828,9 +1828,8 @@ in the stream with <code>MessageHandler.Context#consumer()#commit(long)</code> o
 simply <code>Consumer#commit(long)</code>.</p>
 </div>
 </div>
-</div>
-<div class="sect4">
-<h5 id="considerations-on-offset-tracking"><a class="anchor" href="#considerations-on-offset-tracking"></a>Considerations On Offset Tracking</h5>
+<div class="sect5">
+<h6 id="considerations-on-offset-tracking"><a class="anchor" href="#considerations-on-offset-tracking"></a>Considerations On Offset Tracking</h6>
 <div class="paragraph">
 <p><em>When to commit offsets?</em> Avoid committing offsets too often or, worse, for each message.
 Even though offset tracking is a small and fast operation, it will
@@ -1860,6 +1859,7 @@ entry, which has its own offset.</p>
 <p>This means one must be careful when basing some decision on offset values, like
 a modulo to perform an operation every X messages. As the message offsets have
 no guarantee to be contiguous, the operation may not happen exactly every X messages.</p>
+</div>
 </div>
 </div>
 </div>
@@ -1972,7 +1972,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-09-30 14:45:03 UTC
+Last updated 2020-09-30 14:55:14 UTC
 </div>
 </div>
 <style>
