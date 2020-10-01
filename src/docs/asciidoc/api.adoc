@@ -442,8 +442,7 @@ include::{test-examples}/ConsumerUsage.java[tag=manual-commit-defaults]
 --------
 <1> Set the consumer name (mandatory for offset tracking)
 <2> Use manual commit with defaults
-<3> Set the check interval to 5 seconds
-<4> Commit at the current offset on some condition
+<3> Commit at the current offset on some condition
 
 Manual commit has only one setting: the *check interval*. The client checks
 that the last requested committed offset has been actually committed at the
@@ -459,6 +458,7 @@ include::{test-examples}/ConsumerUsage.java[tag=manual-commit-with-settings]
 <1> Set the consumer name (mandatory for offset tracking)
 <2> Use manual commit with defaults
 <3> Check last requested offset every 10 seconds
+<4> Commit at the current offset on some condition
 
 The snippet above uses `MessageHandler.Context#commit()` to commit at the
 offset of the current message, but it is possible to commit anywhere
@@ -466,7 +466,6 @@ in the stream with `MessageHandler.Context#consumer()#commit(long)` or
 simply `Consumer#commit(long)`.
 
 ====== Considerations On Offset Tracking
-
 
 _When to commit offsets?_ Avoid committing offsets too often or, worse, for each message.
 Even though offset tracking is a small and fast operation, it will
