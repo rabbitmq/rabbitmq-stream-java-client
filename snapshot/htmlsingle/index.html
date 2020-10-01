@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(926c3ea)</span>
+<br><span id="revremark">(32acf59)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -451,6 +451,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#when-to-use-rabbitmq-stream">When to Use RabbitMQ Stream?</a></li>
 <li><a href="#other-way-to-use-streams-in-rabbitmq">Other Way to Use Streams in RabbitMQ</a></li>
 <li><a href="#guarantees">Guarantees</a></li>
+<li><a href="#stream-client-overview">Stream Client Overview</a></li>
 <li><a href="#the-stream-java-client">The Stream Java Client</a>
 <ul class="sectlevel2">
 <li><a href="#setting-up-rabbitmq">Setting up RabbitMQ</a>
@@ -515,8 +516,8 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="paragraph">
 <p>The RabbitMQ Stream Java Client is a Java library to communicate with
 the <a href="https://github.com/rabbitmq/rabbitmq-stream">RabbitMQ Stream Plugin</a>.
-It allows creating and delete streams, as well as to publish to and consume from
-these streams.</p>
+It allows creating and deleting streams, as well as publishing to and consuming from
+these streams. Learn more in the <a href="#stream-client-overview">the client overview</a>.</p>
 </div>
 </div>
 </div>
@@ -589,6 +590,45 @@ you need to use an AMQP 0-9-1 client library.</p>
 <div class="paragraph">
 <p>RabbitMQ stream provides at-least-once guarantees thanks to the
 publisher confirm mechanism, which is supported by the stream Java client.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="stream-client-overview"><a class="anchor" href="#stream-client-overview"></a>Stream Client Overview</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The RabbitMQ Stream Java Client implements the
+<a href="https://github.com/rabbitmq/rabbitmq-stream/blob/master/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
+and avoids dealing with low-level concerns by providing high-level functionalities
+to build fast, efficient, and robust client applications.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><em>administrate streams (creation/deletion) directly from applications.</em> This
+can also be useful for development and testing.</p>
+</li>
+<li>
+<p><em>adapt publishing throughput</em> thanks to the configurable batch size and flow control.</p>
+</li>
+<li>
+<p><em>consume asynchronously from streams and resume where left off</em> thanks to
+automatic or manual offset tracking.</p>
+</li>
+<li>
+<p><em>use cluster nodes appropriately</em> by letting the client decide which node to connect to - to
+stream leaders for publishers to avoid network traffic and to stream replicas
+for consumers to offload leaders.</p>
+</li>
+<li>
+<p><em>optimize resources</em> thanks to automatic growing and shrinking of
+connections depending on the number of publishers and consumers.</p>
+</li>
+<li>
+<p><em>let the client handle network failure</em> thanks to automatic connection
+recovery and automatic re-subscription for consumers.</p>
+</li>
+</ul>
 </div>
 </div>
 </div>
@@ -1769,10 +1809,6 @@ the offset at some point:</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Set the check interval to 5 seconds</td>
-</tr>
-<tr>
-<td><i class="conum" data-value="4"></i><b>4</b></td>
 <td>Commit at the current offset on some condition</td>
 </tr>
 </table>
@@ -1818,6 +1854,10 @@ specified interval. <em>The default check interval is 5 seconds</em>.</p>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
 <td>Check last requested offset every 10 seconds</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Commit at the current offset on some condition</td>
 </tr>
 </table>
 </div>
@@ -1972,7 +2012,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-09-30 14:55:14 UTC
+Last updated 2020-10-01 13:50:39 UTC
 </div>
 </div>
 <style>
