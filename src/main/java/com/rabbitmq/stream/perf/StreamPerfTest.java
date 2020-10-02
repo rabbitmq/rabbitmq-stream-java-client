@@ -60,7 +60,6 @@ public class StreamPerfTest implements Callable<Integer> {
   @CommandLine.Mixin
   private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
 
-  int addressDispatching = 0;
   int streamDispatching = 0;
   private volatile Codec codec;
 
@@ -156,7 +155,7 @@ public class StreamPerfTest implements Callable<Integer> {
   @CommandLine.Option(
       names = {"--batch-size", "-bs"},
       description = "size of a batch of published messages",
-      defaultValue = "1",
+      defaultValue = "100",
       converter = Utils.PositiveIntegerTypeConverter.class)
   private int batchSize;
 
