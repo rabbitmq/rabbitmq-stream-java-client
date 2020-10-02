@@ -32,9 +32,7 @@ class StreamProducer implements Producer {
 
   private final MessageAccumulator accumulator;
   // FIXME investigate a more optimized data structure to handle pending messages
-  // FIXME size the map according to maxUnconfirmedMessages
-  private final ConcurrentMap<Long, ConfirmationCallback> unconfirmedMessages =
-      new ConcurrentHashMap<>(10_000, 0.75f, 2);
+  private final ConcurrentMap<Long, ConfirmationCallback> unconfirmedMessages;
   private final int batchSize;
   private final String stream;
   private final Client.OutboundEntityWriteCallback writeCallback;
@@ -72,6 +70,7 @@ class StreamProducer implements Producer {
 
     this.maxUnconfirmedMessages = maxUnconfirmedMessages;
     this.unconfirmedMessagesSemaphore = new Semaphore(maxUnconfirmedMessages, true);
+    this.unconfirmedMessages = new ConcurrentHashMap<>(this.maxUnconfirmedMessages, 0.75f, 2);
 
     this.writeCallback =
         new Client.OutboundEntityWriteCallback() {
