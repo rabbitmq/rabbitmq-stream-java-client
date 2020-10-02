@@ -186,6 +186,12 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.ByteCapacityTypeConverter.class)
   private ByteCapacity maxSegmentSize;
 
+  @CommandLine.Option(
+      names = {"--commit-every", "-ce"},
+      description = "the frequency of offset commit",
+      defaultValue = "0")
+  private int commitEvery;
+
   private List<Address> addresses;
 
   @CommandLine.Option(
@@ -466,22 +472,33 @@ public class StreamPerfTest implements Callable<Integer> {
 
                       AtomicLong messageCount = new AtomicLong(0);
                       String stream = stream();
-                      Consumer consumer =
-                          environment.consumerBuilder().stream(stream)
-                              .offset(this.offset)
-                              .messageHandler(
-                                  (offset, message) -> {
-                                    // at very high throughput ( > 1 M / s), the histogram can
-                                    // become a bottleneck,
-                                    // so we downsample and calculate latency for every x message
-                                    // this should not affect the metric much
-                                    if (messageCount.incrementAndGet() % 100 == 0) {
-                                      metrics.latency(
-                                          System.nanoTime() - readLong(message.getBodyAsBinary()),
-                                          TimeUnit.NANOSECONDS);
-                                    }
-                                  })
-                              .build();
+                      ConsumerBuilder consumerBuilder = environment.consumerBuilder();
+                      consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
+
+                      if (this.commitEvery > 0) {
+                        consumerBuilder =
+                            consumerBuilder
+                                .name(UUID.randomUUID().toString())
+                                .autoCommitStrategy()
+                                .messageCountBeforeCommit(this.commitEvery)
+                                .builder();
+                      }
+
+                      consumerBuilder =
+                          consumerBuilder.messageHandler(
+                              (offset, message) -> {
+                                // at very high throughput ( > 1 M / s), the histogram can
+                                // become a bottleneck,
+                                // so we downsample and calculate latency for every x message
+                                // this should not affect the metric much
+                                if (messageCount.incrementAndGet() % 100 == 0) {
+                                  metrics.latency(
+                                      System.nanoTime() - readLong(message.getBodyAsBinary()),
+                                      TimeUnit.NANOSECONDS);
+                                }
+                              });
+
+                      Consumer consumer = consumerBuilder.build();
 
                       return consumer;
                     })
