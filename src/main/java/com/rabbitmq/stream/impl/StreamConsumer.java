@@ -22,8 +22,12 @@ import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.CommittingConsumerRegistration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class StreamConsumer implements Consumer {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(StreamConsumer.class);
 
   private final Runnable closingCallback;
 
@@ -98,11 +102,15 @@ class StreamConsumer implements Consumer {
   @Override
   public void commit(long offset) {
     commitCallback.accept(offset);
-    // FIXME appropriate behavior if commit is not possible
     if (canCommit()) {
-      // FIXME the commit client can be null by now
-      this.commitClient.commitOffset(this.name, this.stream, offset);
+      try {
+        this.commitClient.commitOffset(this.name, this.stream, offset);
+      } catch (Exception e) {
+        LOGGER.debug("Error while trying to commit offset: {}", e.getMessage());
+      }
     }
+    // nothing special to do if commit is not possible or errors, e.g. because of a network failure
+    // the commit strategy will stack the commit request and apply it as soon as it can
   }
 
   private boolean canCommit() {
@@ -139,8 +147,9 @@ class StreamConsumer implements Consumer {
     this.commitClient = client;
   }
 
-  void unavailable() {
+  synchronized void unavailable() {
     this.status = Status.NOT_AVAILABLE;
+    this.commitClient = null;
   }
 
   void running() {
@@ -149,8 +158,13 @@ class StreamConsumer implements Consumer {
 
   long lastCommittedOffset() {
     if (canCommit()) {
-      // FIXME the commit client can be null by now
-      return this.commitClient.queryOffset(this.name, this.stream);
+      try {
+        // the client can be null by now, but we catch the exception and return 0
+        // callers should know how to deal with a committed of 0
+        return this.commitClient.queryOffset(this.name, this.stream);
+      } catch (Exception e) {
+        return 0;
+      }
     } else {
       return 0;
     }
