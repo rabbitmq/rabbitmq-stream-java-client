@@ -39,11 +39,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -543,96 +540,6 @@ public class ClientTest {
     Client.Response response = cf.get().create(stream);
     assertThat(response.isOk()).isFalse();
     assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_ALREADY_EXISTS);
-  }
-
-  @Test
-  void retention() throws Exception {
-    int messageCount = 1000;
-    int payloadSize = 1000;
-    class TestConfig {
-      final Supplier<Map<String, String>> arguments;
-      final Predicate<Long> firstMessageIdAssertion;
-
-      TestConfig(Supplier<Map<String, String>> arguments, Predicate<Long> firstMessageIdAssertion) {
-        this.arguments = arguments;
-        this.firstMessageIdAssertion = firstMessageIdAssertion;
-      }
-    }
-
-    TestConfig[] configurations =
-        new TestConfig[] {
-          new TestConfig(
-              () ->
-                  new Client.StreamParametersBuilder()
-                      .maxLengthBytes(messageCount * payloadSize / 10)
-                      .maxSegmentSizeBytes(messageCount * payloadSize / 20)
-                      .build(),
-              firstMessageId -> firstMessageId > 0),
-          new TestConfig(
-              () ->
-                  new Client.StreamParametersBuilder()
-                      .maxLengthBytes(ByteCapacity.B(messageCount * payloadSize / 10))
-                      .maxSegmentSizeBytes(ByteCapacity.B(messageCount * payloadSize / 20))
-                      .build(),
-              firstMessageId -> firstMessageId > 0),
-          new TestConfig(() -> Collections.emptyMap(), firstMessageId -> firstMessageId == 0)
-        };
-
-    for (TestConfig configuration : configurations) {
-      String testStream = UUID.randomUUID().toString();
-      CountDownLatch publishingLatch = new CountDownLatch(messageCount);
-      Client publisher =
-          cf.get(
-              new Client.ClientParameters()
-                  .publishConfirmListener(
-                      (publisherId, publishingId) -> publishingLatch.countDown()));
-
-      Map<String, String> arguments = configuration.arguments.get();
-      try {
-        publisher.create(testStream, arguments);
-        AtomicLong publishSequence = new AtomicLong(0);
-        byte[] payload = new byte[payloadSize];
-        IntStream.range(0, messageCount)
-            .forEach(
-                i ->
-                    publisher.publish(
-                        testStream,
-                        (byte) 1,
-                        Collections.singletonList(
-                            publisher
-                                .messageBuilder()
-                                .properties()
-                                .messageId(publishSequence.getAndIncrement())
-                                .messageBuilder()
-                                .addData(payload)
-                                .build())));
-        assertThat(publishingLatch.await(10, SECONDS)).isTrue();
-
-        CountDownLatch consumingLatch = new CountDownLatch(1);
-        AtomicLong firstMessageId = new AtomicLong(-1);
-        Client consumer =
-            cf.get(
-                new Client.ClientParameters()
-                    .chunkListener(
-                        (client1, subscriptionId, offset, messageCount1, dataSize) ->
-                            client1.credit(subscriptionId, 1))
-                    .messageListener(
-                        (subscriptionId, offset, message) -> {
-                          long messageId = message.getProperties().getMessageIdAsLong();
-                          firstMessageId.compareAndSet(-1, messageId);
-                          if (messageId == publishSequence.get() - 1) {
-                            consumingLatch.countDown();
-                          }
-                        }));
-
-        consumer.subscribe((byte) 1, testStream, OffsetSpecification.first(), 10);
-        assertThat(consumingLatch.await(10, SECONDS)).isTrue();
-        consumer.unsubscribe((byte) 1);
-        assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get())).isTrue();
-      } finally {
-        publisher.delete(testStream);
-      }
-    }
   }
 
   @Test

@@ -303,6 +303,11 @@ final class TestUtils {
     void accept(int index, T t) throws Exception;
   }
 
+  interface CallableConsumer<T> {
+
+    void accept(T t) throws Exception;
+  }
+
   static class CountDownLatchAssert implements AssertDelegateTarget {
 
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
