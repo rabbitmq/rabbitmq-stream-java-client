@@ -17,6 +17,9 @@ package com.rabbitmq.stream.impl;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.OffsetSpecification;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
@@ -66,6 +69,35 @@ public class OffsetTest {
   }
 
   @Test
+  void amqpOffsetTypeFirstShouldStartConsumingFromBeginning() throws Exception {
+    int messageCount = 5000;
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+    CountDownLatch latch = new CountDownLatch(messageCount);
+    AtomicLong first = new AtomicLong(-1);
+    AtomicLong last = new AtomicLong();
+    try (Connection c = new ConnectionFactory().newConnection();
+        Channel ch = c.createChannel()) {
+      ch.basicQos(100);
+      ch.basicConsume(
+          stream,
+          false,
+          Collections.singletonMap("x-stream-offset", "first"),
+          (consumerTag, message) -> {
+            long offset = (long) message.getProperties().getHeaders().get("x-stream-offset");
+            first.compareAndSet(-1, offset);
+            last.set(offset);
+            latch.countDown();
+            ch.basicAck(message.getEnvelope().getDeliveryTag(), false);
+          },
+          consumerTag -> {});
+
+      assertThat(latch.await(10, SECONDS)).isTrue();
+      assertThat(first.get()).isEqualTo(0);
+      assertThat(last.get()).isEqualTo(messageCount - 1);
+    }
+  }
+
+  @Test
   void offsetTypeLastShouldReturnLastChunk() throws Exception {
     int messageCount = 50000;
     long lastOffset = messageCount - 1;
@@ -100,6 +132,51 @@ public class OffsetTest {
   }
 
   @Test
+  void amqpOffsetTypeLastShouldReturnLastChunk() throws Exception {
+    int messageCount = 5000;
+    long lastOffset = messageCount - 1;
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicLong first = new AtomicLong(-1);
+    AtomicLong last = new AtomicLong();
+
+    // we need a stream client for offset information
+    AtomicLong chunkOffset = new AtomicLong(-1);
+    Client client =
+        cf.get(
+            new Client.ClientParameters()
+                .chunkListener(
+                    (client1, subscriptionId, offset12, messageCount1, dataSize) -> {
+                      client1.credit(subscriptionId, 1);
+                      chunkOffset.compareAndSet(-1, offset12);
+                    }));
+    client.subscribe((byte) 1, stream, OffsetSpecification.last(), 10);
+
+    try (Connection c = new ConnectionFactory().newConnection();
+        Channel ch = c.createChannel()) {
+      ch.basicQos(100);
+      ch.basicConsume(
+          stream,
+          false,
+          Collections.singletonMap("x-stream-offset", "last"),
+          (consumerTag, message) -> {
+            long offset = (long) message.getProperties().getHeaders().get("x-stream-offset");
+            first.compareAndSet(-1, offset);
+            last.set(offset);
+            if (offset == lastOffset) {
+              latch.countDown();
+            }
+            ch.basicAck(message.getEnvelope().getDeliveryTag(), false);
+          },
+          consumerTag -> {});
+
+      assertThat(latch.await(10, SECONDS)).isTrue();
+      assertThat(first.get()).isEqualTo(chunkOffset.get());
+      assertThat(last.get()).isEqualTo(lastOffset);
+    }
+  }
+
+  @Test
   void offsetTypeNextShouldReturnNewPublishedMessages() throws Exception {
     int firstWaveMessageCount = 50000;
     int secondWaveMessageCount = 20000;
@@ -131,6 +208,41 @@ public class OffsetTest {
   }
 
   @Test
+  void amqpOffsetTypeNextShouldReturnNewPublishedMessages() throws Exception {
+    int firstWaveMessageCount = 5000;
+    int secondWaveMessageCount = 2000;
+    int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
+    TestUtils.publishAndWaitForConfirms(cf, firstWaveMessageCount, stream);
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicLong first = new AtomicLong(-1);
+    AtomicLong last = new AtomicLong();
+    try (Connection c = new ConnectionFactory().newConnection();
+        Channel ch = c.createChannel()) {
+      ch.basicQos(100);
+      ch.basicConsume(
+          stream,
+          false,
+          Collections.singletonMap("x-stream-offset", "next"),
+          (consumerTag, message) -> {
+            long offset = (long) message.getProperties().getHeaders().get("x-stream-offset");
+            first.compareAndSet(-1, offset);
+            last.set(offset);
+            if (offset == lastOffset) {
+              latch.countDown();
+            }
+            ch.basicAck(message.getEnvelope().getDeliveryTag(), false);
+          },
+          consumerTag -> {});
+
+      assertThat(latch.await(2, SECONDS)).isFalse(); // should not receive anything
+      TestUtils.publishAndWaitForConfirms(cf, secondWaveMessageCount, stream);
+      assertThat(latch.await(10, SECONDS)).isTrue();
+      assertThat(first.get()).isEqualTo(firstWaveMessageCount);
+      assertThat(last.get()).isEqualTo(lastOffset);
+    }
+  }
+
+  @Test
   void offsetTypeOffsetShouldStartConsumingFromOffset() throws Exception {
     int messageCount = 50000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
@@ -154,6 +266,36 @@ public class OffsetTest {
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(first.get()).isEqualTo(offset);
     assertThat(last.get()).isEqualTo(messageCount - 1);
+  }
+
+  @Test
+  void amqpOffsetTypeOffsetShouldStartConsumingFromOffset() throws Exception {
+    int messageCount = 5000;
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+    int offset = messageCount / 10;
+    CountDownLatch latch = new CountDownLatch(messageCount - offset);
+    AtomicLong first = new AtomicLong(-1);
+    AtomicLong last = new AtomicLong();
+    try (Connection c = new ConnectionFactory().newConnection();
+        Channel ch = c.createChannel()) {
+      ch.basicQos(100);
+      ch.basicConsume(
+          stream,
+          false,
+          Collections.singletonMap("x-stream-offset", offset),
+          (consumerTag, message) -> {
+            long messageOffset = (long) message.getProperties().getHeaders().get("x-stream-offset");
+            first.compareAndSet(-1, messageOffset);
+            last.set(messageOffset);
+            latch.countDown();
+            ch.basicAck(message.getEnvelope().getDeliveryTag(), false);
+          },
+          consumerTag -> {});
+
+      assertThat(latch.await(10, SECONDS)).isTrue();
+      assertThat(first.get()).isEqualTo(offset);
+      assertThat(last.get()).isEqualTo(messageCount - 1);
+    }
   }
 
   @Test
