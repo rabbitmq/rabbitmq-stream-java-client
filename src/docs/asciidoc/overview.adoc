@@ -12,15 +12,15 @@ they are usually suited for different use cases.
 
 == When to Use RabbitMQ Stream?
 
-A stream abstraction is useful when one or several consumer applications
-require the whole history of data ("replay").
+RabbitMQ Stream was developed to cover the following messaging use cases:
 
-Streams can also be useful when a higher throughput than with classical
-RabbitMQ queues is required. RabbitMQ streams use various optimization techniques,
-and a custom network protocol to achieve performances that are not possible
-with the other protocols supported in RabbitMQ (AMQP, STOMP, MQTT). This
-does not make the stream protocol better than these protocols, they just
-all serve different purposes.
+* _Large fan-outs:_ when several consumer applications need to read the same messages.
+* _Replay / Time-traveling:_ when consumer applications need to read the whole
+history of data or from a given point in a stream.
+* _Throughput performance:_ when higher throughput than with other protocols
+(AMQP, STOMP, MQTT) is required.
+* _Large logs:_ when large amount of data need to be stored, with minimal
+in-memory overhead.
 
 == Other Way to Use Streams in RabbitMQ
 
