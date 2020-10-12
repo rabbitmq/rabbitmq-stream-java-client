@@ -351,7 +351,7 @@ The possible values for the offset parameter are the following:
 the stream has not been <<limiting-the-size-of-a-stream,truncated>>, this
 means the beginning of the stream (offset 0).
 * `OffsetSpecification.last()`: starting from the end of the stream and returning
-the last chunk of messages immediately (if the stream is not empty).
+the last <<chunk-definition,chunk>> of messages immediately (if the stream is not empty).
 * `OffsetSpecification.next()`: starting from the next offset to be written. Contrary
 to `OffsetSpecification.last()`, consuming with `OffsetSpecification.next()`
 will not return anything if no-one is publishing to the stream. The broker will start
@@ -362,6 +362,16 @@ can also specify any number, for example the offset where it left off
 in a previous incarnation of the application.
 * `OffsetSpecification.timestamp(timestamp)`: starting from the messages stored
 after the specified timestamp.
+
+[[chunk-definition]]
+[NOTE]
+.What is a chunk of messages?
+====
+A chunk is simply a batch of messages. This is the storage and transportation
+unit used in RabbitMQ Stream, that is messages are stored contiguously in a chunk
+and they are delivered as part of a chunk. A chunk can be made of one to several
+thousands of messages, depending on the ingress.
+====
 
 ===== Tracking the Offset for a Consumer
 
