@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(6eb3f0c)</span>
+<br><span id="revremark">(ce377e8)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -503,7 +503,17 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="#the-performance-tool">The Performance Tool</a>
 <ul class="sectlevel2">
-<li><a href="#using-the-performance-tool">Using the Performance Tool</a></li>
+<li><a href="#using-the-performance-tool">Using the Performance Tool</a>
+<ul class="sectlevel3">
+<li><a href="#with-docker-2">With Docker</a>
+<ul class="sectlevel4">
+<li><a href="#with-docker-host-network-driver">With Docker Host Network Driver</a></li>
+<li><a href="#with-docker-bridge-network-driver">With Docker Bridge Network Driver</a></li>
+</ul>
+</li>
+<li><a href="#with-the-java-binary">With the Java Binary</a></li>
+</ul>
+</li>
 <li><a href="#building-the-performance-tool">Building the Performance Tool</a></li>
 </ul>
 </li>
@@ -1961,29 +1971,103 @@ no guarantee to be contiguous, the operation may not happen exactly every X mess
 <div class="sectionbody">
 <div class="paragraph">
 <p>The library contains also a performance tool to test the RabbitMQ Stream plugin.
-It is <a href="https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test">downloadable from Bintray</a>
-as an uber JAR and can be built separately as well.</p>
+It is usable as an uber JAR
+<a href="https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test">downloadable from Bintray</a>
+or as a <a href="https://hub.docker.com/r/pivotalrabbitmq/stream-perf-test">Docker image</a>.
+It can be built separately as well.</p>
 </div>
 <div class="sect2">
 <h3 id="using-the-performance-tool"><a class="anchor" href="#using-the-performance-tool"></a>Using the Performance Tool</h3>
+<div class="sect3">
+<h4 id="with-docker-2"><a class="anchor" href="#with-docker-2"></a>With Docker</h4>
+<div class="paragraph">
+<p>The performance tool is available as a
+<a href="https://hub.docker.com/r/pivotalrabbitmq/stream-perf-test">Docker image</a>.
+You can use the Docker image to list the available options:</p>
+</div>
+<div class="listingblock">
+<div class="title">Listing the available options of the performance tool</div>
+<div class="content">
+<pre>docker run -it --rm pivotalrabbitmq/stream-perf-test --help</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>There are all sorts of options, if none is provided,
+the tool will start publishing to and consuming from a stream created
+only for the test.</p>
+</div>
+<div class="paragraph">
+<p>When using Docker, the container running the performance tool must be able to
+connect to the broker, so you have to figure out the appropriate Docker
+configuration to make this possible.
+You can have a look at the <a href="https://docs.docker.com/network/">Docker network documentation</a>
+to find out more.</p>
+</div>
+<div class="paragraph">
+<p>We show next a couple of options to easily use the Docker image.</p>
+</div>
+<div class="sect4">
+<h5 id="with-docker-host-network-driver"><a class="anchor" href="#with-docker-host-network-driver"></a>With Docker Host Network Driver</h5>
+<div class="paragraph">
+<p>This is the simplest way to run the image locally, with a local broker running in Docker as well.
+The containers use the <a href="https://docs.docker.com/network/host/">host network</a>,
+this is perfect for experimenting locally.</p>
+</div>
+<div class="listingblock">
+<div class="title">Running the broker and performance tool with the host network driver</div>
+<div class="content">
+<pre># run the broker
+docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
+# open another terminal and run the performance tool
+docker run -it --rm --network host pivotalrabbitmq/stream-perf-test</pre>
+</div>
+</div>
+</div>
+<div class="sect4">
+<h5 id="with-docker-bridge-network-driver"><a class="anchor" href="#with-docker-bridge-network-driver"></a>With Docker Bridge Network Driver</h5>
+<div class="paragraph">
+<p>Containers need to be able to communicate with each other with
+the <a href="https://docs.docker.com/network/bridge/">bridge network driver</a>, this
+can be done by defining a network and running the containers in this network.</p>
+</div>
+<div class="listingblock">
+<div class="title">Running the broker and performance tool with the bridge network driver</div>
+<div class="content">
+<pre># create a network
+docker network create stream-perf-test
+# run the broker
+docker run -it --rm --network stream-perf-test --name rabbitmq pivotalrabbitmq/rabbitmq-stream
+# open another terminal and run the performance tool
+docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test \
+    --addresses rabbitmq:5555</pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="with-the-java-binary"><a class="anchor" href="#with-the-java-binary"></a>With the Java Binary</h4>
+<div class="paragraph">
+<p>The Java binary is <a href="https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test">on Bintray</a>.</p>
+</div>
 <div class="paragraph">
 <p>To launch a run:</p>
 </div>
 <div class="listingblock">
 <div class="content">
 <pre>$ java -jar stream-perf-test-{version}.jar
-10:11:54.324 [main] INFO  c.r.stream.perf.StreamPerfTest - Created stream stream1
-10:11:54.385 [main] INFO  c.r.stream.perf.StreamPerfTest - Producer will stream stream1
-10:11:54.387 [main] INFO  c.r.stream.perf.StreamPerfTest - Starting consuming on stream1
-10:11:54.390 [main] INFO  c.r.stream.perf.StreamPerfTest - Starting producer
-1, published 155230 msg/s, confirmed 147824 msg/s, consumed 124487 msg/s, latency min/median/75th/95th/99th 1121/8225/17647/62468/73991 µs, chunk size 109
-2, published 359193 msg/s, confirmed 336535 msg/s, consumed 306748 msg/s, latency min/median/75th/95th/99th 1398/56590/80607/127818/135925 µs, chunk size 345
-3, published 523429 msg/s, confirmed 509044 msg/s, consumed 478710 msg/s, latency min/median/75th/95th/99th 1478/29996/69536/111946/135079 µs, chunk size 529
-4, published 599735 msg/s, confirmed 594707 msg/s, consumed 568315 msg/s, latency min/median/75th/95th/99th 964/21032/52977/98643/133399 µs, chunk size 548
-5, published 632114 msg/s, confirmed 609804 msg/s, consumed 591426 msg/s, latency min/median/75th/95th/99th 964/34303/74318/110684/127440 µs, chunk size 588
-6, published 619328 msg/s, confirmed 618229 msg/s, consumed 598410 msg/s, latency min/median/75th/95th/99th 964/45918/86391/114714/138207 µs, chunk size 657
+14:49:09.695 [main] INFO  c.r.stream.perf.StreamPerfTest - Created stream stream1
+14:49:09.935 [main] INFO  c.r.stream.perf.StreamPerfTest - Starting producer
+1, published 356120 msg/s, confirmed 353872 msg/s, consumed 351870 msg/s, latency min/median/75th/95th/99th 3925/14539/17383/23765/31068 µs, chunk size 1724
+2, published 554087 msg/s, confirmed 551654 msg/s, consumed 552472 msg/s, latency min/median/75th/95th/99th 3297/12430/15489/20140/25733 µs, chunk size 2301
+3, published 663102 msg/s, confirmed 660917 msg/s, consumed 662571 msg/s, latency min/median/75th/95th/99th 3146/11914/14645/19149/24354 µs, chunk size 2484
+4, published 714358 msg/s, confirmed 712882 msg/s, consumed 714016 msg/s, latency min/median/75th/95th/99th 2836/11651/14466/18840/24509 µs, chunk size 2624
+5, published 732703 msg/s, confirmed 731439 msg/s, consumed 732150 msg/s, latency min/median/75th/95th/99th 2992/11868/14593/18846/24066 µs, chunk size 2771
+6, published 768071 msg/s, confirmed 767277 msg/s, consumed 767941 msg/s, latency min/median/75th/95th/99th 2992/11719/14532/18388/23895 µs, chunk size 2855
+7, published 794034 msg/s, confirmed 793072 msg/s, consumed 793992 msg/s, latency min/median/75th/95th/99th 2992/11607/14251/18144/23895 µs, chunk size 2864
+8, published 801647 msg/s, confirmed 800804 msg/s, consumed 801628 msg/s, latency min/median/75th/95th/99th 2992/11460/14171/18063/24509 µs, chunk size 2914
+...
 ^C
-Summary: published 641792 msg/s, confirmed 635240 msg/s, consumed 636256 msg/s, latency 95th 112730 µs, chunk size 711</pre>
+Summary: published 783246 msg/s, confirmed 782755 msg/s, consumed 782755 msg/s, latency 95th 27212 µs, chunk size 3095</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2015,6 +2099,7 @@ source ~/.zsh/stream-perf-test_completion</pre>
 though.</p>
 </div>
 </div>
+</div>
 <div class="sect2">
 <h3 id="building-the-performance-tool"><a class="anchor" href="#building-the-performance-tool"></a>Building the Performance Tool</h3>
 <div class="paragraph">
@@ -2040,7 +2125,7 @@ though.</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-10-12 09:06:31 UTC
+Last updated 2020-10-13 13:05:39 UTC
 </div>
 </div>
 <style>
