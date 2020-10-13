@@ -1,6 +1,7 @@
 FROM ubuntu:20.04 as builder
 
-ARG stream_perf_test_version="0.1.0-SNAPSHOT-20201012-162139"
+# from https://dl.bintray.com/rabbitmq/java-tools-dev/stream-perf-test/
+ARG stream_perf_test_version="set-version-here"
 
 RUN set -eux; \
 	\
