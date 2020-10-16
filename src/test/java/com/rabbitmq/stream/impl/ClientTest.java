@@ -45,6 +45,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class ClientTest {
@@ -533,6 +535,14 @@ public class ClientTest {
       assertThat(response.getResponseCode())
           .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
     }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "amq.somename"})
+  void createWithInvalidNameShouldReturnError(String name) {
+    Client.Response response = cf.get().create(name);
+    assertThat(response.isOk()).isFalse();
+    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_PRECONDITION_FAILED);
   }
 
   @Test
