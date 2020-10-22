@@ -23,6 +23,7 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.TestUtils.CallableConsumer;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -72,6 +73,20 @@ public class RetentionClientTest {
           },
           firstMessageId -> firstMessageId > 0),
       new RetentionTestConfig(
+          "with max age",
+          context -> {
+            Client client = (Client) ((Object[]) context)[0];
+            String stream = (String) ((Object[]) context)[1];
+            client.create(
+                stream,
+                new Client.StreamParametersBuilder()
+                    .maxAge(Duration.ofSeconds(2))
+                    .maxSegmentSizeBytes(ByteCapacity.B(messageCount * payloadSize / 20))
+                    .build());
+          },
+          firstMessageId -> firstMessageId > 0,
+          Duration.ofSeconds(3)),
+      new RetentionTestConfig(
           "no retention",
           context -> {
             Client client = (Client) ((Object[]) context)[0];
@@ -92,7 +107,7 @@ public class RetentionClientTest {
           },
           firstMessageId -> firstMessageId == 0),
       new RetentionTestConfig(
-          "with AMQP client, with retention",
+          "with AMQP client, with size-based retention",
           context -> {
             String stream = (String) ((Object[]) context)[1];
             ConnectionFactory cf = new ConnectionFactory();
@@ -106,6 +121,22 @@ public class RetentionClientTest {
             }
           },
           firstMessageId -> firstMessageId > 0),
+      new RetentionTestConfig(
+          "with AMQP client, with age-based retention",
+          context -> {
+            String stream = (String) ((Object[]) context)[1];
+            ConnectionFactory cf = new ConnectionFactory();
+            try (Connection c = cf.newConnection();
+                Channel ch = c.createChannel()) {
+              Map<String, Object> arguments = new HashMap<>();
+              arguments.put("x-queue-type", "stream");
+              arguments.put("x-max-age", "2s");
+              arguments.put("x-max-segment-size", messageCount * payloadSize / 20);
+              ch.queueDeclare(stream, true, false, false, arguments);
+            }
+          },
+          firstMessageId -> firstMessageId > 0,
+          Duration.ofSeconds(3)),
     };
   }
 
@@ -114,31 +145,41 @@ public class RetentionClientTest {
   void retention(RetentionTestConfig configuration) throws Exception {
     String testStream = UUID.randomUUID().toString();
     CountDownLatch publishingLatch = new CountDownLatch(messageCount);
+    CountDownLatch publishingLatchSecondWave = new CountDownLatch(messageCount * 2);
     Client publisher =
         cf.get(
             new Client.ClientParameters()
                 .publishConfirmListener(
-                    (publisherId, publishingId) -> publishingLatch.countDown()));
+                    (publisherId, publishingId) -> {
+                      publishingLatch.countDown();
+                      publishingLatchSecondWave.countDown();
+                    }));
 
     try {
       configuration.streamCreator.accept(new Object[] {publisher, testStream});
       AtomicLong publishSequence = new AtomicLong(0);
       byte[] payload = new byte[payloadSize];
-      IntStream.range(0, messageCount)
-          .forEach(
-              i ->
-                  publisher.publish(
-                      testStream,
-                      (byte) 1,
-                      Collections.singletonList(
-                          publisher
-                              .messageBuilder()
-                              .properties()
-                              .messageId(publishSequence.getAndIncrement())
-                              .messageBuilder()
-                              .addData(payload)
-                              .build())));
+      Runnable publish =
+          () ->
+              publisher.publish(
+                  testStream,
+                  (byte) 1,
+                  Collections.singletonList(
+                      publisher
+                          .messageBuilder()
+                          .properties()
+                          .messageId(publishSequence.getAndIncrement())
+                          .messageBuilder()
+                          .addData(payload)
+                          .build()));
+      IntStream.range(0, messageCount).forEach(i -> publish.run());
       assertThat(publishingLatch.await(10, SECONDS)).isTrue();
+
+      configuration.waiting();
+
+      // publishing again, to make sure new segments trigger retention strategy
+      IntStream.range(0, messageCount).forEach(i -> publish.run());
+      assertThat(publishingLatchSecondWave.await(10, SECONDS)).isTrue();
 
       CountDownLatch consumingLatch = new CountDownLatch(1);
       AtomicLong firstMessageId = new AtomicLong(-1);
@@ -170,14 +211,30 @@ public class RetentionClientTest {
     final String description;
     final CallableConsumer<Object> streamCreator;
     final Predicate<Long> firstMessageIdAssertion;
+    final Duration waitTime;
 
     RetentionTestConfig(
         String description,
         CallableConsumer<Object> streamCreator,
         Predicate<Long> firstMessageIdAssertion) {
+      this(description, streamCreator, firstMessageIdAssertion, Duration.ZERO);
+    }
+
+    RetentionTestConfig(
+        String description,
+        CallableConsumer<Object> streamCreator,
+        Predicate<Long> firstMessageIdAssertion,
+        Duration waitTime) {
       this.description = description;
       this.streamCreator = streamCreator;
       this.firstMessageIdAssertion = firstMessageIdAssertion;
+      this.waitTime = waitTime;
+    }
+
+    void waiting() throws InterruptedException {
+      if (this.waitTime.toMillis() > 0) {
+        Thread.sleep(this.waitTime.toMillis());
+      }
     }
 
     @Override

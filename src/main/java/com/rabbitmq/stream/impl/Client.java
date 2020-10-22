@@ -2278,6 +2278,17 @@ public class Client implements AutoCloseable {
       return maxSegmentSizeBytes(teraBytes * 1000 * 1000 * 1000 * 1000);
     }
 
+    public StreamParametersBuilder maxAge(Duration duration) {
+      if (duration == null
+          || duration.isZero()
+          || duration.isNegative()
+          || duration.getSeconds() < 0) {
+        throw new IllegalArgumentException("Max age must be a positive duration");
+      }
+      this.parameters.put("max-age", duration.getSeconds() + "s");
+      return this;
+    }
+
     public StreamParametersBuilder put(String key, String value) {
       parameters.put(key, value);
       return this;
