@@ -14,6 +14,8 @@
 
 package com.rabbitmq.stream;
 
+import java.time.Duration;
+
 public interface StreamCreator {
 
   StreamCreator stream(String stream);
@@ -21,6 +23,8 @@ public interface StreamCreator {
   StreamCreator maxLengthBytes(ByteCapacity byteCapacity);
 
   StreamCreator maxSegmentSizeBytes(ByteCapacity byteCapacity);
+
+  StreamCreator maxAge(Duration maxAge);
 
   void create();
 }

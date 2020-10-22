@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
+import java.time.Duration;
 
 class StreamStreamCreator implements StreamCreator {
 
@@ -44,6 +45,12 @@ class StreamStreamCreator implements StreamCreator {
   @Override
   public StreamCreator maxSegmentSizeBytes(ByteCapacity byteCapacity) {
     streamParametersBuilder.maxSegmentSizeBytes(byteCapacity);
+    return this;
+  }
+
+  @Override
+  public StreamCreator maxAge(Duration maxAge) {
+    streamParametersBuilder.maxAge(maxAge);
     return this;
   }
 
