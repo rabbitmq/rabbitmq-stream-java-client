@@ -324,7 +324,7 @@ class ConsumersCoordinator {
       this.client =
           clientFactory.apply(
               clientParameters
-                  .clientProperty("name", "rabbitmq-stream-consumer")
+                  .clientProperty("connection_name", "rabbitmq-stream-consumer")
                   .chunkListener(
                       (client, subscriptionId, offset, messageCount, dataSize) ->
                           client.credit(subscriptionId, 1))

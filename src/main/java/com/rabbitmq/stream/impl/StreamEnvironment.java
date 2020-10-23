@@ -141,7 +141,7 @@ class StreamEnvironment implements Environment {
                               newLocatorParameters
                                   .host(address.host)
                                   .port(address.port)
-                                  .clientProperty("name", "rabbitmq-stream-locator"));
+                                  .clientProperty("connection_name", "rabbitmq-stream-locator"));
                       LOGGER.debug("Locator connected on {}", address);
                       return newLocator;
                     })
@@ -161,7 +161,7 @@ class StreamEnvironment implements Environment {
               .duplicate()
               .host(address.host)
               .port(address.port)
-              .clientProperty("name", "rabbitmq-stream-locator")
+              .clientProperty("connection_name", "rabbitmq-stream-locator")
               .shutdownListener(shutdownListenerReference.get());
       try {
         this.locator = clientFactory.apply(locatorParameters);

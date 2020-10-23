@@ -79,7 +79,7 @@ public class ShutdownListenerTest {
     Client client =
         new Client(
             new Client.ClientParameters()
-                .clientProperty("name", connectionName)
+                .clientProperty("connection_name", connectionName)
                 .shutdownListener(
                     shutdownContext -> {
                       reason.set(shutdownContext.getShutdownReason());

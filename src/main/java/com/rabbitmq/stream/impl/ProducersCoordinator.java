@@ -421,7 +421,7 @@ class ProducersCoordinator {
                           }
                         }
                       })
-                  .clientProperty("name", "rabbitmq-stream-producer"));
+                  .clientProperty("connection_name", "rabbitmq-stream-producer"));
       ref.set(this.client);
     }
 
