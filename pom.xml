@@ -49,9 +49,9 @@
     <slf4j.version>1.7.30</slf4j.version>
     <logback.version>1.2.3</logback.version>
     <netty.version>4.1.53.Final</netty.version>
-    <proton-j.version>0.33.6</proton-j.version>
+    <proton-j.version>0.33.7</proton-j.version>
     <metrics.version>4.1.14</metrics.version>
-    <micrometer.version>1.5.5</micrometer.version>
+    <micrometer.version>1.6.0</micrometer.version>
     <swiftmq-client.version>12.2.1</swiftmq-client.version>
     <picocli.version>4.5.2</picocli.version>
     <guava.version>30.0-jre</guava.version>
