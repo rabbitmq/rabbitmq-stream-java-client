@@ -21,13 +21,19 @@ import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,6 +83,58 @@ public class StreamProducerTest {
             });
     boolean completed = publishLatch.await(10, TimeUnit.SECONDS);
     assertThat(completed).isTrue();
+  }
+
+  @Test
+  void sendWithMultipleProducers() throws Exception {
+    int batchSize = 10;
+    int messageCount = 1_000 * batchSize + 1; // don't want a multiple of batch size
+    int nbProducers = 20;
+    Map<String, CountDownLatch> publishLatches = new ConcurrentHashMap<>(nbProducers);
+    Map<String, Producer> producers = new ConcurrentHashMap<>(nbProducers);
+    List<String> producerNames =
+        IntStream.range(0, nbProducers)
+            .mapToObj(
+                i -> {
+                  String producerName = UUID.randomUUID().toString();
+                  publishLatches.put(producerName, new CountDownLatch(messageCount));
+                  producers.put(
+                      producerName,
+                      environment.producerBuilder().stream(stream).batchSize(batchSize).build());
+                  return producerName;
+                })
+            .collect(Collectors.toList());
+
+    AtomicLong count = new AtomicLong(0);
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    try {
+      producerNames.forEach(
+          name -> {
+            CountDownLatch publishLatch = publishLatches.get(name);
+            Producer producer = producers.get(name);
+            Runnable publishRunnable =
+                () -> {
+                  IntStream.range(0, messageCount)
+                      .forEach(
+                          i -> {
+                            producer.send(
+                                producer.messageBuilder().addData(name.getBytes()).build(),
+                                confirmationStatus -> {
+                                  count.incrementAndGet();
+                                  publishLatch.countDown();
+                                });
+                          });
+                };
+            executorService.submit(publishRunnable);
+          });
+
+      for (CountDownLatch publishLatch : publishLatches.values()) {
+        boolean completed = publishLatch.await(10, TimeUnit.SECONDS);
+        assertThat(completed).isTrue();
+      }
+    } finally {
+      executorService.shutdownNow();
+    }
   }
 
   @Test

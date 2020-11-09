@@ -26,7 +26,9 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 
 class StreamProducer implements Producer {
 
@@ -44,6 +46,15 @@ class StreamProducer implements Producer {
   private volatile Client client;
   private volatile byte publisherId;
   private volatile Status status;
+  private final LongSupplier publishSequenceSupplier =
+      new LongSupplier() {
+        private final AtomicLong publishSequence = new AtomicLong(0);
+
+        @Override
+        public long getAsLong() {
+          return publishSequence.getAndIncrement();
+        }
+      };
 
   StreamProducer(
       String stream,
@@ -212,7 +223,12 @@ class StreamProducer implements Producer {
         messages.add(accMessage);
         batchCount++;
       }
-      client.publishInternal(this.stream, this.publisherId, messages, this.writeCallback);
+      client.publishInternal(
+          this.stream,
+          this.publisherId,
+          messages,
+          this.writeCallback,
+          this.publishSequenceSupplier);
     }
   }
 

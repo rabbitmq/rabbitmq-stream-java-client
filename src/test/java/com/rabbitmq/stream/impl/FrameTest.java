@@ -32,6 +32,8 @@ import java.io.DataOutputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.assertj.core.api.ThrowableAssert;
@@ -131,6 +133,7 @@ public class FrameTest {
                 3));
     try (Client client =
         cf.get(new Client.ClientParameters().requestedMaxFrameSize(maxFrameSize))) {
+      LongSupplier publishSequenceSupplier = publishSequenceSupplier();
       tests.forEach(
           test -> {
             Channel channel = Mockito.mock(Channel.class);
@@ -145,7 +148,8 @@ public class FrameTest {
                 test.sizes.stream()
                     .map(size -> new Codec.EncodedMessage(size, new byte[size]))
                     .collect(Collectors.toList()),
-                Client.OUTBOUND_MESSAGE_WRITE_CALLBACK);
+                Client.OUTBOUND_MESSAGE_WRITE_CALLBACK,
+                publishSequenceSupplier);
 
             ArgumentCaptor<ByteBuf> bbCaptor = ArgumentCaptor.forClass(ByteBuf.class);
             verify(channel, times(test.expectedCalls)).writeAndFlush(bbCaptor.capture());
@@ -158,5 +162,16 @@ public class FrameTest {
                     });
           });
     }
+  }
+
+  static LongSupplier publishSequenceSupplier() {
+    return new LongSupplier() {
+      private final AtomicLong publishSequence = new AtomicLong(0);
+
+      @Override
+      public long getAsLong() {
+        return publishSequence.getAndIncrement();
+      }
+    };
   }
 }

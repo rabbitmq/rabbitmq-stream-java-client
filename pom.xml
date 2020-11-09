@@ -71,6 +71,7 @@
     <maven-resources-plugin.version>3.1.0</maven-resources-plugin.version>
     <maven-source-plugin.version>3.2.0</maven-source-plugin.version>
     <maven-javadoc-plugin.version>3.2.0</maven-javadoc-plugin.version>
+    <maven.jar.plugin.version>3.2.0</maven.jar.plugin.version>
     <asciidoctor.maven.plugin.version>2.0.0</asciidoctor.maven.plugin.version>
     <asciidoctorj.version>2.4.1</asciidoctorj.version>
     <asciidoctorj.pdf.version>1.5.3</asciidoctorj.pdf.version>
@@ -384,6 +385,20 @@
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>${maven.jar.plugin.version}</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Automatic-Module-Name>com.rabbitmq.stream</Automatic-Module-Name>
+              <Implementation-Version>${project.version}</Implementation-Version>
+            </manifestEntries>
+          </archive>
         </configuration>
       </plugin>
 
