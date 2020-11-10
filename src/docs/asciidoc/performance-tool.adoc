@@ -85,7 +85,7 @@ $ java -jar stream-perf-test-{version}.jar
 Summary: published 783246 msg/s, confirmed 782755 msg/s, consumed 782755 msg/s, latency 95th 27212 µs, chunk size 3095
 ----
 
-The previous command will start publishing to and consuming from a stream created
+The previous command will start publishing to and consuming from a `stream1` stream created
 only for the test. The tool outputs live metrics on the console and write more
 detailed metrics in a `stream-perf-test-current.txt` file that get renamed to
 `stream-perf-test-yyyy-MM-dd-HHmmss.txt` when the run ends.
@@ -106,6 +106,120 @@ source ~/.zsh/stream-perf-test_completion
 
 Note the activation requires an alias which must be `stream-perf-test`. The command can be anything
 though.
+
+==== Common Usage
+
+===== Connection
+
+TODO
+
+===== Publishing Rate
+
+It is possible to limit the publishing rate with the `--rate` option:
+
+----
+java -jar stream-perf-test.jar --rate 10000
+----
+
+RabbitMQ Stream can easily saturate the resources of the hardware, it can especially
+max out the storage IO. Reasoning when a system is under severe constraints can
+be difficult, so setting a low publishing rate can be a good idea to get familiar
+with the performance tool and the semantics of streams.
+
+===== Number of Producers and Consumers
+
+You can set the number of producers and consumers with the `--producers` and
+`--consumers` options, respectively:
+
+----
+java -jar stream-perf-test.jar --producers 5 --consumers 5
+----
+
+With the previous command, you should see a higher consuming rate than
+publishing rate. It is because the 5 producers publish as fast as they can
+and each consumer consume the messages from the 5 publishers. In theory
+the consumer rate should be 5 times the publishing rate, but as stated previously,
+the performance tool may put the broker under severe constraints, so the numbers
+may not add up.
+
+You can set a low publishing rate to verify this theory:
+
+----
+java -jar stream-perf-test.jar --producers 5 --consumers 5 --rate 10000
+----
+
+With the previous command, each publisher should publish 10,000 messages per second,
+that is 50,000 messages per second overall. As each consumer consumes each published messages,
+the consuming rate should be 5 times the publishing rate, that is 250,000 messages per
+second. Using a small publishing rate should let plenty of resources to the system,
+so the rates should tend towards those values.
+
+===== Streams
+
+The performance tool uses a `stream1` stream by default, the `--streams` option allows
+specifying streams that will be created and used only for the test run. Note producer
+and consumer counts must be set accordingly, as they are not spread across the
+stream automatically. The following command will run a test with 3 streams, with
+a producer and a consumer on each of them:
+
+----
+java -jar stream-perf-test.jar --streams stream1,stream2,stream3 \
+                               --producers 3 --consumers 3
+----
+
+If you do not want the tool to create and delete streams for a run, because they are already created,
+use the `--pre-declared` option:
+
+----
+java -jar stream-perf-test.jar --streams stream1,stream2,stream3 \
+                               --producers 3 --consumers 3 \
+                               --pre-declared
+----
+
+===== Publishing Batch Size
+
+The default publishing batch size is 100, that is a publishing frame is sent every 100 messages.
+The following command sets the batch size to 50 with the `--batch-size` option:
+
+----
+java -jar stream-perf-test.jar --batch-size 50
+----
+
+There is no ideal batch size, it is a tradeoff between throughput and latency.
+High batch size values should increase throughput (usually good) and latency (usually not so
+good), whereas low batch size should decrease throughput (usually not good) and latency (usually
+good).
+
+===== Unconfirmed Messages
+
+A publisher can have at most 10,000 unconfirmed messages at some point. If it reaches this value,
+it has to wait until the broker confirms some messages. This avoids fast publishers overwhelming
+the broker. The `--confirms` option allows changing the default value:
+
+----
+java -jar stream-perf-test.jar --confirms 20000
+----
+
+High values should increase throughput at the cost of consuming more memory, whereas low values
+should decrease throughput and memory consumption.
+
+===== Message Size
+
+The default size of a message is 10 bytes, which is rather small. The `--size` option lets you
+specify a different size, usually higher, to have a value close to your use case. The next command
+sets a size of 1 KB:
+
+----
+java -jar stream-perf-test.jar --size 1024
+----
+
+Note the message body size cannot be smaller that 8 bytes, as the performance tool stores
+a long in each message to calculate the latency. Note also the actual size of a message will be
+slightly higher, as the body is wrapped in an <<api.adoc#working-with-complex-messages,AMQP 1.0 message>>.
+
+==== Advanced Usage
+
+TODO: retention, offset to start from, offset commit
 
 === Building the Performance Tool
 

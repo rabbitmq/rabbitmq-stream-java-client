@@ -329,6 +329,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
     // FIXME add confirm latency
 
+    // FIXME use the x-queue-leader-locator argument to spread the streams
     BrokerLocator configurationBrokerLocator = new RoundRobinAddressLocator(addresses);
 
     if (!preDeclared) {
@@ -382,10 +383,6 @@ public class StreamPerfTest implements Callable<Integer> {
       Map<String, Client.StreamMetadata> metadata = c.metadata(streams.toArray(new String[0]));
       metadataMap.putAll(metadata);
     }
-
-    Topology topology = new MapTopology(metadataMap);
-
-    BrokerLocator consumerBrokerLocator = new RoundRobinReplicaBrokerLocator(topology);
 
     // FIXME handle metadata update for consumers and publishers
     // they should at least issue a warning that their stream has been deleted and that they're now
