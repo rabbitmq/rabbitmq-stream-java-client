@@ -135,7 +135,7 @@ crashes:
 
 ----
 java -jar stream-perf-test.jar \
-  --uris rabbitmq-stream://rabbitmq-1:5555,--uris rabbitmq-stream://rabbitmq-2:5555
+  --uris rabbitmq-stream://rabbitmq-1:5555,rabbitmq-stream://rabbitmq-2:5555
 ----
 
 Note the tool uses those URIs only for management purposes, it does not use them
@@ -247,7 +247,53 @@ slightly higher, as the body is wrapped in an <<api.adoc#working-with-complex-me
 
 ==== Advanced Usage
 
-TODO: retention, offset to start from, offset commit
+===== Retention
+
+If you run performance tests for a long time, you might be interested in setting
+a <<api.adoc#limiting-the-size-of-a-stream,retention strategy>> for
+the streams the performance tool creates for a run. This
+would typically avoid saturating the storage devices of your servers.
+The default values are 20 GB for the maximum size of a stream and
+500 MB for each segment files that composes a stream. You can change
+these values with the `--max-length-bytes` and `--max-segment-size` options:
+
+----
+java -jar stream-perf-test.jar --max-length-bytes 10gb \
+                               --max-segment-size 250mb
+----
+
+Both options accept units (`kb`, `mb`, `gb`, `tb`), as well as no unit to
+specify a number of bytes.
+
+===== Offset (Consumer)
+
+Consumers start by default at the first available offset of stream, that is
+the beginning of the stream if it has not been truncated (offset 0). It is possible
+to specify an <<api.adoc#specifying-an-offset,offset>> to start from with the `--offset` option,
+if you have existing streams and you want to consume from them at a specific offset.
+The following command sets the consumer to start consuming at the very end of
+a stream, as soon as new messages are published:
+
+----
+java -jar stream-perf-test.jar --offset next
+----
+
+The accepted values for `--offset` are `first` (the default), `last`, `next`,
+an unsigned long for a given offset, and an ISO 8601 formatted timestamp
+(eg. `2020-06-03T07:45:54Z`).
+
+===== Offset Tracking (Consumer)
+
+A consumer can <<api.adoc#consumer-offset-tracking,track the point>> it has reached
+in a stream to be able to restart where it left off in a new incarnation.
+The performance tool has the `--commit-every` option to tell consumers to commit
+the offset every `x` messages to be able to measure the impact of offset tracking
+in terms of throughput and storage. This feature is disabled by default.
+The following command shows how to commit the offset every 100,000 messages:
+
+----
+java -jar stream-perf-test.jar --commit-every 100000
+----
 
 === Building the Performance Tool
 

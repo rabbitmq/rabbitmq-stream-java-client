@@ -342,6 +342,7 @@ include::{test-examples}/ConsumerUsage.java[tag=producer-creation]
 
 The broker start sending messages as soon as the `Consumer` instance is created.
 
+[[specifying-an-offset]]
 ===== Specifying an Offset
 
 The offset is the place in the stream where the consumer starts consuming from.
@@ -373,6 +374,7 @@ and they are delivered as part of a chunk. A chunk can be made of one to several
 thousands of messages, depending on the ingress.
 ====
 
+[[consumer-offset-tracking]]
 ===== Tracking the Offset for a Consumer
 
 A consumer can track the offset it has reached in a stream. This allows a new incarnation
