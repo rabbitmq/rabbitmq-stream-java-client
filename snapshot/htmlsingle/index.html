@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(e958fd5)</span>
+<br><span id="revremark">(9af4f01)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2360,6 +2360,22 @@ these values with the <code>--max-length-bytes</code> and <code>--max-segment-si
 <p>Both options accept units (<code>kb</code>, <code>mb</code>, <code>gb</code>, <code>tb</code>), as well as no unit to
 specify a number of bytes.</p>
 </div>
+<div class="paragraph">
+<p>It is also possible to use the time-based retention strategy with the <code>--max-age</code> option.
+This can be less predictable than <code>--max-length-bytes</code> in the context of performance tests though.
+The following command shows how to set the maximum age of segments to 5 minutes with
+a maximum segment size of 250 MB:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --max-age PT5M \
+                               --max-segment-size 250mb</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The <code>--max-age</code> option uses the
+<a href="https://en.wikipedia.org/wiki/ISO_8601#Durations">ISO 8601 duration format</a>.</p>
+</div>
 </div>
 <div class="sect4">
 <h5 id="offset-consumer"><a class="anchor" href="#offset-consumer"></a>Offset (Consumer)</h5>
@@ -2425,7 +2441,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-11-10 14:54:51 UTC
+Last updated 2020-11-10 16:34:08 UTC
 </div>
 </div>
 <style>
