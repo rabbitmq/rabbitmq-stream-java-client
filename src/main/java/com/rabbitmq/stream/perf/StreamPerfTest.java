@@ -20,17 +20,13 @@ import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
-import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -55,7 +51,6 @@ public class StreamPerfTest implements Callable<Integer> {
         }
       };
   private final String[] arguments;
-  private final EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
 
   @CommandLine.Mixin
   private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
@@ -64,23 +59,12 @@ public class StreamPerfTest implements Callable<Integer> {
   private volatile Codec codec;
 
   @CommandLine.Option(
-      names = {"--username", "-u"},
-      description = "username to use for connecting",
-      defaultValue = "guest")
-  private String username;
-
-  @CommandLine.Option(
-      names = {"--password", "-pw"},
-      description = "password to use for connecting",
-      defaultValue = "guest")
-  private String password;
-
-  @CommandLine.Option(
-      names = {"--addresses", "-a"},
-      description = "servers to connect to, e.g. localhost:5555, separated by commas",
-      defaultValue = "localhost:5555",
+      names = {"--uris", "-u"},
+      description =
+          "servers to connect to, e.g. rabbitmq-stream://localhost:5555, separated by commas",
+      defaultValue = "rabbitmq-stream://localhost:5555",
       split = ",")
-  private List<String> addrs;
+  private List<String> uris;
 
   @CommandLine.Option(
       names = {"--producers", "-x"},
@@ -102,20 +86,6 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "10",
       converter = Utils.NotNegativeIntegerTypeConverter.class)
   private volatile int messageSize;
-
-  @CommandLine.Option(
-      names = {"--initial-credit", "-icr"},
-      description = "initial credit when registering a consumer",
-      defaultValue = "10",
-      converter = Utils.NotNegativeIntegerTypeConverter.class)
-  private int initialCredit;
-
-  @CommandLine.Option(
-      names = {"--credit", "-cr"},
-      description = "credit requested on acknowledgment",
-      defaultValue = "1",
-      converter = Utils.PositiveIntegerTypeConverter.class)
-  private int credit;
 
   @CommandLine.Option(
       names = {"--confirms", "-c"},
@@ -192,8 +162,6 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "0")
   private int commitEvery;
 
-  private List<Address> addresses;
-
   @CommandLine.Option(
       names = {"--version", "-v"},
       description = "show version information",
@@ -221,16 +189,6 @@ public class StreamPerfTest implements Callable<Integer> {
   public static void main(String[] args) {
     int exitCode = new CommandLine(new StreamPerfTest(args)).execute(args);
     System.exit(exitCode);
-  }
-
-  private static List<Address> addresses(List<String> addresses) {
-    return addresses.stream()
-        .map(
-            address -> {
-              String[] hostPort = address.split(":");
-              return new Address(hostPort[0], Integer.parseInt(hostPort[1]));
-            })
-        .collect(Collectors.toList());
   }
 
   private static void versionInformation() {
@@ -295,7 +253,6 @@ public class StreamPerfTest implements Callable<Integer> {
       versionInformation();
       System.exit(0);
     }
-    this.addresses = addresses(this.addrs);
     this.codec = createCodec(this.codecClass);
 
     CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
@@ -313,89 +270,40 @@ public class StreamPerfTest implements Callable<Integer> {
 
     Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdownService.close()));
 
-    shutdownService.wrap(
-        closeStep(
-            "Closing Netty",
-            () -> {
-              int shutdownTimeout = 10;
-              try {
-                eventLoopGroup
-                    .shutdownGracefully(0, 10, TimeUnit.SECONDS)
-                    .get(shutdownTimeout, TimeUnit.SECONDS);
-              } catch (Exception e) {
-                LOGGER.info("Could not shut down Netty in {} second(s)", shutdownTimeout);
-              }
-            }));
-
     // FIXME add confirm latency
 
-    // FIXME use the x-queue-leader-locator argument to spread the streams
-    BrokerLocator configurationBrokerLocator = new RoundRobinAddressLocator(addresses);
+    Environment environment =
+        Environment.builder().uris(this.uris).metricsCollector(metricsCollector).build();
+
+    shutdownService.wrap(closeStep("Closing environment", () -> environment.close()));
 
     if (!preDeclared) {
       for (String stream : streams) {
-        Address address = configurationBrokerLocator.get(null);
-        try (Client client =
-            client(new Client.ClientParameters().host(address.host).port(address.port))) {
-          Client.Response response =
-              client.create(
-                  stream,
-                  new Client.StreamParametersBuilder()
-                      .maxLengthBytes(maxLengthBytes)
-                      .maxSegmentSizeBytes(maxSegmentSize)
-                      .build());
-
-          if (response.isOk()) {
-            LOGGER.info("Created stream {}", stream);
-          } else {
-            throw new IllegalStateException(
-                "Could not create " + stream + ", response code is " + response.getResponseCode());
-          }
-        }
+        // FIXME use the x-queue-leader-locator argument to spread the streams
+        environment.streamCreator().stream(stream)
+            .maxLengthBytes(maxLengthBytes)
+            .maxSegmentSizeBytes(maxSegmentSize)
+            .create();
       }
       shutdownService.wrap(
           closeStep(
               "Deleting stream(s)",
               () -> {
-                if (!preDeclared) {
-                  Address address = configurationBrokerLocator.get(null);
-                  try (Client c =
-                      client(new Client.ClientParameters().host(address.host).port(address.port))) {
-                    for (String stream : streams) {
-                      LOGGER.debug("Deleting {}", stream);
-                      Client.Response response = c.delete(stream);
-                      if (!response.isOk()) {
-                        LOGGER.warn(
-                            "Could not delete stream {}, response code was {}",
-                            stream,
-                            response.getResponseCode());
-                      }
-                      LOGGER.debug("Deleted {}", stream);
-                    }
+                for (String stream : streams) {
+                  LOGGER.debug("Deleting {}", stream);
+                  try {
+                    environment.deleteStream(stream);
+                    LOGGER.debug("Deleted {}", stream);
+                  } catch (Exception e) {
+                    LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
                   }
                 }
               }));
     }
 
-    Map<String, Client.StreamMetadata> metadataMap = new ConcurrentHashMap<>();
-    Address address = configurationBrokerLocator.get(null);
-    try (Client c = client(new Client.ClientParameters().host(address.host).port(address.port))) {
-      Map<String, Client.StreamMetadata> metadata = c.metadata(streams.toArray(new String[0]));
-      metadataMap.putAll(metadata);
-    }
-
     // FIXME handle metadata update for consumers and publishers
     // they should at least issue a warning that their stream has been deleted and that they're now
     // useless
-
-    Environment environment =
-        Environment.builder()
-            .host(address.host)
-            .port(address.port)
-            .username(username)
-            .password(password)
-            .metricsCollector(metricsCollector)
-            .build();
 
     List<Producer> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
     List<Runnable> producerRunnables =
@@ -556,144 +464,7 @@ public class StreamPerfTest implements Callable<Integer> {
     };
   }
 
-  private Client client(Client.ClientParameters parameters) {
-    return new Client(
-        parameters
-            .eventLoopGroup(this.eventLoopGroup)
-            .codec(codec)
-            .metricsCollector(this.metricsCollector)
-            .username(this.username)
-            .password(this.password));
-  }
-
   private String stream() {
     return streams.get(streamDispatching++ % streams.size());
-  }
-
-  interface BrokerLocator {
-
-    Address get(String hint);
-  }
-
-  interface Topology {
-
-    Client.StreamMetadata getMetadata(String stream);
-  }
-
-  static class Address {
-
-    final String host;
-    final int port;
-
-    Address(String host, int port) {
-      Objects.requireNonNull(host, "host argument cannot be null");
-      this.host = host;
-      this.port = port;
-    }
-
-    @Override
-    public String toString() {
-      return host + ":" + port;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      Address address = (Address) o;
-      return port == address.port && host.equals(address.host);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(host, port);
-    }
-  }
-
-  static class RoundRobinAddressLocator implements BrokerLocator {
-
-    private final List<Address> addresses;
-    private final AtomicInteger sequence = new AtomicInteger(0);
-
-    RoundRobinAddressLocator(List<Address> addresses) {
-      this.addresses = addresses;
-    }
-
-    @Override
-    public Address get(String hintIgnored) {
-      return addresses.get(sequence.getAndIncrement() % addresses.size());
-    }
-  }
-
-  static class LeaderOnlyBrokerLocator implements BrokerLocator {
-
-    private final Topology topology;
-
-    LeaderOnlyBrokerLocator(Topology topology) {
-      this.topology = topology;
-    }
-
-    @Override
-    public Address get(String hint) {
-      Client.StreamMetadata metadata = topology.getMetadata(hint);
-      if (metadata == null || metadata.getResponseCode() != Constants.RESPONSE_CODE_OK) {
-        throw new IllegalArgumentException("Could not find metadata for stream: " + hint);
-      }
-      return new Address(metadata.getLeader().getHost(), metadata.getLeader().getPort());
-    }
-  }
-
-  static class RoundRobinReplicaBrokerLocator implements BrokerLocator {
-
-    private final Topology topology;
-    private final Map<String, AtomicInteger> sequences = new HashMap<>();
-
-    RoundRobinReplicaBrokerLocator(Topology topology) {
-      this.topology = topology;
-    }
-
-    @Override
-    public Address get(String hint) {
-      Client.StreamMetadata metadata = topology.getMetadata(hint);
-      if (metadata == null || metadata.getResponseCode() != Constants.RESPONSE_CODE_OK) {
-        throw new IllegalArgumentException("Could not find metadata for stream: " + hint);
-      }
-      if (metadata.getReplicas() == null || metadata.getReplicas().isEmpty()) {
-        return new Address(metadata.getLeader().getHost(), metadata.getLeader().getPort());
-      } else {
-        AtomicInteger sequence = sequences.computeIfAbsent(hint, s -> new AtomicInteger(0));
-        Client.Broker replica =
-            metadata.getReplicas().get(sequence.getAndIncrement() % metadata.getReplicas().size());
-        return new Address(replica.getHost(), replica.getPort());
-      }
-    }
-  }
-
-  static class MapTopology implements Topology {
-
-    private static final Comparator<Client.Broker> BROKER_COMPARATOR =
-        Comparator.comparing(Client.Broker::getHost).thenComparingInt(Client.Broker::getPort);
-
-    private final Map<String, Client.StreamMetadata> metadata;
-
-    MapTopology(Map<String, Client.StreamMetadata> metadata) {
-      for (Map.Entry<String, Client.StreamMetadata> entry : metadata.entrySet()) {
-        ArrayList<Client.Broker> replicas = new ArrayList<>(entry.getValue().getReplicas());
-        Collections.sort(replicas, BROKER_COMPARATOR);
-        entry.setValue(
-            new Client.StreamMetadata(
-                entry.getValue().getStream(),
-                entry.getValue().getResponseCode(),
-                entry.getValue().getLeader(),
-                replicas));
-      }
-
-      this.metadata = metadata;
-    }
-
-    @Override
-    public Client.StreamMetadata getMetadata(String stream) {
-      return metadata.get(stream);
-    }
   }
 }

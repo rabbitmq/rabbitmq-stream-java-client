@@ -111,7 +111,35 @@ though.
 
 ===== Connection
 
-TODO
+The performance tool connects by default to localhost, on port 5555, with
+default credentials (`guest`/`guest`), on the default `/` virtual host.
+This can be changed with the `--uris` option:
+
+----
+java -jar stream-perf-test.jar --uris rabbitmq-stream://rabbitmq-1:5555
+----
+
+The URI follows the same rules as the
+https://www.rabbitmq.com/uri-spec.html[AMQP 0.9.1 URI],
+except the protocol must be `rabbitmq-stream` and TLS is not supported.
+The next command shows how to set up the different elements of the URI:
+
+----
+java -jar stream-perf-test.jar \
+  --uris rabbitmq-stream://guest:guest@localhost:5555/%2f
+----
+
+The option accepts several values, separated by commas. By doing so, the tool
+will be able to pick another URI for its "locator" connection, in case a node
+crashes:
+
+----
+java -jar stream-perf-test.jar \
+  --uris rabbitmq-stream://rabbitmq-1:5555,--uris rabbitmq-stream://rabbitmq-2:5555
+----
+
+Note the tool uses those URIs only for management purposes, it does not use them
+to distribute publishers and consumers across a cluster.
 
 ===== Publishing Rate
 
