@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(8b66372)</span>
+<br><span id="revremark">(e958fd5)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1263,8 +1263,8 @@ the server side (interactions with the file system, communication between nodes 
 when creating it. A stream
 is an append-only data structure and reading from it does not remove data.
 This means a stream can grow indefinitely. RabbitMQ Stream supports a
-size-based retention policy: once the stream reaches a given size,
-it is truncated (starting from the beginning).</p>
+size-based and time-based retention policies: once the stream reaches a given size
+or a given age, it is truncated (starting from the beginning).</p>
 </div>
 <div class="admonitionblock important">
 <table>
@@ -1311,9 +1311,54 @@ in mind that this means some data will be erased!</p>
 <div class="paragraph">
 <p>The previous snippet mentions a segment size. RabbitMQ Stream does not store a stream
 in a big, single file, it uses segment files for technical reasons.
-A stream is truncated by deleting whole segment files (and not part of them),
-so the maximum size of a stream is usually significantly higher than the size of
+A stream is truncated by deleting whole segment files (and not part of them)so
+the maximum size of a stream is usually significantly higher than the size of
 segment files. 500 MB is a reasonable segment file size to begin with.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">When does the broker enforce the retention policy?</div>
+<div class="paragraph">
+<p>The broker enforces the retention policy when the segments of a stream
+roll over, that is when the current segment has reached its maximum
+size and is closed in favor of a new one. This means the maximum segment
+size is a critical setting in the retention mechanism.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>RabbitMQ Stream also supports a time-based retention policy: segments get truncated
+when they reach a certain age. The following snippet
+illustrates how to set the time-based retention policy:</p>
+</div>
+<div class="listingblock">
+<div class="title">Setting a time-based retention policy when creating a stream</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">environment.streamCreator()
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+        .maxAge(<span class="predefined-type">Duration</span>.ofHours(<span class="integer">6</span>))  <i class="conum" data-value="1"></i><b>(1)</b>
+        .maxSegmentSizeBytes(ByteCapacity.MB(<span class="integer">500</span>))  <i class="conum" data-value="2"></i><b>(2)</b>
+        .create();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the maximum age to 6 hours</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Set the segment size to 500 MB</td>
+</tr>
+</table>
 </div>
 </div>
 </div>
@@ -2380,7 +2425,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2020-11-10 14:30:49 UTC
+Last updated 2020-11-10 14:54:51 UTC
 </div>
 </div>
 <style>
