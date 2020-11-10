@@ -17,6 +17,7 @@ package com.rabbitmq.stream.docs;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Environment;
 
+import java.time.Duration;
 import java.util.Arrays;
 
 public class EnvironmentUsage {
@@ -65,6 +66,17 @@ public class EnvironmentUsage {
                 .maxSegmentSizeBytes(ByteCapacity.MB(500))  // <2>
                 .create();
         // end::stream-creation-retention[]
+    }
+
+    void createStreamWithTimeBasedRetention() {
+        Environment environment = Environment.builder().build();
+        // tag::stream-creation-time-based-retention[]
+        environment.streamCreator()
+                .stream("my-stream")
+                .maxAge(Duration.ofHours(6))  // <1>
+                .maxSegmentSizeBytes(ByteCapacity.MB(500))  // <2>
+                .create();
+        // end::stream-creation-time-based-retention[]
     }
 
     void deleteStream() {
