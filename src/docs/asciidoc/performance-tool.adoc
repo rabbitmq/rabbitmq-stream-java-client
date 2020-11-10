@@ -265,6 +265,19 @@ java -jar stream-perf-test.jar --max-length-bytes 10gb \
 Both options accept units (`kb`, `mb`, `gb`, `tb`), as well as no unit to
 specify a number of bytes.
 
+It is also possible to use the time-based retention strategy with the `--max-age` option.
+This can be less predictable than `--max-length-bytes` in the context of performance tests though.
+The following command shows how to set the maximum age of segments to 5 minutes with
+a maximum segment size of 250 MB:
+
+----
+java -jar stream-perf-test.jar --max-age PT5M \
+                               --max-segment-size 250mb
+----
+
+The `--max-age` option uses the
+https://en.wikipedia.org/wiki/ISO_8601#Durations[ISO 8601 duration format].
+
 ===== Offset (Consumer)
 
 Consumers start by default at the first available offset of stream, that is

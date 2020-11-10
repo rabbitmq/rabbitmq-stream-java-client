@@ -15,6 +15,7 @@ package com.rabbitmq.stream.perf;
 
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -35,6 +36,24 @@ class Utils {
       } catch (IllegalArgumentException e) {
         throw new CommandLine.TypeConversionException(
             "'" + value + "' is not valid, valid example values: 100gb, 50mb");
+      }
+    }
+  }
+
+  static class DurationTypeConverter implements CommandLine.ITypeConverter<Duration> {
+
+    @Override
+    public Duration convert(String value) {
+      try {
+        Duration duration = Duration.parse(value);
+        if (duration.isNegative() || duration.isZero()) {
+          throw new CommandLine.TypeConversionException(
+              "'" + value + "' is not valid, it must be positive");
+        }
+        return duration;
+      } catch (DateTimeParseException e) {
+        throw new CommandLine.TypeConversionException(
+            "'" + value + "' is not valid, valid example values: PT15M, PT10H");
       }
     }
   }

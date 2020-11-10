@@ -25,6 +25,7 @@ import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import java.nio.charset.Charset;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -105,7 +106,8 @@ public class StreamPerfTest implements Callable<Integer> {
       names = {"--offset", "-o"},
       description =
           "offset to start listening from. "
-              + "Valid values are 'first', 'last', 'next', an unsigned long, or an ISO 8601 formatted timestamp (eg. 2020-06-03T07:45:54Z).",
+              + "Valid values are 'first', 'last', 'next', an unsigned long, "
+              + "or an ISO 8601 formatted timestamp (eg. 2020-06-03T07:45:54Z).",
       defaultValue = "first",
       converter = Utils.OffsetSpecificationTypeConverter.class)
   private OffsetSpecification offset;
@@ -155,6 +157,14 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "500mb",
       converter = Utils.ByteCapacityTypeConverter.class)
   private ByteCapacity maxSegmentSize;
+
+  @CommandLine.Option(
+      names = {"--max-age", "-ma"},
+      description =
+          "max age of segments using the ISO 8601 duration format, "
+              + "e.g. PT10M30S for 10 minutes 30 seconds, P5DT8H for 5 days 8 hours.",
+      converter = Utils.DurationTypeConverter.class)
+  private Duration maxAge;
 
   @CommandLine.Option(
       names = {"--commit-every", "-ce"},
@@ -280,10 +290,16 @@ public class StreamPerfTest implements Callable<Integer> {
     if (!preDeclared) {
       for (String stream : streams) {
         // FIXME use the x-queue-leader-locator argument to spread the streams
-        environment.streamCreator().stream(stream)
-            .maxLengthBytes(maxLengthBytes)
-            .maxSegmentSizeBytes(maxSegmentSize)
-            .create();
+        StreamCreator streamCreator =
+            environment.streamCreator().stream(stream)
+                .maxLengthBytes(maxLengthBytes)
+                .maxSegmentSizeBytes(maxSegmentSize);
+
+        if (this.maxAge != null) {
+          streamCreator.maxAge(this.maxAge);
+        }
+
+        streamCreator.create();
       }
       shutdownService.wrap(
           closeStep(
