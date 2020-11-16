@@ -23,7 +23,7 @@ class StreamStreamCreator implements StreamCreator {
 
   private final StreamEnvironment environment;
   private final Client.StreamParametersBuilder streamParametersBuilder =
-      new Client.StreamParametersBuilder();
+      new Client.StreamParametersBuilder().leaderLocator(LeaderLocator.LEAST_LEADERS);
   private String stream;
 
   StreamStreamCreator(StreamEnvironment environment) {
@@ -51,6 +51,12 @@ class StreamStreamCreator implements StreamCreator {
   @Override
   public StreamCreator maxAge(Duration maxAge) {
     streamParametersBuilder.maxAge(maxAge);
+    return this;
+  }
+
+  @Override
+  public StreamCreator leaderLocator(LeaderLocator leaderLocator) {
+    streamParametersBuilder.leaderLocator(leaderLocator);
     return this;
   }
 

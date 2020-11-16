@@ -26,5 +26,23 @@ public interface StreamCreator {
 
   StreamCreator maxAge(Duration maxAge);
 
+  StreamCreator leaderLocator(LeaderLocator leaderLocator);
+
   void create();
+
+  enum LeaderLocator {
+    CLIENT_LOCAL("client-local"),
+    RANDOM("random"),
+    LEAST_LEADERS("least-leaders");
+
+    String value;
+
+    LeaderLocator(String value) {
+      this.value = value;
+    }
+
+    public String value() {
+      return this.value;
+    }
+  }
 }

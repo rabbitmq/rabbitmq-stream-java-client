@@ -54,6 +54,7 @@ import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.Properties;
+import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
@@ -2309,6 +2310,11 @@ public class Client implements AutoCloseable {
         throw new IllegalArgumentException("Max age must be a positive duration");
       }
       this.parameters.put("max-age", duration.getSeconds() + "s");
+      return this;
+    }
+
+    public StreamParametersBuilder leaderLocator(LeaderLocator leaderLocator) {
+      this.parameters.put("queue-leader-locator", leaderLocator.value());
       return this;
     }
 
