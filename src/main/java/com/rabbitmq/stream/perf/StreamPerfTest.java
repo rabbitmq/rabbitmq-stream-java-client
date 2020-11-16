@@ -23,6 +23,9 @@ import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
+import com.rabbitmq.stream.perf.Utils.AlwaysCreateEnvironmentFactory;
+import com.rabbitmq.stream.perf.Utils.EnvironmentFactory;
+import com.rabbitmq.stream.perf.Utils.SingletonEnvironmentFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import java.nio.charset.Charset;
@@ -194,6 +197,12 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "false")
   private boolean summaryFile;
 
+  @CommandLine.Option(
+      names = {"--share-resources", "-sr"},
+      description = "whether producers and consumers share the same resources",
+      defaultValue = "false")
+  private boolean shareResources;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
 
@@ -247,24 +256,16 @@ public class StreamPerfTest implements Callable<Integer> {
     }
   }
 
-  public static void writeLong(byte[] array, long value) {
-    // from Guava Longs
-    for (int i = 7; i >= 0; i--) {
-      array[i] = (byte) (value & 0xffL);
-      value >>= 8;
-    }
-  }
+  private static EnvironmentFactory environmentFactory(
+      boolean shareResources, List<String> uris, MetricsCollector metricsCollector) {
+    if (shareResources) {
+      EnvironmentBuilder environmentBuilder =
+          Environment.builder().uris(uris).metricsCollector(metricsCollector);
 
-  public static long readLong(byte[] array) {
-    // from Guava Longs
-    return (array[0] & 0xFFL) << 56
-        | (array[1] & 0xFFL) << 48
-        | (array[2] & 0xFFL) << 40
-        | (array[3] & 0xFFL) << 32
-        | (array[4] & 0xFFL) << 24
-        | (array[5] & 0xFFL) << 16
-        | (array[6] & 0xFFL) << 8
-        | (array[7] & 0xFFL);
+      return new SingletonEnvironmentFactory(environmentBuilder);
+    } else {
+      return new AlwaysCreateEnvironmentFactory(uris, metricsCollector);
+    }
   }
 
   @Override
@@ -292,14 +293,14 @@ public class StreamPerfTest implements Callable<Integer> {
 
     // FIXME add confirm latency
 
-    Environment environment =
-        Environment.builder().uris(this.uris).metricsCollector(metricsCollector).build();
+    EnvironmentFactory environmentFactory =
+        environmentFactory(this.shareResources, this.uris, metricsCollector);
 
-    shutdownService.wrap(closeStep("Closing environment", () -> environment.close()));
+    shutdownService.wrap(closeStep("Closing environment(s)", () -> environmentFactory.close()));
 
     if (!preDeclared) {
+      Environment environment = environmentFactory.get();
       for (String stream : streams) {
-        // FIXME use the x-queue-leader-locator argument to spread the streams
         StreamCreator streamCreator =
             environment.streamCreator().stream(stream)
                 .maxLengthBytes(this.maxLengthBytes)
@@ -349,7 +350,8 @@ public class StreamPerfTest implements Callable<Integer> {
                   String stream = stream();
 
                   Producer producer =
-                      environment
+                      environmentFactory
+                          .get()
                           .producerBuilder()
                           .subEntrySize(this.subEntrySize)
                           .batchSize(this.batchSize)
@@ -386,7 +388,7 @@ public class StreamPerfTest implements Callable<Integer> {
                           rateLimiterCallback.run();
                           long creationTime = System.nanoTime();
                           byte[] payload = new byte[msgSize];
-                          writeLong(payload, creationTime);
+                          Utils.writeLong(payload, creationTime);
                           producer.send(
                               producer.messageBuilder().addData(payload).build(),
                               confirmationHandler);
@@ -404,7 +406,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
                       AtomicLong messageCount = new AtomicLong(0);
                       String stream = stream();
-                      ConsumerBuilder consumerBuilder = environment.consumerBuilder();
+                      ConsumerBuilder consumerBuilder = environmentFactory.get().consumerBuilder();
                       consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
 
                       if (this.commitEvery > 0) {
@@ -425,7 +427,7 @@ public class StreamPerfTest implements Callable<Integer> {
                                 // this should not affect the metric much
                                 if (messageCount.incrementAndGet() % 100 == 0) {
                                   metrics.latency(
-                                      System.nanoTime() - readLong(message.getBodyAsBinary()),
+                                      System.nanoTime() - Utils.readLong(message.getBodyAsBinary()),
                                       TimeUnit.NANOSECONDS);
                                 }
                               });

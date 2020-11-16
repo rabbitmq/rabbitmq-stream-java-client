@@ -19,7 +19,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.params.provider.Arguments.of;
 
 import com.rabbitmq.stream.OffsetSpecification;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+import java.util.stream.LongStream;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -59,5 +65,34 @@ public class UtilsTest {
   void offsetSpecificationTypeConverterKo(String value) {
     assertThatThrownBy(() -> offsetSpecificationConverter.convert(value))
         .isInstanceOf(CommandLine.TypeConversionException.class);
+  }
+
+  @Test
+  void writeReadLongInByteArray() {
+    byte[] array = new byte[8];
+    LongStream.of(
+            Long.MIN_VALUE,
+            Long.MAX_VALUE,
+            1,
+            128,
+            256,
+            33_000,
+            66_000,
+            1_000_000,
+            new Random().nextLong())
+        .forEach(
+            value -> {
+              Utils.writeLong(array, value);
+              assertThat(Utils.readLong(array)).isEqualTo(value);
+            });
+  }
+
+  @Test
+  void rotateList() {
+    List<String> hosts = Arrays.asList("host1", "host2", "host3");
+    Collections.rotate(hosts, -1);
+    assertThat(hosts).isEqualTo(Arrays.asList("host2", "host3", "host1"));
+    Collections.rotate(hosts, -1);
+    assertThat(hosts).isEqualTo(Arrays.asList("host3", "host1", "host2"));
   }
 }

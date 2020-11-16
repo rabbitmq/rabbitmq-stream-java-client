@@ -14,9 +14,6 @@
 
 package com.rabbitmq.stream.benchmark;
 
-import static com.rabbitmq.stream.perf.StreamPerfTest.readLong;
-import static com.rabbitmq.stream.perf.StreamPerfTest.writeLong;
-
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import java.util.concurrent.TimeUnit;
@@ -97,5 +94,25 @@ public class EncodeDecodeForPerformanceToolBenchmark {
   private interface TimestampProvider {
 
     long get();
+  }
+
+  private static void writeLong(byte[] array, long value) {
+    // from Guava Longs
+    for (int i = 7; i >= 0; i--) {
+      array[i] = (byte) (value & 0xffL);
+      value >>= 8;
+    }
+  }
+
+  private static long readLong(byte[] array) {
+    // from Guava Longs
+    return (array[0] & 0xFFL) << 56
+        | (array[1] & 0xFFL) << 48
+        | (array[2] & 0xFFL) << 40
+        | (array[3] & 0xFFL) << 32
+        | (array[4] & 0xFFL) << 24
+        | (array[5] & 0xFFL) << 16
+        | (array[6] & 0xFFL) << 8
+        | (array[7] & 0xFFL);
   }
 }

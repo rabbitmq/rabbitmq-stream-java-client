@@ -153,7 +153,6 @@ class StreamEnvironment implements Environment {
           }
         };
     shutdownListenerReference.set(shutdownListener);
-    // FIXME try several URIs in case of failure
     RuntimeException lastException = null;
     for (Address address : addresses) {
       Client.ClientParameters locatorParameters =
