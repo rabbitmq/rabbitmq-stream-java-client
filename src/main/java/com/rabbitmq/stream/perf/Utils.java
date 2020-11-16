@@ -15,14 +15,17 @@ package com.rabbitmq.stream.perf;
 
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 import picocli.CommandLine;
 
 class Utils {
@@ -54,6 +57,24 @@ class Utils {
       } catch (DateTimeParseException e) {
         throw new CommandLine.TypeConversionException(
             "'" + value + "' is not valid, valid example values: PT15M, PT10H");
+      }
+    }
+  }
+
+  static class LeaderLocatorTypeConverter implements CommandLine.ITypeConverter<LeaderLocator> {
+
+    @Override
+    public LeaderLocator convert(String value) {
+      try {
+        return LeaderLocator.from(value);
+      } catch (Exception e) {
+        throw new CommandLine.TypeConversionException(
+            "'"
+                + value
+                + "' is not valid, possible values: "
+                + Arrays.stream(LeaderLocator.values())
+                    .map(ll -> ll.value())
+                    .collect(Collectors.joining(", ")));
       }
     }
   }

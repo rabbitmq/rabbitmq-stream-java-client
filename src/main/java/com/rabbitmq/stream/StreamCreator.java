@@ -44,5 +44,14 @@ public interface StreamCreator {
     public String value() {
       return this.value;
     }
+
+    public static LeaderLocator from(String value) {
+      for (LeaderLocator leaderLocator : values()) {
+        if (leaderLocator.value.equals(value)) {
+          return leaderLocator;
+        }
+      }
+      throw new IllegalArgumentException("Unknown leader locator value: " + value);
+    }
   }
 }

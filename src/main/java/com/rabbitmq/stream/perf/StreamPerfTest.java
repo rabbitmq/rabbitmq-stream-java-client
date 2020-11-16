@@ -18,6 +18,7 @@ import static java.lang.String.format;
 
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.metrics.MetricsCollector;
@@ -167,6 +168,15 @@ public class StreamPerfTest implements Callable<Integer> {
   private Duration maxAge;
 
   @CommandLine.Option(
+      names = {"--leader-locator", "-ll"},
+      description =
+          "leader locator strategy for created stream. "
+              + "Possible values: client-local, least-leaders, random.",
+      converter = Utils.LeaderLocatorTypeConverter.class,
+      defaultValue = "least-leaders")
+  private LeaderLocator leaderLocator;
+
+  @CommandLine.Option(
       names = {"--commit-every", "-ce"},
       description = "the frequency of offset commit",
       defaultValue = "0")
@@ -292,8 +302,9 @@ public class StreamPerfTest implements Callable<Integer> {
         // FIXME use the x-queue-leader-locator argument to spread the streams
         StreamCreator streamCreator =
             environment.streamCreator().stream(stream)
-                .maxLengthBytes(maxLengthBytes)
-                .maxSegmentSizeBytes(maxSegmentSize);
+                .maxLengthBytes(this.maxLengthBytes)
+                .maxSegmentSizeBytes(this.maxSegmentSize)
+                .leaderLocator(this.leaderLocator);
 
         if (this.maxAge != null) {
           streamCreator.maxAge(this.maxAge);
