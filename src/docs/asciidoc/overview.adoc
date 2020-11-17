@@ -53,7 +53,7 @@ publisher confirm mechanism, which is supported by the stream Java client.
 == Stream Client Overview
 
 The RabbitMQ Stream Java Client implements the
-https://github.com/rabbitmq/rabbitmq-stream/blob/master/docs/PROTOCOL.adoc[RabbitMQ Stream protocol]
+https://github.com/rabbitmq/rabbitmq-server/blob/master/deps/rabbitmq_stream/docs/PROTOCOL.adoc[RabbitMQ Stream protocol]
 and avoids dealing with low-level concerns by providing high-level functionalities
 to build fast, efficient, and robust client applications.
 
