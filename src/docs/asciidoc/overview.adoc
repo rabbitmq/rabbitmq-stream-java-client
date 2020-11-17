@@ -63,7 +63,7 @@ can also be useful for development and testing.
 * _consume asynchronously from streams and resume where left off_ thanks to
 automatic or manual offset tracking.
 * _use cluster nodes appropriately_ by letting the client decide which node to connect to - to
-stream leaders for publishers to avoid network traffic and to stream replicas
+stream leaders for publishers to minimize inter-node traffic and to stream replicas
 for consumers to offload leaders.
 * _optimize resources_ thanks to automatic growing and shrinking of
 connections depending on the number of publishers and consumers.
