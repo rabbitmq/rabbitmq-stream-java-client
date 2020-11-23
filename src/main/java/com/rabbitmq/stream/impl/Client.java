@@ -84,6 +84,7 @@ import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
 import java.lang.reflect.Field;
+import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -2450,4 +2451,13 @@ public class Client implements AutoCloseable {
       ctx.close();
     }
   }
+
+  public SocketAddress localAddress() {
+    return this.channel.localAddress();
+  }
+
+  public SocketAddress remoteAddress() {
+    return this.channel.remoteAddress();
+  }
+
 }

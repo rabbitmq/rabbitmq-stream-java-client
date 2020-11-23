@@ -382,6 +382,7 @@ public class StreamPerfTest implements Callable<Integer> {
                       () -> {
                         final int msgSize = this.messageSize;
 
+                        // FIXME do not increment producer confirm in case of publish error
                         ConfirmationHandler confirmationHandler =
                             confirmationStatus -> producerConfirm.increment();
                         while (true && !Thread.currentThread().isInterrupted()) {
