@@ -62,7 +62,8 @@ public class DeliveryTest {
         .writeLong(0) // epoch
         .writeLong(chunkOffset) // offset
         .writeInt(0) // CRC
-        .writeInt(dataSize); // data size
+        .writeInt(dataSize) // data size
+        .writeInt(0); // trailer size
 
     for (byte[] message : messages) {
       bb.writeInt(message.length).writeBytes(message);

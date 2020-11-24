@@ -18,6 +18,8 @@ import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
 import static com.rabbitmq.stream.Constants.COMMAND_COMMIT_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
 import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
+import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
+import static com.rabbitmq.stream.Constants.COMMAND_DELETE_PUBLISHER;
 import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
 import static com.rabbitmq.stream.Constants.COMMAND_DELIVER;
 import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
@@ -618,6 +620,7 @@ public class Client implements AutoCloseable {
     %%   ChunkFirstOffset:64/unsigned,
     %%   ChunkCrc:32/integer, %% CRC for the records portion of the data
     %%   DataLength:32/unsigned, %% length until end of chunk
+    %%   TrailerLength:32/unsigned
     %%   [Entry]
     %%   ...>>
      */
@@ -644,6 +647,8 @@ public class Client implements AutoCloseable {
     long crc = bb.readUnsignedInt();
     read += 4;
     long dataLength = bb.readUnsignedInt();
+    read += 4;
+    bb.readUnsignedInt(); // trailer length, unused here
     read += 4;
 
     chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
@@ -1200,7 +1205,64 @@ public class Client implements AutoCloseable {
     return encodedMessage;
   }
 
+  public Response declarePublisher(byte publisherId, String publisherReference, String stream) {
+    int publisherReferenceSize =
+        (publisherReference == null || publisherReference.isEmpty()
+            ? 0
+            : publisherReference.length());
+    int length = 2 + 2 + 4 + 1 + 2 + publisherReferenceSize + 2 + stream.length();
+    int correlationId = correlationSequence.getAndIncrement();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(COMMAND_DECLARE_PUBLISHER);
+      bb.writeShort(VERSION_0);
+      bb.writeInt(correlationId);
+      bb.writeByte(publisherId);
+      bb.writeShort(publisherReferenceSize);
+      if (publisherReferenceSize > 0) {
+        bb.writeBytes(publisherReference.getBytes(StandardCharsets.UTF_8));
+      }
+      bb.writeShort(stream.length());
+      bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
+      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb);
+      request.block();
+      return request.response.get();
+    } catch (RuntimeException e) {
+      outstandingRequests.remove(correlationId);
+      throw new StreamException(e);
+    }
+  }
+
+  public Response deletePublisher(byte publisherId) {
+    int length = 2 + 2 + 4 + 1;
+    int correlationId = correlationSequence.getAndIncrement();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(COMMAND_DELETE_PUBLISHER);
+      bb.writeShort(VERSION_0);
+      bb.writeInt(correlationId);
+      bb.writeByte(publisherId);
+      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb);
+      request.block();
+      return request.response.get();
+    } catch (RuntimeException e) {
+      outstandingRequests.remove(correlationId);
+      throw new StreamException(e);
+    }
+  }
+
   public List<Long> publish(String stream, byte publisherId, List<Message> messages) {
+    return this.publish(stream, publisherId, messages, this.publishSequenceSupplier);
+  }
+
+  public List<Long> publish(
+      String stream, byte publisherId, List<Message> messages, LongSupplier sequenceSupplier) {
     List<Object> encodedMessages = new ArrayList<>(messages.size());
     for (Message message : messages) {
       Codec.EncodedMessage encodedMessage = codec.encode(message);
@@ -1213,7 +1275,7 @@ public class Client implements AutoCloseable {
         publisherId,
         encodedMessages,
         OUTBOUND_MESSAGE_WRITE_CALLBACK,
-        this.publishSequenceSupplier);
+        sequenceSupplier);
   }
 
   public List<Long> publish(
@@ -1221,6 +1283,16 @@ public class Client implements AutoCloseable {
       byte publisherId,
       List<Message> messages,
       OutboundEntityMappingCallback mappingCallback) {
+    return this.publish(
+        stream, publisherId, messages, mappingCallback, this.publishSequenceSupplier);
+  }
+
+  public List<Long> publish(
+      String stream,
+      byte publisherId,
+      List<Message> messages,
+      OutboundEntityMappingCallback mappingCallback,
+      LongSupplier sequenceSupplier) {
     List<Object> encodedMessages = new ArrayList<>(messages.size());
     for (Message message : messages) {
       Codec.EncodedMessage encodedMessage = codec.encode(message);
@@ -1236,11 +1308,19 @@ public class Client implements AutoCloseable {
         encodedMessages,
         new OriginalEncodedEntityOutboundEntityWriteCallback(
             mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK),
-        this.publishSequenceSupplier);
+        sequenceSupplier);
   }
 
   public List<Long> publishBatches(
       String stream, byte publisherId, List<MessageBatch> messageBatches) {
+    return this.publishBatches(stream, publisherId, messageBatches, this.publishSequenceSupplier);
+  }
+
+  public List<Long> publishBatches(
+      String stream,
+      byte publisherId,
+      List<MessageBatch> messageBatches,
+      LongSupplier sequenceSupplier) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
       EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
@@ -1258,7 +1338,7 @@ public class Client implements AutoCloseable {
         publisherId,
         encodedMessageBatches,
         OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK,
-        this.publishSequenceSupplier);
+        sequenceSupplier);
   }
 
   public List<Long> publishBatches(
@@ -1266,6 +1346,16 @@ public class Client implements AutoCloseable {
       byte publisherId,
       List<MessageBatch> messageBatches,
       OutboundEntityMappingCallback mappingCallback) {
+    return this.publishBatches(
+        stream, publisherId, messageBatches, mappingCallback, this.publishSequenceSupplier);
+  }
+
+  public List<Long> publishBatches(
+      String stream,
+      byte publisherId,
+      List<MessageBatch> messageBatches,
+      OutboundEntityMappingCallback mappingCallback,
+      LongSupplier sequenceSupplier) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
       EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
@@ -1286,7 +1376,7 @@ public class Client implements AutoCloseable {
         encodedMessageBatches,
         new OriginalEncodedEntityOutboundEntityWriteCallback(
             mappingCallback, OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK),
-        this.publishSequenceSupplier);
+        sequenceSupplier);
   }
 
   private void checkMessageFitsInFrame(String stream, Codec.EncodedMessage encodedMessage) {
@@ -2396,6 +2486,8 @@ public class Client implements AutoCloseable {
           task = () -> handleQueryOffsetResponse(m, frameSize, outstandingRequests);
         } else if (commandId == COMMAND_SUBSCRIBE
             || commandId == COMMAND_UNSUBSCRIBE
+            || commandId == COMMAND_DECLARE_PUBLISHER
+            || commandId == COMMAND_DELETE_PUBLISHER
             || commandId == COMMAND_CREATE_STREAM
             || commandId == COMMAND_DELETE_STREAM
             || commandId == COMMAND_OPEN) {
@@ -2459,5 +2551,4 @@ public class Client implements AutoCloseable {
   public SocketAddress remoteAddress() {
     return this.channel.remoteAddress();
   }
-
 }
