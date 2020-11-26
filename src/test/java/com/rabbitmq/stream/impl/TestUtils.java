@@ -78,6 +78,10 @@ final class TestUtils {
     return Duration.ofMillis(waitedTime);
   }
 
+  static byte b(int value) {
+    return (byte) value;
+  }
+
   static void publishAndWaitForConfirms(
       TestUtils.ClientFactory cf, int publishCount, String stream) {
     publishAndWaitForConfirms(cf, "message", publishCount, stream);

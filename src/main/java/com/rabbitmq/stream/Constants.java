@@ -33,6 +33,7 @@ public final class Constants {
   public static final short RESPONSE_CODE_INTERNAL_ERROR = 14;
   public static final short RESPONSE_CODE_ACCESS_REFUSED = 15;
   public static final short RESPONSE_CODE_PRECONDITION_FAILED = 16;
+  public static final short RESPONSE_CODE_PUBLISHER_DOES_NOT_EXIST = 17;
 
   public static final short CODE_MESSAGE_ENQUEUEING_FAILED = 10_000;
   public static final short CODE_PRODUCER_NOT_AVAILABLE = 10_001;

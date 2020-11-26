@@ -209,6 +209,8 @@ public class AuthorisationTest {
                               (publisherId, publishingId, errorCode) ->
                                   publishErrorCount.incrementAndGet()));
 
+              assertThat(client.declarePublisher((byte) 1, null, stream).isOk()).isTrue();
+
               IntStream.range(0, messageCount)
                   .forEach(
                       j ->
@@ -253,6 +255,8 @@ public class AuthorisationTest {
                           .publishErrorListener(
                               (publisherId, publishingId, errorCode) ->
                                   publishErrorLatch.countDown()));
+
+              assertThat(client.declarePublisher((byte) 1, null, stream).isOk()).isFalse();
 
               IntStream.range(0, messageCount)
                   .forEach(

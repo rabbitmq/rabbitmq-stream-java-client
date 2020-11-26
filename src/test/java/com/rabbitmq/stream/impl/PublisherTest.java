@@ -14,8 +14,10 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
@@ -31,10 +33,12 @@ import java.util.function.LongSupplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -44,7 +48,8 @@ public class PublisherTest {
   TestUtils.ClientFactory cf;
 
   @ParameterizedTest
-  @ValueSource(strings = {"publisher-reference", ""})
+  @NullAndEmptySource
+  @ValueSource(strings = {"publisher-reference"})
   void declarePublisher(String publisherReference) throws Exception {
     int messageCount = 10_000;
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
@@ -75,6 +80,66 @@ public class PublisherTest {
     response = c.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
     assertThat(consumerLatch.await(10, TimeUnit.SECONDS)).isTrue();
+  }
+
+  static Stream<Arguments> declarePublisherUniqueness() {
+    return Stream.of(
+        Arguments.of(b(1), "ref-1", "s1", b(2), "ref-2", "s2", true), // ok
+        Arguments.of(b(1), "ref-1", "s1", b(2), "ref-1", "s1", false), // same ref + stream
+        Arguments.of(b(1), "ref-1", "s1", b(1), "ref-1", "s2", false), // same producer ID
+        Arguments.of(b(1), "ref-1", "s1", b(1), "ref-2", "s2", false), // same producer ID
+        Arguments.of(b(1), null, "s1", b(2), null, "s2", true), // no ref
+        Arguments.of(b(1), "ref-1", "s1", b(2), null, "s1", true), // same stream, ref + no ref
+        Arguments.of(b(1), null, "s1", b(1), null, "s1", false) // same producer ID, no ref
+        );
+  }
+
+  @ParameterizedTest
+  @MethodSource
+  void declarePublisherUniqueness(
+      byte pubId1,
+      String ref1,
+      String s1,
+      byte pubId2,
+      String ref2,
+      String s2,
+      boolean isOk,
+      TestInfo info) {
+    Client c = cf.get();
+    String prefix = UUID.randomUUID().toString();
+    s1 = info.getTestMethod().get().getName() + "-" + prefix + "-" + s1;
+    s2 = info.getTestMethod().get().getName() + "-" + prefix + "-" + s2;
+    try {
+      assertThat(c.create(s1).isOk()).isTrue();
+      if (!s1.equals(s2)) {
+        assertThat(c.create(s2).isOk()).isTrue();
+      }
+      assertThat(c.declarePublisher(pubId1, ref1, s1).isOk()).isTrue();
+      assertThat(c.declarePublisher(pubId2, ref2, s2).isOk()).isEqualTo(isOk);
+    } finally {
+      assertThat(c.delete(s1).isOk()).isTrue();
+      if (!s1.equals(s2)) {
+        assertThat(c.delete(s2).isOk()).isTrue();
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @NullAndEmptySource
+  @ValueSource(strings = {"ref-1"})
+  void declarePublisherOnStreamThatDoesNotExistShouldReturnError(String reference) {
+    String s = UUID.randomUUID().toString();
+    Response response = cf.get().declarePublisher(b(1), reference, s);
+    assertThat(response.isOk()).isFalse();
+    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+  }
+
+  @Test
+  void deleteNonExistingPublisherShouldReturnError() {
+    Response response = cf.get().deletePublisher(b(42));
+    assertThat(response.isOk()).isFalse();
+    assertThat(response.getResponseCode())
+        .isEqualTo(Constants.RESPONSE_CODE_PUBLISHER_DOES_NOT_EXIST);
   }
 
   static Stream<Arguments> deduplication() {
@@ -194,10 +259,4 @@ public class PublisherTest {
     Client c = cf.get();
     assertThat(c.queryPublisherSequence("foo", UUID.randomUUID().toString())).isZero();
   }
-
-  // FIXME test publishers with same ID/reference
-  // FIXME test on stream that does not exist
-  // FIXME test on stream without the appropriate permissions (in AuthorisationTest)
-  // FIXME test delete publisher that does not exist
-
 }
