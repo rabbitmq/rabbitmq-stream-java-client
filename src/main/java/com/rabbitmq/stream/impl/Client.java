@@ -31,6 +31,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH;
 import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_CONFIRM;
 import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_ERROR;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
+import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
 import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
@@ -369,6 +370,33 @@ public class Client implements AutoCloseable {
       LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
     } else {
       QueryOffsetResponse response = new QueryOffsetResponse(responseCode, offset);
+      outstandingRequest.response.set(response);
+      outstandingRequest.latch.countDown();
+    }
+
+    if (read != frameSize) {
+      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
+    }
+  }
+
+  static void handleQueryPublisherSequenceResponse(
+      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+    int read = 2 + 2; // already read the command id and version
+
+    int correlationId = bb.readInt();
+    read += 4;
+    short responseCode = bb.readShort();
+    read += 2;
+    long sequence = bb.readLong();
+    read += 8;
+
+    OutstandingRequest<QueryPublisherSequenceResponse> outstandingRequest =
+        remove(outstandingRequests, correlationId, QueryPublisherSequenceResponse.class);
+    if (outstandingRequest == null) {
+      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+    } else {
+      QueryPublisherSequenceResponse response =
+          new QueryPublisherSequenceResponse(responseCode, sequence);
       outstandingRequest.response.set(response);
       outstandingRequest.latch.countDown();
     }
@@ -1210,6 +1238,14 @@ public class Client implements AutoCloseable {
         (publisherReference == null || publisherReference.isEmpty()
             ? 0
             : publisherReference.length());
+    if (publisherReferenceSize > 0 && publisherReferenceSize > 256) {
+      if (publisherReference == null
+          || publisherReference.isEmpty()
+          || publisherReference.length() > 256) {
+        throw new IllegalArgumentException(
+            "If specified, publisher reference must less than 256 characters");
+      }
+    }
     int length = 2 + 2 + 4 + 1 + 2 + publisherReferenceSize + 2 + stream.length();
     int correlationId = correlationSequence.getAndIncrement();
     try {
@@ -1628,6 +1664,45 @@ public class Client implements AutoCloseable {
     }
   }
 
+  public long queryPublisherSequence(String publisherReference, String stream) {
+    if (publisherReference == null
+        || publisherReference.isEmpty()
+        || publisherReference.length() > 256) {
+      throw new IllegalArgumentException(
+          "Publisher reference must a non-empty string of less than 256 characters");
+    }
+    if (stream == null || stream.isEmpty()) {
+      throw new IllegalArgumentException("Stream cannot be null or empty");
+    }
+
+    int length = 2 + 2 + 4 + 2 + publisherReference.length() + 2 + stream.length();
+    int correlationId = correlationSequence.getAndIncrement();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(COMMAND_QUERY_PUBLISHER_SEQUENCE);
+      bb.writeShort(VERSION_0);
+      bb.writeInt(correlationId);
+      bb.writeShort(publisherReference.length());
+      bb.writeBytes(publisherReference.getBytes(StandardCharsets.UTF_8));
+      bb.writeShort(stream.length());
+      bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
+      OutstandingRequest<QueryPublisherSequenceResponse> request =
+          new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb);
+      request.block();
+      QueryPublisherSequenceResponse response = request.response.get();
+      if (!response.isOk()) {
+        LOGGER.info("Query offset failed with code {}", response.getResponseCode());
+      }
+      return response.getSequence();
+    } catch (RuntimeException e) {
+      outstandingRequests.remove(correlationId);
+      throw new StreamException(e);
+    }
+  }
+
   public Response unsubscribe(byte subscriptionId) {
     int length = 2 + 2 + 4 + 1;
     int correlationId = correlationSequence.getAndIncrement();
@@ -1997,6 +2072,20 @@ public class Client implements AutoCloseable {
 
     public long getOffset() {
       return offset;
+    }
+  }
+
+  private static class QueryPublisherSequenceResponse extends Response {
+
+    private final long sequence;
+
+    public QueryPublisherSequenceResponse(short responseCode, long sequence) {
+      super(responseCode);
+      this.sequence = sequence;
+    }
+
+    public long getSequence() {
+      return sequence;
     }
   }
 
@@ -2484,6 +2573,8 @@ public class Client implements AutoCloseable {
           task = () -> handleCreditNotification(m, frameSize, creditNotification);
         } else if (commandId == COMMAND_QUERY_OFFSET) {
           task = () -> handleQueryOffsetResponse(m, frameSize, outstandingRequests);
+        } else if (commandId == COMMAND_QUERY_PUBLISHER_SEQUENCE) {
+          task = () -> handleQueryPublisherSequenceResponse(m, frameSize, outstandingRequests);
         } else if (commandId == COMMAND_SUBSCRIBE
             || commandId == COMMAND_UNSUBSCRIBE
             || commandId == COMMAND_DECLARE_PUBLISHER

@@ -58,6 +58,7 @@ public final class Constants {
   public static final short COMMAND_QUERY_OFFSET = 17;
   public static final short COMMAND_DECLARE_PUBLISHER = 18;
   public static final short COMMAND_DELETE_PUBLISHER = 19;
+  public static final short COMMAND_QUERY_PUBLISHER_SEQUENCE = 20;
 
   public static final short COMMAND_CREATE_STREAM = 998;
   public static final short COMMAND_DELETE_STREAM = 999;

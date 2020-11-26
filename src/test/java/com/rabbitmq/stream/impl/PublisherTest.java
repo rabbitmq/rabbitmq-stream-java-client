@@ -20,13 +20,17 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import java.util.Collections;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -108,24 +112,17 @@ public class PublisherTest {
     AtomicLong publishingSequence = new AtomicLong(0);
     LongSupplier publishingSequenceSupplier = () -> publishingSequence.incrementAndGet();
 
-    IntStream.range(0, messageCount)
-        .forEach(
-            i ->
-                c.publish(
-                    stream,
-                    (byte) 1,
-                    Collections.singletonList(c.messageBuilder().addData("".getBytes()).build()),
-                    publishingSequenceSupplier));
+    IntConsumer publishing =
+        i ->
+            c.publish(
+                stream,
+                (byte) 1,
+                Collections.singletonList(c.messageBuilder().addData("".getBytes()).build()),
+                publishingSequenceSupplier);
+    IntStream.range(0, messageCount).forEach(publishing);
 
     publishingSequence.addAndGet(-duplicatedCount);
-    IntStream.range(0, duplicatedCount)
-        .forEach(
-            i ->
-                c.publish(
-                    stream,
-                    (byte) 1,
-                    Collections.singletonList(c.messageBuilder().addData("".getBytes()).build()),
-                    publishingSequenceSupplier));
+    IntStream.range(0, duplicatedCount).forEach(publishing);
 
     assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
     response = c.deletePublisher((byte) 1);
@@ -136,6 +133,66 @@ public class PublisherTest {
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     Thread.sleep(1000L);
     assertThat(consumeCount.get()).isEqualTo(expectedConsumed);
+  }
+
+  @Test
+  void queryPublisherSequence() throws Exception {
+    String publisherReference = UUID.randomUUID().toString();
+    int messageCount = 10_000;
+    int duplicatedCount = messageCount / 10;
+    AtomicReference<CountDownLatch> publishLatch = new AtomicReference<>();
+    Client c =
+        cf.get(
+            new ClientParameters()
+                .publishConfirmListener((pubId, publishingId) -> publishLatch.get().countDown()));
+
+    Response response = c.declarePublisher((byte) 1, publisherReference, stream);
+    assertThat(response.isOk()).isTrue();
+
+    AtomicLong publishingSequence = new AtomicLong(0);
+    LongSupplier publishingSequenceSupplier = () -> publishingSequence.incrementAndGet();
+
+    assertThat(c.queryPublisherSequence(publisherReference, stream)).isEqualTo(0);
+
+    publishLatch.set(new CountDownLatch(messageCount));
+    IntConsumer publishing =
+        i ->
+            c.publish(
+                stream,
+                (byte) 1,
+                Collections.singletonList(c.messageBuilder().addData("".getBytes()).build()),
+                publishingSequenceSupplier);
+    IntStream.range(0, messageCount).forEach(publishing);
+
+    assertThat(publishLatch.get().await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(c.queryPublisherSequence(publisherReference, stream))
+        .isEqualTo(publishingSequence.get());
+
+    long previousSequenceValue = publishingSequence.get();
+    publishLatch.set(new CountDownLatch(duplicatedCount));
+    publishingSequence.addAndGet(-duplicatedCount);
+    IntStream.range(0, duplicatedCount).forEach(publishing);
+    assertThat(publishLatch.get().await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(c.queryPublisherSequence(publisherReference, stream))
+        .isEqualTo(previousSequenceValue);
+
+    publishLatch.set(new CountDownLatch(messageCount));
+    IntStream.range(0, messageCount).forEach(publishing);
+    assertThat(publishLatch.get().await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(c.queryPublisherSequence(publisherReference, stream))
+        .isEqualTo(publishingSequence.get());
+  }
+
+  @Test
+  void queryPublisherSequenceForNonExistingPublisherShouldReturnZero() {
+    Client c = cf.get();
+    assertThat(c.queryPublisherSequence(UUID.randomUUID().toString(), stream)).isZero();
+  }
+
+  @Test
+  void queryPublisherSequenceForNonExistingStreamShouldReturnZero() {
+    Client c = cf.get();
+    assertThat(c.queryPublisherSequence("foo", UUID.randomUUID().toString())).isZero();
   }
 
   // FIXME test publishers with same ID/reference
