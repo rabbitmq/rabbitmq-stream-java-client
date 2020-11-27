@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -152,7 +153,7 @@ public class AuthorisationTest {
               assertThat(response.isOk()).isTrue();
               assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
-              response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+              response = client.subscribe(b(1), stream, OffsetSpecification.first(), 10);
               assertThat(response.isOk()).isTrue();
               assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
@@ -174,7 +175,7 @@ public class AuthorisationTest {
               assertThat(response.isOk()).isTrue();
               assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
-              response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+              response = client.subscribe(b(1), stream, OffsetSpecification.first(), 10);
               assertThat(response.isOk()).isFalse();
               assertThat(response.getResponseCode())
                   .isEqualTo(Constants.RESPONSE_CODE_ACCESS_REFUSED);
@@ -209,14 +210,13 @@ public class AuthorisationTest {
                               (publisherId, publishingId, errorCode) ->
                                   publishErrorCount.incrementAndGet()));
 
-              assertThat(client.declarePublisher((byte) 1, null, stream).isOk()).isTrue();
-
+              assertThat(client.declarePublisher(b(1), null, stream).isOk()).isTrue();
+              client.declarePublisher(b(1), null, stream);
               IntStream.range(0, messageCount)
                   .forEach(
                       j ->
                           client.publish(
-                              stream,
-                              (byte) 1,
+                              b(1),
                               Collections.singletonList(
                                   client
                                       .messageBuilder()
@@ -256,14 +256,14 @@ public class AuthorisationTest {
                               (publisherId, publishingId, errorCode) ->
                                   publishErrorLatch.countDown()));
 
-              assertThat(client.declarePublisher((byte) 1, null, stream).isOk()).isFalse();
+              assertThat(client.declarePublisher(b(1), null, stream).isOk()).isFalse();
 
+              client.declarePublisher(b(1), null, stream);
               IntStream.range(0, messageCount)
                   .forEach(
                       j ->
                           client.publish(
-                              stream,
-                              (byte) 1,
+                              b(1),
                               Collections.singletonList(
                                   client
                                       .messageBuilder()

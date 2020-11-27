@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -214,7 +215,7 @@ public class AmqpInteroperabilityTest {
                       consumedLatch.countDown();
                     }));
 
-    client.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(consumedLatch.await(10, SECONDS)).isTrue();
     assertThat(messageBodies).hasSize(messageCount);
     IntStream.range(0, messageCount)
@@ -452,6 +453,7 @@ public class AmqpInteroperabilityTest {
                                   assertThat(d.getProperties().getHeaders())
                                       .containsEntry("binary", "hello".getBytes(UTF8))));
 
+              client.declarePublisher(b(1), null, s);
               IntStream.range(0, messageCount)
                   .forEach(
                       i -> {
@@ -466,8 +468,7 @@ public class AmqpInteroperabilityTest {
                                 messageOperation ->
                                     messageOperation.messageBuilderConsumer.accept(messageBuilder));
 
-                        client.publish(
-                            s, (byte) 1, Collections.singletonList(messageBuilder.build()));
+                        client.publish(b(1), Collections.singletonList(messageBuilder.build()));
                       });
 
               try (Connection c = connectionFactory.newConnection()) {

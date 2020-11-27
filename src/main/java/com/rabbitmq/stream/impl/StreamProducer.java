@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.Constants.*;
 
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.impl.Client.Response;
 import io.netty.buffer.ByteBuf;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -29,8 +30,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class StreamProducer implements Producer {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(StreamProducer.class);
 
   private final MessageAccumulator accumulator;
   // FIXME investigate a more optimized data structure to handle pending messages
@@ -69,13 +74,12 @@ class StreamProducer implements Producer {
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
     if (subEntrySize <= 1) {
       this.accumulator =
-          new SimpleMessageAccumulator(
-              batchSize, environment.codec(), client.maxFrameSize(), this.stream);
+          new SimpleMessageAccumulator(batchSize, environment.codec(), client.maxFrameSize());
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
     } else {
       this.accumulator =
           new SubEntryMessageAccumulator(
-              subEntrySize, batchSize, environment.codec(), client.maxFrameSize(), this.stream);
+              subEntrySize, batchSize, environment.codec(), client.maxFrameSize());
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
 
@@ -193,6 +197,13 @@ class StreamProducer implements Producer {
   @Override
   public void close() {
     if (this.closed.compareAndSet(false, true)) {
+      Response response = this.client.deletePublisher(this.publisherId);
+      if (!response.isOk()) {
+        LOGGER.info(
+            "Could not delete publisher {} on producer closing: {}",
+            this.publisherId,
+            response.getResponseCode());
+      }
       this.environment.removeProducer(this);
       closeFromEnvironment();
     }
@@ -224,11 +235,7 @@ class StreamProducer implements Producer {
         batchCount++;
       }
       client.publishInternal(
-          this.stream,
-          this.publisherId,
-          messages,
-          this.writeCallback,
-          this.publishSequenceSupplier);
+          this.publisherId, messages, this.writeCallback, this.publishSequenceSupplier);
     }
   }
 

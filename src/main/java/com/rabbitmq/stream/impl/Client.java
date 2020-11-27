@@ -832,9 +832,8 @@ public class Client implements AutoCloseable {
     }
   }
 
-  static void checkMessageFitsInFrame(
-      int maxFrameSize, String stream, Codec.EncodedMessage encodedMessage) {
-    int frameBeginning = 4 + 2 + 2 + 2 + stream.length() + 4 + 8 + 4 + encodedMessage.getSize();
+  static void checkMessageFitsInFrame(int maxFrameSize, Codec.EncodedMessage encodedMessage) {
+    int frameBeginning = 4 + 2 + 2 + 4 + 8 + 4 + encodedMessage.getSize();
     if (frameBeginning > maxFrameSize) {
       throw new IllegalArgumentException(
           "Message too big to fit in one frame: " + encodedMessage.getSize());
@@ -1227,9 +1226,9 @@ public class Client implements AutoCloseable {
     }
   }
 
-  Codec.EncodedMessage encode(String stream, Message message) {
+  Codec.EncodedMessage encode(Message message) {
     Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-    checkMessageFitsInFrame(stream, encodedMessage);
+    checkMessageFitsInFrame(encodedMessage);
     return encodedMessage;
   }
 
@@ -1293,21 +1292,20 @@ public class Client implements AutoCloseable {
     }
   }
 
-  public List<Long> publish(String stream, byte publisherId, List<Message> messages) {
-    return this.publish(stream, publisherId, messages, this.publishSequenceSupplier);
+  public List<Long> publish(byte publisherId, List<Message> messages) {
+    return this.publish(publisherId, messages, this.publishSequenceSupplier);
   }
 
   public List<Long> publish(
-      String stream, byte publisherId, List<Message> messages, LongSupplier sequenceSupplier) {
+      byte publisherId, List<Message> messages, LongSupplier sequenceSupplier) {
     List<Object> encodedMessages = new ArrayList<>(messages.size());
     for (Message message : messages) {
       Codec.EncodedMessage encodedMessage = codec.encode(message);
-      checkMessageFitsInFrame(stream, encodedMessage);
+      checkMessageFitsInFrame(encodedMessage);
       encodedMessages.add(encodedMessage);
     }
     return publishInternal(
         this.channel,
-        stream,
         publisherId,
         encodedMessages,
         OUTBOUND_MESSAGE_WRITE_CALLBACK,
@@ -1315,16 +1313,11 @@ public class Client implements AutoCloseable {
   }
 
   public List<Long> publish(
-      String stream,
-      byte publisherId,
-      List<Message> messages,
-      OutboundEntityMappingCallback mappingCallback) {
-    return this.publish(
-        stream, publisherId, messages, mappingCallback, this.publishSequenceSupplier);
+      byte publisherId, List<Message> messages, OutboundEntityMappingCallback mappingCallback) {
+    return this.publish(publisherId, messages, mappingCallback, this.publishSequenceSupplier);
   }
 
   public List<Long> publish(
-      String stream,
       byte publisherId,
       List<Message> messages,
       OutboundEntityMappingCallback mappingCallback,
@@ -1332,14 +1325,13 @@ public class Client implements AutoCloseable {
     List<Object> encodedMessages = new ArrayList<>(messages.size());
     for (Message message : messages) {
       Codec.EncodedMessage encodedMessage = codec.encode(message);
-      checkMessageFitsInFrame(stream, encodedMessage);
+      checkMessageFitsInFrame(encodedMessage);
       OriginalAndEncodedOutboundEntity wrapper =
           new OriginalAndEncodedOutboundEntity(message, encodedMessage);
       encodedMessages.add(wrapper);
     }
     return publishInternal(
         this.channel,
-        stream,
         publisherId,
         encodedMessages,
         new OriginalEncodedEntityOutboundEntityWriteCallback(
@@ -1347,30 +1339,25 @@ public class Client implements AutoCloseable {
         sequenceSupplier);
   }
 
-  public List<Long> publishBatches(
-      String stream, byte publisherId, List<MessageBatch> messageBatches) {
-    return this.publishBatches(stream, publisherId, messageBatches, this.publishSequenceSupplier);
+  public List<Long> publishBatches(byte publisherId, List<MessageBatch> messageBatches) {
+    return this.publishBatches(publisherId, messageBatches, this.publishSequenceSupplier);
   }
 
   public List<Long> publishBatches(
-      String stream,
-      byte publisherId,
-      List<MessageBatch> messageBatches,
-      LongSupplier sequenceSupplier) {
+      byte publisherId, List<MessageBatch> messageBatches, LongSupplier sequenceSupplier) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
       EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
       for (Message message : batch.messages) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
-        checkMessageFitsInFrame(stream, encodedMessage);
+        checkMessageFitsInFrame(encodedMessage);
         encodedMessageBatch.add(encodedMessage);
       }
-      checkMessageBatchFitsInFrame(stream, encodedMessageBatch);
+      checkMessageBatchFitsInFrame(encodedMessageBatch);
       encodedMessageBatches.add(encodedMessageBatch);
     }
     return publishInternal(
         this.channel,
-        stream,
         publisherId,
         encodedMessageBatches,
         OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK,
@@ -1378,16 +1365,14 @@ public class Client implements AutoCloseable {
   }
 
   public List<Long> publishBatches(
-      String stream,
       byte publisherId,
       List<MessageBatch> messageBatches,
       OutboundEntityMappingCallback mappingCallback) {
     return this.publishBatches(
-        stream, publisherId, messageBatches, mappingCallback, this.publishSequenceSupplier);
+        publisherId, messageBatches, mappingCallback, this.publishSequenceSupplier);
   }
 
   public List<Long> publishBatches(
-      String stream,
       byte publisherId,
       List<MessageBatch> messageBatches,
       OutboundEntityMappingCallback mappingCallback,
@@ -1397,17 +1382,16 @@ public class Client implements AutoCloseable {
       EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
       for (Message message : batch.messages) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
-        checkMessageFitsInFrame(stream, encodedMessage);
+        checkMessageFitsInFrame(encodedMessage);
         encodedMessageBatch.add(encodedMessage);
       }
-      checkMessageBatchFitsInFrame(stream, encodedMessageBatch);
+      checkMessageBatchFitsInFrame(encodedMessageBatch);
       OriginalAndEncodedOutboundEntity wrapper =
           new OriginalAndEncodedOutboundEntity(batch, encodedMessageBatch);
       encodedMessageBatches.add(wrapper);
     }
     return publishInternal(
         this.channel,
-        stream,
         publisherId,
         encodedMessageBatches,
         new OriginalEncodedEntityOutboundEntityWriteCallback(
@@ -1415,18 +1399,15 @@ public class Client implements AutoCloseable {
         sequenceSupplier);
   }
 
-  private void checkMessageFitsInFrame(String stream, Codec.EncodedMessage encodedMessage) {
-    checkMessageFitsInFrame(this.maxFrameSize, stream, encodedMessage);
+  private void checkMessageFitsInFrame(Codec.EncodedMessage encodedMessage) {
+    checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
   }
 
-  private void checkMessageBatchFitsInFrame(
-      String stream, EncodedMessageBatch encodedMessageBatch) {
+  private void checkMessageBatchFitsInFrame(EncodedMessageBatch encodedMessageBatch) {
     int frameBeginning =
         4
             + 2
             + 2
-            + 2
-            + stream.length()
             + 4
             + 8
             + 1
@@ -1440,23 +1421,21 @@ public class Client implements AutoCloseable {
   }
 
   List<Long> publishInternal(
-      String stream,
       byte publisherId,
       List<Object> encodedEntities,
       OutboundEntityWriteCallback callback,
       LongSupplier sequenceSupplier) {
     return this.publishInternal(
-        this.channel, stream, publisherId, encodedEntities, callback, sequenceSupplier);
+        this.channel, publisherId, encodedEntities, callback, sequenceSupplier);
   }
 
   List<Long> publishInternal(
       Channel ch,
-      String stream,
       byte publisherId,
       List<Object> encodedEntities,
       OutboundEntityWriteCallback callback,
       LongSupplier sequenceSupplier) {
-    int frameHeaderLength = 2 + 2 + 2 + stream.length() + 1 + 4;
+    int frameHeaderLength = 2 + 2 + 1 + 4;
 
     List<Long> sequences = new ArrayList<>(encodedEntities.size());
     int length = frameHeaderLength;
@@ -1470,7 +1449,6 @@ public class Client implements AutoCloseable {
         sendEntityBatch(
             ch,
             frameLength,
-            stream,
             publisherId,
             startIndex,
             currentIndex,
@@ -1486,7 +1464,6 @@ public class Client implements AutoCloseable {
     sendEntityBatch(
         ch,
         length,
-        stream,
         publisherId,
         startIndex,
         currentIndex,
@@ -1501,7 +1478,6 @@ public class Client implements AutoCloseable {
   private void sendEntityBatch(
       Channel ch,
       int frameLength,
-      String stream,
       byte publisherId,
       int fromIncluded,
       int toExcluded,
@@ -1514,8 +1490,6 @@ public class Client implements AutoCloseable {
     out.writeInt(frameLength);
     out.writeShort(COMMAND_PUBLISH);
     out.writeShort(VERSION_0);
-    out.writeShort(stream.length());
-    out.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
     out.writeByte(publisherId);
     int messageCount = 0;
     out.writeInt(toExcluded - fromIncluded);

@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.Message;
@@ -46,6 +47,7 @@ public class OutboundMappingCallbackTest {
         cf.get(
             new Client.ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> confirmLatch.countDown()));
+    client.declarePublisher(b(1), null, stream);
     IntStream.range(0, batchNumber)
         .forEach(
             i -> {
@@ -55,8 +57,7 @@ public class OutboundMappingCallbackTest {
                       .map(body -> client.messageBuilder().addData(body).build())
                       .collect(Collectors.toList());
               client.publish(
-                  stream,
-                  (byte) 1,
+                  b(1),
                   messages,
                   (publishingId, original) -> {
                     assertThat(original).isNotNull().isInstanceOf(Message.class);
@@ -82,6 +83,7 @@ public class OutboundMappingCallbackTest {
         cf.get(
             new Client.ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> confirmLatch.countDown()));
+    client.declarePublisher(b(1), null, stream);
     IntStream.range(0, frameCount)
         .forEach(
             frameIndex -> {
@@ -100,8 +102,7 @@ public class OutboundMappingCallbackTest {
                       });
 
               client.publishBatches(
-                  stream,
-                  (byte) 1,
+                  b(1),
                   batches,
                   (publishingId, original) -> {
                     assertThat(original).isNotNull().isInstanceOf(MessageBatch.class);

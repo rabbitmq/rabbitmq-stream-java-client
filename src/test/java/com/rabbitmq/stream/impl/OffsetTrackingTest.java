@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.forEach;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -114,12 +115,12 @@ public class OffsetTrackingTest {
       AtomicInteger messageIdSequence = new AtomicInteger();
 
       AtomicLong lastMessageId = new AtomicLong();
+      publisher.declarePublisher(b(0), null, s);
       IntStream.range(0, batchCount)
           .forEach(
               batchIndex ->
                   publisher.publish(
-                      s,
-                      (byte) 0,
+                      b(0),
                       IntStream.range(0, batchSize)
                           .map(i -> messageIdSequence.incrementAndGet())
                           .mapToObj(
@@ -184,10 +185,10 @@ public class OffsetTrackingTest {
                             .messageListener(messageListener));
                 consumerReference.set(consumer);
 
-                consumer.subscribe((byte) 0, s, OffsetSpecification.offset(0), 1);
+                consumer.subscribe(b(0), s, OffsetSpecification.offset(0), 1);
 
                 assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
-                Response response = consumer.unsubscribe((byte) 0);
+                Response response = consumer.unsubscribe(b(0));
                 assertThat(response.isOk()).isTrue();
 
                 assertThat(lastCommittedOffset.get()).isPositive();
@@ -233,14 +234,14 @@ public class OffsetTrackingTest {
                             .messageListener(messageListener));
 
                 long offsetToStartFrom = consumer.queryOffset(reference, s) + 1;
-                consumer.subscribe((byte) 0, s, OffsetSpecification.offset(offsetToStartFrom), 1);
+                consumer.subscribe(b(0), s, OffsetSpecification.offset(offsetToStartFrom), 1);
 
                 assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
                 // there can be a non-message entry that is skipped and makes
                 // the first received message offset higher
                 assertThat(firstOffset.get()).isGreaterThanOrEqualTo(offsetToStartFrom);
 
-                response = consumer.unsubscribe((byte) 0);
+                response = consumer.unsubscribe(b(0));
                 assertThat(response.isOk()).isTrue();
 
                 assertThat(consumeCount.get())

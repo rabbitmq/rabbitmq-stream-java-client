@@ -56,6 +56,7 @@ public class StreamProducerTest {
         Environment.builder()
             .eventLoopGroup(eventLoopGroup)
             .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
+            .topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
             .build();
   }
 
@@ -173,6 +174,9 @@ public class StreamProducerTest {
     response = client.delete(s);
     assertThat(response.isOk()).isTrue();
 
+    // it must close
+    waitAtMost(10, () -> !((StreamProducer) producer).isOpen());
+
     CountDownLatch confirmationLatch = new CountDownLatch(1);
     AtomicReference<ConfirmationStatus> confirmationStatusReference = new AtomicReference<>();
     producer.send(
@@ -186,7 +190,7 @@ public class StreamProducerTest {
     assertThat(confirmationStatusReference.get()).isNotNull();
     assertThat(confirmationStatusReference.get().isConfirmed()).isFalse();
     assertThat(confirmationStatusReference.get().getCode())
-        .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+        .isEqualTo(Constants.CODE_PRODUCER_CLOSED);
   }
 
   @Test

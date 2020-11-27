@@ -18,6 +18,8 @@ import static com.rabbitmq.stream.impl.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.anyByte;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -29,6 +31,7 @@ import static org.mockito.Mockito.when;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.impl.Client.Response;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -88,6 +91,8 @@ public class ProducersCoordinatorTest {
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(committingConsumer.stream()).thenReturn("stream");
+    when(client.declarePublisher(anyByte(), isNull(), anyString()))
+        .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
     coordinator = new ProducersCoordinator(environment, clientFactory);
   }
 

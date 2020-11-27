@@ -19,18 +19,16 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
   private final Codec codec;
 
   private final int maxFrameSize;
-  private final String stream;
   private volatile Batch currentBatch;
 
   public SubEntryMessageAccumulator(
-      int subEntrySize, int batchSize, Codec codec, int maxFrameSize, String stream) {
+      int subEntrySize, int batchSize, Codec codec, int maxFrameSize) {
     this.batchSize = batchSize;
     this.batches = new LinkedBlockingQueue<>(batchSize);
     this.subEntrySize = subEntrySize;
     this.codec = codec;
     this.maxFrameSize = maxFrameSize;
     this.currentBatch = createBatch();
-    this.stream = stream;
   }
 
   private Batch createBatch() {
@@ -43,7 +41,7 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
   @Override
   public synchronized boolean add(Message message, ConfirmationHandler confirmationHandler) {
     Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-    Client.checkMessageFitsInFrame(this.maxFrameSize, stream, encodedMessage);
+    Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
     this.currentBatch.add(
         encodedMessage, new SimpleConfirmationCallback(message, confirmationHandler));
     if (this.currentBatch.count.get() == this.subEntrySize) {

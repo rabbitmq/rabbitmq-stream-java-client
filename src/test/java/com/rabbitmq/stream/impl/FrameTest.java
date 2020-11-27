@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -79,7 +80,7 @@ public class FrameTest {
             }
           };
       List<ThrowableAssert.ThrowingCallable> publishCalls =
-          Arrays.asList(() -> client.publish("", (byte) 1, Arrays.asList(message)));
+          Arrays.asList(() -> client.publish(b(1), Arrays.asList(message)));
       publishCalls.forEach(
           callable -> assertThatThrownBy(callable).isInstanceOf(IllegalArgumentException.class));
     }
@@ -143,8 +144,7 @@ public class FrameTest {
 
             client.publishInternal(
                 channel,
-                "stream",
-                (byte) 1,
+                b(1),
                 test.sizes.stream()
                     .map(size -> new Codec.EncodedMessage(size, new byte[size]))
                     .collect(Collectors.toList()),

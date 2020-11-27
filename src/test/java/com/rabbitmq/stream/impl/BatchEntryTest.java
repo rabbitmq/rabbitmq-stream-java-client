@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.OffsetSpecification;
@@ -46,6 +47,7 @@ public class BatchEntryTest {
             new Client.ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
+    publisher.declarePublisher(b(1), null, stream);
     IntStream.range(0, batchCount)
         .forEach(
             batchIndex -> {
@@ -61,7 +63,7 @@ public class BatchEntryTest {
                                         .getBytes(UTF8))
                                 .build());
                       });
-              publisher.publishBatches(stream, (byte) 1, Collections.singletonList(messageBatch));
+              publisher.publishBatches(b(1), Collections.singletonList(messageBatch));
             });
 
     assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
@@ -80,8 +82,7 @@ public class BatchEntryTest {
                       consumeLatch.countDown();
                     }));
 
-    Client.Response response =
-        consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+    Client.Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();

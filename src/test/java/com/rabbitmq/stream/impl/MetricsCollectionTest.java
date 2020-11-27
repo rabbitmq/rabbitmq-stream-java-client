@@ -14,12 +14,12 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import java.util.Collections;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -51,12 +51,12 @@ public class MetricsCollectionTest {
                 .metricsCollector(metricsCollector)
                 .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
+    publisher.declarePublisher(b(1), null, stream);
     IntStream.range(0, messageCount)
         .forEach(
             i ->
                 publisher.publish(
-                    stream,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         publisher.messageBuilder().addData("".getBytes()).build())));
 
@@ -75,8 +75,7 @@ public class MetricsCollectionTest {
                         client.credit(subscriptionId, 1))
                 .messageListener((subscriptionId, offset, message) -> consumeLatch.countDown()));
 
-    Client.Response response =
-        consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+    Client.Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
@@ -96,13 +95,11 @@ public class MetricsCollectionTest {
                 .publishErrorListener(
                     (publisherId, publishingId, errorCode) -> publishErrorLatch.countDown()));
 
-    String nonExistingStream = UUID.randomUUID().toString();
     IntStream.range(0, messageCount)
         .forEach(
             i ->
                 publisher.publish(
-                    nonExistingStream,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         publisher.messageBuilder().addData("".getBytes()).build())));
 
@@ -123,6 +120,7 @@ public class MetricsCollectionTest {
                 .metricsCollector(metricsCollector)
                 .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
+    publisher.declarePublisher(b(1), null, stream);
     IntStream.range(0, batchCount)
         .forEach(
             batchIndex -> {
@@ -132,7 +130,7 @@ public class MetricsCollectionTest {
                       messageIndex -> {
                         messageBatch.add(publisher.messageBuilder().addData("".getBytes()).build());
                       });
-              publisher.publishBatches(stream, (byte) 1, Collections.singletonList(messageBatch));
+              publisher.publishBatches(b(1), Collections.singletonList(messageBatch));
             });
 
     assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
@@ -155,8 +153,7 @@ public class MetricsCollectionTest {
                       consumeLatch.countDown();
                     }));
 
-    Client.Response response =
-        consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+    Client.Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();

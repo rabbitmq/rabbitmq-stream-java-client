@@ -25,19 +25,17 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   private final BlockingQueue<AccumulatedEntity> messages;
   private final Codec codec;
   private final int maxFrameSize;
-  private final String stream;
 
-  SimpleMessageAccumulator(int capacity, Codec codec, int maxFrameSize, String stream) {
+  SimpleMessageAccumulator(int capacity, Codec codec, int maxFrameSize) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
     this.codec = codec;
     this.maxFrameSize = maxFrameSize;
-    this.stream = stream;
   }
 
   public boolean add(Message message, ConfirmationHandler confirmationHandler) {
     Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-    Client.checkMessageFitsInFrame(this.maxFrameSize, stream, encodedMessage);
+    Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
 
     try {
       boolean offered =

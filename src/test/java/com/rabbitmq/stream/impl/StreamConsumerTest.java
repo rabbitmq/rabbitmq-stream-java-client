@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -101,12 +102,12 @@ public class StreamConsumerTest {
             new Client.ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
+    client.declarePublisher(b(1), null, stream);
     IntStream.range(0, messageCount)
         .forEach(
             i ->
                 client.publish(
-                    stream,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         client.messageBuilder().addData("".getBytes()).build())));
 

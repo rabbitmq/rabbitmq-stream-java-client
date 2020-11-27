@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -217,7 +218,7 @@ public class ConsumersCoordinatorTest {
     Map<Byte, Integer> messageHandlerCalls = new ConcurrentHashMap<>();
     List<Runnable> closingRunnables = new ArrayList<>();
     for (int i = 0; i < ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-      byte subId = (byte) i;
+      byte subId = b(i);
       Runnable closingRunnable =
           coordinator.subscribe(
               consumer,

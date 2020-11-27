@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,7 +63,7 @@ public class OffsetTest {
                       last.set(offset1);
                       latch.countDown();
                     }));
-    client.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(first.get()).isEqualTo(0);
     assertThat(last.get()).isEqualTo(messageCount - 1);
@@ -124,7 +125,7 @@ public class OffsetTest {
                         latch.countDown();
                       }
                     }));
-    client.subscribe((byte) 1, stream, OffsetSpecification.last(), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.last(), 10);
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(chunkCount.get()).isEqualTo(1);
     assertThat(first.get()).isEqualTo(chunkOffset.get());
@@ -150,7 +151,7 @@ public class OffsetTest {
                       client1.credit(subscriptionId, 1);
                       chunkOffset.compareAndSet(-1, offset12);
                     }));
-    client.subscribe((byte) 1, stream, OffsetSpecification.last(), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.last(), 10);
 
     try (Connection c = new ConnectionFactory().newConnection();
         Channel ch = c.createChannel()) {
@@ -199,7 +200,7 @@ public class OffsetTest {
                         latch.countDown();
                       }
                     }));
-    client.subscribe((byte) 1, stream, OffsetSpecification.next(), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.next(), 10);
     assertThat(latch.await(2, SECONDS)).isFalse(); // should not receive anything
     TestUtils.publishAndWaitForConfirms(cf, secondWaveMessageCount, stream);
     assertThat(latch.await(10, SECONDS)).isTrue();
@@ -262,7 +263,7 @@ public class OffsetTest {
                       last.set(offset1);
                       latch.countDown();
                     }));
-    client.subscribe((byte) 1, stream, OffsetSpecification.offset(offset), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.offset(offset), 10);
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(first.get()).isEqualTo(offset);
     assertThat(last.get()).isEqualTo(messageCount - 1);
@@ -327,7 +328,7 @@ public class OffsetTest {
                         latch.countDown();
                       }
                     }));
-    client.subscribe((byte) 1, stream, OffsetSpecification.timestamp(timestampOffset), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.timestamp(timestampOffset), 10);
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(first.get()).isEqualTo(firstWaveMessageCount);
     assertThat(last.get()).isEqualTo(lastOffset);
@@ -342,8 +343,8 @@ public class OffsetTest {
     for (int i = 0; i < 10; i++) {
       Map<Byte, Long> firstOffsets = new ConcurrentHashMap<>();
       Map<Byte, CountDownLatch> latches = new ConcurrentHashMap<>();
-      latches.put((byte) 1, new CountDownLatch(1));
-      latches.put((byte) 2, new CountDownLatch(1));
+      latches.put(b(1), new CountDownLatch(1));
+      latches.put(b(2), new CountDownLatch(1));
       Client client =
           new Client(
               new Client.ClientParameters()
@@ -360,13 +361,13 @@ public class OffsetTest {
                       (client1, subscriptionId, offset, msgCount, dataSize) ->
                           client1.credit(subscriptionId, 1))
                   .eventLoopGroup(eventLoopGroup));
-      client.subscribe((byte) 1, stream, OffsetSpecification.offset(50), 10);
-      client.subscribe((byte) 2, stream, OffsetSpecification.offset(100), 10);
+      client.subscribe(b(1), stream, OffsetSpecification.offset(50), 10);
+      client.subscribe(b(2), stream, OffsetSpecification.offset(100), 10);
 
-      assertThat(latches.get((byte) 1).await(10, SECONDS)).isTrue();
-      assertThat(latches.get((byte) 2).await(10, SECONDS)).isTrue();
-      assertThat(firstOffsets.get((byte) 1)).isEqualTo(50);
-      assertThat(firstOffsets.get((byte) 2)).isEqualTo(100);
+      assertThat(latches.get(b(1)).await(10, SECONDS)).isTrue();
+      assertThat(latches.get(b(2)).await(10, SECONDS)).isTrue();
+      assertThat(firstOffsets.get(b(1))).isEqualTo(50);
+      assertThat(firstOffsets.get(b(2))).isEqualTo(100);
       client.close();
     }
   }
@@ -384,12 +385,12 @@ public class OffsetTest {
                       firstWaveLatch.countDown();
                       secondWaveLatch.countDown();
                     }));
+    publisher.declarePublisher(b(1), null, stream);
     IntStream.range(0, messageCount)
         .forEach(
             i ->
                 publisher.publish(
-                    stream,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         publisher
                             .messageBuilder()
@@ -412,14 +413,13 @@ public class OffsetTest {
                       consumedLatch.countDown();
                     }));
 
-    consumer.subscribe((byte) 1, stream, OffsetSpecification.next(), 10);
+    consumer.subscribe(b(1), stream, OffsetSpecification.next(), 10);
 
     IntStream.range(0, messageCount)
         .forEach(
             i ->
                 publisher.publish(
-                    stream,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         publisher
                             .messageBuilder()
@@ -455,8 +455,7 @@ public class OffsetTest {
         cf.get(
             new Client.ClientParameters()
                 .chunkListener(
-                    (client, subscriptionId, offset, msgCount, dataSize) ->
-                        client.credit((byte) 0, 1))
+                    (client, subscriptionId, offset, msgCount, dataSize) -> client.credit(b(0), 1))
                 .messageListener(
                     (subscriptionId, offset, message) -> {
                       lastConsumedMessage.set(new String(message.getBodyAsBinary()));
@@ -464,13 +463,13 @@ public class OffsetTest {
                     }));
 
     AtomicBoolean publisherHasStopped = new AtomicBoolean(false);
+    publisher.declarePublisher(b(1), null, stream);
     new Thread(
             () -> {
               int publishedMessageCount = 0;
               while (true) {
                 publisher.publish(
-                    stream,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         publisher
                             .messageBuilder()
@@ -486,8 +485,7 @@ public class OffsetTest {
 
     assertThat(consumerStartLatch.await(10, SECONDS)).isTrue();
 
-    assertThat(consumer.subscribe((byte) 0, stream, OffsetSpecification.first(), 10).isOk())
-        .isTrue();
+    assertThat(consumer.subscribe(b(0), stream, OffsetSpecification.first(), 10).isOk()).isTrue();
     assertThat(consumedMessagesLatch.await(10, SECONDS)).isTrue();
     assertThat(publisherHasStopped).isTrue();
     assertThat(confirmedLatch.await(10, SECONDS)).isTrue();

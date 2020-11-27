@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,7 +58,7 @@ public class NotificationTest {
       ch.queueDeclare(t, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
 
       IntStream.range(0, subscriptionCount)
-          .forEach(i -> subscriptionClient.subscribe((byte) i, t, OffsetSpecification.first(), 10));
+          .forEach(i -> subscriptionClient.subscribe(b(i), t, OffsetSpecification.first(), 10));
 
       ch.queueDelete(t);
 
@@ -90,10 +91,9 @@ public class NotificationTest {
                 .publishErrorListener(
                     (publisherId, publishingId, errorCode) -> errorLatch.countDown()));
 
+    publisher.declarePublisher(b(1), null, s);
     publisher.publish(
-        s,
-        (byte) 1,
-        Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
+        b(1), Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
 
     assertThat(publishLatch.await(10, SECONDS)).isTrue();
 
@@ -105,9 +105,7 @@ public class NotificationTest {
     assertThat(receivedCode.get()).isEqualTo(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
     publisher.publish(
-        s,
-        (byte) 1,
-        Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
+        b(1), Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
     assertThat(errorLatch.await(10, SECONDS)).isTrue();
   }
 
@@ -121,10 +119,9 @@ public class NotificationTest {
                 .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
     Client.Response response = publisher.create(s);
     assertThat(response.isOk()).isTrue();
+    publisher.declarePublisher(b(1), null, s);
     publisher.publish(
-        s,
-        (byte) 1,
-        Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
+        b(1), Collections.singletonList(publisher.messageBuilder().addData("".getBytes()).build()));
 
     assertThat(publishLatch.await(10, SECONDS)).isTrue();
 
@@ -143,7 +140,7 @@ public class NotificationTest {
                       metadataLatch.countDown();
                     }));
 
-    response = consumer.subscribe((byte) 1, s, OffsetSpecification.first(), 10);
+    response = consumer.subscribe(b(1), s, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
     assertThat(consumeLatch.await(10, SECONDS)).isTrue();
 
@@ -168,10 +165,10 @@ public class NotificationTest {
             new Client.ClientParameters()
                 .metadataListener((stream, code) -> metadataLatch.countDown()));
 
-    response = consumer.subscribe((byte) 1, s, OffsetSpecification.first(), 10);
+    response = consumer.subscribe(b(1), s, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
 
-    response = consumer.unsubscribe((byte) 1);
+    response = consumer.unsubscribe(b(1));
     assertThat(response.isOk()).isTrue();
 
     response = cf.get().delete(s);
@@ -226,7 +223,7 @@ public class NotificationTest {
       createDeleteClient.create(t);
 
       IntStream.range(0, testParameter.subscriptionCount)
-          .forEach(i -> subscriptionClient.subscribe((byte) i, t, OffsetSpecification.first(), 10));
+          .forEach(i -> subscriptionClient.subscribe(b(i), t, OffsetSpecification.first(), 10));
 
       createDeleteClient.delete(t);
 

@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -96,10 +97,10 @@ final class TestUtils {
     Client client =
         cf.get(new Client.ClientParameters().publishConfirmListener(publishConfirmListener));
 
+    client.declarePublisher(b(1), null, stream);
     for (int i = 1; i <= publishCount; i++) {
       client.publish(
-          stream,
-          (byte) 1,
+          b(1),
           Collections.singletonList(
               client
                   .messageBuilder()

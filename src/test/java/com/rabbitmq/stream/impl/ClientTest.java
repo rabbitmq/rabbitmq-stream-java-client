@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,6 +30,7 @@ import com.rabbitmq.stream.Properties;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
+import com.rabbitmq.stream.impl.Client.Response;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.nio.ByteBuffer;
@@ -82,12 +84,12 @@ public class ClientTest {
                       caughtResponseCode.set(responseCode);
                       latch.countDown();
                     }));
-    Client.Response response = client.subscribe((byte) 1, stream, OffsetSpecification.first(), 20);
+    Client.Response response = client.subscribe(b(1), stream, OffsetSpecification.first(), 20);
     assertThat(response.isOk()).isTrue();
     assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
 
-    client.credit((byte) 1, 1);
-    client.credit((byte) 42, credit);
+    client.credit(b(1), 1);
+    client.credit(b(42), credit);
 
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(creditNotificationCount.get()).isEqualTo(1);
@@ -113,12 +115,12 @@ public class ClientTest {
     Client client =
         cf.get(new Client.ClientParameters().publishConfirmListener(publishConfirmListener));
 
+    client.declarePublisher(b(1), null, stream);
     Set<Long> correlationIds = new HashSet<>(publishCount);
     for (int i = 1; i <= publishCount; i++) {
       List<Long> sequenceId =
           client.publish(
-              stream,
-              (byte) 1,
+              b(1),
               Collections.singletonList(
                   client
                       .messageBuilder()
@@ -137,11 +139,11 @@ public class ClientTest {
     Map<Byte, Integer> outboundMessagesSpec =
         new HashMap<Byte, Integer>() {
           {
-            put((byte) 0, 1_000);
-            put((byte) 1, 100);
-            put((byte) 2, 50_000);
-            put((byte) 3, 10_000);
-            put((byte) 4, 500);
+            put(b(0), 1_000);
+            put(b(1), 100);
+            put(b(2), 50_000);
+            put(b(3), 10_000);
+            put(b(4), 500);
           }
         };
 
@@ -172,6 +174,7 @@ public class ClientTest {
         .map(
             entry -> {
               byte publisherId = entry.getKey();
+              client.declarePublisher(publisherId, null, stream);
               Random random = new Random();
               return new Thread(
                   () -> {
@@ -181,7 +184,6 @@ public class ClientTest {
                           messageCount < 10 ? messageCount : random.nextInt(messageCount);
                       List<Long> pSequences =
                           client.publish(
-                              stream,
                               publisherId,
                               IntStream.range(0, messagesToPublish)
                                   .mapToObj(
@@ -219,8 +221,9 @@ public class ClientTest {
   void publishConsumeComplexMessage(
       Client publisher, Codec codec, Function<Integer, Message> messageFactory) {
     int publishCount = 1000;
+    publisher.declarePublisher(b(1), null, stream);
     for (int i = 1; i <= publishCount; i++) {
-      publisher.publish(stream, (byte) 1, Collections.singletonList(messageFactory.apply(i)));
+      publisher.publish(b(1), Collections.singletonList(messageFactory.apply(i)));
     }
 
     CountDownLatch latch = new CountDownLatch(publishCount);
@@ -238,7 +241,7 @@ public class ClientTest {
                 .codec(codec)
                 .messageListener(messageListener)
                 .chunkListener(chunkListener));
-    consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), credit);
+    consumer.subscribe(b(1), stream, OffsetSpecification.first(), credit);
     assertThat(await(latch, Duration.ofSeconds(10))).isTrue();
     assertThat(messages).hasSize(publishCount);
     messages.stream()
@@ -249,7 +252,7 @@ public class ClientTest {
               assertThat(message.getBodyAsBinary())
                   .isEqualTo(("message" + id).getBytes(StandardCharsets.UTF_8));
             });
-    assertThat(consumer.unsubscribe((byte) 1).isOk()).isTrue();
+    assertThat(consumer.unsubscribe(b(1)).isOk()).isTrue();
   }
 
   @Test
@@ -332,12 +335,12 @@ public class ClientTest {
     int messageCount = 1000;
     Codec codec = new SimpleCodec();
     Client publisher = cf.get(new Client.ClientParameters().codec(codec));
+    publisher.declarePublisher(b(1), null, stream);
     IntStream.range(0, 1000)
         .forEach(
             i ->
                 publisher.publish(
-                    stream,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         publisher
                             .messageBuilder()
@@ -359,7 +362,7 @@ public class ClientTest {
                       consumeLatch.countDown();
                     }));
 
-    consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+    consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(consumeLatch.await(10, SECONDS)).isTrue();
     IntStream.range(0, messageCount)
         .forEach(i -> assertThat(messageBodies).contains(String.valueOf(i)));
@@ -377,12 +380,12 @@ public class ClientTest {
             new Client.ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
     AtomicInteger publishingSequence = new AtomicInteger(0);
+    publisher.declarePublisher(b(1), null, stream);
     IntStream.range(0, batchCount)
         .forEach(
             batchIndex -> {
               publisher.publish(
-                  stream,
-                  (byte) 1,
+                  b(1),
                   IntStream.range(0, batchSize)
                       .mapToObj(
                           i -> {
@@ -414,7 +417,7 @@ public class ClientTest {
                       consumeLatch.countDown();
                     }));
 
-    consumer.subscribe((byte) 1, stream, OffsetSpecification.first(), 10);
+    consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(consumeLatch.await(10, SECONDS)).isTrue();
     assertThat(sizes).hasSize(1).containsOnly(payloadSize);
     assertThat(sequences).hasSize(messageCount);
@@ -484,7 +487,7 @@ public class ClientTest {
             new Client.ClientParameters()
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
-    client.subscribe((byte) 1, stream, OffsetSpecification.first(), credit);
+    client.subscribe(b(1), stream, OffsetSpecification.first(), credit);
 
     CountDownLatch confirmedLatch = new CountDownLatch(publishCount);
     new Thread(
@@ -495,11 +498,11 @@ public class ClientTest {
                           .publishConfirmListener(
                               (publisherId, correlationId) -> confirmedLatch.countDown()));
               int messageId = 0;
+              publisher.declarePublisher(b(1), null, stream);
               while (messageId < publishCount) {
                 messageId++;
                 publisher.publish(
-                    stream,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         publisher
                             .messageBuilder()
@@ -512,7 +515,7 @@ public class ClientTest {
 
     assertThat(confirmedLatch.await(15, SECONDS)).isTrue();
     assertThat(consumedLatch.await(15, SECONDS)).isTrue();
-    client.unsubscribe((byte) 1);
+    client.unsubscribe(b(1));
   }
 
   @Test
@@ -553,84 +556,18 @@ public class ClientTest {
   }
 
   @Test
-  void publishToNonExistingStreamTriggersPublishErrorListener() throws Exception {
-    int messageCount = 1000;
-    AtomicInteger confirms = new AtomicInteger(0);
-    Set<Short> responseCodes = ConcurrentHashMap.newKeySet(1);
-    Set<Long> publishingIdErrors = ConcurrentHashMap.newKeySet(messageCount);
-    CountDownLatch latch = new CountDownLatch(messageCount);
-    Client client =
-        cf.get(
-            new Client.ClientParameters()
-                .publishConfirmListener((publisherId, publishingId) -> confirms.incrementAndGet())
-                .publishErrorListener(
-                    (publisherId, publishingId, responseCode) -> {
-                      publishingIdErrors.add(publishingId);
-                      responseCodes.add(responseCode);
-                      latch.countDown();
-                    }));
-
-    String nonExistingStream = UUID.randomUUID().toString();
-    Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-    IntStream.range(0, messageCount)
-        .forEach(
-            i ->
-                publishingIds.addAll(
-                    client.publish(
-                        nonExistingStream,
-                        (byte) 1,
-                        Collections.singletonList(
-                            client.messageBuilder().addData(("" + i).getBytes()).build()))));
-
-    assertThat(latch.await(10, SECONDS)).isTrue();
-    assertThat(confirms.get()).isZero();
-    assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
-    assertThat(publishingIdErrors)
-        .hasSameSizeAs(publishingIds)
-        .hasSameElementsAs(publishingIdErrors);
-  }
-
-  @Test
-  void publishToNonStreamQueueTriggersPublishErrorListener() throws Exception {
+  void declarePublisherToNonStreamQueueTriggersError() throws Exception {
     String nonStreamQueue = UUID.randomUUID().toString();
     ConnectionFactory connectionFactory = new ConnectionFactory();
     try (Connection amqpConnection = connectionFactory.newConnection();
         Channel c = amqpConnection.createChannel()) {
       c.queueDeclare(nonStreamQueue, false, true, false, null);
 
-      int messageCount = 1000;
-      AtomicInteger confirms = new AtomicInteger(0);
-      Set<Short> responseCodes = ConcurrentHashMap.newKeySet(1);
-      Set<Long> publishingIdErrors = ConcurrentHashMap.newKeySet(messageCount);
-      CountDownLatch latch = new CountDownLatch(messageCount);
-      Client client =
-          cf.get(
-              new Client.ClientParameters()
-                  .publishConfirmListener((publisherId, publishingId) -> confirms.incrementAndGet())
-                  .publishErrorListener(
-                      (publisherId, publishingId, responseCode) -> {
-                        publishingIdErrors.add(publishingId);
-                        responseCodes.add(responseCode);
-                        latch.countDown();
-                      }));
-
-      Set<Long> publishingIds = ConcurrentHashMap.newKeySet(messageCount);
-      IntStream.range(0, messageCount)
-          .forEach(
-              i ->
-                  publishingIds.addAll(
-                      client.publish(
-                          nonStreamQueue,
-                          (byte) 1,
-                          Collections.singletonList(
-                              client.messageBuilder().addData(("" + i).getBytes()).build()))));
-
-      assertThat(latch.await(10, SECONDS)).isTrue();
-      assertThat(confirms.get()).isZero();
-      assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
-      assertThat(publishingIdErrors)
-          .hasSameSizeAs(publishingIds)
-          .hasSameElementsAs(publishingIdErrors);
+      Client client = cf.get();
+      Response response = client.declarePublisher(b(1), null, nonStreamQueue);
+      assertThat(response.isOk()).isFalse();
+      assertThat(response.getResponseCode())
+          .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
     }
   }
 
@@ -653,12 +590,12 @@ public class ClientTest {
                           client1.credit(subscriptionId, 1))
                   .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown()));
 
+      client.declarePublisher(b(1), null, q);
       IntStream.range(0, messageCount)
           .forEach(
               i ->
                   client.publish(
-                      q,
-                      (byte) 1,
+                      b(1),
                       Collections.singletonList(
                           client
                               .messageBuilder()
@@ -666,7 +603,7 @@ public class ClientTest {
                               .build())));
       assertThat(publishedLatch.await(10, SECONDS)).isTrue();
 
-      client.subscribe((byte) 1, q, OffsetSpecification.first(), 10);
+      client.subscribe(b(1), q, OffsetSpecification.first(), 10);
       assertThat(consumedLatch.await(10, SECONDS)).isTrue();
     }
   }
@@ -699,12 +636,12 @@ public class ClientTest {
                       publishErrorLatch.countDown();
                     }));
 
+    publisher.declarePublisher(b(1), null, s);
     IntStream.range(0, messageCount)
         .forEach(
             i ->
                 publisher.publish(
-                    s,
-                    (byte) 1,
+                    b(1),
                     Collections.singletonList(
                         publisher
                             .messageBuilder()
@@ -726,8 +663,7 @@ public class ClientTest {
             i ->
                 publishingIds.addAll(
                     publisher.publish(
-                        s,
-                        (byte) 1,
+                        b(1),
                         Collections.singletonList(
                             publisher
                                 .messageBuilder()
@@ -736,7 +672,7 @@ public class ClientTest {
 
     assertThat(publishErrorLatch.await(10, SECONDS)).isTrue();
     assertThat(confirms.get()).isEqualTo(messageCount);
-    assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    assertThat(responseCodes).hasSize(1).contains(Constants.RESPONSE_CODE_PUBLISHER_DOES_NOT_EXIST);
     assertThat(publishingIdErrors)
         .hasSameSizeAs(publishingIds)
         .hasSameElementsAs(publishingIdErrors);

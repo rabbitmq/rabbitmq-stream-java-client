@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.b;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -159,11 +160,11 @@ public class RetentionClientTest {
       configuration.streamCreator.accept(new Object[] {publisher, testStream});
       AtomicLong publishSequence = new AtomicLong(0);
       byte[] payload = new byte[payloadSize];
+      publisher.declarePublisher(b(1), null, testStream);
       Runnable publish =
           () ->
               publisher.publish(
-                  testStream,
-                  (byte) 1,
+                  b(1),
                   Collections.singletonList(
                       publisher
                           .messageBuilder()
@@ -198,9 +199,9 @@ public class RetentionClientTest {
                         }
                       }));
 
-      consumer.subscribe((byte) 1, testStream, OffsetSpecification.first(), 10);
+      consumer.subscribe(b(1), testStream, OffsetSpecification.first(), 10);
       assertThat(consumingLatch.await(10, SECONDS)).isTrue();
-      consumer.unsubscribe((byte) 1);
+      consumer.unsubscribe(b(1));
       assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get())).isTrue();
     } finally {
       publisher.delete(testStream);

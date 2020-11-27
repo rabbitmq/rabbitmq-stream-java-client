@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.impl.Client.Response;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -479,7 +480,14 @@ class ProducersCoordinator {
         for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
           ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
           if (previousValue == null) {
-            tracker.assign((byte) i, this.client, this);
+            Response response = this.client.declarePublisher((byte) i, null, tracker.stream());
+            if (response.isOk()) {
+              tracker.assign((byte) i, this.client, this);
+            } else {
+              LOGGER.info(
+                  "Error while declaring publisher: {}. Could not assign producer to client.",
+                  response.getResponseCode());
+            }
             break;
           }
         }
