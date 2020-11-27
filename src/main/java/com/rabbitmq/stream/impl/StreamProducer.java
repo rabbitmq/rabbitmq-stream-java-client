@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.*;
+import static com.rabbitmq.stream.impl.Utils.formatConstant;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.Response;
@@ -202,7 +203,7 @@ class StreamProducer implements Producer {
         LOGGER.info(
             "Could not delete publisher {} on producer closing: {}",
             this.publisherId,
-            response.getResponseCode());
+            formatConstant(response.getResponseCode()));
       }
       this.environment.removeProducer(this);
       closeFromEnvironment();

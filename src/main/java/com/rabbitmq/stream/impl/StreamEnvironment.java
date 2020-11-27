@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.*;
@@ -238,7 +239,12 @@ class StreamEnvironment implements Environment {
     Client.Response response = this.locator().delete(stream);
     if (!response.isOk()) {
       throw new StreamException(
-          "Error while deleting stream " + stream, response.getResponseCode());
+          "Error while deleting stream "
+              + stream
+              + " ("
+              + formatConstant(response.getResponseCode())
+              + ")",
+          response.getResponseCode());
     }
   }
 

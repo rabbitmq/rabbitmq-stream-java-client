@@ -14,6 +14,8 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.formatConstant;
+
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
@@ -69,7 +71,12 @@ class StreamStreamCreator implements StreamCreator {
         environment.locator().create(stream, streamParametersBuilder.build());
     if (!response.isOk()) {
       throw new StreamException(
-          "Error while creating stream " + stream, response.getResponseCode());
+          "Error while creating stream "
+              + stream
+              + " ("
+              + formatConstant(response.getResponseCode())
+              + ")",
+          response.getResponseCode());
     }
   }
 }

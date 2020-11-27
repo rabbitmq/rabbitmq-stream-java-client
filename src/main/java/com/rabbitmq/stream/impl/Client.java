@@ -43,6 +43,7 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
 import static com.rabbitmq.stream.Constants.VERSION_0;
+import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.AuthenticationFailureException;
@@ -979,11 +980,11 @@ public class Client implements AutoCloseable {
       } else if (saslAuthenticateResponse.isAuthenticationFailure()) {
         throw new AuthenticationFailureException(
             "Unexpected response code during authentication: "
-                + saslAuthenticateResponse.getResponseCode());
+                + formatConstant(saslAuthenticateResponse.getResponseCode()));
       } else {
         throw new StreamException(
             "Unexpected response code during authentication: "
-                + saslAuthenticateResponse.getResponseCode());
+                + formatConstant(saslAuthenticateResponse.getResponseCode()));
       }
     }
   }
@@ -1042,7 +1043,7 @@ public class Client implements AutoCloseable {
       if (!request.response.get().isOk()) {
         throw new StreamException(
             "Unexpected response code when connecting to virtual host: "
-                + request.response.get().getResponseCode());
+                + formatConstant(request.response.get().getResponseCode()));
       }
     } catch (StreamException e) {
       outstandingRequests.remove(correlationId);
@@ -1082,9 +1083,11 @@ public class Client implements AutoCloseable {
       request.block();
       if (!request.response.get().isOk()) {
         LOGGER.warn(
-            "Unexpected response code when closing: {}", request.response.get().getResponseCode());
+            "Unexpected response code when closing: {}",
+            formatConstant(request.response.get().getResponseCode()));
         throw new StreamException(
-            "Unexpected response code when closing: " + request.response.get().getResponseCode());
+            "Unexpected response code when closing: "
+                + formatConstant(request.response.get().getResponseCode()));
       }
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
@@ -1629,7 +1632,7 @@ public class Client implements AutoCloseable {
       request.block();
       QueryOffsetResponse response = request.response.get();
       if (!response.isOk()) {
-        LOGGER.info("Query offset failed with code {}", response.getResponseCode());
+        LOGGER.info("Query offset failed with code {}", formatConstant(response.getResponseCode()));
       }
       return response.getOffset();
     } catch (RuntimeException e) {
@@ -1668,7 +1671,7 @@ public class Client implements AutoCloseable {
       request.block();
       QueryPublisherSequenceResponse response = request.response.get();
       if (!response.isOk()) {
-        LOGGER.info("Query offset failed with code {}", response.getResponseCode());
+        LOGGER.info("Query offset failed with code {}", formatConstant(response.getResponseCode()));
       }
       return response.getSequence();
     } catch (RuntimeException e) {
@@ -2013,6 +2016,11 @@ public class Client implements AutoCloseable {
 
     public short getResponseCode() {
       return responseCode;
+    }
+
+    @Override
+    public String toString() {
+      return formatConstant(this.responseCode);
     }
   }
 

@@ -14,11 +14,20 @@
 
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.Constants;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 final class Utils {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
 
   static final LongConsumer NO_OP_LONG_CONSUMER = someLong -> {};
 
@@ -40,5 +49,28 @@ final class Utils {
         action.accept(t);
       }
     };
+  }
+
+  private static final Map<Short, String> CONSTANT_LABELS;
+
+  static {
+    Map<Short, String> labels = new HashMap<>();
+    Arrays.stream(Constants.class.getDeclaredFields())
+        .filter(f -> f.getName().startsWith("RESPONSE_CODE_") || f.getName().startsWith("CODE_"))
+        .forEach(
+            field -> {
+              try {
+                labels.put(
+                    field.getShort(null),
+                    field.getName().replace("RESPONSE_CODE_", "").replace("CODE_", ""));
+              } catch (IllegalAccessException e) {
+                LOGGER.info("Error while trying to access field Constants." + field.getName());
+              }
+            });
+    CONSTANT_LABELS = Collections.unmodifiableMap(labels);
+  }
+
+  static String formatConstant(short value) {
+    return value + " (" + CONSTANT_LABELS.getOrDefault(value, "UNKNOWN") + ")";
   }
 }

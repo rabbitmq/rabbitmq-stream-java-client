@@ -14,6 +14,8 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.formatConstant;
+
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
@@ -554,7 +556,7 @@ class ConsumersCoordinator {
               "Subscription to stream "
                   + subscriptionTracker.stream
                   + " failed with code "
-                  + subscribeResponse.getResponseCode();
+                  + formatConstant(subscribeResponse.getResponseCode());
           LOGGER.debug(message);
           throw new StreamException(message);
         }
@@ -578,7 +580,7 @@ class ConsumersCoordinator {
         LOGGER.warn(
             "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
             subscriptionTracker.stream,
-            unsubscribeResponse.getResponseCode(),
+            formatConstant(unsubscribeResponse.getResponseCode()),
             subscriptionIdInClient);
       }
       this.subscriptionTrackers = update(this.subscriptionTrackers, subscriptionIdInClient, null);
