@@ -25,6 +25,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -334,6 +335,49 @@ public class OffsetTest {
     assertThat(last.get()).isEqualTo(lastOffset);
     consumed.stream()
         .forEach(v -> assertThat(v).startsWith("second wave").doesNotStartWith("first wave"));
+  }
+
+  @Test
+  void amqpOffsetTypeTimestampShouldStartConsumingFromTimestamp() throws Exception {
+    int firstWaveMessageCount = 5000;
+    int secondWaveMessageCount = 2000;
+    int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
+    TestUtils.publishAndWaitForConfirms(cf, "first wave ", firstWaveMessageCount, stream);
+    Thread.sleep(5000);
+    long now = System.currentTimeMillis();
+    TestUtils.publishAndWaitForConfirms(cf, "second wave ", secondWaveMessageCount, stream);
+    long timestampOffset = now - 1000; // one second earlier
+
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicLong first = new AtomicLong(-1);
+    AtomicLong last = new AtomicLong();
+    Set<String> consumed = ConcurrentHashMap.newKeySet();
+
+    try (Connection c = new ConnectionFactory().newConnection();
+        Channel ch = c.createChannel()) {
+      ch.basicQos(100);
+      ch.basicConsume(
+          stream,
+          false,
+          Collections.singletonMap("x-stream-offset", new Date(timestampOffset)),
+          (consumerTag, message) -> {
+            long messageOffset = (long) message.getProperties().getHeaders().get("x-stream-offset");
+            first.compareAndSet(-1, messageOffset);
+            last.set(messageOffset);
+            consumed.add(new String(message.getBody(), StandardCharsets.UTF_8));
+            if (messageOffset == lastOffset) {
+              latch.countDown();
+            }
+            ch.basicAck(message.getEnvelope().getDeliveryTag(), false);
+          },
+          consumerTag -> {});
+
+      assertThat(latch.await(10, SECONDS)).isTrue();
+      assertThat(first.get()).isEqualTo(firstWaveMessageCount);
+      assertThat(last.get()).isEqualTo(lastOffset);
+      consumed.stream()
+          .forEach(v -> assertThat(v).startsWith("second wave").doesNotStartWith("first wave"));
+    }
   }
 
   @Test
