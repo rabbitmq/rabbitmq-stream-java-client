@@ -16,6 +16,8 @@ package com.rabbitmq.stream;
 
 public class StreamException extends RuntimeException {
 
+  private static final long serialVersionUID = 1712097491684870324L;
+
   private final short code;
 
   public StreamException(String message) {

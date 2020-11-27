@@ -57,7 +57,6 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.Properties;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.metrics.MetricsCollector;
@@ -94,7 +93,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -162,7 +160,7 @@ public class Client implements AutoCloseable {
         }
       };
   private final AtomicInteger correlationSequence = new AtomicInteger(0);
-  private final ConcurrentMap<Integer, OutstandingRequest> outstandingRequests =
+  private final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
       new ConcurrentHashMap<>();
   private final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
   private final ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -173,12 +171,10 @@ public class Client implements AutoCloseable {
   private final AtomicBoolean closing = new AtomicBoolean(false);
   private final Runnable nettyClosing;
   private final int maxFrameSize;
-  private final int heartbeat;
   private final boolean frameSizeCopped;
   private final EventLoopGroup eventLoopGroup;
   private final ChunkChecksum chunkChecksum;
   private final Map<String, String> clientProperties;
-  private final Map<String, String> serverProperties;
   private final MetricsCollector metricsCollector;
   private final String NETTY_HANDLER_FLUSH_CONSOLIDATION =
       FlushConsolidationHandler.class.getSimpleName();
@@ -219,13 +215,7 @@ public class Client implements AutoCloseable {
               }
             });
 
-    this.executorServiceClosing =
-        Utils.makeIdempotent(
-            () -> {
-              if (this.executorService != null) {
-                this.executorService.shutdownNow();
-              }
-            });
+    this.executorServiceClosing = Utils.makeIdempotent(this.executorService::shutdownNow);
 
     EventLoopGroup eventLoopGroup;
     if (parameters.eventLoopGroup == null) {
@@ -262,7 +252,7 @@ public class Client implements AutoCloseable {
           }
         });
 
-    ChannelFuture f = null;
+    ChannelFuture f;
     try {
       f = b.connect(parameters.host, parameters.port).sync();
       this.host = parameters.host;
@@ -272,21 +262,20 @@ public class Client implements AutoCloseable {
     }
 
     this.channel = f.channel();
-    this.nettyClosing = Utils.makeIdempotent(() -> closeNetty());
+    this.nettyClosing = Utils.makeIdempotent(this::closeNetty);
     this.tuneState =
         new TuneState(
             parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
     this.clientProperties = clientProperties(parameters.clientProperties);
-    this.serverProperties = peerProperties();
+    peerProperties();
     authenticate();
     this.tuneState.await(Duration.ofSeconds(10));
     this.maxFrameSize = this.tuneState.getMaxFrameSize();
     this.frameSizeCopped = this.maxFrameSize > 0;
-    this.heartbeat = this.tuneState.getHeartbeat();
     LOGGER.debug(
         "Connection tuned with max frame size {} and heartbeat {}",
         this.maxFrameSize,
-        this.heartbeat);
+        tuneState.getHeartbeat());
     open(parameters.virtualHost);
     started.set(true);
   }
@@ -316,7 +305,9 @@ public class Client implements AutoCloseable {
   }
 
   static void handleResponse(
-      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+      ByteBuf bb,
+      int frameSize,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
     int read = 2 + 2; // already read the command id and version
     int correlationId = bb.readInt();
     read += 4;
@@ -355,7 +346,9 @@ public class Client implements AutoCloseable {
   }
 
   static void handleQueryOffsetResponse(
-      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+      ByteBuf bb,
+      int frameSize,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
     int read = 2 + 2; // already read the command id and version
 
     int correlationId = bb.readInt();
@@ -381,7 +374,9 @@ public class Client implements AutoCloseable {
   }
 
   static void handleQueryPublisherSequenceResponse(
-      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+      ByteBuf bb,
+      int frameSize,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
     int read = 2 + 2; // already read the command id and version
 
     int correlationId = bb.readInt();
@@ -408,7 +403,9 @@ public class Client implements AutoCloseable {
   }
 
   static void handlePeerProperties(
-      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+      ByteBuf bb,
+      int frameSize,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
     int read = 2 + 2; // already read the command id and version
     int correlationId = bb.readInt();
     read += 4;
@@ -454,7 +451,9 @@ public class Client implements AutoCloseable {
   }
 
   static void handleSaslHandshakeResponse(
-      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+      ByteBuf bb,
+      int frameSize,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
     int read = 2 + 2; // already read the command id and version
     int correlationId = bb.readInt();
     read += 4;
@@ -496,7 +495,9 @@ public class Client implements AutoCloseable {
   }
 
   static void handleSaslAuthenticateResponse(
-      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+      ByteBuf bb,
+      int frameSize,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
     int read = 2 + 2; // already read the command id and version
     int correlationId = bb.readInt();
     read += 4;
@@ -539,7 +540,7 @@ public class Client implements AutoCloseable {
 
   @SuppressWarnings("unchecked")
   private static <T> OutstandingRequest<T> remove(
-      ConcurrentMap<Integer, OutstandingRequest> outstandingRequests,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests,
       int correlationId,
       ParameterizedTypeReference<T> type) {
     return (OutstandingRequest<T>) outstandingRequests.remove(correlationId);
@@ -547,14 +548,16 @@ public class Client implements AutoCloseable {
 
   @SuppressWarnings("unchecked")
   private static <T> OutstandingRequest<T> remove(
-      ConcurrentMap<Integer, OutstandingRequest> outstandingRequests,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests,
       int correlationId,
       Class<T> clazz) {
     return (OutstandingRequest<T>) outstandingRequests.remove(correlationId);
   }
 
   static void handleMetadata(
-      ByteBuf bb, int frameSize, ConcurrentMap<Integer, OutstandingRequest> outstandingRequests) {
+      ByteBuf bb,
+      int frameSize,
+      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
     int read = 2 + 2; // already read the command id and version
     int correlationId = bb.readInt();
     read += 4;
@@ -620,8 +623,7 @@ public class Client implements AutoCloseable {
     short size = bb.readShort();
     byte[] bytes = new byte[size];
     bb.readBytes(bytes);
-    String string = new String(bytes, StandardCharsets.UTF_8);
-    return string;
+    return new String(bytes, StandardCharsets.UTF_8);
   }
 
   static void handleDeliver(
@@ -654,7 +656,7 @@ public class Client implements AutoCloseable {
     %%   ...>>
      */
     // FIXME handle magic and version
-    byte magicAndVersion = bb.readByte();
+    bb.readByte();
     read += 1;
 
     byte chunkType = bb.readByte();
@@ -667,9 +669,9 @@ public class Client implements AutoCloseable {
     read += 2;
     long numRecords = bb.readUnsignedInt();
     read += 4;
-    long timestamp = bb.readLong();
+    bb.readLong(); // timestamp
     read += 8;
-    long epoch = bb.readLong(); // unsigned long
+    bb.readLong(); // epoch, unsigned long
     read += 8;
     long offset = bb.readLong(); // unsigned long
     read += 8;
@@ -684,9 +686,7 @@ public class Client implements AutoCloseable {
 
     long offsetLimit = -1;
     if (!subscriptionOffsets.isEmpty()) {
-      Iterator<SubscriptionOffset> iterator = subscriptionOffsets.iterator();
-      while (iterator.hasNext()) {
-        SubscriptionOffset subscriptionOffset = iterator.next();
+      for (SubscriptionOffset subscriptionOffset : subscriptionOffsets) {
         if (subscriptionOffset.subscriptionId == subscriptionId) {
           subscriptionOffsets.remove(subscriptionOffset);
           offsetLimit = subscriptionOffset.offset;
@@ -795,7 +795,7 @@ public class Client implements AutoCloseable {
     int publishingIdCount = bb.readInt();
     read += 4;
     metricsCollector.publishConfirm(publishingIdCount);
-    long publishingId = -1;
+    long publishingId;
     while (publishingIdCount != 0) {
       publishingId = bb.readLong();
       read += 8;
@@ -818,8 +818,8 @@ public class Client implements AutoCloseable {
     int publishingErrorCount = bb.readInt();
     read += 4;
     metricsCollector.publishError(publishingErrorCount);
-    long publishingId = -1;
-    short code = -1;
+    long publishingId;
+    short code;
     while (publishingErrorCount != 0) {
       publishingId = bb.readLong();
       read += 8;
@@ -930,7 +930,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private Map<String, String> peerProperties() {
+  private void peerProperties() {
     int clientPropertiesSize = 4; // size of the map, always there
     if (!clientProperties.isEmpty()) {
       for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
@@ -956,7 +956,6 @@ public class Client implements AutoCloseable {
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
-      return request.response.get();
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
       throw new StreamException(e);
@@ -1229,24 +1228,14 @@ public class Client implements AutoCloseable {
     }
   }
 
-  Codec.EncodedMessage encode(Message message) {
-    Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-    checkMessageFitsInFrame(encodedMessage);
-    return encodedMessage;
-  }
-
   public Response declarePublisher(byte publisherId, String publisherReference, String stream) {
     int publisherReferenceSize =
         (publisherReference == null || publisherReference.isEmpty()
             ? 0
             : publisherReference.length());
-    if (publisherReferenceSize > 0 && publisherReferenceSize > 256) {
-      if (publisherReference == null
-          || publisherReference.isEmpty()
-          || publisherReference.length() > 256) {
-        throw new IllegalArgumentException(
-            "If specified, publisher reference must less than 256 characters");
-      }
+    if (publisherReferenceSize > 256) {
+      throw new IllegalArgumentException(
+          "If specified, publisher reference must less than 256 characters");
     }
     int length = 2 + 2 + 4 + 1 + 2 + publisherReferenceSize + 2 + stream.length();
     int correlationId = correlationSequence.getAndIncrement();
@@ -2339,40 +2328,6 @@ public class Client implements AutoCloseable {
     }
   }
 
-  static final class BinaryOnlyMessage implements Message {
-
-    private final byte[] body;
-
-    BinaryOnlyMessage(byte[] body) {
-      this.body = body;
-    }
-
-    @Override
-    public byte[] getBodyAsBinary() {
-      return body;
-    }
-
-    @Override
-    public Object getBody() {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Properties getProperties() {
-      return null;
-    }
-
-    @Override
-    public Map<String, Object> getApplicationProperties() {
-      return null;
-    }
-
-    @Override
-    public Map<String, Object> getMessageAnnotations() {
-      return null;
-    }
-  }
-
   private static class OutstandingRequest<T> {
 
     private final CountDownLatch latch = new CountDownLatch(1);
@@ -2594,7 +2549,7 @@ public class Client implements AutoCloseable {
     }
 
     @Override
-    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
       if (evt instanceof IdleStateEvent) {
         IdleStateEvent e = (IdleStateEvent) evt;
         if (e.state() == IdleState.READER_IDLE) {

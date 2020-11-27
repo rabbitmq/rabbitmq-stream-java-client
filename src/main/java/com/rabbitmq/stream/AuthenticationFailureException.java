@@ -17,6 +17,8 @@ package com.rabbitmq.stream;
 /** Exception to report a failed authentication attempt. */
 public class AuthenticationFailureException extends StreamException {
 
+  private static final long serialVersionUID = -8252068600057023968L;
+
   public AuthenticationFailureException(String message) {
     super(message);
   }

@@ -43,7 +43,7 @@ class ProducersCoordinator {
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
 
   ProducersCoordinator(StreamEnvironment environment) {
-    this(environment, cp -> new Client(cp));
+    this(environment, Client::new);
   }
 
   ProducersCoordinator(
@@ -84,7 +84,7 @@ class ProducersCoordinator {
 
     pool.add(tracker);
 
-    return () -> tracker.cancel();
+    return tracker::cancel;
   }
 
   private Client.Broker getBrokerForProducer(String stream) {
@@ -125,9 +125,7 @@ class ProducersCoordinator {
   }
 
   int clientCount() {
-    return pools.values().stream()
-        .map(pool -> pool.managers.size())
-        .reduce(0, (acc, size) -> acc + size);
+    return pools.values().stream().map(pool -> pool.managers.size()).reduce(0, Integer::sum);
   }
 
   private interface AgentTracker {
@@ -353,7 +351,8 @@ class ProducersCoordinator {
                       (publisherId, publishingId) -> {
                         ProducerTracker producerTracker = producers.get(publisherId);
                         if (producerTracker == null) {
-                          LOGGER.warn("Received publish confirm for unknown producer: {}");
+                          LOGGER.warn(
+                              "Received publish confirm for unknown producer: {}", publisherId);
                         } else {
                           producerTracker.producer.confirm(publishingId);
                         }
@@ -362,7 +361,8 @@ class ProducersCoordinator {
                       (publisherId, publishingId, errorCode) -> {
                         ProducerTracker producerTracker = producers.get(publisherId);
                         if (producerTracker == null) {
-                          LOGGER.warn("Received publish error for unknown producer: {}");
+                          LOGGER.warn(
+                              "Received publish error for unknown producer: {}", publisherId);
                         } else {
                           producerTracker.producer.error(publishingId, errorCode);
                         }
@@ -375,24 +375,18 @@ class ProducersCoordinator {
                               "Recovering {} producers after unexpected connection termination",
                               producers.size());
                           producers.forEach((publishingId, tracker) -> tracker.unavailable());
-                          committingConsumerTrackers.forEach(tracker -> tracker.unavailable());
+                          committingConsumerTrackers.forEach(AgentTracker::unavailable);
                           // execute in thread pool to free the IO thread
                           environment
                               .scheduledExecutorService()
                               .execute(
-                                  () -> {
-                                    streamToTrackers
-                                        .entrySet()
-                                        .forEach(
-                                            entry -> {
-                                              String stream = entry.getKey();
-                                              Set<AgentTracker> trackers = entry.getValue();
+                                  () ->
+                                      streamToTrackers.forEach(
+                                          (stream, trackers) ->
                                               assignProducersToNewManagers(
                                                   trackers,
                                                   stream,
-                                                  environment.recoveryBackOffDelayPolicy());
-                                            });
-                                  });
+                                                  environment.recoveryBackOffDelayPolicy())));
                         }
                       })
                   .metadataListener(
@@ -468,7 +462,7 @@ class ProducersCoordinator {
                   try {
                     tracker.closeAfterStreamDeletion();
                   } catch (Exception e) {
-                    LOGGER.debug("Error while closing producer", e.getMessage());
+                    LOGGER.debug("Error while closing producer: {}", e.getMessage());
                   }
                 }
                 return null;
@@ -540,7 +534,7 @@ class ProducersCoordinator {
       try {
         this.client.close();
       } catch (Exception e) {
-
+        // ok
       }
     }
   }

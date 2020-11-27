@@ -27,10 +27,10 @@ import com.rabbitmq.stream.StreamException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,7 +58,7 @@ class ConsumersCoordinator {
   }
 
   ConsumersCoordinator(StreamEnvironment environment) {
-    this(environment, cp -> new Client(cp));
+    this(environment, Client::new);
   }
 
   private static String keyForClientSubscription(Client.Broker broker) {
@@ -79,6 +79,9 @@ class ConsumersCoordinator {
     // FIXME fail immediately if there's no locator (can provide a supplier that does not retry)
     List<Client.Broker> candidates = findBrokersForStream(stream);
     Client.Broker newNode = pickBroker(candidates);
+    if (newNode == null) {
+      throw new IllegalStateException("No available node to subscribe to");
+    }
 
     // create stream subscription to track final and changing state of this very subscription
     // we keep this instance when we move the subscription from a client to another one
@@ -100,7 +103,7 @@ class ConsumersCoordinator {
 
     managerPool.add(subscriptionTracker, offsetSpecification);
 
-    return () -> subscriptionTracker.cancel();
+    return subscriptionTracker::cancel;
   }
 
   private Client locator() {
@@ -122,7 +125,8 @@ class ConsumersCoordinator {
         throw new StreamDoesNotExistException(stream);
       } else {
         throw new IllegalStateException(
-            "Could not get stream metadata, response code: " + streamMetadata.getResponseCode());
+            "Could not get stream metadata, response code: "
+                + formatConstant(streamMetadata.getResponseCode()));
       }
     }
 
@@ -179,7 +183,7 @@ class ConsumersCoordinator {
                                     manager ->
                                         "{ 'consumer_count' : "
                                             + manager.subscriptionTrackers.stream()
-                                                .filter(tracker -> tracker != null)
+                                                .filter(Objects::nonNull)
                                                 .count()
                                             + " }")
                                 .collect(Collectors.joining(", "))
@@ -292,9 +296,7 @@ class ConsumersCoordinator {
     }
 
     synchronized void close() {
-      Iterator<ClientSubscriptionsManager> iterator = managers.iterator();
-      while (iterator.hasNext()) {
-        ClientSubscriptionsManager manager = iterator.next();
+      for (ClientSubscriptionsManager manager : managers) {
         manager.close();
       }
       managers.clear();
@@ -364,8 +366,8 @@ class ConsumersCoordinator {
                               .execute(
                                   () -> {
                                     subscriptionTrackers.stream()
-                                        .filter(tracker -> tracker != null)
-                                        .forEach(tracker -> tracker.detachFromManager());
+                                        .filter(Objects::nonNull)
+                                        .forEach(SubscriptionTracker::detachFromManager);
                                     for (Entry<String, Set<SubscriptionTracker>> entry :
                                         streamToStreamSubscriptions.entrySet()) {
                                       String stream = entry.getKey();
@@ -442,7 +444,7 @@ class ConsumersCoordinator {
               try {
                 affectedSubscription.consumer.closeAfterStreamDeletion();
               } catch (Exception e) {
-                LOGGER.debug("Error while closing consumer", e.getMessage());
+                LOGGER.debug("Error while closing consumer: {}", e.getMessage());
               }
             }
           };
@@ -487,7 +489,7 @@ class ConsumersCoordinator {
                       }
                     } catch (Exception e) {
                       LOGGER.warn(
-                          "Error while re-assigning subscription from stream {}",
+                          "Error while re-assigning subscription from stream {}: {}",
                           stream,
                           e.getMessage());
                     }
@@ -617,13 +619,13 @@ class ConsumersCoordinator {
     }
 
     private synchronized int trackersCount() {
-      return (int) this.subscriptionTrackers.stream().filter(tracker -> tracker != null).count();
+      return (int) this.subscriptionTrackers.stream().filter(Objects::nonNull).count();
     }
 
     synchronized void close() {
       if (this.client.isOpen()) {
         subscriptionTrackers.stream()
-            .filter(tracker -> tracker != null)
+            .filter(Objects::nonNull)
             .forEach(
                 tracker -> {
                   try {
