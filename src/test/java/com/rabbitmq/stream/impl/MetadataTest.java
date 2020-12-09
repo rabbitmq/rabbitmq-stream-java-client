@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,6 +24,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -35,7 +37,7 @@ public class MetadataTest {
 
   @ValueSource(ints = {1, 2, 3, 4, 5})
   @ParameterizedTest
-  void metadataExistingStreams(int streamCount) throws Exception {
+  void metadataExistingStreams(int streamCount, TestInfo info) throws Exception {
     String hostname = InetAddress.getLocalHost().getHostName();
 
     Client streamClient = cf.get();
@@ -43,7 +45,7 @@ public class MetadataTest {
         IntStream.range(0, streamCount)
             .mapToObj(
                 i -> {
-                  String t = UUID.randomUUID().toString();
+                  String t = streamName(info);
                   streamClient.create(t);
                   return t;
                 })
@@ -83,7 +85,7 @@ public class MetadataTest {
   @CsvSource({
     "1,1", "2,1", "5,1", "1,2", "2,2", "5,2", "1,3", "2,3", "5,3",
   })
-  void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount)
+  void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount, TestInfo info)
       throws Exception {
     String hostname = InetAddress.getLocalHost().getHostName();
     Client streamClient = cf.get();
@@ -91,7 +93,7 @@ public class MetadataTest {
         IntStream.range(0, existingCount)
             .mapToObj(
                 i -> {
-                  String t = UUID.randomUUID().toString();
+                  String t = streamName(info);
                   streamClient.create(t);
                   return t;
                 })

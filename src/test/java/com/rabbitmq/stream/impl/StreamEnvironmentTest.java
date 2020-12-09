@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,6 +45,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -149,7 +151,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  void growShrinkResourcesWhenProducersConsumersAreOpenedAndClosed() throws Exception {
+  void growShrinkResourcesWhenProducersConsumersAreOpenedAndClosed(TestInfo info) throws Exception {
     int messageCount = 100;
     int streamCount = 20;
     int producersCount = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT * 3 + 10;
@@ -158,7 +160,7 @@ public class StreamEnvironmentTest {
     try (Environment environment = environmentBuilder.build()) {
       List<String> streams =
           IntStream.range(0, streamCount)
-              .mapToObj(i -> UUID.randomUUID().toString())
+              .mapToObj(i -> streamName(info))
               .map(
                   s -> {
                     environment.streamCreator().stream(s).create();
@@ -255,12 +257,12 @@ public class StreamEnvironmentTest {
 
   @Test
   @TestUtils.DisabledIfRabbitMqCtlNotSet
-  void locatorShouldReconnectIfConnectionIsLost() throws Exception {
+  void locatorShouldReconnectIfConnectionIsLost(TestInfo info) throws Exception {
     try (Environment environment =
         environmentBuilder
             .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
             .build()) {
-      String s = UUID.randomUUID().toString();
+      String s = streamName(info);
       environment.streamCreator().stream(s).create();
       environment.deleteStream(s);
       Host.killConnection("rabbitmq-stream-locator");
@@ -290,11 +292,11 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  void createDelete() throws Exception {
+  void createDelete(TestInfo info) throws Exception {
     try (Environment environment = environmentBuilder.build();
         Client client = new Client()) {
 
-      String s = UUID.randomUUID().toString();
+      String s = streamName(info);
       environment.streamCreator().stream(s).create();
       Client.StreamMetadata metadata = client.metadata(s).get(s);
       assertThat(metadata.isResponseOk()).isTrue();

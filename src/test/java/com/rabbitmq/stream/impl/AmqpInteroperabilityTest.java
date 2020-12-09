@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -37,6 +38,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -234,7 +236,7 @@ public class AmqpInteroperabilityTest {
 
   @ParameterizedTest
   @MethodSource("codecs")
-  void publishToStreamConsumeFromStreamQueue(Codec codec) {
+  void publishToStreamConsumeFromStreamQueue(Codec codec, TestInfo info) {
     int messageCount = 1_000;
     ConnectionFactory connectionFactory = new ConnectionFactory();
     Date timestamp = new Date();
@@ -354,7 +356,7 @@ public class AmqpInteroperabilityTest {
                           .publishConfirmListener(
                               (publisherId, publishingId) -> confirmLatch.countDown()));
 
-              String s = UUID.randomUUID().toString();
+              String s = streamName(info);
               Client.Response response = client.create(s);
               assertThat(response.isOk()).isTrue();
 

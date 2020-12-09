@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,11 +29,11 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -143,8 +144,8 @@ public class RetentionClientTest {
 
   @ParameterizedTest
   @MethodSource
-  void retention(RetentionTestConfig configuration) throws Exception {
-    String testStream = UUID.randomUUID().toString();
+  void retention(RetentionTestConfig configuration, TestInfo info) throws Exception {
+    String testStream = streamName(info);
     CountDownLatch publishingLatch = new CountDownLatch(messageCount);
     CountDownLatch publishingLatchSecondWave = new CountDownLatch(messageCount * 2);
     Client publisher =

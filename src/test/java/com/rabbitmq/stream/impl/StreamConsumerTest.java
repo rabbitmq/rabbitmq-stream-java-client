@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -45,6 +46,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -141,8 +143,8 @@ public class StreamConsumerTest {
   }
 
   @Test
-  void consumerShouldBeClosedWhenStreamGetsDeleted() throws Exception {
-    String s = UUID.randomUUID().toString();
+  void consumerShouldBeClosedWhenStreamGetsDeleted(TestInfo info) throws Exception {
+    String s = streamName(info);
     environment.streamCreator().stream(s).create();
 
     int messageCount = 10_000;
@@ -305,9 +307,9 @@ public class StreamConsumerTest {
   @ParameterizedTest
   @MethodSource
   @TestUtils.DisabledIfRabbitMqCtlNotSet
-  void consumerShouldKeepConsumingAfterDisruption(java.util.function.Consumer<Object> disruption)
-      throws Exception {
-    String s = UUID.randomUUID().toString();
+  void consumerShouldKeepConsumingAfterDisruption(
+      java.util.function.Consumer<Object> disruption, TestInfo info) throws Exception {
+    String s = streamName(info);
     environment.streamCreator().stream(s).create();
     try {
       int messageCount = 10_000;

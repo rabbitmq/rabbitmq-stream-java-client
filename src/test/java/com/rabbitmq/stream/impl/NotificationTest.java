@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -67,8 +69,8 @@ public class NotificationTest {
   }
 
   @Test
-  void publisherIsNotifiedAndReceivesPublishErrorIfStreamIsDeleted() throws Exception {
-    String s = UUID.randomUUID().toString();
+  void publisherIsNotifiedAndReceivesPublishErrorIfStreamIsDeleted(TestInfo info) throws Exception {
+    String s = streamName(info);
     Client client = cf.get();
     Client.Response response = client.create(s);
     assertThat(response.isOk()).isTrue();

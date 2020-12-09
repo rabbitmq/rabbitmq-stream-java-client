@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +47,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -572,23 +574,23 @@ public class ClientTest {
   }
 
   @Test
-  void declareAmqpStreamQueueAndUseItAsStream() throws Exception {
+  void declareAmqpStreamQueueAndUseItAsStream(TestInfo info) throws Exception {
     int messageCount = 10000;
-    String q = UUID.randomUUID().toString();
+    String q = streamName(info);
+    CountDownLatch publishedLatch = new CountDownLatch(messageCount);
+    CountDownLatch consumedLatch = new CountDownLatch(messageCount);
+    Client client =
+        cf.get(
+            new Client.ClientParameters()
+                .publishConfirmListener((publisherId, publishingId) -> publishedLatch.countDown())
+                .chunkListener(
+                    (client1, subscriptionId, offset, messageCount1, dataSize) ->
+                        client1.credit(subscriptionId, 1))
+                .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown()));
     ConnectionFactory connectionFactory = new ConnectionFactory();
     try (Connection amqpConnection = connectionFactory.newConnection();
         Channel c = amqpConnection.createChannel()) {
       c.queueDeclare(q, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
-      CountDownLatch publishedLatch = new CountDownLatch(messageCount);
-      CountDownLatch consumedLatch = new CountDownLatch(messageCount);
-      Client client =
-          cf.get(
-              new Client.ClientParameters()
-                  .publishConfirmListener((publisherId, publishingId) -> publishedLatch.countDown())
-                  .chunkListener(
-                      (client1, subscriptionId, offset, messageCount1, dataSize) ->
-                          client1.credit(subscriptionId, 1))
-                  .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown()));
 
       client.declarePublisher(b(1), null, q);
       IntStream.range(0, messageCount)
@@ -605,13 +607,15 @@ public class ClientTest {
 
       client.subscribe(b(1), q, OffsetSpecification.first(), 10);
       assertThat(consumedLatch.await(10, SECONDS)).isTrue();
+    } finally {
+      client.delete(q);
     }
   }
 
   @Test
-  void publishThenDeleteStreamShouldTriggerPublishErrorListenerWhenPublisherAgain()
+  void publishThenDeleteStreamShouldTriggerPublishErrorListenerWhenPublisherAgain(TestInfo info)
       throws Exception {
-    String s = UUID.randomUUID().toString();
+    String s = streamName(info);
     Client configurer = cf.get();
     Client.Response response = configurer.create(s);
     assertThat(response.isOk()).isTrue();

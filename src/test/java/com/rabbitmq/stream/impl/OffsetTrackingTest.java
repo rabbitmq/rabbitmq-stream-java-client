@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.forEach;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
@@ -47,6 +48,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -94,8 +96,8 @@ public class OffsetTrackingTest {
 
   @ParameterizedTest
   @MethodSource
-  void consumeAndCommit(BiConsumer<String, Client> streamCreator) throws Exception {
-    String s = UUID.randomUUID().toString();
+  void consumeAndCommit(BiConsumer<String, Client> streamCreator, TestInfo info) throws Exception {
+    String s = streamName(info);
 
     int batchSize = 100;
     int batchCount = 1_000;

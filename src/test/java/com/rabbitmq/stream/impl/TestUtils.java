@@ -27,6 +27,7 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.lang.annotation.*;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collection;
@@ -42,6 +43,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.assertj.core.api.AssertDelegateTarget;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.*;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -206,7 +208,7 @@ final class TestUtils {
       try {
         Field streamField = context.getTestInstance().get().getClass().getDeclaredField("stream");
         streamField.setAccessible(true);
-        String stream = UUID.randomUUID().toString();
+        String stream = streamName(context);
         streamField.set(context.getTestInstance().get(), stream);
         Client client =
             new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
@@ -256,6 +258,21 @@ final class TestUtils {
       EventLoopGroup eventLoopGroup = eventLoopGroup(context);
       eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
     }
+  }
+
+  static String streamName(TestInfo info) {
+    return streamName(info.getTestClass().get(), info.getTestMethod().get());
+  }
+
+  private static String streamName(ExtensionContext context) {
+    return streamName(context.getTestInstance().get().getClass(), context.getTestMethod().get());
+  }
+
+  private static String streamName(Class<?> testClass, Method testMethod) {
+    String uuid = UUID.randomUUID().toString();
+    return String.format(
+        "%s_%s%s",
+        testClass.getSimpleName(), testMethod.getName(), uuid.substring(uuid.length() / 2));
   }
 
   static class ClientFactory {
