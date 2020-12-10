@@ -46,6 +46,22 @@ To build the JAR file:
 ./mvnw clean package -DskipITs -DskipTests
 ----
 
+=== Running Tests with Docker
+
+Launch the broker:
+
+----
+docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
+----
+
+Launch the tests:
+
+----
+./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq
+----
+
+=== Running Tests
+
 To launch the test suite (requires a local RabbitMQ node with stream plugin enabled):
 
 ----

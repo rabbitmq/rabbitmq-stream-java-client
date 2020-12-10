@@ -97,6 +97,15 @@ public class Host {
   }
 
   public static String rabbitmqctlCommand() {
-    return System.getProperty("rabbitmqctl.bin");
+    String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
+    if (rabbitmqCtl == null) {
+      throw new IllegalStateException("Please define the rabbitmqctl.bin system property");
+    }
+    if (rabbitmqCtl.startsWith("DOCKER:")) {
+      String containerId = rabbitmqCtl.split(":")[1];
+      return "docker exec " + containerId + " rabbitmqctl";
+    } else {
+      return rabbitmqCtl;
+    }
   }
 }
