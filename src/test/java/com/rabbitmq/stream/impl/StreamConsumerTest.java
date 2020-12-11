@@ -26,6 +26,7 @@ import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
@@ -76,14 +77,16 @@ public class StreamConsumerTest {
     } else {
       recoveryInitialDelay = RECOVERY_DELAY;
     }
-    environment =
+    EnvironmentBuilder environmentBuilder =
         Environment.builder()
             .eventLoopGroup(eventLoopGroup)
             .recoveryBackOffDelayPolicy(
                 BackOffDelayPolicy.fixedWithInitialDelay(recoveryInitialDelay, RECOVERY_DELAY))
             .topologyUpdateBackOffDelayPolicy(
-                BackOffDelayPolicy.fixedWithInitialDelay(TOPOLOGY_DELAY, TOPOLOGY_DELAY))
-            .build();
+                BackOffDelayPolicy.fixedWithInitialDelay(TOPOLOGY_DELAY, TOPOLOGY_DELAY));
+
+    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
+    environment = environmentBuilder.build();
   }
 
   @AfterEach

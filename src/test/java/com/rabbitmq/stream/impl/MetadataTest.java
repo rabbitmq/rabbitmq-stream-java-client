@@ -19,7 +19,10 @@ import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.impl.Client.Broker;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -38,8 +41,6 @@ public class MetadataTest {
   @ValueSource(ints = {1, 2, 3, 4, 5})
   @ParameterizedTest
   void metadataExistingStreams(int streamCount, TestInfo info) throws Exception {
-    String hostname = InetAddress.getLocalHost().getHostName();
-
     Client streamClient = cf.get();
     String[] streams =
         IntStream.range(0, streamCount)
@@ -60,7 +61,7 @@ public class MetadataTest {
               Client.StreamMetadata streamMetadata = metadata.get(t);
               assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
               assertThat(streamMetadata.getStream()).isEqualTo(t);
-              assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
+              checkHost(streamMetadata.getLeader());
               assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
               assertThat(streamMetadata.getReplicas()).isEmpty();
             });
@@ -87,7 +88,6 @@ public class MetadataTest {
   })
   void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount, TestInfo info)
       throws Exception {
-    String hostname = InetAddress.getLocalHost().getHostName();
     Client streamClient = cf.get();
     List<String> existingStreams =
         IntStream.range(0, existingCount)
@@ -122,7 +122,7 @@ public class MetadataTest {
               assertThat(streamMetadata.getStream()).isEqualTo(t);
               if (existingStreams.contains(t)) {
                 assertThat(streamMetadata.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
-                assertThat(streamMetadata.getLeader().getHost()).isEqualTo(hostname);
+                checkHost(streamMetadata.getLeader());
                 assertThat(streamMetadata.getLeader().getPort()).isEqualTo(Client.DEFAULT_PORT);
                 assertThat(streamMetadata.getReplicas()).isEmpty();
               } else {
@@ -134,5 +134,19 @@ public class MetadataTest {
               }
             });
     existingStreams.forEach(t -> streamClient.delete(t));
+  }
+
+  static void checkHost(Broker broker) {
+    if (!Host.isOnDocker()) {
+      assertThat(broker.getHost()).isEqualTo(hostname());
+    }
+  }
+
+  static String hostname() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

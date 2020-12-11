@@ -60,19 +60,22 @@ class StreamEnvironment implements Environment {
   private final OffsetCommittingCoordinator offsetCommittingCoordinator;
   private volatile Client locator;
   private final AtomicBoolean closed = new AtomicBoolean(false);
+  private final Function<String, String> hostResolver;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
       Client.ClientParameters clientParametersPrototype,
       List<URI> uris,
       BackOffDelayPolicy recoveryBackOffDelayPolicy,
-      BackOffDelayPolicy topologyBackOffDelayPolicy) {
+      BackOffDelayPolicy topologyBackOffDelayPolicy,
+      Function<String, String> hostResolver) {
     this(
         scheduledExecutorService,
         clientParametersPrototype,
         uris,
         recoveryBackOffDelayPolicy,
         topologyBackOffDelayPolicy,
+        hostResolver,
         cp -> new Client(cp));
   }
 
@@ -82,6 +85,7 @@ class StreamEnvironment implements Environment {
       List<URI> uris,
       BackOffDelayPolicy recoveryBackOffDelayPolicy,
       BackOffDelayPolicy topologyBackOffDelayPolicy,
+      Function<String, String> hostResolver,
       Function<Client.ClientParameters, Client> clientFactory) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
@@ -90,10 +94,14 @@ class StreamEnvironment implements Environment {
     if (uris.isEmpty()) {
       this.addresses =
           Collections.singletonList(
-              new Address(clientParametersPrototype.host, clientParametersPrototype.port));
+              new Address(
+                  hostResolver.apply(clientParametersPrototype.host),
+                  clientParametersPrototype.port));
     } else {
       this.addresses =
-          uris.stream().map(uriItem -> new Address(uriItem)).collect(Collectors.toList());
+          uris.stream()
+              .map(uriItem -> new Address(hostResolver, uriItem))
+              .collect(Collectors.toList());
     }
 
     if (clientParametersPrototype.eventLoopGroup == null) {
@@ -115,6 +123,8 @@ class StreamEnvironment implements Environment {
       this.scheduledExecutorService = scheduledExecutorService;
       this.privateScheduleExecutorService = false;
     }
+
+    this.hostResolver = hostResolver;
 
     this.producersCoordinator = new ProducersCoordinator(this);
     this.consumersCoordinator = new ConsumersCoordinator(this);
@@ -365,6 +375,10 @@ class StreamEnvironment implements Environment {
     return this.locator;
   }
 
+  Function<String, String> hostResolver() {
+    return this.hostResolver;
+  }
+
   Codec codec() {
     return this.codec;
   }
@@ -426,9 +440,9 @@ class StreamEnvironment implements Environment {
     private final String host;
     private final int port;
 
-    private Address(URI uri) {
+    private Address(Function<String, String> hostResolver, URI uri) {
       this(
-          uri.getHost() == null ? "localhost" : uri.getHost(),
+          hostResolver.apply(uri.getHost() == null ? "localhost" : uri.getHost()),
           uri.getPort() == -1 ? Client.DEFAULT_PORT : uri.getPort());
     }
 

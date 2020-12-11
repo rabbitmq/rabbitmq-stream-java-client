@@ -14,7 +14,12 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.ChannelCustomizer;
+import com.rabbitmq.stream.ChunkChecksum;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
@@ -26,6 +31,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class StreamEnvironmentBuilder implements EnvironmentBuilder {
@@ -37,6 +43,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       BackOffDelayPolicy.fixed(Duration.ofSeconds(5));
   private BackOffDelayPolicy topologyBackOffDelayPolicy =
       BackOffDelayPolicy.fixedWithInitialDelay(Duration.ofSeconds(5), Duration.ofSeconds(1));
+
+  private Function<String, String> hostResolver = host -> host;
 
   public StreamEnvironmentBuilder() {}
 
@@ -169,6 +177,11 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
+  EnvironmentBuilder hostResolver(Function<String, String> hostResolver) {
+    this.hostResolver = hostResolver;
+    return this;
+  }
+
   @Override
   public Environment build() {
     return new StreamEnvironment(
@@ -176,6 +189,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         clientParameters,
         uris,
         recoveryBackOffDelayPolicy,
-        topologyBackOffDelayPolicy);
+        topologyBackOffDelayPolicy,
+        hostResolver);
   }
 }

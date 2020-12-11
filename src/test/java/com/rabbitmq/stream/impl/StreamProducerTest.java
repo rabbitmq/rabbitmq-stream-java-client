@@ -52,12 +52,13 @@ public class StreamProducerTest {
 
   @BeforeEach
   void init() {
-    environment =
+    EnvironmentBuilder environmentBuilder =
         Environment.builder()
             .eventLoopGroup(eventLoopGroup)
             .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
-            .topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
-            .build();
+            .topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)));
+    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
+    environment = environmentBuilder.build();
   }
 
   @AfterEach
@@ -263,10 +264,11 @@ public class StreamProducerTest {
                 published.get(),
                 (published.get() - (confirmed.get() + errored.get()))));
     assertThat(confirmed.get() + errored.get()).isEqualTo(published.get());
-    int confirmedAfterUnavailability = confirmed.get();
-    int errorAfterUnavailability = errored.get();
 
     waitAtMost(10, () -> ((StreamProducer) producer).status() == StreamProducer.Status.RUNNING);
+
+    int confirmedAfterUnavailability = confirmed.get();
+    int errorAfterUnavailability = errored.get();
 
     canPublish.set(true);
 

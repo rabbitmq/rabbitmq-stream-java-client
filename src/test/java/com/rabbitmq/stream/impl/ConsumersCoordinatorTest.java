@@ -104,6 +104,7 @@ public class ConsumersCoordinatorTest {
     mocks = MockitoAnnotations.openMocks(this);
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
+    when(environment.hostResolver()).thenReturn(host -> host);
 
     coordinator = new ConsumersCoordinator(environment, clientFactory);
   }

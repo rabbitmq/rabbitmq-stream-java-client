@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import java.util.Collection;
 import java.util.List;
@@ -49,8 +50,12 @@ class ProducersCoordinator {
   ProducersCoordinator(
       StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
     this.environment = environment;
-    this.clientFactory = clientFactory;
-    this.environment.clientParametersCopy();
+    this.clientFactory =
+        clientParameters -> {
+          ClientParameters parametersCopy = clientParameters.duplicate();
+          parametersCopy.host(environment.hostResolver().apply(parametersCopy.host));
+          return clientFactory.apply(parametersCopy);
+        };
   }
 
   private static String keyForManagerPool(Client.Broker broker) {

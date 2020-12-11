@@ -70,6 +70,7 @@ public class StreamEnvironmentTest {
   @BeforeEach
   void init() {
     environmentBuilder = Environment.builder();
+    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
     environmentBuilder.eventLoopGroup(eventLoopGroup);
   }
 

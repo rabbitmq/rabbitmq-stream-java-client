@@ -24,6 +24,7 @@ import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -54,7 +55,12 @@ class ConsumersCoordinator {
   ConsumersCoordinator(
       StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
     this.environment = environment;
-    this.clientFactory = clientFactory;
+    this.clientFactory =
+        clientParameters -> {
+          ClientParameters parametersCopy = clientParameters.duplicate();
+          parametersCopy.host(environment.hostResolver().apply(parametersCopy.host));
+          return clientFactory.apply(parametersCopy);
+        };
   }
 
   ConsumersCoordinator(StreamEnvironment environment) {

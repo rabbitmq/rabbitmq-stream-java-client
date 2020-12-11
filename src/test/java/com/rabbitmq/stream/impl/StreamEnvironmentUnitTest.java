@@ -75,6 +75,7 @@ public class StreamEnvironmentUnitTest {
             Collections.emptyList(),
             recoveryBackOffDelayPolicy,
             topologyUpdateBackOffDelayPolicy,
+            host -> host,
             cf);
   }
 
@@ -128,6 +129,7 @@ public class StreamEnvironmentUnitTest {
             Arrays.asList(uri, uri, uri),
             recoveryBackOffDelayPolicy,
             topologyUpdateBackOffDelayPolicy,
+            host -> host,
             cf);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }

@@ -90,6 +90,7 @@ public class ProducersCoordinatorTest {
     mocks = MockitoAnnotations.openMocks(this);
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
+    when(environment.hostResolver()).thenReturn(host -> host);
     when(committingConsumer.stream()).thenReturn("stream");
     when(client.declarePublisher(anyByte(), isNull(), anyString()))
         .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
