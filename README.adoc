@@ -1,5 +1,7 @@
 = RabbitMQ Stream Java Client
 
+image:https://github.com/rabbitmq/rabbitmq-stream-java-client/workflows/Build%20(Linux)/badge.svg?branch=master["Build Status", https://github.com/rabbitmq/rabbitmq-stream-java-client/actions?query=workflow%3A%22Build+%28Linux%29%22+branch%3Amaster]
+
 The RabbitMQ Stream Java Client is a Java library to communicate with
 the https://github.com/rabbitmq/rabbitmq-server/tree/master/deps/rabbitmq_stream[RabbitMQ Stream Plugin].
 It allows to create and delete streams, as well as to publish to and consume from
