@@ -162,10 +162,12 @@ public class ProducersCoordinatorTest {
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
     CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
-
     doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
-
     doAnswer(answer(() -> setClientLatch.countDown())).when(committingConsumer).setClient(client);
+
+    CountDownLatch runningLatch = new CountDownLatch(1 + 1);
+    doAnswer(answer(() -> runningLatch.countDown())).when(producer).running();
+    doAnswer(answer(() -> runningLatch.countDown())).when(committingConsumer).running();
 
     coordinator.registerProducer(producer, "stream");
     coordinator.registerCommittingConsumer(committingConsumer);
@@ -179,6 +181,7 @@ public class ProducersCoordinatorTest {
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
 
     assertThat(setClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+    assertThat(runningLatch.await(5, TimeUnit.SECONDS)).isTrue();
     verify(producer, times(1)).unavailable();
     verify(producer, times(2)).setClient(client);
     verify(producer, times(1)).running();
