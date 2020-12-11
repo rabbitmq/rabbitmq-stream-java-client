@@ -21,6 +21,8 @@ import java.io.InputStreamReader;
 
 public class Host {
 
+  public static final String DOCKER_PREFIX = "DOCKER:";
+
   private static String capture(InputStream is) throws IOException {
     BufferedReader br = new BufferedReader(new InputStreamReader(is));
     String line;
@@ -101,11 +103,19 @@ public class Host {
     if (rabbitmqCtl == null) {
       throw new IllegalStateException("Please define the rabbitmqctl.bin system property");
     }
-    if (rabbitmqCtl.startsWith("DOCKER:")) {
+    if (rabbitmqCtl.startsWith(DOCKER_PREFIX)) {
       String containerId = rabbitmqCtl.split(":")[1];
       return "docker exec " + containerId + " rabbitmqctl";
     } else {
       return rabbitmqCtl;
     }
+  }
+
+  public static boolean isOnDocker() {
+    String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
+    if (rabbitmqCtl == null) {
+      throw new IllegalStateException("Please define the rabbitmqctl.bin system property");
+    }
+    return rabbitmqCtl.startsWith(DOCKER_PREFIX);
   }
 }

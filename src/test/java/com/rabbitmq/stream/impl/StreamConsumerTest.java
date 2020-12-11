@@ -64,13 +64,23 @@ public class StreamConsumerTest {
 
   Environment environment;
 
+  static volatile Duration recoveryInitialDelay;
+
   @BeforeEach
   void init() {
+    if (Host.isOnDocker()) {
+      // with a containerized broker in bridged network mode, the client should not
+      // reconnect to soon, as it would see the port still open but would not get any response.
+      // This then provokes some casdading timeouts in the test.
+      recoveryInitialDelay = Duration.ofSeconds(10);
+    } else {
+      recoveryInitialDelay = RECOVERY_DELAY;
+    }
     environment =
         Environment.builder()
             .eventLoopGroup(eventLoopGroup)
             .recoveryBackOffDelayPolicy(
-                BackOffDelayPolicy.fixedWithInitialDelay(RECOVERY_DELAY, RECOVERY_DELAY))
+                BackOffDelayPolicy.fixedWithInitialDelay(recoveryInitialDelay, RECOVERY_DELAY))
             .topologyUpdateBackOffDelayPolicy(
                 BackOffDelayPolicy.fixedWithInitialDelay(TOPOLOGY_DELAY, TOPOLOGY_DELAY))
             .build();
@@ -299,7 +309,7 @@ public class StreamConsumerTest {
               } finally {
                 Host.rabbitmqctl("start_app");
               }
-              Thread.sleep(RECOVERY_DELAY.toMillis() * 2);
+              Thread.sleep(recoveryInitialDelay.toMillis() * 2);
             },
             "broker is restarted"));
   }
