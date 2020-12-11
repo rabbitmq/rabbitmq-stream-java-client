@@ -101,8 +101,8 @@ public class RetentionClientTest {
           context -> {
             String stream = (String) ((Object[]) context)[1];
             ConnectionFactory cf = new ConnectionFactory();
-            try (Connection c = cf.newConnection();
-                Channel ch = c.createChannel()) {
+            try (Connection c = cf.newConnection()) {
+              Channel ch = c.createChannel();
               ch.queueDeclare(
                   stream, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
             }
@@ -113,8 +113,8 @@ public class RetentionClientTest {
           context -> {
             String stream = (String) ((Object[]) context)[1];
             ConnectionFactory cf = new ConnectionFactory();
-            try (Connection c = cf.newConnection();
-                Channel ch = c.createChannel()) {
+            try (Connection c = cf.newConnection()) {
+              Channel ch = c.createChannel();
               Map<String, Object> arguments = new HashMap<>();
               arguments.put("x-queue-type", "stream");
               arguments.put("x-max-length-bytes", messageCount * payloadSize / 10);
@@ -128,8 +128,8 @@ public class RetentionClientTest {
           context -> {
             String stream = (String) ((Object[]) context)[1];
             ConnectionFactory cf = new ConnectionFactory();
-            try (Connection c = cf.newConnection();
-                Channel ch = c.createChannel()) {
+            try (Connection c = cf.newConnection()) {
+              Channel ch = c.createChannel();
               Map<String, Object> arguments = new HashMap<>();
               arguments.put("x-queue-type", "stream");
               arguments.put("x-max-age", "2s");

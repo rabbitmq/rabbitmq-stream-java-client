@@ -532,8 +532,8 @@ public class ClientTest {
   void deleteNonStreamQueueShouldReturnError() throws Exception {
     String nonStreamQueue = UUID.randomUUID().toString();
     ConnectionFactory connectionFactory = new ConnectionFactory();
-    try (Connection amqpConnection = connectionFactory.newConnection();
-        Channel c = amqpConnection.createChannel()) {
+    try (Connection amqpConnection = connectionFactory.newConnection()) {
+      Channel c = amqpConnection.createChannel();
       c.queueDeclare(nonStreamQueue, false, true, false, null);
       Client.Response response = cf.get().delete(nonStreamQueue);
       assertThat(response.isOk()).isFalse();
@@ -561,8 +561,8 @@ public class ClientTest {
   void declarePublisherToNonStreamQueueTriggersError() throws Exception {
     String nonStreamQueue = UUID.randomUUID().toString();
     ConnectionFactory connectionFactory = new ConnectionFactory();
-    try (Connection amqpConnection = connectionFactory.newConnection();
-        Channel c = amqpConnection.createChannel()) {
+    try (Connection amqpConnection = connectionFactory.newConnection()) {
+      Channel c = amqpConnection.createChannel();
       c.queueDeclare(nonStreamQueue, false, true, false, null);
 
       Client client = cf.get();
@@ -588,8 +588,8 @@ public class ClientTest {
                         client1.credit(subscriptionId, 1))
                 .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown()));
     ConnectionFactory connectionFactory = new ConnectionFactory();
-    try (Connection amqpConnection = connectionFactory.newConnection();
-        Channel c = amqpConnection.createChannel()) {
+    try (Connection amqpConnection = connectionFactory.newConnection()) {
+      Channel c = amqpConnection.createChannel();
       c.queueDeclare(q, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
 
       client.declarePublisher(b(1), null, q);

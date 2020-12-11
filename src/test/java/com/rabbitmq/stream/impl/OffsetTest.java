@@ -77,8 +77,8 @@ public class OffsetTest {
     CountDownLatch latch = new CountDownLatch(messageCount);
     AtomicLong first = new AtomicLong(-1);
     AtomicLong last = new AtomicLong();
-    try (Connection c = new ConnectionFactory().newConnection();
-        Channel ch = c.createChannel()) {
+    try (Connection c = new ConnectionFactory().newConnection()) {
+      Channel ch = c.createChannel();
       ch.basicQos(100);
       ch.basicConsume(
           stream,
@@ -154,8 +154,8 @@ public class OffsetTest {
                     }));
     client.subscribe(b(1), stream, OffsetSpecification.last(), 10);
 
-    try (Connection c = new ConnectionFactory().newConnection();
-        Channel ch = c.createChannel()) {
+    try (Connection c = new ConnectionFactory().newConnection()) {
+      Channel ch = c.createChannel();
       ch.basicQos(100);
       ch.basicConsume(
           stream,
@@ -218,8 +218,8 @@ public class OffsetTest {
     CountDownLatch latch = new CountDownLatch(1);
     AtomicLong first = new AtomicLong(-1);
     AtomicLong last = new AtomicLong();
-    try (Connection c = new ConnectionFactory().newConnection();
-        Channel ch = c.createChannel()) {
+    try (Connection c = new ConnectionFactory().newConnection()) {
+      Channel ch = c.createChannel();
       ch.basicQos(100);
       ch.basicConsume(
           stream,
@@ -278,8 +278,8 @@ public class OffsetTest {
     CountDownLatch latch = new CountDownLatch(messageCount - offset);
     AtomicLong first = new AtomicLong(-1);
     AtomicLong last = new AtomicLong();
-    try (Connection c = new ConnectionFactory().newConnection();
-        Channel ch = c.createChannel()) {
+    try (Connection c = new ConnectionFactory().newConnection()) {
+      Channel ch = c.createChannel();
       ch.basicQos(100);
       ch.basicConsume(
           stream,
@@ -353,8 +353,8 @@ public class OffsetTest {
     AtomicLong last = new AtomicLong();
     Set<String> consumed = ConcurrentHashMap.newKeySet();
 
-    try (Connection c = new ConnectionFactory().newConnection();
-        Channel ch = c.createChannel()) {
+    try (Connection c = new ConnectionFactory().newConnection()) {
+      Channel ch = c.createChannel();
       ch.basicQos(100);
       ch.basicConsume(
           stream,

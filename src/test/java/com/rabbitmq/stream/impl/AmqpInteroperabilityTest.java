@@ -180,8 +180,8 @@ public class AmqpInteroperabilityTest {
                     // precision
                     ));
 
-    try (Connection amqpConnection = connectionFactory.newConnection();
-        Channel c = amqpConnection.createChannel()) {
+    try (Connection amqpConnection = connectionFactory.newConnection()) {
+      Channel c = amqpConnection.createChannel();
       c.confirmSelect();
 
       Map<String, Object> headers = new HashMap<>();

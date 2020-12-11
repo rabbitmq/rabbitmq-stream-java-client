@@ -104,8 +104,8 @@ public class SubscriptionTest {
   void subscriptionToNonStreamQueueShouldReturnError() throws Exception {
     String nonStreamQueue = UUID.randomUUID().toString();
     ConnectionFactory connectionFactory = new ConnectionFactory();
-    try (Connection amqpConnection = connectionFactory.newConnection();
-        Channel c = amqpConnection.createChannel()) {
+    try (Connection amqpConnection = connectionFactory.newConnection()) {
+      Channel c = amqpConnection.createChannel();
       c.queueDeclare(nonStreamQueue, false, true, false, null);
 
       Client.Response response =
