@@ -262,6 +262,10 @@ public class ProducersCoordinatorTest {
         .when(movingCommittingConsumer)
         .setClient(client);
 
+    CountDownLatch runningLatch = new CountDownLatch(1 + 1);
+    doAnswer(answer(() -> runningLatch.countDown())).when(movingProducer).running();
+    doAnswer(answer(() -> runningLatch.countDown())).when(movingCommittingConsumer).running();
+
     coordinator.registerProducer(movingProducer, movingStream);
     coordinator.registerProducer(fixedProducer, fixedStream);
     coordinator.registerCommittingConsumer(movingCommittingConsumer);
@@ -277,6 +281,7 @@ public class ProducersCoordinatorTest {
     metadataListener.handle(movingStream, Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
     assertThat(setClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+    assertThat(runningLatch.await(5, TimeUnit.SECONDS)).isTrue();
     verify(movingProducer, times(1)).unavailable();
     verify(movingProducer, times(2)).setClient(client);
     verify(movingProducer, times(1)).running();
