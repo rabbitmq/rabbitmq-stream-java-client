@@ -33,6 +33,6 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2
       - name: Configure advertised host
-        run: docker exec rabbitmq rabbitmqctl eval "application:set_env(rabbitmq_stream, advertised_host, '$(hostname)')."
+        run: docker exec ${{job.services.rabbitmq.id}} rabbitmqctl eval "application:set_env(rabbitmq_stream, advertised_host, '$(hostname)')."
       - name: Test
         run: ./mvnw test -Drabbitmqctl.bin=DOCKER:${{job.services.rabbitmq.id}}
