@@ -1703,8 +1703,8 @@ public class Client implements AutoCloseable {
   }
 
   private void closingSequence(ShutdownContext.ShutdownReason reason) {
-    this.nettyClosing.run();
     this.shutdownListenerCallback.accept(reason);
+    this.nettyClosing.run();
     this.executorServiceClosing.run();
   }
 
@@ -1720,7 +1720,6 @@ public class Client implements AutoCloseable {
     } catch (ExecutionException e) {
       LOGGER.info("Channel closing failed", e);
     } catch (TimeoutException e) {
-      e.printStackTrace();
       LOGGER.info("Could not close channel in 10 seconds");
     }
 

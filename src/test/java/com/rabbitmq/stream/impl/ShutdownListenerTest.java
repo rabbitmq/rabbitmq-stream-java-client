@@ -72,7 +72,7 @@ public class ShutdownListenerTest {
 
   @Test
   @TestUtils.DisabledIfRabbitMqCtlNotSet
-  void shutdownListenerShouldBeCalledWhenBrokerGoesDown() throws Exception {
+  void shutdownListenerShouldBeCalledWhenConnectionIsKilled() throws Exception {
     String connectionName = UUID.randomUUID().toString();
     CountDownLatch shutdownLatch = new CountDownLatch(1);
     AtomicReference<Client.ShutdownContext.ShutdownReason> reason = new AtomicReference<>();
