@@ -21,27 +21,21 @@ import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
 import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
 import static com.rabbitmq.stream.Constants.COMMAND_DELETE_PUBLISHER;
 import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
-import static com.rabbitmq.stream.Constants.COMMAND_DELIVER;
 import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
 import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
-import static com.rabbitmq.stream.Constants.COMMAND_METADATA_UPDATE;
 import static com.rabbitmq.stream.Constants.COMMAND_OPEN;
 import static com.rabbitmq.stream.Constants.COMMAND_PEER_PROPERTIES;
 import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH;
-import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_CONFIRM;
-import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_ERROR;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
 import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
-import static com.rabbitmq.stream.Constants.COMMAND_TUNE;
 import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
 import static com.rabbitmq.stream.Constants.VERSION_0;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -50,7 +44,6 @@ import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ChunkChecksum;
-import com.rabbitmq.stream.ChunkChecksumValidationException;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Message;
@@ -59,6 +52,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
@@ -93,7 +87,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -141,15 +134,15 @@ public class Client implements AutoCloseable {
       (publisherId, publishingId, errorCode) -> {};
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
-  private final PublishConfirmListener publishConfirmListener;
-  private final PublishErrorListener publishErrorListener;
-  private final ChunkListener chunkListener;
-  private final MessageListener messageListener;
-  private final CreditNotification creditNotification;
-  private final MetadataListener metadataListener;
+  final PublishConfirmListener publishConfirmListener;
+  final PublishErrorListener publishErrorListener;
+  final ChunkListener chunkListener;
+  final MessageListener messageListener;
+  final CreditNotification creditNotification;
+  final MetadataListener metadataListener;
   private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
-  private final Codec codec;
-  private final Channel channel;
+  final Codec codec;
+  final Channel channel;
   private final LongSupplier publishSequenceSupplier =
       new LongSupplier() {
         private final AtomicLong publishSequence = new AtomicLong(0);
@@ -160,28 +153,28 @@ public class Client implements AutoCloseable {
         }
       };
   private final AtomicInteger correlationSequence = new AtomicInteger(0);
-  private final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
+  final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
       new ConcurrentHashMap<>();
-  private final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
-  private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+  final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
+  final ExecutorService executorService = Executors.newSingleThreadExecutor();
   private final Runnable executorServiceClosing;
   private final SaslConfiguration saslConfiguration;
   private final CredentialsProvider credentialsProvider;
-  private final TuneState tuneState;
-  private final AtomicBoolean closing = new AtomicBoolean(false);
+  final TuneState tuneState;
+  final AtomicBoolean closing = new AtomicBoolean(false);
   private final Runnable nettyClosing;
   private final int maxFrameSize;
   private final boolean frameSizeCopped;
   private final EventLoopGroup eventLoopGroup;
-  private final ChunkChecksum chunkChecksum;
+  final ChunkChecksum chunkChecksum;
   private final Map<String, String> clientProperties;
-  private final MetricsCollector metricsCollector;
+  final MetricsCollector metricsCollector;
   private final String NETTY_HANDLER_FLUSH_CONSOLIDATION =
       FlushConsolidationHandler.class.getSimpleName();
-  private final String NETTY_HANDLER_FRAME_DECODER =
+  static final String NETTY_HANDLER_FRAME_DECODER =
       LengthFieldBasedFrameDecoder.class.getSimpleName();
   private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
-  private final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
+  static final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
   private final String host;
   private final int port;
 
@@ -287,552 +280,6 @@ public class Client implements AutoCloseable {
     return Collections.unmodifiableMap(clientProperties);
   }
 
-  static void handleMetadataUpdate(ByteBuf bb, int frameSize, MetadataListener metadataListener) {
-    int read = 2 + 2; // already read the command id and version
-    short code = bb.readShort();
-    read += 2;
-    if (code == RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
-      String stream = readString(bb);
-      LOGGER.debug("Stream {} is no longer available", stream);
-      read += (2 + stream.length());
-      metadataListener.handle(stream, code);
-    } else {
-      throw new IllegalArgumentException("Unsupported metadata update code " + code);
-    }
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static void handleResponse(
-      ByteBuf bb,
-      int frameSize,
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
-    int read = 2 + 2; // already read the command id and version
-    int correlationId = bb.readInt();
-    read += 4;
-    short responseCode = bb.readShort();
-    read += 2;
-
-    OutstandingRequest<Response> outstandingRequest =
-        remove(outstandingRequests, correlationId, Response.class);
-    if (outstandingRequest == null) {
-      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
-    } else {
-      Response response = new Response(responseCode);
-      outstandingRequest.response.set(response);
-      outstandingRequest.latch.countDown();
-    }
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static void handleCreditNotification(
-      ByteBuf bb, int frameSize, CreditNotification creditNotification) {
-    int read = 2 + 2; // already read the command id and version
-
-    short responseCode = bb.readShort();
-    read += 2;
-    byte subscriptionId = bb.readByte();
-    read += 1;
-
-    creditNotification.handle(subscriptionId, responseCode);
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static void handleQueryOffsetResponse(
-      ByteBuf bb,
-      int frameSize,
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
-    int read = 2 + 2; // already read the command id and version
-
-    int correlationId = bb.readInt();
-    read += 4;
-    short responseCode = bb.readShort();
-    read += 2;
-    long offset = bb.readLong();
-    read += 8;
-
-    OutstandingRequest<QueryOffsetResponse> outstandingRequest =
-        remove(outstandingRequests, correlationId, QueryOffsetResponse.class);
-    if (outstandingRequest == null) {
-      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
-    } else {
-      QueryOffsetResponse response = new QueryOffsetResponse(responseCode, offset);
-      outstandingRequest.response.set(response);
-      outstandingRequest.latch.countDown();
-    }
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static void handleQueryPublisherSequenceResponse(
-      ByteBuf bb,
-      int frameSize,
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
-    int read = 2 + 2; // already read the command id and version
-
-    int correlationId = bb.readInt();
-    read += 4;
-    short responseCode = bb.readShort();
-    read += 2;
-    long sequence = bb.readLong();
-    read += 8;
-
-    OutstandingRequest<QueryPublisherSequenceResponse> outstandingRequest =
-        remove(outstandingRequests, correlationId, QueryPublisherSequenceResponse.class);
-    if (outstandingRequest == null) {
-      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
-    } else {
-      QueryPublisherSequenceResponse response =
-          new QueryPublisherSequenceResponse(responseCode, sequence);
-      outstandingRequest.response.set(response);
-      outstandingRequest.latch.countDown();
-    }
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static void handlePeerProperties(
-      ByteBuf bb,
-      int frameSize,
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
-    int read = 2 + 2; // already read the command id and version
-    int correlationId = bb.readInt();
-    read += 4;
-
-    short responseCode = bb.readShort();
-    read += 2;
-    if (responseCode != RESPONSE_CODE_OK) {
-      if (read != frameSize) {
-        bb.readBytes(new byte[frameSize - read]);
-      }
-      // FIXME: should we unblock the request and notify that there's something wrong?
-      throw new StreamException(
-          "Unexpected response code for SASL handshake response: " + responseCode);
-    }
-
-    int serverPropertiesCount = bb.readInt();
-    read += 4;
-    Map<String, String> serverProperties = new LinkedHashMap<>(serverPropertiesCount);
-
-    for (int i = 0; i < serverPropertiesCount; i++) {
-      String key = readString(bb);
-      read += 2 + key.length();
-      String value = readString(bb);
-      read += 2 + value.length();
-      serverProperties.put(key, value);
-    }
-
-    OutstandingRequest<Map<String, String>> outstandingRequest =
-        remove(
-            outstandingRequests,
-            correlationId,
-            new ParameterizedTypeReference<Map<String, String>>() {});
-    if (outstandingRequest == null) {
-      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
-    } else {
-      outstandingRequest.response.set(Collections.unmodifiableMap(serverProperties));
-      outstandingRequest.latch.countDown();
-    }
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static void handleSaslHandshakeResponse(
-      ByteBuf bb,
-      int frameSize,
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
-    int read = 2 + 2; // already read the command id and version
-    int correlationId = bb.readInt();
-    read += 4;
-
-    short responseCode = bb.readShort();
-    read += 2;
-    if (responseCode != RESPONSE_CODE_OK) {
-      if (read != frameSize) {
-        bb.readBytes(new byte[frameSize - read]);
-      }
-      // FIXME: should we unlock the request and notify that there's something wrong?
-      throw new StreamException(
-          "Unexpected response code for SASL handshake response: " + responseCode);
-    }
-
-    int mechanismsCount = bb.readInt();
-
-    read += 4;
-    List<String> mechanisms = new ArrayList<>(mechanismsCount);
-    for (int i = 0; i < mechanismsCount; i++) {
-      String mechanism = readString(bb);
-      mechanisms.add(mechanism);
-      read += 2 + mechanism.length();
-    }
-
-    OutstandingRequest<List<String>> outstandingRequest =
-        remove(
-            outstandingRequests, correlationId, new ParameterizedTypeReference<List<String>>() {});
-    if (outstandingRequest == null) {
-      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
-    } else {
-      outstandingRequest.response.set(mechanisms);
-      outstandingRequest.latch.countDown();
-    }
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static void handleSaslAuthenticateResponse(
-      ByteBuf bb,
-      int frameSize,
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
-    int read = 2 + 2; // already read the command id and version
-    int correlationId = bb.readInt();
-    read += 4;
-
-    short responseCode = bb.readShort();
-    read += 2;
-
-    byte[] challenge;
-    if (responseCode == RESPONSE_CODE_SASL_CHALLENGE) {
-      int challengeSize = bb.readInt();
-      read += 4;
-      challenge = new byte[challengeSize];
-      bb.readBytes(challenge);
-      read += challenge.length;
-    } else {
-      challenge = null;
-    }
-
-    SaslAuthenticateResponse response = new SaslAuthenticateResponse(responseCode, challenge);
-
-    OutstandingRequest<SaslAuthenticateResponse> outstandingRequest =
-        remove(outstandingRequests, correlationId, SaslAuthenticateResponse.class);
-    if (outstandingRequest == null) {
-      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
-    } else {
-      outstandingRequest.response.set(response);
-      outstandingRequest.latch.countDown();
-    }
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  private static int negotiatedMaxValue(int clientValue, int serverValue) {
-    return (clientValue == 0 || serverValue == 0)
-        ? Math.max(clientValue, serverValue)
-        : Math.min(clientValue, serverValue);
-  }
-
-  @SuppressWarnings("unchecked")
-  private static <T> OutstandingRequest<T> remove(
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests,
-      int correlationId,
-      ParameterizedTypeReference<T> type) {
-    return (OutstandingRequest<T>) outstandingRequests.remove(correlationId);
-  }
-
-  @SuppressWarnings("unchecked")
-  private static <T> OutstandingRequest<T> remove(
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests,
-      int correlationId,
-      Class<T> clazz) {
-    return (OutstandingRequest<T>) outstandingRequests.remove(correlationId);
-  }
-
-  static void handleMetadata(
-      ByteBuf bb,
-      int frameSize,
-      ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests) {
-    int read = 2 + 2; // already read the command id and version
-    int correlationId = bb.readInt();
-    read += 4;
-    Map<Short, Broker> brokers = new HashMap<>();
-    int brokersCount = bb.readInt();
-    read += 4;
-    for (int i = 0; i < brokersCount; i++) {
-      short brokerReference = bb.readShort();
-      read += 2;
-      String host = readString(bb);
-      read += 2 + host.length();
-      int port = bb.readInt();
-      read += 4;
-      brokers.put(brokerReference, new Broker(host, port));
-    }
-
-    int streamsCount = bb.readInt();
-    Map<String, StreamMetadata> results = new LinkedHashMap<>(streamsCount);
-    read += 4;
-    for (int i = 0; i < streamsCount; i++) {
-      String stream = readString(bb);
-      read += 2 + stream.length();
-      short responseCode = bb.readShort();
-      read += 2;
-      short leaderReference = bb.readShort();
-      read += 2;
-      int replicasCount = bb.readInt();
-      read += 4;
-      List<Broker> replicas;
-      if (replicasCount == 0) {
-        replicas = Collections.emptyList();
-      } else {
-        replicas = new ArrayList<>(replicasCount);
-        for (int j = 0; j < replicasCount; j++) {
-          short replicaReference = bb.readShort();
-          read += 2;
-          replicas.add(brokers.get(replicaReference));
-        }
-      }
-      StreamMetadata streamMetadata =
-          new StreamMetadata(stream, responseCode, brokers.get(leaderReference), replicas);
-      results.put(stream, streamMetadata);
-    }
-
-    OutstandingRequest<Map<String, StreamMetadata>> outstandingRequest =
-        remove(
-            outstandingRequests,
-            correlationId,
-            new ParameterizedTypeReference<Map<String, StreamMetadata>>() {});
-    if (outstandingRequest == null) {
-      LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
-    } else {
-      outstandingRequest.response.set(results);
-      outstandingRequest.latch.countDown();
-    }
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  private static String readString(ByteBuf bb) {
-    short size = bb.readShort();
-    byte[] bytes = new byte[size];
-    bb.readBytes(bytes);
-    return new String(bytes, StandardCharsets.UTF_8);
-  }
-
-  static void handleDeliver(
-      ByteBuf bb,
-      Client client,
-      ChunkListener chunkListener,
-      MessageListener messageListener,
-      int frameSize,
-      Codec codec,
-      List<SubscriptionOffset> subscriptionOffsets,
-      ChunkChecksum chunkChecksum,
-      MetricsCollector metricsCollector) {
-    int read = 2 + 2; // already read the command id and version
-    byte subscriptionId = bb.readByte();
-    read += 1;
-    /*
-    %% <<
-    %%   Magic=5:4/unsigned,
-    %%   ProtoVersion:4/unsigned,
-    %%   ChunkType:8/unsigned, %% 0=user, 1=tracking delta, 2=tracking snapshot
-    %%   NumEntries:16/unsigned, %% need some kind of limit on chunk sizes 64k is a good start
-    %%   NumRecords:32/unsigned, %% total including all sub batch entries
-    %%   Timestamp:64/signed, %% millisecond posix (ish) timestamp
-    %%   Epoch:64/unsigned,
-    %%   ChunkFirstOffset:64/unsigned,
-    %%   ChunkCrc:32/integer, %% CRC for the records portion of the data
-    %%   DataLength:32/unsigned, %% length until end of chunk
-    %%   TrailerLength:32/unsigned
-    %%   [Entry]
-    %%   ...>>
-     */
-    // FIXME handle magic and version
-    bb.readByte();
-    read += 1;
-
-    byte chunkType = bb.readByte();
-    if (chunkType != 0) {
-      throw new IllegalStateException("Invalid chunk type: " + chunkType);
-    }
-    read += 1;
-
-    int numEntries = bb.readUnsignedShort();
-    read += 2;
-    long numRecords = bb.readUnsignedInt();
-    read += 4;
-    bb.readLong(); // timestamp
-    read += 8;
-    bb.readLong(); // epoch, unsigned long
-    read += 8;
-    long offset = bb.readLong(); // unsigned long
-    read += 8;
-    long crc = bb.readUnsignedInt();
-    read += 4;
-    long dataLength = bb.readUnsignedInt();
-    read += 4;
-    bb.readUnsignedInt(); // trailer length, unused here
-    read += 4;
-
-    chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
-
-    long offsetLimit = -1;
-    if (!subscriptionOffsets.isEmpty()) {
-      for (SubscriptionOffset subscriptionOffset : subscriptionOffsets) {
-        if (subscriptionOffset.subscriptionId == subscriptionId) {
-          subscriptionOffsets.remove(subscriptionOffset);
-          offsetLimit = subscriptionOffset.offset;
-          break;
-        }
-      }
-    }
-
-    final boolean filter = offsetLimit != -1;
-
-    try {
-      // TODO handle exception in exception handler
-      chunkChecksum.checksum(bb, dataLength, crc);
-    } catch (ChunkChecksumValidationException e) {
-      LOGGER.warn(
-          "Checksum failure at offset {}, expecting {}, got {}",
-          offset,
-          e.getExpected(),
-          e.getComputed());
-      throw e;
-    }
-
-    metricsCollector.chunk(numEntries);
-    metricsCollector.consume(numRecords);
-
-    while (numRecords != 0) {
-      byte entryType = bb.readByte();
-      if ((entryType & 0x80) == 0) {
-        /*
-        %%   <<0=SimpleEntryType:1,
-        %%     Size:31/unsigned,
-        %%     Data:Size/binary>>
-         */
-        bb.readerIndex(bb.readerIndex() - 1);
-        read =
-            handleMessage(
-                bb, read, filter, offset, offsetLimit, codec, messageListener, subscriptionId);
-        numRecords--;
-        offset++; // works even for unsigned long
-      } else {
-        /*
-        %%   <<1=SubBatchEntryType:1,
-        %%     CompressionType:3,
-        %%     Reserved:4,
-        %%     NumRecords:16/unsigned,
-        %%     Size:32/unsigned,
-        %%     Data:Size/binary>>
-         */
-        byte compression = (byte) ((entryType & 0x70) >> 4);
-        read++;
-        // compression not used yet, just making sure we get something
-        MessageBatch.Compression.get(compression);
-        int numRecordsInBatch = bb.readUnsignedShort();
-        read += 2;
-        bb.readInt(); // batch size, does not need it
-        read += 4;
-
-        numRecords -= numRecordsInBatch;
-
-        while (numRecordsInBatch != 0) {
-          read =
-              handleMessage(
-                  bb, read, filter, offset, offsetLimit, codec, messageListener, subscriptionId);
-          numRecordsInBatch--;
-          offset++; // works even for unsigned long
-        }
-      }
-    }
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static int handleMessage(
-      ByteBuf bb,
-      int read,
-      boolean filter,
-      long offset,
-      long offsetLimit,
-      Codec codec,
-      MessageListener messageListener,
-      byte subscriptionId) {
-    int entrySize = bb.readInt();
-    read += 4;
-    byte[] data = new byte[entrySize];
-    bb.readBytes(data);
-    read += entrySize;
-
-    if (filter && Long.compareUnsigned(offset, offsetLimit) < 0) {
-      // filter
-    } else {
-      Message message = codec.decode(data);
-      messageListener.handle(subscriptionId, offset, message);
-    }
-    return read;
-  }
-
-  static void handleConfirm(
-      ByteBuf bb,
-      PublishConfirmListener publishConfirmListener,
-      int frameSize,
-      MetricsCollector metricsCollector) {
-    int read = 4; // already read the command id and version
-    byte publisherId = bb.readByte();
-    read += 1;
-    int publishingIdCount = bb.readInt();
-    read += 4;
-    metricsCollector.publishConfirm(publishingIdCount);
-    long publishingId;
-    while (publishingIdCount != 0) {
-      publishingId = bb.readLong();
-      read += 8;
-      publishConfirmListener.handle(publisherId, publishingId);
-      publishingIdCount--;
-    }
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  static void handlePublishError(
-      ByteBuf bb,
-      PublishErrorListener publishErrorListener,
-      int frameSize,
-      MetricsCollector metricsCollector) {
-    int read = 4; // already read the command id and version
-    byte publisherId = bb.readByte();
-    read += 1;
-    int publishingErrorCount = bb.readInt();
-    read += 4;
-    metricsCollector.publishError(publishingErrorCount);
-    long publishingId;
-    short code;
-    while (publishingErrorCount != 0) {
-      publishingId = bb.readLong();
-      read += 8;
-      code = bb.readShort();
-      read += 2;
-      publishErrorListener.handle(publisherId, publishingId, code);
-      publishingErrorCount--;
-    }
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
   static void checkMessageFitsInFrame(int maxFrameSize, Codec.EncodedMessage encodedMessage) {
     int frameBeginning = 4 + 2 + 2 + 4 + 8 + 4 + encodedMessage.getSize();
     if (frameBeginning > maxFrameSize) {
@@ -847,87 +294,6 @@ public class Client implements AutoCloseable {
 
   int maxFrameSize() {
     return this.maxFrameSize;
-  }
-
-  private void handleHeartbeat(int frameSize) {
-    LOGGER.debug("Received heartbeat frame");
-    int read = 2 + 2; // already read the command id and version
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  private void handleTune(
-      ByteBuf bb, int frameSize, ChannelHandlerContext ctx, TuneState tuneState) {
-    int read = 2 + 2; // already read the command id and version
-    int serverMaxFrameSize = bb.readInt();
-    read += 4;
-    int serverHeartbeat = bb.readInt();
-    read += 4;
-
-    int maxFrameSize = negotiatedMaxValue(tuneState.requestedMaxFrameSize, serverMaxFrameSize);
-    int heartbeat = negotiatedMaxValue(tuneState.requestedHeartbeat, serverHeartbeat);
-
-    int length = 2 + 2 + 4 + 4;
-    ByteBuf byteBuf = allocateNoCheck(ctx.alloc(), length + 4);
-    byteBuf
-        .writeInt(length)
-        .writeShort(COMMAND_TUNE)
-        .writeShort(VERSION_0)
-        .writeInt(maxFrameSize)
-        .writeInt(heartbeat);
-    ctx.writeAndFlush(byteBuf);
-
-    tuneState.maxFrameSize(maxFrameSize).heartbeat(heartbeat);
-
-    if (heartbeat > 0) {
-      this.channel
-          .pipeline()
-          .addBefore(
-              NETTY_HANDLER_FRAME_DECODER,
-              NETTY_HANDLER_IDLE_STATE,
-              new IdleStateHandler(heartbeat * 2, heartbeat, 0));
-    }
-
-    tuneState.done();
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
-  }
-
-  private void handleClose(ByteBuf bb, int frameSize, ChannelHandlerContext ctx) {
-    int read = 2 + 2; // already read the command id and version
-    int correlationId = bb.readInt();
-    read += 4;
-    short closeCode = bb.readShort();
-    read += 2;
-    String closeReason = readString(bb);
-    read += 2 + closeReason.length();
-
-    LOGGER.info("Received close from server, reason: {} {}", closeCode, closeReason);
-
-    int length = 2 + 2 + 4 + 2;
-    ByteBuf byteBuf = allocate(ctx.alloc(), length + 4);
-    byteBuf
-        .writeInt(length)
-        .writeShort(COMMAND_CLOSE)
-        .writeShort(VERSION_0)
-        .writeInt(correlationId)
-        .writeShort(RESPONSE_CODE_OK);
-
-    ctx.writeAndFlush(byteBuf)
-        .addListener(
-            future -> {
-              if (closing.compareAndSet(false, true)) {
-                executorService.submit(
-                    () -> closingSequence(ShutdownContext.ShutdownReason.SERVER_CLOSE));
-              }
-            });
-
-    if (read != frameSize) {
-      throw new IllegalStateException("Read " + read + " bytes in frame, expecting " + frameSize);
-    }
   }
 
   private void peerProperties() {
@@ -1150,7 +516,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private ByteBuf allocate(ByteBufAllocator allocator, int capacity) {
+  ByteBuf allocate(ByteBufAllocator allocator, int capacity) {
     if (frameSizeCopped && capacity > this.maxFrameSize) {
       throw new IllegalArgumentException(
           "Cannot allocate "
@@ -1165,7 +531,7 @@ public class Client implements AutoCloseable {
     return allocate(channel.alloc(), capacity);
   }
 
-  private ByteBuf allocateNoCheck(ByteBufAllocator allocator, int capacity) {
+  ByteBuf allocateNoCheck(ByteBufAllocator allocator, int capacity) {
     return allocator.buffer(capacity);
   }
 
@@ -1702,7 +1068,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private void closingSequence(ShutdownContext.ShutdownReason reason) {
+  void closingSequence(ShutdownContext.ShutdownReason reason) {
     this.shutdownListenerCallback.accept(reason);
     this.nettyClosing.run();
     this.executorServiceClosing.run();
@@ -1937,7 +1303,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private static class TuneState {
+  static class TuneState {
 
     private final CountDownLatch latch = new CountDownLatch(1);
 
@@ -1973,6 +1339,14 @@ public class Client implements AutoCloseable {
 
     int getHeartbeat() {
       return heartbeat.get();
+    }
+
+    int requestedHeartbeat() {
+      return requestedHeartbeat;
+    }
+
+    int requestedMaxFrameSize() {
+      return requestedMaxFrameSize;
     }
 
     TuneState maxFrameSize(int maxFrameSize) {
@@ -2012,7 +1386,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private static class SaslAuthenticateResponse extends Response {
+  static class SaslAuthenticateResponse extends Response {
 
     private final byte[] challenge;
 
@@ -2031,7 +1405,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private static class QueryOffsetResponse extends Response {
+  static class QueryOffsetResponse extends Response {
 
     private final long offset;
 
@@ -2045,7 +1419,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private static class QueryPublisherSequenceResponse extends Response {
+  static class QueryPublisherSequenceResponse extends Response {
 
     private final long sequence;
 
@@ -2327,7 +1701,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private static class OutstandingRequest<T> {
+  static class OutstandingRequest<T> {
 
     private final CountDownLatch latch = new CountDownLatch(1);
 
@@ -2351,6 +1725,14 @@ public class Client implements AutoCloseable {
         throw new StreamException("Could not get response in " + timeout.toMillis() + " ms");
       }
     }
+
+    AtomicReference<T> response() {
+      return response;
+    }
+
+    void countDown() {
+      this.latch.countDown();
+    }
   }
 
   static final class SubscriptionOffset {
@@ -2361,6 +1743,14 @@ public class Client implements AutoCloseable {
     SubscriptionOffset(int subscriptionId, long offset) {
       this.subscriptionId = subscriptionId;
       this.offset = offset;
+    }
+
+    int subscriptionId() {
+      return subscriptionId;
+    }
+
+    long offset() {
+      return offset;
     }
   }
 
@@ -2452,14 +1842,10 @@ public class Client implements AutoCloseable {
       int frameSize = m.readableBytes();
       short commandId = m.readShort();
       short version = m.readShort();
-      if (version != VERSION_0) {
-        m.release();
-        throw new StreamException("Unsupported version " + version + " for command " + commandId);
-      }
       Runnable task;
       if (closing.get()) {
         if (commandId == COMMAND_CLOSE) {
-          task = () -> handleResponse(m, frameSize, outstandingRequests);
+          task = () -> ServerFrameHandler.defaultHandler().handle(Client.this, frameSize, ctx, m);
         } else {
           LOGGER.debug("Ignoring command {} from server while closing", commandId);
           try {
@@ -2472,70 +1858,12 @@ public class Client implements AutoCloseable {
           task = null;
         }
       } else {
-        if (commandId == COMMAND_PUBLISH_CONFIRM) {
-          task = () -> handleConfirm(m, publishConfirmListener, frameSize, metricsCollector);
-        } else if (commandId == COMMAND_DELIVER) {
-          task =
-              () ->
-                  handleDeliver(
-                      m,
-                      Client.this,
-                      chunkListener,
-                      messageListener,
-                      frameSize,
-                      codec,
-                      subscriptionOffsets,
-                      chunkChecksum,
-                      metricsCollector);
-        } else if (commandId == COMMAND_PUBLISH_ERROR) {
-          task = () -> handlePublishError(m, publishErrorListener, frameSize, metricsCollector);
-        } else if (commandId == COMMAND_METADATA_UPDATE) {
-          task = () -> handleMetadataUpdate(m, frameSize, metadataListener);
-        } else if (commandId == COMMAND_METADATA) {
-          task = () -> handleMetadata(m, frameSize, outstandingRequests);
-        } else if (commandId == COMMAND_SASL_HANDSHAKE) {
-          task = () -> handleSaslHandshakeResponse(m, frameSize, outstandingRequests);
-        } else if (commandId == COMMAND_SASL_AUTHENTICATE) {
-          task = () -> handleSaslAuthenticateResponse(m, frameSize, outstandingRequests);
-        } else if (commandId == COMMAND_TUNE) {
-          task = () -> handleTune(m, frameSize, ctx, tuneState);
-        } else if (commandId == COMMAND_CLOSE) {
-          task = () -> handleClose(m, frameSize, ctx);
-        } else if (commandId == COMMAND_HEARTBEAT) {
-          task = () -> handleHeartbeat(frameSize);
-        } else if (commandId == COMMAND_PEER_PROPERTIES) {
-          task = () -> handlePeerProperties(m, frameSize, outstandingRequests);
-        } else if (commandId == COMMAND_CREDIT) {
-          task = () -> handleCreditNotification(m, frameSize, creditNotification);
-        } else if (commandId == COMMAND_QUERY_OFFSET) {
-          task = () -> handleQueryOffsetResponse(m, frameSize, outstandingRequests);
-        } else if (commandId == COMMAND_QUERY_PUBLISHER_SEQUENCE) {
-          task = () -> handleQueryPublisherSequenceResponse(m, frameSize, outstandingRequests);
-        } else if (commandId == COMMAND_SUBSCRIBE
-            || commandId == COMMAND_UNSUBSCRIBE
-            || commandId == COMMAND_DECLARE_PUBLISHER
-            || commandId == COMMAND_DELETE_PUBLISHER
-            || commandId == COMMAND_CREATE_STREAM
-            || commandId == COMMAND_DELETE_STREAM
-            || commandId == COMMAND_OPEN) {
-          task = () -> handleResponse(m, frameSize, outstandingRequests);
-        } else {
-          m.release();
-          throw new StreamException("Unsupported command " + commandId);
-        }
+        FrameHandler frameHandler = ServerFrameHandler.lookup(commandId, version, m);
+        task = () -> frameHandler.handle(Client.this, frameSize, ctx, m);
       }
 
       if (task != null) {
-        executorService.submit(
-            () -> {
-              try {
-                task.run();
-              } catch (Exception e) {
-                LOGGER.warn("Error while handling response from server", e);
-              } finally {
-                m.release();
-              }
-            });
+        executorService.submit(task);
       }
     }
 

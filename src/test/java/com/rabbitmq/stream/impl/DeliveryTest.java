@@ -118,8 +118,6 @@ public class DeliveryTest {
 
               ByteBuf bb = generateFrameBuffer(nbMessages, chunkOffset, dataSize, messages);
 
-              int frameSize = bb.readableBytes();
-
               bb.readShort(); // read command key
               bb.readShort(); // read command version
 
@@ -131,7 +129,7 @@ public class DeliveryTest {
                 subscriptionOffsets.add(new Client.SubscriptionOffset(1, subscriptionOffset));
               }
 
-              Client.handleDeliver(
+              ServerFrameHandler.DeliverFrameHandler.handleDeliver(
                   bb,
                   null,
                   (client, subscriptionId, offset, messageCount, sizeOfData) -> {
@@ -139,7 +137,6 @@ public class DeliveryTest {
                     chunkCountInCallback.incrementAndGet();
                   },
                   (subscriptionId, offset, message) -> messageCountInCallback.incrementAndGet(),
-                  frameSize,
                   NO_OP_CODEC,
                   subscriptionOffsets,
                   ChunkChecksum.NO_OP,
