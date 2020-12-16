@@ -49,6 +49,7 @@ class StreamProducer implements Producer {
   private final StreamEnvironment environment;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final int maxUnconfirmedMessages;
+  private final Codec codec;
   private volatile Client client;
   private volatile byte publisherId;
   private volatile Status status;
@@ -126,6 +127,7 @@ class StreamProducer implements Producer {
           .schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
     }
     this.batchSize = batchSize;
+    this.codec = environment.codec();
     this.status = Status.RUNNING;
   }
 
@@ -151,7 +153,7 @@ class StreamProducer implements Producer {
 
   @Override
   public MessageBuilder messageBuilder() {
-    return client.messageBuilder();
+    return codec.messageBuilder();
   }
 
   @Override
