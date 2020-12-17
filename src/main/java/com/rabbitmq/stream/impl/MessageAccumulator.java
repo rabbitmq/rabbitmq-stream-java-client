@@ -25,6 +25,8 @@ interface MessageAccumulator {
 
   boolean isEmpty();
 
+  int size();
+
   interface AccumulatedEntity {
 
     Object encodedEntity();

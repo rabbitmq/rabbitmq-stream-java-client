@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.impl.StreamProducer.Status;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -39,6 +40,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamProducerTest {
@@ -194,17 +197,18 @@ public class StreamProducerTest {
         .isEqualTo(Constants.CODE_PRODUCER_CLOSED);
   }
 
-  @Test
+  @ParameterizedTest
+  @ValueSource(ints = {1, 10})
   @TestUtils.DisabledIfRabbitMqCtlNotSet
-  void shouldRecoverAfterConnectionIsKilled() throws Exception {
-    Producer producer = environment.producerBuilder().stream(stream).build();
+  void shouldRecoverAfterConnectionIsKilled(int subEntrySize) throws Exception {
+    Producer producer =
+        environment.producerBuilder().subEntrySize(subEntrySize).stream(stream).build();
 
     AtomicInteger published = new AtomicInteger(0);
     AtomicInteger confirmed = new AtomicInteger(0);
     AtomicInteger errored = new AtomicInteger(0);
 
     AtomicBoolean canPublish = new AtomicBoolean(true);
-    CountDownLatch unavailabilityLatch = new CountDownLatch(1);
     Thread publishThread =
         new Thread(
             () -> {
@@ -214,9 +218,6 @@ public class StreamProducerTest {
                       confirmed.incrementAndGet();
                     } else {
                       errored.incrementAndGet();
-                      if (confirmationStatus.getCode() == Constants.CODE_PRODUCER_NOT_AVAILABLE) {
-                        unavailabilityLatch.countDown();
-                      }
                     }
                   };
               while (true) {
@@ -243,10 +244,8 @@ public class StreamProducerTest {
 
     Host.killConnection("rabbitmq-stream-producer");
 
-    assertThat(unavailabilityLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    waitAtMost(10, () -> ((StreamProducer) producer).status() == Status.NOT_AVAILABLE);
     canPublish.set(false);
-
-    assertThat(((StreamProducer) producer).status()).isEqualTo(StreamProducer.Status.NOT_AVAILABLE);
 
     assertThat(confirmed.get()).isPositive();
     waitAtMost(

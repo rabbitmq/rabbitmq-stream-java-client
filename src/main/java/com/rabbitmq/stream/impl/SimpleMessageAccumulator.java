@@ -63,6 +63,11 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     return messages.isEmpty();
   }
 
+  @Override
+  public int size() {
+    return messages.size();
+  }
+
   private static final class SimpleAccumulatedEntity implements AccumulatedEntity {
 
     private final Codec.EncodedMessage encodedMessage;

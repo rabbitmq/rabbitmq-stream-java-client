@@ -191,7 +191,7 @@ class StreamEnvironment implements Environment {
   private static String uriDecode(String s) {
     try {
       // URLDecode decodes '+' to a space, as for
-      // form encoding.  So protect plus signs.
+      // form encoding. So protect plus signs.
       return URLDecoder.decode(s.replace("+", "%2B"), "US-ASCII");
     } catch (IOException e) {
       throw new IllegalArgumentException(e);

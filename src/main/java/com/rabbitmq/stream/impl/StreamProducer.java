@@ -19,10 +19,15 @@ import static com.rabbitmq.stream.impl.Utils.formatConstant;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.MessageAccumulator.AccumulatedEntity;
 import io.netty.buffer.ByteBuf;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
@@ -40,7 +45,7 @@ class StreamProducer implements Producer {
 
   private final MessageAccumulator accumulator;
   // FIXME investigate a more optimized data structure to handle pending messages
-  private final ConcurrentMap<Long, ConfirmationCallback> unconfirmedMessages;
+  private final ConcurrentMap<Long, AccumulatedEntity> unconfirmedMessages;
   private final int batchSize;
   private final String stream;
   private final Client.OutboundEntityWriteCallback writeCallback;
@@ -95,7 +100,7 @@ class StreamProducer implements Producer {
           public int write(ByteBuf bb, Object entity, long publishingId) {
             MessageAccumulator.AccumulatedEntity accumulatedEntity =
                 (MessageAccumulator.AccumulatedEntity) entity;
-            unconfirmedMessages.put(publishingId, accumulatedEntity.confirmationCallback());
+            unconfirmedMessages.put(publishingId, accumulatedEntity);
             return delegateWriteCallback.write(bb, accumulatedEntity.encodedEntity(), publishingId);
           }
 
@@ -110,8 +115,8 @@ class StreamProducer implements Producer {
       Runnable task =
           () -> {
             if (canSend()) {
-              synchronized (this) {
-                publishBatch();
+              synchronized (StreamProducer.this) {
+                publishBatch(true);
               }
             }
             if (status != Status.CLOSED) {
@@ -132,9 +137,10 @@ class StreamProducer implements Producer {
   }
 
   void confirm(long publishingId) {
-    ConfirmationCallback confirmationCallback = this.unconfirmedMessages.remove(publishingId);
-    if (confirmationCallback != null) {
-      int confirmedCount = confirmationCallback.handle(true, Constants.RESPONSE_CODE_OK);
+    AccumulatedEntity accumulatedEntity = this.unconfirmedMessages.remove(publishingId);
+    if (accumulatedEntity != null) {
+      int confirmedCount =
+          accumulatedEntity.confirmationCallback().handle(true, Constants.RESPONSE_CODE_OK);
       this.unconfirmedMessagesSemaphore.release(confirmedCount);
     } else {
       this.unconfirmedMessagesSemaphore.release();
@@ -142,9 +148,9 @@ class StreamProducer implements Producer {
   }
 
   void error(long publishingId, short errorCode) {
-    ConfirmationCallback confirmationCallback = unconfirmedMessages.remove(publishingId);
-    if (confirmationCallback != null) {
-      int nackedCount = confirmationCallback.handle(false, errorCode);
+    AccumulatedEntity accumulatedEntity = unconfirmedMessages.remove(publishingId);
+    if (accumulatedEntity != null) {
+      int nackedCount = accumulatedEntity.confirmationCallback().handle(false, errorCode);
       this.unconfirmedMessagesSemaphore.release(nackedCount);
     } else {
       unconfirmedMessagesSemaphore.release();
@@ -164,7 +170,7 @@ class StreamProducer implements Producer {
           if (canSend()) {
             if (accumulator.add(message, confirmationHandler)) {
               synchronized (this) {
-                publishBatch();
+                publishBatch(true);
               }
             }
           } else {
@@ -189,7 +195,8 @@ class StreamProducer implements Producer {
     } else if (this.status == Status.CLOSED) {
       confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_PRODUCER_CLOSED));
     } else {
-      throw new IllegalStateException("Cannot publish while status is " + this.status);
+      confirmationHandler.handle(
+          new ConfirmationStatus(message, false, CODE_PRODUCER_NOT_AVAILABLE));
     }
   }
 
@@ -225,8 +232,8 @@ class StreamProducer implements Producer {
     }
   }
 
-  private void publishBatch() {
-    if (canSend() && !accumulator.isEmpty()) {
+  private void publishBatch(boolean stateCheck) {
+    if ((!stateCheck || canSend()) && !accumulator.isEmpty()) {
       List<Object> messages = new ArrayList<>(this.batchSize);
       int batchCount = 0;
       while (batchCount != this.batchSize) {
@@ -248,24 +255,43 @@ class StreamProducer implements Producer {
 
   void unavailable() {
     this.status = Status.NOT_AVAILABLE;
-    synchronized (this) {
-      this.unconfirmedMessages
-          .keySet()
-          .forEach(publishingId -> error(publishingId, CODE_PRODUCER_NOT_AVAILABLE));
-      if (!accumulator.isEmpty()) {
-        MessageAccumulator.AccumulatedEntity accumulatedEntity;
-        while ((accumulatedEntity = accumulator.get()) != null) {
-          accumulatedEntity.confirmationCallback().handle(false, CODE_PRODUCER_NOT_AVAILABLE);
-        }
-      }
-    }
   }
 
   void running() {
     synchronized (this) {
+      LOGGER.debug(
+          "Re-publishing {} unconfirmed message(s) and {} accumulated message(s)",
+          this.unconfirmedMessages.size(),
+          this.accumulator.size());
+      if (!this.unconfirmedMessages.isEmpty()) {
+        Map<Long, AccumulatedEntity> messagesToResend = new TreeMap<>(this.unconfirmedMessages);
+        this.unconfirmedMessages.clear();
+        Iterator<Entry<Long, AccumulatedEntity>> resendIterator =
+            messagesToResend.entrySet().iterator();
+        while (resendIterator.hasNext()) {
+          List<Object> messages = new ArrayList<>(this.batchSize);
+          int batchCount = 0;
+          while (batchCount != this.batchSize) {
+            Object accMessage = resendIterator.hasNext() ? resendIterator.next().getValue() : null;
+            if (accMessage == null) {
+              break;
+            }
+            messages.add(accMessage);
+            batchCount++;
+          }
+          client.publishInternal(
+              this.publisherId, messages, this.writeCallback, this.publishSequenceSupplier);
+        }
+      }
+      publishBatch(false);
       if (unconfirmedMessagesSemaphore.availablePermits() != maxUnconfirmedMessages) {
         unconfirmedMessagesSemaphore.release(
             maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits());
+        if (!unconfirmedMessagesSemaphore.tryAcquire(this.unconfirmedMessages.size())) {
+          LOGGER.debug(
+              "Could not acquire {} permit(s) for message republishing",
+              this.unconfirmedMessages.size());
+        }
       }
     }
     this.status = Status.RUNNING;

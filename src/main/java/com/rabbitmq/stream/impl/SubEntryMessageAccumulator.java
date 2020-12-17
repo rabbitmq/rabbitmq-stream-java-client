@@ -33,9 +33,8 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
 
   private Batch createBatch() {
     return new Batch(
-        new Client.EncodedMessageBatch(
-            MessageBatch.Compression.NONE, new ArrayList<>(subEntrySize)),
-        new CompositeConfirmationCallback(new ArrayList<>(subEntrySize)));
+        new Client.EncodedMessageBatch(MessageBatch.Compression.NONE, new ArrayList<>()),
+        new CompositeConfirmationCallback(new ArrayList<>()));
   }
 
   @Override
@@ -59,9 +58,11 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
       if (this.currentBatch.isEmpty()) {
         return null;
       } else {
-        Batch toReturn = this.currentBatch;
-        this.currentBatch = createBatch();
-        return toReturn;
+        synchronized (this) {
+          Batch toReturn = this.currentBatch;
+          this.currentBatch = createBatch();
+          return toReturn;
+        }
       }
     } else {
       return batch;
@@ -71,6 +72,11 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
   @Override
   public boolean isEmpty() {
     return batches.isEmpty() && this.currentBatch.isEmpty();
+  }
+
+  @Override
+  public int size() {
+    return this.batches.size() * this.subEntrySize + this.currentBatch.count.get();
   }
 
   private static class Batch implements AccumulatedEntity {
@@ -95,7 +101,7 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
     }
 
     private boolean isEmpty() {
-      return this.confirmationCallback.callbacks.isEmpty();
+      return this.count.get() == 0;
     }
 
     @Override

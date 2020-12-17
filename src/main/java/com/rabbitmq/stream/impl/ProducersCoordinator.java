@@ -451,12 +451,21 @@ class ProducersCoordinator {
                                     .port(broker.getPort())));
                 trackers.forEach(
                     tracker -> {
-                      pool.add(tracker);
-                      tracker.running();
+                      try {
+                        pool.add(tracker);
+                        tracker.running();
+                      } catch (Exception e) {
+                        LOGGER.info(
+                            "Error while re-assigning producer {} to {}: {}. Moving on.",
+                            tracker.identifiable() ? tracker.id() : "(committing consumer)",
+                            pool.name,
+                            e.getMessage());
+                      }
                     });
               })
           .exceptionally(
               ex -> {
+                LOGGER.info("Error while re-assigning producers: {}", ex.getMessage());
                 for (AgentTracker tracker : trackers) {
                   // FIXME what to do with committing consumers after a timeout?
                   // here they are left as "unavailable" and not, meaning they will not be
