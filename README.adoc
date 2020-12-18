@@ -53,7 +53,7 @@ To build the JAR file:
 Launch the broker:
 
 ----
-docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
+docker run -it --rm --name rabbitmq --network host pivotalrabbitmq/rabbitmq-stream
 ----
 
 Launch the tests:
