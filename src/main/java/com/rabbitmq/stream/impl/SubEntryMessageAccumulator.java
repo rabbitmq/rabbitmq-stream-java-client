@@ -1,34 +1,18 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.ConfirmationStatus;
-import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.Codec.EncodedMessage;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 
-class SubEntryMessageAccumulator implements MessageAccumulator {
+class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
 
-  private final int subEntrySize, batchSize;
-
-  private final BlockingQueue<Batch> batches;
-
-  private final Codec codec;
-
-  private final int maxFrameSize;
-  private volatile Batch currentBatch;
+  private final int subEntrySize;
 
   public SubEntryMessageAccumulator(
       int subEntrySize, int batchSize, Codec codec, int maxFrameSize) {
-    this.batchSize = batchSize;
-    this.batches = new LinkedBlockingQueue<>(batchSize);
+    super(subEntrySize * batchSize, codec, maxFrameSize);
     this.subEntrySize = subEntrySize;
-    this.codec = codec;
-    this.maxFrameSize = maxFrameSize;
-    this.currentBatch = createBatch();
   }
 
   private Batch createBatch() {
@@ -38,52 +22,27 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
   }
 
   @Override
-  public synchronized boolean add(Message message, ConfirmationHandler confirmationHandler) {
-    Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-    Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
-    this.currentBatch.add(
-        encodedMessage, new SimpleConfirmationCallback(message, confirmationHandler));
-    if (this.currentBatch.count.get() == this.subEntrySize) {
-      // FIXME make sure batch fits in frame
-      this.batches.add(this.currentBatch);
-      this.currentBatch = createBatch();
-    }
-    return this.batches.size() == this.batchSize;
-  }
-
-  @Override
   public AccumulatedEntity get() {
-    Batch batch = batches.poll();
-    if (batch == null) {
-      if (this.currentBatch.isEmpty()) {
-        return null;
-      } else {
-        synchronized (this) {
-          Batch toReturn = this.currentBatch;
-          this.currentBatch = createBatch();
-          return toReturn;
-        }
-      }
-    } else {
-      return batch;
+    if (this.messages.isEmpty()) {
+      return null;
     }
-  }
-
-  @Override
-  public boolean isEmpty() {
-    return batches.isEmpty() && this.currentBatch.isEmpty();
-  }
-
-  @Override
-  public int size() {
-    return this.batches.size() * this.subEntrySize + this.currentBatch.count.get();
+    int count = 0;
+    Batch batch = createBatch();
+    while (count != this.subEntrySize) {
+      AccumulatedEntity message = messages.poll();
+      if (message == null) {
+        break;
+      }
+      batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
+      count++;
+    }
+    return batch.isEmpty() ? null : batch;
   }
 
   private static class Batch implements AccumulatedEntity {
 
     private final Client.EncodedMessageBatch encodedMessageBatch;
     private final CompositeConfirmationCallback confirmationCallback;
-    private final AtomicInteger count = new AtomicInteger(0);
 
     private Batch(
         Client.EncodedMessageBatch encodedMessageBatch,
@@ -97,11 +56,10 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
         StreamProducer.ConfirmationCallback confirmationCallback) {
       this.encodedMessageBatch.add(encodedMessage);
       this.confirmationCallback.add(confirmationCallback);
-      count.incrementAndGet();
     }
 
-    private boolean isEmpty() {
-      return this.count.get() == 0;
+    boolean isEmpty() {
+      return this.confirmationCallback.callbacks.isEmpty();
     }
 
     @Override
@@ -134,24 +92,6 @@ class SubEntryMessageAccumulator implements MessageAccumulator {
         callback.handle(confirmed, code);
       }
       return callbacks.size();
-    }
-  }
-
-  private static final class SimpleConfirmationCallback
-      implements StreamProducer.ConfirmationCallback {
-
-    private final Message message;
-    private final ConfirmationHandler confirmationHandler;
-
-    private SimpleConfirmationCallback(Message message, ConfirmationHandler confirmationHandler) {
-      this.message = message;
-      this.confirmationHandler = confirmationHandler;
-    }
-
-    @Override
-    public int handle(boolean confirmed, short code) {
-      confirmationHandler.handle(new ConfirmationStatus(message, confirmed, code));
-      return 1;
     }
   }
 }

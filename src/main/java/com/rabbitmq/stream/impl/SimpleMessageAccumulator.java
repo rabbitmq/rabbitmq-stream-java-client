@@ -14,15 +14,19 @@
 
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.StreamException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 class SimpleMessageAccumulator implements MessageAccumulator {
 
+  protected final BlockingQueue<AccumulatedEntity> messages;
   private final int capacity;
-  private final BlockingQueue<AccumulatedEntity> messages;
   private final Codec codec;
   private final int maxFrameSize;
 
@@ -50,7 +54,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     } catch (InterruptedException e) {
       throw new StreamException("Error while accumulating outbound message", e);
     }
-    return messages.size() == this.capacity;
+    return this.messages.size() == this.capacity;
   }
 
   @Override
