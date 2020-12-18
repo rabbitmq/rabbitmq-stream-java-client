@@ -26,6 +26,9 @@ import java.util.UUID;
 
 public class WrapperMessageBuilder implements MessageBuilder {
 
+  private boolean hasPublishingId = false;
+
+  private long publishingId = 0;
   private Object body;
   private WrapperPropertiesBuilder propertiesBuilder;
   private WrapperApplicationPropertiesBuilder applicationPropertiesBuilder;
@@ -34,6 +37,8 @@ public class WrapperMessageBuilder implements MessageBuilder {
   @Override
   public Message build() {
     return new SimpleMessage(
+        this.hasPublishingId,
+        this.publishingId,
         body,
         this.messageAnnotationsBuilder == null
             ? null
@@ -42,6 +47,13 @@ public class WrapperMessageBuilder implements MessageBuilder {
         this.applicationPropertiesBuilder == null
             ? null
             : this.applicationPropertiesBuilder.applicationProperties);
+  }
+
+  @Override
+  public MessageBuilder publishingId(long publishingId) {
+    this.publishingId = publishingId;
+    this.hasPublishingId = true;
+    return this;
   }
 
   @Override
@@ -468,21 +480,36 @@ public class WrapperMessageBuilder implements MessageBuilder {
   }
 
   private static class SimpleMessage implements Message {
-
+    private final boolean hasPublishingId;
+    private final long publishingId;
     private final Object body;
     private final Map<String, Object> messageAnnotations;
     private final Properties properties;
     private final Map<String, Object> applicationProperties;
 
     private SimpleMessage(
+        boolean hasPublishingId,
+        long publishingId,
         Object body,
         Map<String, Object> messageAnnotations,
         Properties properties,
         Map<String, Object> applicationProperties) {
+      this.hasPublishingId = hasPublishingId;
+      this.publishingId = publishingId;
       this.body = body;
       this.messageAnnotations = messageAnnotations;
       this.properties = properties;
       this.applicationProperties = applicationProperties;
+    }
+
+    @Override
+    public boolean hasPublishingId() {
+      return this.hasPublishingId;
+    }
+
+    @Override
+    public long getPublishingId() {
+      return this.publishingId;
     }
 
     @Override

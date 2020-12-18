@@ -18,6 +18,10 @@ import java.util.Map;
 
 public interface Message {
 
+  boolean hasPublishingId();
+
+  long getPublishingId();
+
   byte[] getBodyAsBinary();
 
   Object getBody();

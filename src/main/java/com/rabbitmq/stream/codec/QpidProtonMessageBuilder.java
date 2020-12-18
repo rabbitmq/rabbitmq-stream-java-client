@@ -28,6 +28,10 @@ import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 
 class QpidProtonMessageBuilder implements MessageBuilder {
 
+  private boolean hasPublishingId = false;
+
+  private long publishingId = 0;
+
   private final org.apache.qpid.proton.message.Message message =
       org.apache.qpid.proton.message.Message.Factory.create();
 
@@ -50,7 +54,14 @@ class QpidProtonMessageBuilder implements MessageBuilder {
       message.setMessageAnnotations(
           new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
     }
-    return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(message);
+    return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(hasPublishingId, publishingId, message);
+  }
+
+  @Override
+  public MessageBuilder publishingId(long publishingId) {
+    this.publishingId = publishingId;
+    this.hasPublishingId = true;
+    return this;
   }
 
   @Override

@@ -55,6 +55,16 @@ public class FrameTest {
       Message message =
           new Message() {
             @Override
+            public boolean hasPublishingId() {
+              return false;
+            }
+
+            @Override
+            public long getPublishingId() {
+              return 0;
+            }
+
+            @Override
             public byte[] getBodyAsBinary() {
               return binary;
             }

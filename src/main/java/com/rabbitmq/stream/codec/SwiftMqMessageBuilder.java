@@ -30,6 +30,10 @@ import java.util.function.Function;
 
 class SwiftMqMessageBuilder implements MessageBuilder {
 
+  private boolean hasPublishingId = false;
+
+  private long publishingId = 0;
+
   private final AMQPMessage outboundMessage = new AMQPMessage();
 
   private SwiftMqPropertiesBuilder propertiesBuilder;
@@ -59,7 +63,15 @@ class SwiftMqMessageBuilder implements MessageBuilder {
         throw new StreamException("Error while setting application properties", e);
       }
     }
-    return new SwiftMqCodec.SwiftMqAmqpMessageWrapper(outboundMessage);
+    return new SwiftMqCodec.SwiftMqAmqpMessageWrapper(
+        hasPublishingId, publishingId, outboundMessage);
+  }
+
+  @Override
+  public MessageBuilder publishingId(long publishingId) {
+    this.publishingId = publishingId;
+    this.hasPublishingId = true;
+    return this;
   }
 
   @Override

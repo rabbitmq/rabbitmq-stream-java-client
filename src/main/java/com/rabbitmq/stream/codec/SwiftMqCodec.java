@@ -385,6 +385,16 @@ public class SwiftMqCodec implements Codec {
     }
 
     @Override
+    public boolean hasPublishingId() {
+      return false;
+    }
+
+    @Override
+    public long getPublishingId() {
+      return 0;
+    }
+
+    @Override
     public byte[] getBodyAsBinary() {
       return amqpMessage.getData().get(0).getValue();
     }
@@ -531,13 +541,28 @@ public class SwiftMqCodec implements Codec {
 
   static class SwiftMqAmqpMessageWrapper implements Message {
 
+    private final boolean hasPublishingId;
+    private final long publishingId;
     private final AMQPMessage message;
+
     private com.rabbitmq.stream.Properties properties;
     private Map<String, Object> applicationProperties;
     private Map<String, Object> messageAnnotations;
 
-    SwiftMqAmqpMessageWrapper(AMQPMessage message) {
+    SwiftMqAmqpMessageWrapper(boolean hasPublishingId, long publishingId, AMQPMessage message) {
+      this.hasPublishingId = hasPublishingId;
+      this.publishingId = publishingId;
       this.message = message;
+    }
+
+    @Override
+    public boolean hasPublishingId() {
+      return hasPublishingId;
+    }
+
+    @Override
+    public long getPublishingId() {
+      return publishingId;
     }
 
     @Override

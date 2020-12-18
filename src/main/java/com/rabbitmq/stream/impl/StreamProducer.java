@@ -74,7 +74,13 @@ class StreamProducer implements Producer {
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
     AtomicLong publishingSequence = new AtomicLong(0);
     ToLongFunction<Message> accumulatorPublishSequenceFunction =
-        msg -> publishingSequence.getAndIncrement();
+        msg -> {
+          if (msg.hasPublishingId()) {
+            return msg.getPublishingId();
+          } else {
+            return publishingSequence.getAndIncrement();
+          }
+        };
     if (subEntrySize <= 1) {
       this.accumulator =
           new SimpleMessageAccumulator(

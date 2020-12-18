@@ -21,6 +21,8 @@ public interface MessageBuilder {
 
   Message build();
 
+  MessageBuilder publishingId(long publishingId);
+
   PropertiesBuilder properties();
 
   ApplicationPropertiesBuilder applicationProperties();

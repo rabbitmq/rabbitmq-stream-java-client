@@ -29,7 +29,7 @@ public class SimpleCodec implements Codec {
 
   @Override
   public Message decode(byte[] data) {
-    return new SimpleMessage(data);
+    return new SimpleMessage(false, 0, data);
   }
 
   @Override
@@ -39,10 +39,25 @@ public class SimpleCodec implements Codec {
 
   private static class SimpleMessage implements Message {
 
+    private final boolean hasPublishingId;
+    private final long publishingId;
+
     private final byte[] body;
 
-    private SimpleMessage(byte[] body) {
+    private SimpleMessage(boolean hasPublishingId, long publishingId, byte[] body) {
+      this.hasPublishingId = hasPublishingId;
+      this.publishingId = publishingId;
       this.body = body;
+    }
+
+    @Override
+    public boolean hasPublishingId() {
+      return hasPublishingId;
+    }
+
+    @Override
+    public long getPublishingId() {
+      return publishingId;
     }
 
     @Override
@@ -72,12 +87,21 @@ public class SimpleCodec implements Codec {
   }
 
   private static class SimpleMessageBuilder implements MessageBuilder {
+    private boolean hasPublishingId = false;
 
+    private long publishingId = 0;
     private byte[] body;
 
     @Override
     public Message build() {
-      return new SimpleMessage(body);
+      return new SimpleMessage(hasPublishingId, publishingId, body);
+    }
+
+    @Override
+    public MessageBuilder publishingId(long publishingId) {
+      this.publishingId = publishingId;
+      this.hasPublishingId = true;
+      return this;
     }
 
     @Override

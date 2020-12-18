@@ -436,6 +436,16 @@ public class QpidProtonCodec implements Codec {
     }
 
     @Override
+    public boolean hasPublishingId() {
+      return false;
+    }
+
+    @Override
+    public long getPublishingId() {
+      return 0;
+    }
+
+    @Override
     public byte[] getBodyAsBinary() {
       return ((Data) message.getBody()).getValue().getArray();
     }
@@ -463,13 +473,30 @@ public class QpidProtonCodec implements Codec {
 
   static class QpidProtonAmqpMessageWrapper implements Message {
 
+    private final boolean hasPublishingId;
+    private final long publishingId;
     private final org.apache.qpid.proton.message.Message message;
     private Properties properties;
     private Map<String, Object> applicationProperties;
     private Map<String, Object> messageAnnotations;
 
-    QpidProtonAmqpMessageWrapper(org.apache.qpid.proton.message.Message message) {
+    QpidProtonAmqpMessageWrapper(
+        boolean hasPublishingId,
+        long publishingId,
+        org.apache.qpid.proton.message.Message message) {
+      this.hasPublishingId = hasPublishingId;
+      this.publishingId = publishingId;
       this.message = message;
+    }
+
+    @Override
+    public boolean hasPublishingId() {
+      return hasPublishingId;
+    }
+
+    @Override
+    public long getPublishingId() {
+      return publishingId;
     }
 
     @Override

@@ -494,6 +494,30 @@ public class CodecsTest {
             action -> assertThatThrownBy(action).isInstanceOf(UnsupportedOperationException.class));
   }
 
+  static Stream<MessageBuilder> messageBuilders() {
+    return Stream.of(
+        new QpidProtonMessageBuilder(),
+        new SwiftMqMessageBuilder(),
+        new WrapperMessageBuilder(),
+        new SimpleCodec().messageBuilder());
+  }
+
+  @ParameterizedTest
+  @MethodSource("messageBuilders")
+  void publishingIdShouldBeSetOnMessageIfSetOnMessageBuilder(MessageBuilder builder) {
+    Message message = builder.publishingId(42).build();
+    assertThat(message.hasPublishingId()).isTrue();
+    assertThat(message.getPublishingId()).isEqualTo(42);
+  }
+
+  @ParameterizedTest
+  @MethodSource("messageBuilders")
+  void publishingIdShouldNotBeSetOnMessageIfNotSetOnMessageBuilder(MessageBuilder builder) {
+    Message message = builder.build();
+    assertThat(message.hasPublishingId()).isFalse();
+    assertThat(message.getPublishingId()).isEqualTo(0);
+  }
+
   MessageTestConfiguration test(
       Function<MessageBuilder, MessageBuilder> messageOperation,
       Consumer<Message> messageExpectation) {
