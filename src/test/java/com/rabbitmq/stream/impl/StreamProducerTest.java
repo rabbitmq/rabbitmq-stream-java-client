@@ -17,13 +17,23 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.StreamProducer.Status;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -34,6 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -288,5 +299,135 @@ public class StreamProducerTest {
             })
         .build();
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {1, 7})
+  void messagesShouldBeDeDuplicatedWhenUsingNameAndPublishingId(int subEntrySize) throws Exception {
+    int lineCount = 50_000;
+    int firstWaveLineCount = lineCount / 5;
+    int backwardCount = firstWaveLineCount / 10;
+    SortedSet<Integer> document = new TreeSet<>();
+    IntStream.range(0, lineCount).forEach(i -> document.add(i));
+    Producer producer =
+        environment.producerBuilder().name("producer-1").stream(stream)
+            .subEntrySize(subEntrySize)
+            .build();
+
+    AtomicReference<CountDownLatch> latch =
+        new AtomicReference<>(new CountDownLatch(firstWaveLineCount));
+    ConfirmationHandler confirmationHandler = confirmationStatus -> latch.get().countDown();
+    Consumer<Integer> publishMessage =
+        i ->
+            producer.send(
+                producer
+                    .messageBuilder()
+                    .publishingId(i)
+                    .addData(String.valueOf(i).getBytes())
+                    .build(),
+                confirmationHandler);
+    document.headSet(firstWaveLineCount).forEach(publishMessage);
+
+    assertThat(latch.get().await(10, TimeUnit.SECONDS)).isTrue();
+
+    latch.set(new CountDownLatch(lineCount - firstWaveLineCount + backwardCount));
+
+    document.tailSet(firstWaveLineCount - backwardCount).forEach(publishMessage);
+
+    assertThat(latch.get().await(5, TimeUnit.SECONDS)).isTrue();
+
+    CountDownLatch consumeLatch = new CountDownLatch(lineCount);
+    AtomicInteger consumed = new AtomicInteger();
+    environment.consumerBuilder().stream(stream)
+        .messageHandler(
+            (offset, message) -> {
+              consumed.incrementAndGet();
+              consumeLatch.countDown();
+            })
+        .build();
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    Thread.sleep(1000);
+    // if we are using sub-entries, we cannot avoid duplicates.
+    // here, a sub-entry in the second wave, right at the end of the re-submitted
+    // values will contain those duplicates, because its publishing ID will be
+    // the one of its last message, so the server will accept the whole sub-entry,
+    // including the duplicates.
+    assertThat(consumed.get()).isEqualTo(lineCount + backwardCount % subEntrySize);
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {1, 7})
+  void newIncarnationOfProducerCanQueryItsLastPublishingId(int subEntrySize) throws Exception {
+    Producer p =
+        environment.producerBuilder().name("producer-1").stream(stream)
+            .subEntrySize(subEntrySize)
+            .build();
+
+    AtomicReference<Producer> producer = new AtomicReference<>(p);
+
+    AtomicLong publishingSequence = new AtomicLong(0);
+    AtomicLong lastConfirmed = new AtomicLong(-1);
+    ConfirmationHandler confirmationHandler =
+        confirmationStatus -> {
+          if (confirmationStatus.isConfirmed()) {
+            lastConfirmed.set(confirmationStatus.getMessage().getPublishingId());
+          }
+        };
+
+    AtomicBoolean canPublish = new AtomicBoolean(true);
+    Runnable publish =
+        () -> {
+          while (canPublish.get()) {
+            producer
+                .get()
+                .send(
+                    producer
+                        .get()
+                        .messageBuilder()
+                        .publishingId(publishingSequence.getAndIncrement())
+                        .addData(String.valueOf(publishingSequence.get()).getBytes())
+                        .build(),
+                    confirmationHandler);
+          }
+        };
+    new Thread(publish).start();
+
+    Thread.sleep(1000L);
+    canPublish.set(false);
+    waitAtMost(10, () -> publishingSequence.get() == lastConfirmed.get() + 1);
+    assertThat(lastConfirmed.get()).isPositive();
+
+    producer.get().close();
+
+    p =
+        environment.producerBuilder().name("producer-1").stream(stream)
+            .subEntrySize(subEntrySize)
+            .build();
+    producer.set(p);
+
+    long lastPublishingId = producer.get().getLastPublishingId();
+    assertThat(lastPublishingId).isEqualTo(lastConfirmed.get());
+
+    canPublish.set(true);
+    new Thread(publish).start();
+
+    Thread.sleep(1000L);
+    canPublish.set(false);
+
+    waitAtMost(10, () -> publishingSequence.get() == lastConfirmed.get() + 1);
+    assertThat(lastConfirmed.get()).isGreaterThan(lastPublishingId);
+
+    CountDownLatch consumeLatch = new CountDownLatch((int) (lastConfirmed.get() + 1));
+    AtomicInteger consumed = new AtomicInteger();
+    environment.consumerBuilder().stream(stream)
+        .messageHandler(
+            (offset, message) -> {
+              consumed.incrementAndGet();
+              consumeLatch.countDown();
+            })
+        .build();
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    Thread.sleep(1000);
+    assertThat(consumed.get()).isEqualTo(lastConfirmed.get() + 1);
   }
 }

@@ -34,22 +34,22 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     }
     int count = 0;
     Batch batch = createBatch();
+    AccumulatedEntity lastMessageInBatch = null;
     while (count != this.subEntrySize) {
       AccumulatedEntity message = messages.poll();
       if (message == null) {
         break;
       }
-      if (count == 0) {
-        batch.add(
-            message.publishindId(),
-            (EncodedMessage) message.encodedEntity(),
-            message.confirmationCallback());
-      } else {
-        batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
-      }
+      lastMessageInBatch = message;
+      batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
       count++;
     }
-    return batch.isEmpty() ? null : batch;
+    if (batch.isEmpty()) {
+      return null;
+    } else {
+      batch.publishingId = lastMessageInBatch.publishindId();
+      return batch;
+    }
   }
 
   private static class Batch implements AccumulatedEntity {
@@ -63,14 +63,6 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
         CompositeConfirmationCallback confirmationCallback) {
       this.encodedMessageBatch = encodedMessageBatch;
       this.confirmationCallback = confirmationCallback;
-    }
-
-    void add(
-        long publishingId,
-        Codec.EncodedMessage encodedMessage,
-        StreamProducer.ConfirmationCallback confirmationCallback) {
-      this.publishingId = publishingId;
-      this.add(encodedMessage, confirmationCallback);
     }
 
     void add(

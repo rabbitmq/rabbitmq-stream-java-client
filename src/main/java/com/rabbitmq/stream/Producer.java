@@ -18,5 +18,7 @@ public interface Producer extends AutoCloseable {
 
   MessageBuilder messageBuilder();
 
+  long getLastPublishingId();
+
   void send(Message message, ConfirmationHandler confirmationHandler);
 }

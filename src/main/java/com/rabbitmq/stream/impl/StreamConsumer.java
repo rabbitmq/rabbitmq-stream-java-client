@@ -160,7 +160,7 @@ class StreamConsumer implements Consumer {
     if (canCommit()) {
       try {
         // the client can be null by now, but we catch the exception and return 0
-        // callers should know how to deal with a committed of 0
+        // callers should know how to deal with a committed offset of 0
         return this.commitClient.queryOffset(this.name, this.stream);
       } catch (Exception e) {
         return 0;

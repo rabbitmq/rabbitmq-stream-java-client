@@ -47,6 +47,7 @@ class StreamProducer implements Producer {
   // FIXME investigate a more optimized data structure to handle pending messages
   private final ConcurrentMap<Long, AccumulatedEntity> unconfirmedMessages;
   private final int batchSize;
+  private final String name;
   private final String stream;
   private final Client.OutboundEntityWriteCallback writeCallback;
   private final Semaphore unconfirmedMessagesSemaphore;
@@ -70,6 +71,7 @@ class StreamProducer implements Producer {
       int maxUnconfirmedMessages,
       StreamEnvironment environment) {
     this.environment = environment;
+    this.name = name;
     this.stream = stream;
     this.closingCallback = environment.registerProducer(this, name, this.stream);
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
@@ -171,6 +173,28 @@ class StreamProducer implements Producer {
   @Override
   public MessageBuilder messageBuilder() {
     return codec.messageBuilder();
+  }
+
+  @Override
+  public long getLastPublishingId() {
+    if (this.name != null && !this.name.isEmpty()) {
+      if (canSend()) {
+        try {
+          return this.client.queryPublisherSequence(this.name, this.stream);
+        } catch (Exception e) {
+          throw new IllegalStateException(
+              "Error while trying to query last publishing ID for "
+                  + "producer "
+                  + this.name
+                  + " on stream "
+                  + stream);
+        }
+      } else {
+        throw new IllegalStateException("The producer has no connection");
+      }
+    } else {
+      throw new IllegalStateException("The producer has no name");
+    }
   }
 
   @Override
