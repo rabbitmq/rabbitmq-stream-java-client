@@ -2,16 +2,22 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
+import com.rabbitmq.stream.Message;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.ToLongFunction;
 
 class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
 
   private final int subEntrySize;
 
   public SubEntryMessageAccumulator(
-      int subEntrySize, int batchSize, Codec codec, int maxFrameSize) {
-    super(subEntrySize * batchSize, codec, maxFrameSize);
+      int subEntrySize,
+      int batchSize,
+      Codec codec,
+      int maxFrameSize,
+      ToLongFunction<Message> publishSequenceFunction) {
+    super(subEntrySize * batchSize, codec, maxFrameSize, publishSequenceFunction);
     this.subEntrySize = subEntrySize;
   }
 
@@ -33,7 +39,14 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       if (message == null) {
         break;
       }
-      batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
+      if (count == 0) {
+        batch.add(
+            message.publishindId(),
+            (EncodedMessage) message.encodedEntity(),
+            message.confirmationCallback());
+      } else {
+        batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
+      }
       count++;
     }
     return batch.isEmpty() ? null : batch;
@@ -43,12 +56,21 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
 
     private final Client.EncodedMessageBatch encodedMessageBatch;
     private final CompositeConfirmationCallback confirmationCallback;
+    private volatile long publishingId;
 
     private Batch(
         Client.EncodedMessageBatch encodedMessageBatch,
         CompositeConfirmationCallback confirmationCallback) {
       this.encodedMessageBatch = encodedMessageBatch;
       this.confirmationCallback = confirmationCallback;
+    }
+
+    void add(
+        long publishingId,
+        Codec.EncodedMessage encodedMessage,
+        StreamProducer.ConfirmationCallback confirmationCallback) {
+      this.publishingId = publishingId;
+      this.add(encodedMessage, confirmationCallback);
     }
 
     void add(
@@ -60,6 +82,11 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
 
     boolean isEmpty() {
       return this.confirmationCallback.callbacks.isEmpty();
+    }
+
+    @Override
+    public long publishindId() {
+      return publishingId;
     }
 
     @Override

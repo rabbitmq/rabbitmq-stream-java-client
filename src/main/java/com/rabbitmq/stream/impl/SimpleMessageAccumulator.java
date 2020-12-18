@@ -22,6 +22,7 @@ import com.rabbitmq.stream.StreamException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.ToLongFunction;
 
 class SimpleMessageAccumulator implements MessageAccumulator {
 
@@ -29,23 +30,31 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   private final int capacity;
   private final Codec codec;
   private final int maxFrameSize;
+  private final ToLongFunction<Message> publishSequenceFunction;
 
-  SimpleMessageAccumulator(int capacity, Codec codec, int maxFrameSize) {
+  SimpleMessageAccumulator(
+      int capacity,
+      Codec codec,
+      int maxFrameSize,
+      ToLongFunction<Message> publishSequenceFunction) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
     this.codec = codec;
     this.maxFrameSize = maxFrameSize;
+    this.publishSequenceFunction = publishSequenceFunction;
   }
 
   public boolean add(Message message, ConfirmationHandler confirmationHandler) {
     Codec.EncodedMessage encodedMessage = this.codec.encode(message);
     Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
-
+    long publishingId = this.publishSequenceFunction.applyAsLong(message);
     try {
       boolean offered =
           messages.offer(
               new SimpleAccumulatedEntity(
-                  encodedMessage, new SimpleConfirmationCallback(message, confirmationHandler)),
+                  publishingId,
+                  encodedMessage,
+                  new SimpleConfirmationCallback(message, confirmationHandler)),
               60,
               TimeUnit.SECONDS);
       if (!offered) {
@@ -74,14 +83,22 @@ class SimpleMessageAccumulator implements MessageAccumulator {
 
   private static final class SimpleAccumulatedEntity implements AccumulatedEntity {
 
+    private final long publishingId;
     private final Codec.EncodedMessage encodedMessage;
     private final StreamProducer.ConfirmationCallback confirmationCallback;
 
     private SimpleAccumulatedEntity(
+        long publishingId,
         Codec.EncodedMessage encodedMessage,
         StreamProducer.ConfirmationCallback confirmationCallback) {
+      this.publishingId = publishingId;
       this.encodedMessage = encodedMessage;
       this.confirmationCallback = confirmationCallback;
+    }
+
+    @Override
+    public long publishindId() {
+      return publishingId;
     }
 
     @Override

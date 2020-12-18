@@ -29,6 +29,8 @@ interface MessageAccumulator {
 
   interface AccumulatedEntity {
 
+    long publishindId();
+
     Object encodedEntity();
 
     StreamProducer.ConfirmationCallback confirmationCallback();

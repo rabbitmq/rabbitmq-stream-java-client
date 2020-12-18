@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.LongSupplier;
+import java.util.function.ToLongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,15 +58,8 @@ class StreamProducer implements Producer {
   private volatile Client client;
   private volatile byte publisherId;
   private volatile Status status;
-  private final LongSupplier publishSequenceSupplier =
-      new LongSupplier() {
-        private final AtomicLong publishSequence = new AtomicLong(0);
-
-        @Override
-        public long getAsLong() {
-          return publishSequence.getAndIncrement();
-        }
-      };
+  private final ToLongFunction<Object> publishSequenceFunction =
+      entity -> ((AccumulatedEntity) entity).publishindId();
 
   StreamProducer(
       String stream,
@@ -79,14 +72,25 @@ class StreamProducer implements Producer {
     this.stream = stream;
     this.closingCallback = environment.registerProducer(this, this.stream);
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
+    AtomicLong publishingSequence = new AtomicLong(0);
+    ToLongFunction<Message> accumulatorPublishSequenceFunction =
+        msg -> publishingSequence.getAndIncrement();
     if (subEntrySize <= 1) {
       this.accumulator =
-          new SimpleMessageAccumulator(batchSize, environment.codec(), client.maxFrameSize());
+          new SimpleMessageAccumulator(
+              batchSize,
+              environment.codec(),
+              client.maxFrameSize(),
+              accumulatorPublishSequenceFunction);
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
     } else {
       this.accumulator =
           new SubEntryMessageAccumulator(
-              subEntrySize, batchSize, environment.codec(), client.maxFrameSize());
+              subEntrySize,
+              batchSize,
+              environment.codec(),
+              client.maxFrameSize(),
+              accumulatorPublishSequenceFunction);
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
 
@@ -245,7 +249,7 @@ class StreamProducer implements Producer {
         batchCount++;
       }
       client.publishInternal(
-          this.publisherId, messages, this.writeCallback, this.publishSequenceSupplier);
+          this.publisherId, messages, this.writeCallback, this.publishSequenceFunction);
     }
   }
 
@@ -280,7 +284,7 @@ class StreamProducer implements Producer {
             batchCount++;
           }
           client.publishInternal(
-              this.publisherId, messages, this.writeCallback, this.publishSequenceSupplier);
+              this.publisherId, messages, this.writeCallback, this.publishSequenceFunction);
         }
       }
       publishBatch(false);

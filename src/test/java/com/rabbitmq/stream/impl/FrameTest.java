@@ -34,7 +34,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.LongSupplier;
+import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.assertj.core.api.ThrowableAssert;
@@ -134,7 +134,7 @@ public class FrameTest {
                 3));
     try (Client client =
         cf.get(new Client.ClientParameters().requestedMaxFrameSize(maxFrameSize))) {
-      LongSupplier publishSequenceSupplier = publishSequenceSupplier();
+      ToLongFunction<Object> publishSequenceFunction = publishSequenceFunction();
       tests.forEach(
           test -> {
             Channel channel = Mockito.mock(Channel.class);
@@ -149,7 +149,7 @@ public class FrameTest {
                     .map(size -> new Codec.EncodedMessage(size, new byte[size]))
                     .collect(Collectors.toList()),
                 Client.OUTBOUND_MESSAGE_WRITE_CALLBACK,
-                publishSequenceSupplier);
+                publishSequenceFunction);
 
             ArgumentCaptor<ByteBuf> bbCaptor = ArgumentCaptor.forClass(ByteBuf.class);
             verify(channel, times(test.expectedCalls)).writeAndFlush(bbCaptor.capture());
@@ -164,12 +164,12 @@ public class FrameTest {
     }
   }
 
-  static LongSupplier publishSequenceSupplier() {
-    return new LongSupplier() {
+  static ToLongFunction<Object> publishSequenceFunction() {
+    return new ToLongFunction<Object>() {
       private final AtomicLong publishSequence = new AtomicLong(0);
 
       @Override
-      public long getAsLong() {
+      public long applyAsLong(Object value) {
         return publishSequence.getAndIncrement();
       }
     };

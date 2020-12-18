@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntConsumer;
-import java.util.function.LongSupplier;
+import java.util.function.ToLongFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -178,7 +178,7 @@ public class PublisherTest {
     assertThat(response.isOk()).isTrue();
 
     AtomicLong publishingSequence = new AtomicLong(0);
-    LongSupplier publishingSequenceSupplier = () -> publishingSequence.incrementAndGet();
+    ToLongFunction<Object> publishingSequenceFunction = o -> publishingSequence.incrementAndGet();
 
     c.declarePublisher(b(1), null, stream);
     IntConsumer publishing =
@@ -186,7 +186,7 @@ public class PublisherTest {
             c.publish(
                 b(1),
                 Collections.singletonList(c.messageBuilder().addData("".getBytes()).build()),
-                publishingSequenceSupplier);
+                publishingSequenceFunction);
     IntStream.range(0, messageCount).forEach(publishing);
 
     publishingSequence.addAndGet(-duplicatedCount);
@@ -255,7 +255,7 @@ public class PublisherTest {
     assertThat(response.isOk()).isTrue();
 
     AtomicLong publishingSequence = new AtomicLong(0);
-    LongSupplier publishingSequenceSupplier = () -> publishingSequence.incrementAndGet();
+    ToLongFunction<Object> publishingSequenceFunction = o -> publishingSequence.incrementAndGet();
 
     assertThat(c.queryPublisherSequence(publisherReference, stream)).isEqualTo(0);
 
@@ -266,7 +266,7 @@ public class PublisherTest {
             c.publish(
                 b(1),
                 Collections.singletonList(c.messageBuilder().addData("".getBytes()).build()),
-                publishingSequenceSupplier);
+                publishingSequenceFunction);
     IntStream.range(0, messageCount).forEach(publishing);
 
     assertThat(publishLatch.get().await(10, TimeUnit.SECONDS)).isTrue();

@@ -104,7 +104,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.LongSupplier;
+import java.util.function.ToLongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -143,12 +143,12 @@ public class Client implements AutoCloseable {
   private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
   final Codec codec;
   final Channel channel;
-  private final LongSupplier publishSequenceSupplier =
-      new LongSupplier() {
+  private final ToLongFunction<Object> publishSequenceFunction =
+      new ToLongFunction<Object>() {
         private final AtomicLong publishSequence = new AtomicLong(0);
 
         @Override
-        public long getAsLong() {
+        public long applyAsLong(Object value) {
           return publishSequence.getAndIncrement();
         }
       };
@@ -651,11 +651,11 @@ public class Client implements AutoCloseable {
   }
 
   public List<Long> publish(byte publisherId, List<Message> messages) {
-    return this.publish(publisherId, messages, this.publishSequenceSupplier);
+    return this.publish(publisherId, messages, this.publishSequenceFunction);
   }
 
   public List<Long> publish(
-      byte publisherId, List<Message> messages, LongSupplier sequenceSupplier) {
+      byte publisherId, List<Message> messages, ToLongFunction<Object> publishSequenceFunction) {
     List<Object> encodedMessages = new ArrayList<>(messages.size());
     for (Message message : messages) {
       Codec.EncodedMessage encodedMessage = codec.encode(message);
@@ -667,19 +667,19 @@ public class Client implements AutoCloseable {
         publisherId,
         encodedMessages,
         OUTBOUND_MESSAGE_WRITE_CALLBACK,
-        sequenceSupplier);
+        publishSequenceFunction);
   }
 
   public List<Long> publish(
       byte publisherId, List<Message> messages, OutboundEntityMappingCallback mappingCallback) {
-    return this.publish(publisherId, messages, mappingCallback, this.publishSequenceSupplier);
+    return this.publish(publisherId, messages, mappingCallback, this.publishSequenceFunction);
   }
 
   public List<Long> publish(
       byte publisherId,
       List<Message> messages,
       OutboundEntityMappingCallback mappingCallback,
-      LongSupplier sequenceSupplier) {
+      ToLongFunction<Object> publishSequenceFunction) {
     List<Object> encodedMessages = new ArrayList<>(messages.size());
     for (Message message : messages) {
       Codec.EncodedMessage encodedMessage = codec.encode(message);
@@ -694,15 +694,17 @@ public class Client implements AutoCloseable {
         encodedMessages,
         new OriginalEncodedEntityOutboundEntityWriteCallback(
             mappingCallback, OUTBOUND_MESSAGE_WRITE_CALLBACK),
-        sequenceSupplier);
+        publishSequenceFunction);
   }
 
   public List<Long> publishBatches(byte publisherId, List<MessageBatch> messageBatches) {
-    return this.publishBatches(publisherId, messageBatches, this.publishSequenceSupplier);
+    return this.publishBatches(publisherId, messageBatches, this.publishSequenceFunction);
   }
 
   public List<Long> publishBatches(
-      byte publisherId, List<MessageBatch> messageBatches, LongSupplier sequenceSupplier) {
+      byte publisherId,
+      List<MessageBatch> messageBatches,
+      ToLongFunction<Object> publishSequenceFunction) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
       EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
@@ -719,7 +721,7 @@ public class Client implements AutoCloseable {
         publisherId,
         encodedMessageBatches,
         OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK,
-        sequenceSupplier);
+        publishSequenceFunction);
   }
 
   public List<Long> publishBatches(
@@ -727,14 +729,14 @@ public class Client implements AutoCloseable {
       List<MessageBatch> messageBatches,
       OutboundEntityMappingCallback mappingCallback) {
     return this.publishBatches(
-        publisherId, messageBatches, mappingCallback, this.publishSequenceSupplier);
+        publisherId, messageBatches, mappingCallback, this.publishSequenceFunction);
   }
 
   public List<Long> publishBatches(
       byte publisherId,
       List<MessageBatch> messageBatches,
       OutboundEntityMappingCallback mappingCallback,
-      LongSupplier sequenceSupplier) {
+      ToLongFunction<Object> publishSequenceFunction) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
       EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
@@ -754,7 +756,7 @@ public class Client implements AutoCloseable {
         encodedMessageBatches,
         new OriginalEncodedEntityOutboundEntityWriteCallback(
             mappingCallback, OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK),
-        sequenceSupplier);
+        publishSequenceFunction);
   }
 
   private void checkMessageFitsInFrame(Codec.EncodedMessage encodedMessage) {
@@ -782,9 +784,9 @@ public class Client implements AutoCloseable {
       byte publisherId,
       List<Object> encodedEntities,
       OutboundEntityWriteCallback callback,
-      LongSupplier sequenceSupplier) {
+      ToLongFunction<Object> publishSequenceFunction) {
     return this.publishInternal(
-        this.channel, publisherId, encodedEntities, callback, sequenceSupplier);
+        this.channel, publisherId, encodedEntities, callback, publishSequenceFunction);
   }
 
   List<Long> publishInternal(
@@ -792,7 +794,7 @@ public class Client implements AutoCloseable {
       byte publisherId,
       List<Object> encodedEntities,
       OutboundEntityWriteCallback callback,
-      LongSupplier sequenceSupplier) {
+      ToLongFunction<Object> publishSequenceFunction) {
     int frameHeaderLength = 2 + 2 + 1 + 4;
 
     List<Long> sequences = new ArrayList<>(encodedEntities.size());
@@ -813,7 +815,7 @@ public class Client implements AutoCloseable {
             encodedEntities,
             callback,
             sequences,
-            sequenceSupplier);
+            publishSequenceFunction);
         length = frameHeaderLength + callback.fragmentLength(encodedEntity);
         startIndex = currentIndex;
       }
@@ -828,7 +830,7 @@ public class Client implements AutoCloseable {
         encodedEntities,
         callback,
         sequences,
-        sequenceSupplier);
+        publishSequenceFunction);
 
     return sequences;
   }
@@ -842,7 +844,7 @@ public class Client implements AutoCloseable {
       List<Object> messages,
       OutboundEntityWriteCallback callback,
       List<Long> sequences,
-      LongSupplier sequenceSupplier) {
+      ToLongFunction<Object> publishSequenceFunction) {
     // no check because it's been done already
     ByteBuf out = allocateNoCheck(ch.alloc(), frameLength + 4);
     out.writeInt(frameLength);
@@ -852,9 +854,10 @@ public class Client implements AutoCloseable {
     int messageCount = 0;
     out.writeInt(toExcluded - fromIncluded);
     for (int i = fromIncluded; i < toExcluded; i++) {
-      long sequence = sequenceSupplier.getAsLong();
+      Object message = messages.get(i);
+      long sequence = publishSequenceFunction.applyAsLong(message);
       out.writeLong(sequence);
-      messageCount += callback.write(out, messages.get(i), sequence);
+      messageCount += callback.write(out, message, sequence);
       sequences.add(sequence);
     }
     int msgCount = messageCount;
