@@ -22,6 +22,8 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   private final StreamEnvironment environment;
 
+  private String name;
+
   private String stream;
 
   private int subEntrySize = 1;
@@ -38,6 +40,12 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   public StreamProducerBuilder stream(String stream) {
     this.stream = stream;
+    return this;
+  }
+
+  @Override
+  public ProducerBuilder name(String name) {
+    this.name = name;
     return this;
   }
 
@@ -72,6 +80,7 @@ class StreamProducerBuilder implements ProducerBuilder {
   public Producer build() {
     StreamProducer producer =
         new StreamProducer(
+            name,
             stream,
             subEntrySize,
             batchSize,

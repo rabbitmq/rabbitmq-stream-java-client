@@ -62,6 +62,7 @@ class StreamProducer implements Producer {
       entity -> ((AccumulatedEntity) entity).publishindId();
 
   StreamProducer(
+      String name,
       String stream,
       int subEntrySize,
       int batchSize,
@@ -70,7 +71,7 @@ class StreamProducer implements Producer {
       StreamEnvironment environment) {
     this.environment = environment;
     this.stream = stream;
-    this.closingCallback = environment.registerProducer(this, this.stream);
+    this.closingCallback = environment.registerProducer(this, name, this.stream);
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
     AtomicLong publishingSequence = new AtomicLong(0);
     ToLongFunction<Message> accumulatorPublishSequenceFunction =

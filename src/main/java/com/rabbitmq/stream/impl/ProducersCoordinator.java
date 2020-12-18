@@ -63,8 +63,8 @@ class ProducersCoordinator {
     return broker.getHost() + ":" + broker.getPort();
   }
 
-  Runnable registerProducer(StreamProducer producer, String stream) {
-    return registerAgentTracker(new ProducerTracker(stream, producer), stream);
+  Runnable registerProducer(StreamProducer producer, String reference, String stream) {
+    return registerAgentTracker(new ProducerTracker(reference, stream, producer), stream);
   }
 
   Runnable registerCommittingConsumer(StreamConsumer consumer) {
@@ -150,16 +150,20 @@ class ProducersCoordinator {
     void closeAfterStreamDeletion();
 
     String stream();
+
+    String reference();
   }
 
   private static class ProducerTracker implements AgentTracker {
 
+    private final String reference;
     private final String stream;
     private final StreamProducer producer;
     private volatile byte publisherId;
     private volatile ClientProducersManager clientProducersManager;
 
-    private ProducerTracker(String stream, StreamProducer producer) {
+    private ProducerTracker(String reference, String stream, StreamProducer producer) {
+      this.reference = reference;
       this.stream = stream;
       this.producer = producer;
     }
@@ -182,6 +186,11 @@ class ProducersCoordinator {
     @Override
     public byte id() {
       return this.publisherId;
+    }
+
+    @Override
+    public String reference() {
+      return this.reference;
     }
 
     @Override
@@ -241,6 +250,11 @@ class ProducersCoordinator {
 
     @Override
     public byte id() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String reference() {
       throw new UnsupportedOperationException();
     }
 
@@ -490,7 +504,8 @@ class ProducersCoordinator {
         for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
           ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
           if (previousValue == null) {
-            Response response = this.client.declarePublisher((byte) i, null, tracker.stream());
+            Response response =
+                this.client.declarePublisher((byte) i, tracker.reference(), tracker.stream());
             if (response.isOk()) {
               tracker.assign((byte) i, this.client, this);
             } else {

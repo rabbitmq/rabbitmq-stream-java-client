@@ -18,6 +18,8 @@ import java.time.Duration;
 
 public interface ProducerBuilder {
 
+  ProducerBuilder name(String name);
+
   ProducerBuilder stream(String stream);
 
   ProducerBuilder subEntrySize(int subEntrySize);

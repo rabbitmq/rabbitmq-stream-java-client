@@ -362,8 +362,8 @@ class StreamEnvironment implements Environment {
     return closingCallback;
   }
 
-  Runnable registerProducer(StreamProducer producer, String stream) {
-    return producersCoordinator.registerProducer(producer, stream);
+  Runnable registerProducer(StreamProducer producer, String reference, String stream) {
+    return producersCoordinator.registerProducer(producer, reference, stream);
   }
 
   // FIXME make the locator available as a completable future (with retry)

@@ -109,7 +109,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void registerShouldThrowExceptionWhenNoMetadataForTheStream() {
-    assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, null, "stream"))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -117,21 +117,21 @@ public class ProducersCoordinatorTest {
   void registerShouldThrowExceptionWhenStreamDoesNotExist() {
     when(locator.metadata("stream"))
         .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
-    assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, null, "stream"))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
   @Test
   void registerShouldThrowExceptionWhenMetadataResponseIsNotOk() {
     when(locator.metadata("stream")).thenReturn(metadata(null, null));
-    assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, null, "stream"))
         .isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void registerShouldThrowExceptionWhenNoLeader() {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
-    assertThatThrownBy(() -> coordinator.registerProducer(producer, "stream"))
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, null, "stream"))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -140,7 +140,7 @@ public class ProducersCoordinatorTest {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
 
-    Runnable cleanTask = coordinator.registerProducer(producer, "stream");
+    Runnable cleanTask = coordinator.registerProducer(producer, null, "stream");
 
     verify(producer, times(1)).setClient(client);
 
@@ -170,7 +170,7 @@ public class ProducersCoordinatorTest {
     doAnswer(answer(() -> runningLatch.countDown())).when(producer).running();
     doAnswer(answer(() -> runningLatch.countDown())).when(committingConsumer).running();
 
-    coordinator.registerProducer(producer, "stream");
+    coordinator.registerProducer(producer, null, "stream");
     coordinator.registerCommittingConsumer(committingConsumer);
 
     verify(producer, times(1)).setClient(client);
@@ -209,7 +209,7 @@ public class ProducersCoordinatorTest {
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
 
-    coordinator.registerProducer(producer, "stream");
+    coordinator.registerProducer(producer, null, "stream");
     coordinator.registerCommittingConsumer(committingConsumer);
 
     verify(producer, times(1)).setClient(client);
@@ -270,8 +270,8 @@ public class ProducersCoordinatorTest {
     doAnswer(answer(() -> runningLatch.countDown())).when(movingProducer).running();
     doAnswer(answer(() -> runningLatch.countDown())).when(movingCommittingConsumer).running();
 
-    coordinator.registerProducer(movingProducer, movingStream);
-    coordinator.registerProducer(fixedProducer, fixedStream);
+    coordinator.registerProducer(movingProducer, null, movingStream);
+    coordinator.registerProducer(fixedProducer, null, fixedStream);
     coordinator.registerCommittingConsumer(movingCommittingConsumer);
     coordinator.registerCommittingConsumer(fixedCommittingConsumer);
 
@@ -318,7 +318,7 @@ public class ProducersCoordinatorTest {
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
 
-    coordinator.registerProducer(producer, "stream");
+    coordinator.registerProducer(producer, null, "stream");
 
     verify(producer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
@@ -351,7 +351,7 @@ public class ProducersCoordinatorTest {
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
 
-    coordinator.registerProducer(producer, "stream");
+    coordinator.registerProducer(producer, null, "stream");
     coordinator.registerCommittingConsumer(committingConsumer);
 
     verify(producer, times(1)).setClient(client);
@@ -399,7 +399,7 @@ public class ProducersCoordinatorTest {
               doAnswer(answer(invocation -> info.publishingId = invocation.getArgument(0)))
                   .when(p)
                   .setPublisherId(anyByte());
-              Runnable cleaningCallback = coordinator.registerProducer(p, "stream");
+              Runnable cleaningCallback = coordinator.registerProducer(p, null, "stream");
               info.cleaningCallback = cleaningCallback;
               producerInfos.add(info);
             });
@@ -458,7 +458,7 @@ public class ProducersCoordinatorTest {
     doAnswer(answer(invoc -> publishingIdForNewProducer.set(invoc.getArgument(0))))
         .when(p)
         .setPublisherId(anyByte());
-    coordinator.registerProducer(p, "stream");
+    coordinator.registerProducer(p, null, "stream");
 
     verify(p, times(1)).setClient(client);
     assertThat(publishingIdForNewProducer.get()).isEqualTo(info.publishingId);
