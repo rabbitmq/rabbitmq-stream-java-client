@@ -242,6 +242,11 @@ The following table sums up the main settings to create a `Producer`:
 |Description
 |Default
 
+|`name`
+|The logical name of the producer. Specify a name to enable
+<<outbound-message-de-deduplication,message de-deduplication>>.
+|`null` (no de-duplication)
+
 |`batchSize`
 |The maximum number of messages to accumulate before sending them to the broker.
 |100
@@ -337,6 +342,107 @@ AMQP 1.0 message format was chosen because of its flexibility and its advanced
 type system. It provides good interoperability, which allows streams
 to be accessed as AMQP 0-9-1 queues, without data loss.
 ====
+
+[[outbound-message-de-deduplication]]
+===== Message De-deduplication
+
+RabbitMQ Stream provides publisher confirms to avoid losing messages: once
+the broker has persisted a message it sends a confirmation for this message.
+But this can lead to duplicate messages: imagine the connection closes
+because of a network glitch after the message has been persisted but _before_
+the confirmation reaches the producer. Once reconnected, the producer will
+retry to send the same message, as it never received the confirmation. So the
+message will be persisted twice.
+
+Luckily RabbitMQ Stream can detect and filter out duplicated messages, based
+on 2 client-side elements: the _producer name_ and the _message publishing ID_.
+
+====== Setting the Name of a Producer
+
+The producer name is set when creating the producer instance, which automatically
+enables de-duplication:
+
+.Naming a producer to enable message de-duplication
+[source,java,indent=0]
+--------
+include::{test-examples}/ProducerUsage.java[tag=producer-with-name]
+--------
+<1> Set a name for the producer
+
+Thanks to the name, the broker will be able to track the messages it has persisted
+on a given stream for this producer. If the producer connection unexpectedly closes, it
+will automatically recover and retry outstanding messages. The broker will then
+filter out messages it has already received and persisted. No more duplicates!
+
+Consider the producer name a logical name. It should not be a random sequence that
+changes when the producer application is restarted. Names like `online-shop-order` or
+`online-shop-invoice` are better names than `3d235e79-047a-46a6-8c80-9d159d3e1b05`.
+There should be only one living instance of a producer with a given name on a given
+stream at the same time.
+
+====== Understanding Publishing ID
+
+The producer name is only one part of the de-duplication mechanism, the other part
+is the _message publishing ID_. If the producer has a name, the client automatically
+assigns a publishing ID to each outbound message for the producer. The publishing ID
+is a monotonic sequence, starting at 0 and incremented for each message. The default
+publishing sequence is good enough for de-duplication, but it is possible to
+assign a publishing ID to each message:
+
+.Using an explicit publishing ID
+[source,java,indent=0]
+--------
+include::{test-examples}/ProducerUsage.java[tag=message-with-publishing-id]
+--------
+<1> Set a publishing ID on a message
+
+There are a few rules to follow when using a custom publishing ID sequence:
+
+ * the sequence should start at 0
+ * the sequence must be monotonic, that is always increments
+ * there can be gaps in the sequence (e.g. 0, 1, 2, 3, 6, 7, 9, 10, etc)
+
+A custom publishing ID sequence has usually a meaning: it can be the line number of a file
+or the primary key in a database.
+
+Note the publishing ID is not part of the message: it is not stored with the message
+and so is not available when consuming the message. It is still possible to store
+the value in the AMQP 1.0 message application properties or in an appropriate
+properties (e.g. `messageId`).
+
+[IMPORTANT]
+.Do not mix client-assigned and custom publishing ID
+====
+As soon as a producer name is set, message de-duplication is enabled.
+It is then possible to let the producer assign a publishing ID to each
+message or assign custom publishing IDs. *Do one or the other, not both!*
+====
+
+====== Restarting a Producer Where It Left Off
+
+Using a custom publishing sequence is even more useful to restart a producer where it left
+off. Imagine a scenario whereby the producer is sending a message for each line in a file and
+the application uses the line number as the publishing ID. If the application restarts
+because of some necessary maintenance or even a crash, the producer can restart
+from the beginning of the file: there would no duplicate messages because the producer
+has a name and the application sets publishing IDs appropriately. Nevertheless,
+this is far from ideal, it would be much better to restart just after the last line
+the broker successfully confirmed. Fortunately this is possible thanks to
+the `Producer#getLastPublishing()` method, which returns the last publishing ID for a given
+producer. As the publishing ID in this case is the line number, the application can
+easily scroll to the next line and restart publishing from there.
+
+The next snippet illustrates the use of `Producer#getLastPublishing()`:
+
+.Setting a producer where it left off
+[source,java,indent=0]
+--------
+include::{test-examples}/ProducerUsage.java[tag=producer-queries-last-publishing-id]
+--------
+<1> Set a name for the producer
+<2> Query last publishing ID for this producer and increment it
+<3> Scroll to the content for the next publishing ID
+<4> Set the message publishing
 
 ==== Consumer
 

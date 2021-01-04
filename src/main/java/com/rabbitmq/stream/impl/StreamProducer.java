@@ -75,6 +75,7 @@ class StreamProducer implements Producer {
     this.stream = stream;
     this.closingCallback = environment.registerProducer(this, name, this.stream);
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
+    // FIXME query to the last publishing ID if necessary to set up the publishing sequence
     AtomicLong publishingSequence = new AtomicLong(0);
     ToLongFunction<Message> accumulatorPublishSequenceFunction =
         msg -> {

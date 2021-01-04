@@ -14,8 +14,9 @@
 
 package com.rabbitmq.stream.docs;
 
-import com.rabbitmq.stream.*;
-
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.Producer;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -67,6 +68,51 @@ public class ProducerUsage {
                 .build();  // <5>
         producer.send(message, confirmationStatus -> { }); // <6>
         // end::producer-publish-complex-message[]
+    }
+
+    void producerWithName() {
+        Environment environment = Environment.builder().build();
+        // tag::producer-with-name[]
+        Producer producer = environment.producerBuilder()
+            .name("my-app-producer")  // <1>
+            .stream("my-stream")
+            .build();
+        // end::producer-with-name[]
+        // tag::message-with-publishing-id[]
+        Message message = producer.messageBuilder()
+            .publishingId(1)  // <1>
+            .addData("hello".getBytes(StandardCharsets.UTF_8))
+            .build();
+        producer.send(message, confirmationStatus -> { });
+        // end::message-with-publishing-id[]
+    }
+
+    void producerWithNameQueryLastPublishingId() {
+        Environment environment = Environment.builder().build();
+        // tag::producer-queries-last-publishing-id[]
+        Producer producer = environment.producerBuilder()
+            .name("my-app-producer")  // <1>
+            .stream("my-stream")
+            .build();
+        long nextPublishingId = producer.getLastPublishingId() + 1;  // <2>
+        while (moreContent(nextPublishingId)) {
+            byte[] content = getContent(nextPublishingId); // <3>
+            Message message = producer.messageBuilder()
+                .publishingId(nextPublishingId) // <4>
+                .addData(content)
+                .build();
+            producer.send(message, confirmationStatus -> {});
+            nextPublishingId++;
+        }
+        // end::producer-queries-last-publishing-id[]
+    }
+
+    boolean moreContent(long publishingId) {
+        return true;
+    }
+
+    byte [] getContent(long publishingId) {
+        return null;
     }
 
 
