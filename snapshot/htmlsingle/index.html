@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(231f11d)</span>
+<br><span id="revremark">(3beaa8c)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -481,6 +481,13 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#creating-a-producer">Creating a Producer</a></li>
 <li><a href="#sending-messages">Sending Messages</a></li>
 <li><a href="#working-with-complex-messages">Working with Complex Messages</a></li>
+<li><a href="#outbound-message-de-deduplication">Message De-deduplication</a>
+<ul class="sectlevel5">
+<li><a href="#setting-the-name-of-a-producer">Setting the Name of a Producer</a></li>
+<li><a href="#understanding-publishing-id">Understanding Publishing ID</a></li>
+<li><a href="#restarting-a-producer-where-it-left-off">Restarting a Producer Where It Left Off</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li><a href="#consumer">Consumer</a>
@@ -1427,6 +1434,12 @@ publish to the leader node of the stream.</p>
 </thead>
 <tbody>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>name</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The logical name of the producer. Specify a name to enable
+<a href="#outbound-message-de-deduplication">message de-deduplication</a>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>null</code> (no de-duplication)</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchSize</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of messages to accumulate before sending them to the broker.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">100</p></td>
@@ -1607,6 +1620,189 @@ to be accessed as AMQP 0-9-1 queues, without data loss.</p>
 </td>
 </tr>
 </table>
+</div>
+</div>
+<div class="sect4">
+<h5 id="outbound-message-de-deduplication"><a class="anchor" href="#outbound-message-de-deduplication"></a>Message De-deduplication</h5>
+<div class="paragraph">
+<p>RabbitMQ Stream provides publisher confirms to avoid losing messages: once
+the broker has persisted a message it sends a confirmation for this message.
+But this can lead to duplicate messages: imagine the connection closes
+because of a network glitch after the message has been persisted but <em>before</em>
+the confirmation reaches the producer. Once reconnected, the producer will
+retry to send the same message, as it never received the confirmation. So the
+message will be persisted twice.</p>
+</div>
+<div class="paragraph">
+<p>Luckily RabbitMQ Stream can detect and filter out duplicated messages, based
+on 2 client-side elements: the <em>producer name</em> and the <em>message publishing ID</em>.</p>
+</div>
+<div class="sect5">
+<h6 id="setting-the-name-of-a-producer"><a class="anchor" href="#setting-the-name-of-a-producer"></a>Setting the Name of a Producer</h6>
+<div class="paragraph">
+<p>The producer name is set when creating the producer instance, which automatically
+enables de-duplication:</p>
+</div>
+<div class="listingblock">
+<div class="title">Naming a producer to enable message de-duplication</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
+    .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-app-producer</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set a name for the producer</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Thanks to the name, the broker will be able to track the messages it has persisted
+on a given stream for this producer. If the producer connection unexpectedly closes, it
+will automatically recover and retry outstanding messages. The broker will then
+filter out messages it has already received and persisted. No more duplicates!</p>
+</div>
+<div class="paragraph">
+<p>Consider the producer name a logical name. It should not be a random sequence that
+changes when the producer application is restarted. Names like <code>online-shop-order</code> or
+<code>online-shop-invoice</code> are better names than <code>3d235e79-047a-46a6-8c80-9d159d3e1b05</code>.
+There should be only one living instance of a producer with a given name on a given
+stream at the same time.</p>
+</div>
+</div>
+<div class="sect5">
+<h6 id="understanding-publishing-id"><a class="anchor" href="#understanding-publishing-id"></a>Understanding Publishing ID</h6>
+<div class="paragraph">
+<p>The producer name is only one part of the de-duplication mechanism, the other part
+is the <em>message publishing ID</em>. If the producer has a name, the client automatically
+assigns a publishing ID to each outbound message for the producer. The publishing ID
+is a monotonic sequence, starting at 0 and incremented for each message. The default
+publishing sequence is good enough for de-duplication, but it is possible to
+assign a publishing ID to each message:</p>
+</div>
+<div class="listingblock">
+<div class="title">Using an explicit publishing ID</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Message message = producer.messageBuilder()
+    .publishingId(<span class="integer">1</span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .addData(<span class="string"><span class="delimiter">&quot;</span><span class="content">hello</span><span class="delimiter">&quot;</span></span>.getBytes(StandardCharsets.UTF_8))
+    .build();
+producer.send(message, confirmationStatus -&gt; { });</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set a publishing ID on a message</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>There are a few rules to follow when using a custom publishing ID sequence:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>the sequence should start at 0</p>
+</li>
+<li>
+<p>the sequence must be monotonic, that is always increments</p>
+</li>
+<li>
+<p>there can be gaps in the sequence (e.g. 0, 1, 2, 3, 6, 7, 9, 10, etc)</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>A custom publishing ID sequence has usually a meaning: it can be the line number of a file
+or the primary key in a database.</p>
+</div>
+<div class="paragraph">
+<p>Note the publishing ID is not part of the message: it is not stored with the message
+and so is not available when consuming the message. It is still possible to store
+the value in the AMQP 1.0 message application properties or in an appropriate
+properties (e.g. <code>messageId</code>).</p>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+<div class="title">Do not mix client-assigned and custom publishing ID</div>
+<div class="paragraph">
+<p>As soon as a producer name is set, message de-duplication is enabled.
+It is then possible to let the producer assign a publishing ID to each
+message or assign custom publishing IDs. <strong>Do one or the other, not both!</strong></p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect5">
+<h6 id="restarting-a-producer-where-it-left-off"><a class="anchor" href="#restarting-a-producer-where-it-left-off"></a>Restarting a Producer Where It Left Off</h6>
+<div class="paragraph">
+<p>Using a custom publishing sequence is even more useful to restart a producer where it left
+off. Imagine a scenario whereby the producer is sending a message for each line in a file and
+the application uses the line number as the publishing ID. If the application restarts
+because of some necessary maintenance or even a crash, the producer can restart
+from the beginning of the file: there would no duplicate messages because the producer
+has a name and the application sets publishing IDs appropriately. Nevertheless,
+this is far from ideal, it would be much better to restart just after the last line
+the broker successfully confirmed. Fortunately this is possible thanks to
+the <code>Producer#getLastPublishing()</code> method, which returns the last publishing ID for a given
+producer. As the publishing ID in this case is the line number, the application can
+easily scroll to the next line and restart publishing from there.</p>
+</div>
+<div class="paragraph">
+<p>The next snippet illustrates the use of <code>Producer#getLastPublishing()</code>:</p>
+</div>
+<div class="listingblock">
+<div class="title">Setting a producer where it left off</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
+    .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-app-producer</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+    .build();
+<span class="type">long</span> nextPublishingId = producer.getLastPublishingId() + <span class="integer">1</span>;  <i class="conum" data-value="2"></i><b>(2)</b>
+<span class="keyword">while</span> (moreContent(nextPublishingId)) {
+    <span class="type">byte</span><span class="type">[]</span> content = getContent(nextPublishingId); <i class="conum" data-value="3"></i><b>(3)</b>
+    Message message = producer.messageBuilder()
+        .publishingId(nextPublishingId) <i class="conum" data-value="4"></i><b>(4)</b>
+        .addData(content)
+        .build();
+    producer.send(message, confirmationStatus -&gt; {});
+    nextPublishingId++;
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set a name for the producer</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Query last publishing ID for this producer and increment it</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Scroll to the content for the next publishing ID</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Set the message publishing</td>
+</tr>
+</table>
+</div>
 </div>
 </div>
 </div>
@@ -2441,7 +2637,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-01-04 09:24:52 UTC
+Last updated 2021-01-04 14:05:33 UTC
 </div>
 </div>
 <style>
