@@ -5,7 +5,7 @@
 This section covers the basics of the RabbitMQ Stream Java API by building
 a small publish/consume application. This is a good way to get
 an overview of the API. If you want a more comprehensive introduction,
-you can go to the <<api.adoc#rabbitmq-stream-java-api,the reference documentation section>>.
+you can go to the <<api.adoc#rabbitmq-stream-java-api,reference documentation section>>.
 
 The sample application publishes some messages and then registers
 a consumer to make some computations out of them. The

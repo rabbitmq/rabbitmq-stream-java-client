@@ -49,6 +49,9 @@ you need to use an AMQP 0-9-1 client library.
 RabbitMQ stream provides at-least-once guarantees thanks to the
 publisher confirm mechanism, which is supported by the stream Java client.
 
+Message <<api.adoc#outbound-message-de-deduplication,de-duplication>>
+is also supported on the publisher side.
+
 [[stream-client-overview]]
 == Stream Client Overview
 
@@ -60,6 +63,7 @@ to build fast, efficient, and robust client applications.
 * _administrate streams (creation/deletion) directly from applications._ This
 can also be useful for development and testing.
 * _adapt publishing throughput_ thanks to the configurable batch size and flow control.
+* _avoid publishing duplicate messages_ thanks to message de-duplication.
 * _consume asynchronously from streams and resume where left off_ thanks to
 automatic or manual offset tracking.
 * _use cluster nodes appropriately_ by letting the client decide which node to connect to - to
