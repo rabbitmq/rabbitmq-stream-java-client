@@ -1,4 +1,4 @@
-// Copyright (c) 2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -45,7 +45,7 @@ final class ClientProperties {
               put("product", "RabbitMQ Stream");
               put("version", ClientProperties.VERSION);
               put("platform", "Java");
-              put("copyright", "Copyright (c) 2020 VMware, Inc. or its affiliates.");
+              put("copyright", "Copyright (c) 2020-2021 VMware, Inc. or its affiliates.");
               put("information", "Licensed under the MPL 2.0. See https://www.rabbitmq.com/");
             }
           });
