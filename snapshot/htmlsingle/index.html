@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(3beaa8c)</span>
+<br><span id="revremark">(0bf4e19)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -636,6 +636,10 @@ you need to use an AMQP 0-9-1 client library.</p>
 <p>RabbitMQ stream provides at-least-once guarantees thanks to the
 publisher confirm mechanism, which is supported by the stream Java client.</p>
 </div>
+<div class="paragraph">
+<p>Message <a href="#outbound-message-de-deduplication">de-duplication</a>
+is also supported on the publisher side.</p>
+</div>
 </div>
 </div>
 <div class="sect1">
@@ -655,6 +659,9 @@ can also be useful for development and testing.</p>
 </li>
 <li>
 <p><em>adapt publishing throughput</em> thanks to the configurable batch size and flow control.</p>
+</li>
+<li>
+<p><em>avoid publishing duplicate messages</em> thanks to message de-duplication.</p>
 </li>
 <li>
 <p><em>consume asynchronously from streams and resume where left off</em> thanks to
@@ -813,7 +820,7 @@ repositories {
 <p>This section covers the basics of the RabbitMQ Stream Java API by building
 a small publish/consume application. This is a good way to get
 an overview of the API. If you want a more comprehensive introduction,
-you can go to the <a href="#rabbitmq-stream-java-api">the reference documentation section</a>.</p>
+you can go to the <a href="#rabbitmq-stream-java-api">reference documentation section</a>.</p>
 </div>
 <div class="paragraph">
 <p>The sample application publishes some messages and then registers
@@ -2637,7 +2644,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-01-04 14:05:33 UTC
+Last updated 2021-01-04 16:04:10 UTC
 </div>
 </div>
 <style>
