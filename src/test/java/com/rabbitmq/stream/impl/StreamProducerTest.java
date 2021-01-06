@@ -45,11 +45,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -429,5 +431,48 @@ public class StreamProducerTest {
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     Thread.sleep(1000);
     assertThat(consumed.get()).isEqualTo(lastConfirmed.get() + 1);
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {1, 7})
+  void firstMessagesShouldNotBeFilteredOutWhenNamedProducerRestarts(int subEntrySize, TestInfo info)
+      throws Exception {
+    int messageCount = 10_000;
+    String producerName = info.getTestMethod().get().getName();
+    AtomicReference<Producer> producer =
+        new AtomicReference<>(
+            environment.producerBuilder().name(producerName).subEntrySize(subEntrySize).stream(
+                    stream)
+                .build());
+
+    AtomicReference<CountDownLatch> publishLatch =
+        new AtomicReference<>(new CountDownLatch(messageCount));
+
+    IntConsumer publishing =
+        i ->
+            producer
+                .get()
+                .send(
+                    producer.get().messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> publishLatch.get().countDown());
+
+    IntStream.range(0, messageCount).forEach(publishing);
+    assertThat(publishLatch.get().await(10, TimeUnit.SECONDS)).isTrue();
+    producer.get().close();
+
+    publishLatch.set(new CountDownLatch(messageCount));
+    producer.set(
+        environment.producerBuilder().name(producerName).subEntrySize(subEntrySize).stream(stream)
+            .build());
+
+    IntStream.range(0, messageCount).forEach(publishing);
+    assertThat(publishLatch.get().await(10, TimeUnit.SECONDS)).isTrue();
+    producer.get().close();
+
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount * 2);
+    environment.consumerBuilder().stream(stream)
+        .messageHandler((ctx, msg) -> consumeLatch.countDown())
+        .build();
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
   }
 }

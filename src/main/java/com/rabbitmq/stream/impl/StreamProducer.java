@@ -14,10 +14,19 @@
 
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.*;
+import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
+import static com.rabbitmq.stream.Constants.CODE_PRODUCER_CLOSED;
+import static com.rabbitmq.stream.Constants.CODE_PRODUCER_NOT_AVAILABLE;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.MessageAccumulator.AccumulatedEntity;
 import io.netty.buffer.ByteBuf;
@@ -56,11 +65,11 @@ class StreamProducer implements Producer {
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final int maxUnconfirmedMessages;
   private final Codec codec;
+  private final ToLongFunction<Object> publishSequenceFunction =
+      entity -> ((AccumulatedEntity) entity).publishindId();
   private volatile Client client;
   private volatile byte publisherId;
   private volatile Status status;
-  private final ToLongFunction<Object> publishSequenceFunction =
-      entity -> ((AccumulatedEntity) entity).publishindId();
 
   StreamProducer(
       String name,
@@ -75,8 +84,7 @@ class StreamProducer implements Producer {
     this.stream = stream;
     this.closingCallback = environment.registerProducer(this, name, this.stream);
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
-    // FIXME query to the last publishing ID if necessary to set up the publishing sequence
-    AtomicLong publishingSequence = new AtomicLong(0);
+    AtomicLong publishingSequence = new AtomicLong(computeFirstValueOfPublishingSequence());
     ToLongFunction<Message> accumulatorPublishSequenceFunction =
         msg -> {
           if (msg.hasPublishingId()) {
@@ -148,6 +156,19 @@ class StreamProducer implements Producer {
     this.batchSize = batchSize;
     this.codec = environment.codec();
     this.status = Status.RUNNING;
+  }
+
+  private long computeFirstValueOfPublishingSequence() {
+    if (name == null || name.isEmpty()) {
+      return 0;
+    } else {
+      long lastPublishingId = this.client.queryPublisherSequence(this.name, this.stream);
+      if (lastPublishingId == 0) {
+        return 0;
+      } else {
+        return lastPublishingId + 1;
+      }
+    }
   }
 
   void confirm(long publishingId) {
