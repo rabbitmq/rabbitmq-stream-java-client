@@ -29,6 +29,8 @@ interface MessageAccumulator {
 
   interface AccumulatedEntity {
 
+    long time();
+
     long publishindId();
 
     Object encodedEntity();

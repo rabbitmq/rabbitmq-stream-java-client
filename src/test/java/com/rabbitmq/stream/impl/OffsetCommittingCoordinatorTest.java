@@ -40,7 +40,6 @@ public class OffsetCommittingCoordinatorTest {
 
   @Mock StreamEnvironment env;
   @Mock StreamConsumer consumer;
-  @Mock Client client;
 
   ScheduledExecutorService executorService;
 

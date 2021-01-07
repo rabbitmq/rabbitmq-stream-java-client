@@ -34,6 +34,8 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   private int maxUnconfirmedMessages = 10_000;
 
+  private Duration confirmTimeout = Duration.ofSeconds(30);
+
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
   }
@@ -51,7 +53,7 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   public StreamProducerBuilder batchSize(int batchSize) {
     if (batchSize <= 0) {
-      throw new IllegalArgumentException("batchSize must greater than 0");
+      throw new IllegalArgumentException("the batch size must be greater than 0");
     }
     this.batchSize = batchSize;
     return this;
@@ -59,6 +61,9 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   @Override
   public ProducerBuilder subEntrySize(int subEntrySize) {
+    if (subEntrySize < 0) {
+      throw new IllegalArgumentException("the sub-entry size must be greater than 0");
+    }
     this.subEntrySize = subEntrySize;
     return this;
   }
@@ -71,9 +76,22 @@ class StreamProducerBuilder implements ProducerBuilder {
   @Override
   public ProducerBuilder maxUnconfirmedMessages(int maxUnconfirmedMessages) {
     if (maxUnconfirmedMessages <= 0) {
-      throw new IllegalArgumentException("maxUnconfirmedMessages must be greater than 0");
+      throw new IllegalArgumentException(
+          "the maximum number of unconfirmed messages must be greater than 0");
     }
     this.maxUnconfirmedMessages = maxUnconfirmedMessages;
+    return this;
+  }
+
+  @Override
+  public ProducerBuilder confirmTimeout(Duration timeout) {
+    if (timeout.isNegative()) {
+      throw new IllegalArgumentException("the confirm timeout cannot be negative");
+    }
+    if (timeout.compareTo(Duration.ofSeconds(1)) < 0) {
+      throw new IllegalArgumentException("the confirm timeout cannot be less than 1 second");
+    }
+    this.confirmTimeout = timeout;
     return this;
   }
 
@@ -86,6 +104,7 @@ class StreamProducerBuilder implements ProducerBuilder {
             batchSize,
             batchPublishingDelay,
             maxUnconfirmedMessages,
+            confirmTimeout,
             environment);
     this.environment.addProducer(producer);
     return producer;

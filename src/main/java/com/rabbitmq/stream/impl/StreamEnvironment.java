@@ -61,6 +61,8 @@ class StreamEnvironment implements Environment {
   private volatile Client locator;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final Function<String, String> hostResolver;
+  private final Clock clock = new Clock();
+  private ScheduledFuture<?> clockRefreshFuture;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -186,6 +188,9 @@ class StreamEnvironment implements Environment {
       throw lastException;
     }
     this.codec = locator.codec();
+    this.clockRefreshFuture =
+        this.scheduledExecutorService.scheduleAtFixedRate(
+            () -> this.clock.refresh(), 1, 1, SECONDS);
   }
 
   private static String uriDecode(String s) {
@@ -312,15 +317,13 @@ class StreamEnvironment implements Environment {
           this.locator.close();
           this.locator = null;
         }
-
-        if (privateScheduleExecutorService) {
-          this.scheduledExecutorService.shutdownNow();
-        }
-
       } catch (Exception e) {
         LOGGER.warn("Error while closing locator client", e);
       }
-
+      this.clockRefreshFuture.cancel(false);
+      if (privateScheduleExecutorService) {
+        this.scheduledExecutorService.shutdownNow();
+      }
       try {
         if (this.eventLoopGroup != null
             && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
@@ -373,6 +376,10 @@ class StreamEnvironment implements Environment {
       throw new StreamException("No connection available");
     }
     return this.locator;
+  }
+
+  Clock clock() {
+    return this.clock;
   }
 
   Function<String, String> hostResolver() {

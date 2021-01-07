@@ -27,6 +27,7 @@ import java.util.function.ToLongFunction;
 class SimpleMessageAccumulator implements MessageAccumulator {
 
   protected final BlockingQueue<AccumulatedEntity> messages;
+  protected final Clock clock;
   private final int capacity;
   private final Codec codec;
   private final int maxFrameSize;
@@ -36,12 +37,14 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       int capacity,
       Codec codec,
       int maxFrameSize,
-      ToLongFunction<Message> publishSequenceFunction) {
+      ToLongFunction<Message> publishSequenceFunction,
+      Clock clock) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
     this.codec = codec;
     this.maxFrameSize = maxFrameSize;
     this.publishSequenceFunction = publishSequenceFunction;
+    this.clock = clock;
   }
 
   public boolean add(Message message, ConfirmationHandler confirmationHandler) {
@@ -52,6 +55,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       boolean offered =
           messages.offer(
               new SimpleAccumulatedEntity(
+                  clock.time(),
                   publishingId,
                   encodedMessage,
                   new SimpleConfirmationCallback(message, confirmationHandler)),
@@ -83,14 +87,17 @@ class SimpleMessageAccumulator implements MessageAccumulator {
 
   private static final class SimpleAccumulatedEntity implements AccumulatedEntity {
 
+    private final long time;
     private final long publishingId;
     private final Codec.EncodedMessage encodedMessage;
     private final StreamProducer.ConfirmationCallback confirmationCallback;
 
     private SimpleAccumulatedEntity(
+        long time,
         long publishingId,
         Codec.EncodedMessage encodedMessage,
         StreamProducer.ConfirmationCallback confirmationCallback) {
+      this.time = time;
       this.publishingId = publishingId;
       this.encodedMessage = encodedMessage;
       this.confirmationCallback = confirmationCallback;
@@ -104,6 +111,11 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     @Override
     public Object encodedEntity() {
       return encodedMessage;
+    }
+
+    @Override
+    public long time() {
+      return time;
     }
 
     @Override

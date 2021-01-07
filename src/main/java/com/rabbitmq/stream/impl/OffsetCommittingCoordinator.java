@@ -35,7 +35,7 @@ class OffsetCommittingCoordinator {
 
   private final Collection<Tracker> trackers = ConcurrentHashMap.newKeySet();
 
-  private final Clock clock = new Clock();
+  private final LocalClock clock = new LocalClock();
 
   private final AtomicBoolean flushingOnGoing = new AtomicBoolean(false);
 
@@ -161,13 +161,13 @@ class OffsetCommittingCoordinator {
     private final StreamConsumer consumer;
     private final int messageCountBeforeCommit;
     private final long flushIntervalInNs;
-    private final Clock clock;
+    private final LocalClock clock;
     private volatile long count = 0;
     private volatile long lastProcessedOffset = 0;
     private volatile long lastCommitActivity = 0;
 
     private AutoCommitTracker(
-        StreamConsumer consumer, CommitConfiguration configuration, Clock clock) {
+        StreamConsumer consumer, CommitConfiguration configuration, LocalClock clock) {
       this.consumer = consumer;
       this.messageCountBeforeCommit = configuration.autoMessageCountBeforeCommit();
       this.flushIntervalInNs = configuration.autoFlushInterval().toNanos();
@@ -210,13 +210,13 @@ class OffsetCommittingCoordinator {
   private static final class ManualCommitTracker implements Tracker {
 
     private final StreamConsumer consumer;
-    private final Clock clock;
+    private final LocalClock clock;
     private final long checkIntervalInNs;
     private volatile long lastRequestedOffset = 0;
     private volatile long lastCommitActivity = 0;
 
     private ManualCommitTracker(
-        StreamConsumer consumer, CommitConfiguration configuration, Clock clock) {
+        StreamConsumer consumer, CommitConfiguration configuration, LocalClock clock) {
       this.consumer = consumer;
       this.clock = clock;
       this.checkIntervalInNs = configuration.manualCheckInterval().toNanos();
@@ -252,12 +252,12 @@ class OffsetCommittingCoordinator {
     }
   }
 
-  private static class Clock {
+  private static class LocalClock {
 
-    volatile long time;
+    private volatile long time;
 
     long time() {
-      return this.time = System.nanoTime();
+      return this.time;
     }
 
     public void setTime(long time) {

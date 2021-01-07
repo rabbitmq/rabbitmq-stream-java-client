@@ -12,25 +12,21 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-import java.time.Duration;
+class Clock {
 
-public interface ProducerBuilder {
+  private volatile long time;
 
-  ProducerBuilder name(String name);
+  Clock() {
+    this.time = System.nanoTime();
+  }
 
-  ProducerBuilder stream(String stream);
+  long time() {
+    return this.time;
+  }
 
-  ProducerBuilder subEntrySize(int subEntrySize);
-
-  ProducerBuilder batchSize(int batchSize);
-
-  ProducerBuilder batchPublishingDelay(Duration batchPublishingDelay);
-
-  ProducerBuilder maxUnconfirmedMessages(int maxUnconfirmedMessages);
-
-  ProducerBuilder confirmTimeout(Duration timeout);
-
-  Producer build();
+  void refresh() {
+    this.time = System.nanoTime();
+  }
 }

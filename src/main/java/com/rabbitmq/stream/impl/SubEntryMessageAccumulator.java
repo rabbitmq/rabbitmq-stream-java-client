@@ -16,8 +16,9 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       int batchSize,
       Codec codec,
       int maxFrameSize,
-      ToLongFunction<Message> publishSequenceFunction) {
-    super(subEntrySize * batchSize, codec, maxFrameSize, publishSequenceFunction);
+      ToLongFunction<Message> publishSequenceFunction,
+      Clock clock) {
+    super(subEntrySize * batchSize, codec, maxFrameSize, publishSequenceFunction, clock);
     this.subEntrySize = subEntrySize;
   }
 
@@ -47,6 +48,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     if (batch.isEmpty()) {
       return null;
     } else {
+      batch.time = lastMessageInBatch.time();
       batch.publishingId = lastMessageInBatch.publishindId();
       return batch;
     }
@@ -57,6 +59,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     private final Client.EncodedMessageBatch encodedMessageBatch;
     private final CompositeConfirmationCallback confirmationCallback;
     private volatile long publishingId;
+    private volatile long time;
 
     private Batch(
         Client.EncodedMessageBatch encodedMessageBatch,
@@ -84,6 +87,11 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     @Override
     public Object encodedEntity() {
       return encodedMessageBatch;
+    }
+
+    @Override
+    public long time() {
+      return time;
     }
 
     @Override

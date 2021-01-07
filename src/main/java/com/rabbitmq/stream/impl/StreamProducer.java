@@ -36,9 +36,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -70,6 +72,7 @@ class StreamProducer implements Producer {
   private volatile Client client;
   private volatile byte publisherId;
   private volatile Status status;
+  private volatile ScheduledFuture<?> confirmTimeoutFuture;
 
   StreamProducer(
       String name,
@@ -78,6 +81,7 @@ class StreamProducer implements Producer {
       int batchSize,
       Duration batchPublishingDelay,
       int maxUnconfirmedMessages,
+      Duration confirmTimeout,
       StreamEnvironment environment) {
     this.environment = environment;
     this.name = name;
@@ -99,7 +103,8 @@ class StreamProducer implements Producer {
               batchSize,
               environment.codec(),
               client.maxFrameSize(),
-              accumulatorPublishSequenceFunction);
+              accumulatorPublishSequenceFunction,
+              this.environment.clock());
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
     } else {
       this.accumulator =
@@ -108,7 +113,8 @@ class StreamProducer implements Producer {
               batchSize,
               environment.codec(),
               client.maxFrameSize(),
-              accumulatorPublishSequenceFunction);
+              accumulatorPublishSequenceFunction,
+              this.environment.clock());
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
 
@@ -155,7 +161,55 @@ class StreamProducer implements Producer {
     }
     this.batchSize = batchSize;
     this.codec = environment.codec();
+    if (!confirmTimeout.isZero()) {
+      AtomicReference<Runnable> taskReference = new AtomicReference<>();
+      Runnable confirmTimeoutTask = confirmTimeoutTask(confirmTimeout);
+      Runnable wrapperTask =
+          () -> {
+            try {
+              confirmTimeoutTask.run();
+            } catch (Exception e) {
+              LOGGER.info("Error while executing confirm timeout check task: {}", e.getCause());
+            }
+
+            if (this.status != Status.CLOSED) {
+              this.confirmTimeoutFuture =
+                  this.environment
+                      .scheduledExecutorService()
+                      .schedule(
+                          taskReference.get(), confirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            }
+          };
+      taskReference.set(wrapperTask);
+      this.confirmTimeoutFuture =
+          this.environment
+              .scheduledExecutorService()
+              .schedule(taskReference.get(), confirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
+    }
     this.status = Status.RUNNING;
+  }
+
+  private Runnable confirmTimeoutTask(Duration confirmTimeout) {
+    return () -> {
+      long limit = this.environment.clock().time() - confirmTimeout.toNanos();
+      SortedMap<Long, AccumulatedEntity> unconfirmedSnapshot =
+          new TreeMap<>(this.unconfirmedMessages);
+      LOGGER.debug("Starting confirm timeout check task");
+      int count = 0;
+      for (Entry<Long, AccumulatedEntity> unconfirmedEntry : unconfirmedSnapshot.entrySet()) {
+        if (unconfirmedEntry.getValue().time() < limit) {
+          if (Thread.currentThread().isInterrupted()) {
+            return;
+          }
+          error(unconfirmedEntry.getKey(), Constants.CODE_PUBLISH_CONFIRM_TIMEOUT);
+          count++;
+        } else {
+          // everything else is after, so we can stop
+          break;
+        }
+      }
+      LOGGER.debug("Failed {} message(s) which had timed out (limit {})", count, limit);
+    };
   }
 
   private long computeFirstValueOfPublishingSequence() {
@@ -278,14 +332,22 @@ class StreamProducer implements Producer {
 
   void closeFromEnvironment() {
     this.closingCallback.run();
+    cancelConfirmTimeoutTask();
     this.closed.set(true);
     this.status = Status.CLOSED;
   }
 
   void closeAfterStreamDeletion() {
     if (closed.compareAndSet(false, true)) {
+      cancelConfirmTimeoutTask();
       this.environment.removeProducer(this);
       this.status = Status.CLOSED;
+    }
+  }
+
+  private void cancelConfirmTimeoutTask() {
+    if (this.confirmTimeoutFuture != null) {
+      this.confirmTimeoutFuture.cancel(true);
     }
   }
 

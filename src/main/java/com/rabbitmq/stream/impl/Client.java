@@ -264,10 +264,10 @@ public class Client implements AutoCloseable {
     authenticate();
     this.tuneState.await(Duration.ofSeconds(10));
     this.maxFrameSize = this.tuneState.getMaxFrameSize();
-    this.frameSizeCopped = this.maxFrameSize > 0;
+    this.frameSizeCopped = this.maxFrameSize() > 0;
     LOGGER.debug(
         "Connection tuned with max frame size {} and heartbeat {}",
-        this.maxFrameSize,
+        this.maxFrameSize(),
         tuneState.getHeartbeat());
     open(parameters.virtualHost);
     started.set(true);
@@ -517,12 +517,12 @@ public class Client implements AutoCloseable {
   }
 
   ByteBuf allocate(ByteBufAllocator allocator, int capacity) {
-    if (frameSizeCopped && capacity > this.maxFrameSize) {
+    if (frameSizeCopped && capacity > this.maxFrameSize()) {
       throw new IllegalArgumentException(
           "Cannot allocate "
               + capacity
               + " bytes for outbound frame, limit is "
-              + this.maxFrameSize);
+              + this.maxFrameSize());
     }
     return allocator.buffer(capacity);
   }
@@ -760,7 +760,7 @@ public class Client implements AutoCloseable {
   }
 
   private void checkMessageFitsInFrame(Codec.EncodedMessage encodedMessage) {
-    checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
+    checkMessageFitsInFrame(this.maxFrameSize(), encodedMessage);
   }
 
   private void checkMessageBatchFitsInFrame(EncodedMessageBatch encodedMessageBatch) {
@@ -774,7 +774,7 @@ public class Client implements AutoCloseable {
             + 2 // byte with entry type and compression, short with number of messages in batch
             + 4
             + encodedMessageBatch.size;
-    if (frameBeginning > this.maxFrameSize) {
+    if (frameBeginning > this.maxFrameSize()) {
       throw new IllegalArgumentException(
           "Message batch too big to fit in one frame: " + encodedMessageBatch.size);
     }
@@ -796,14 +796,13 @@ public class Client implements AutoCloseable {
       OutboundEntityWriteCallback callback,
       ToLongFunction<Object> publishSequenceFunction) {
     int frameHeaderLength = 2 + 2 + 1 + 4;
-
     List<Long> sequences = new ArrayList<>(encodedEntities.size());
     int length = frameHeaderLength;
     int currentIndex = 0;
     int startIndex = 0;
     for (Object encodedEntity : encodedEntities) {
       length += callback.fragmentLength(encodedEntity);
-      if (length > this.maxFrameSize) {
+      if (length > this.maxFrameSize()) {
         // the current message/batch does not fit, we're sending the batch
         int frameLength = length - callback.fragmentLength(encodedEntity);
         sendEntityBatch(
