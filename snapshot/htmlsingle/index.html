@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(0bf4e19)</span>
+<br><span id="revremark">(6acaf1b)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1449,13 +1449,15 @@ publish to the leader node of the stream.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchSize</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of messages to accumulate before sending them to the broker.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">100</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">100</p>
+<p class="tableblock"><a id="producer-sub-entry-size-configuration-entry"></a></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>subEntrySize</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
 frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
-as well. Use this feature to increase throughput at the cost of increased latency.</p></td>
+as well. Use this feature to increase throughput at the cost of increased latency and
+potential duplicated messages even when de-duplication is enabled.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1 (meaning no use of sub-entry batching)</p></td>
 </tr>
 <tr>
@@ -1643,6 +1645,25 @@ message will be persisted twice.</p>
 <div class="paragraph">
 <p>Luckily RabbitMQ Stream can detect and filter out duplicated messages, based
 on 2 client-side elements: the <em>producer name</em> and the <em>message publishing ID</em>.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="title">De-duplication is not guaranteed when using sub-entries batching</div>
+<div class="paragraph">
+<p>It is not possible to guarantee de-duplication when
+<a href="#producer-sub-entry-size-configuration-entry">sub-entry batching</a> is in use.
+Sub-entry batching is disabled by default and it does not prevent from
+batching messages in a single publish frame, which can already provide
+very high throughput.</p>
+</div>
+</td>
+</tr>
+</table>
 </div>
 <div class="sect5">
 <h6 id="setting-the-name-of-a-producer"><a class="anchor" href="#setting-the-name-of-a-producer"></a>Setting the Name of a Producer</h6>
@@ -2644,7 +2665,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-01-04 16:04:10 UTC
+Last updated 2021-01-07 08:26:33 UTC
 </div>
 </div>
 <style>
