@@ -251,10 +251,12 @@ The following table sums up the main settings to create a `Producer`:
 |The maximum number of messages to accumulate before sending them to the broker.
 |100
 
+[[producer-sub-entry-size-configuration-entry]]
 |`subEntrySize`
 |The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
 frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
-as well. Use this feature to increase throughput at the cost of increased latency.
+as well. Use this feature to increase throughput at the cost of increased latency and
+potential duplicated messages even when de-duplication is enabled.
 |1 (meaning no use of sub-entry batching)
 
 |`maxUnconfirmedMessages`
@@ -356,6 +358,16 @@ message will be persisted twice.
 
 Luckily RabbitMQ Stream can detect and filter out duplicated messages, based
 on 2 client-side elements: the _producer name_ and the _message publishing ID_.
+
+[WARNING]
+.De-duplication is not guaranteed when using sub-entries batching
+====
+It is not possible to guarantee de-duplication when
+<<producer-sub-entry-size-configuration-entry, sub-entry batching>> is in use.
+Sub-entry batching is disabled by default and it does not prevent from
+batching messages in a single publish frame, which can already provide
+very high throughput.
+====
 
 ====== Setting the Name of a Producer
 
