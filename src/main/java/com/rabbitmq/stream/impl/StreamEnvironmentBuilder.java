@@ -46,6 +46,11 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
   private Function<String, String> hostResolver = host -> host;
 
+  private int maxProducersByConnection = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT;
+  private int maxCommittingConsumersByConnection =
+      ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT;
+  private int maxConsumersByConnection = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
+
   public StreamEnvironmentBuilder() {}
 
   @Override
@@ -183,6 +188,44 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
+  public EnvironmentBuilder maxProducersByConnection(int maxProducersByConnection) {
+    if (maxProducersByConnection < 1
+        || maxProducersByConnection > ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT) {
+      throw new IllegalArgumentException(
+          "maxProducersByConnection must be between 1 and "
+              + ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT);
+    }
+    this.maxProducersByConnection = maxProducersByConnection;
+    return this;
+  }
+
+  @Override
+  public EnvironmentBuilder maxCommittingConsumersByConnection(
+      int maxCommittingConsumersByConnection) {
+    if (maxCommittingConsumersByConnection < 1
+        || maxCommittingConsumersByConnection
+            > ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT) {
+      throw new IllegalArgumentException(
+          "maxCommittingConsumersByConnection must be between 1 and "
+              + ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT);
+    }
+    this.maxCommittingConsumersByConnection = maxCommittingConsumersByConnection;
+    return this;
+  }
+
+  @Override
+  public EnvironmentBuilder maxConsumersByConnection(int maxConsumersByConnection) {
+    if (maxConsumersByConnection < 1
+        || maxConsumersByConnection > ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT) {
+      throw new IllegalArgumentException(
+          "maxConsumersByConnection must be between 1 and "
+              + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
+    }
+    this.maxConsumersByConnection = maxConsumersByConnection;
+    return this;
+  }
+
+  @Override
   public Environment build() {
     return new StreamEnvironment(
         scheduledExecutorService,
@@ -190,6 +233,9 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         uris,
         recoveryBackOffDelayPolicy,
         topologyBackOffDelayPolicy,
-        hostResolver);
+        hostResolver,
+        maxProducersByConnection,
+        maxCommittingConsumersByConnection,
+        maxConsumersByConnection);
   }
 }

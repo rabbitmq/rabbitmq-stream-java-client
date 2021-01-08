@@ -42,13 +42,18 @@ class ProducersCoordinator {
   private final StreamEnvironment environment;
   private final Function<Client.ClientParameters, Client> clientFactory;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
+  private final int maxProducersByClient, maxCommittingConsumersByClient;
 
-  ProducersCoordinator(StreamEnvironment environment) {
-    this(environment, Client::new);
+  ProducersCoordinator(
+      StreamEnvironment environment, int maxProducersByClient, int maxCommittingConsumersByClient) {
+    this(environment, maxProducersByClient, maxCommittingConsumersByClient, Client::new);
   }
 
   ProducersCoordinator(
-      StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
+      StreamEnvironment environment,
+      int maxProducersByClient,
+      int maxCommittingConsumersByClient,
+      Function<Client.ClientParameters, Client> clientFactory) {
     this.environment = environment;
     this.clientFactory =
         clientParameters -> {
@@ -56,6 +61,8 @@ class ProducersCoordinator {
           parametersCopy.host(environment.hostResolver().apply(parametersCopy.host));
           return clientFactory.apply(parametersCopy);
         };
+    this.maxProducersByClient = maxProducersByClient;
+    this.maxCommittingConsumersByClient = maxCommittingConsumersByClient;
   }
 
   private static String keyForManagerPool(Client.Broker broker) {

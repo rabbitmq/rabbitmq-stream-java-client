@@ -76,6 +76,9 @@ public class StreamEnvironmentUnitTest {
             recoveryBackOffDelayPolicy,
             topologyUpdateBackOffDelayPolicy,
             host -> host,
+            ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
+            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             cf);
   }
 
@@ -130,6 +133,9 @@ public class StreamEnvironmentUnitTest {
             recoveryBackOffDelayPolicy,
             topologyUpdateBackOffDelayPolicy,
             host -> host,
+            ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
+            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             cf);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }

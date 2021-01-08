@@ -127,7 +127,22 @@ Executors
       .availableProcessors()
 );
 ----
+|`maxProducersByConnection`
+|The maximum number of `Producer` instances a single connection can maintain before
+a new connection is open. The value must be between 1 and 255.
+|255
+
+|`maxCommittingConsumersByConnection`
+|The maximum number of `Consumer` instances that commit their offset a single connection
+can maintain before a new connection is open. The value must be between 1 and 255.
+|50
+
+|`maxConsumersByConnection`
+|The maximum number of `Consumer` instances a single connection can maintain before
+a new connection is open. The value must be between 1 and 255.
+|255
 |===
+
 
 ===== Managing Streams
 

@@ -51,9 +51,12 @@ class ConsumersCoordinator {
   private final StreamEnvironment environment;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
   private final Function<Client.ClientParameters, Client> clientFactory;
+  private final int maxConsumersByConnection;
 
   ConsumersCoordinator(
-      StreamEnvironment environment, Function<Client.ClientParameters, Client> clientFactory) {
+      StreamEnvironment environment,
+      int maxConsumersByConnection,
+      Function<Client.ClientParameters, Client> clientFactory) {
     this.environment = environment;
     this.clientFactory =
         clientParameters -> {
@@ -61,10 +64,11 @@ class ConsumersCoordinator {
           parametersCopy.host(environment.hostResolver().apply(parametersCopy.host));
           return clientFactory.apply(parametersCopy);
         };
+    this.maxConsumersByConnection = maxConsumersByConnection;
   }
 
-  ConsumersCoordinator(StreamEnvironment environment) {
-    this(environment, Client::new);
+  ConsumersCoordinator(StreamEnvironment environment, int maxConsumersByConnection) {
+    this(environment, maxConsumersByConnection, Client::new);
   }
 
   private static String keyForClientSubscription(Client.Broker broker) {

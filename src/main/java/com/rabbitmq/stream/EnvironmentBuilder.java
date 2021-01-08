@@ -61,6 +61,12 @@ public interface EnvironmentBuilder {
 
   EnvironmentBuilder metricsCollector(MetricsCollector metricsCollector);
 
+  EnvironmentBuilder maxProducersByConnection(int maxProducersByConnection);
+
+  EnvironmentBuilder maxCommittingConsumersByConnection(int maxCommittingConsumersByConnection);
+
+  EnvironmentBuilder maxConsumersByConnection(int maxConsumersByConnection);
+
   /**
    * Set the {@link ScheduledExecutorService} used to:
    *

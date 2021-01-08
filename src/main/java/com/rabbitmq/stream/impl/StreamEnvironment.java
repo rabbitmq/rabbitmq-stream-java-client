@@ -70,7 +70,10 @@ class StreamEnvironment implements Environment {
       List<URI> uris,
       BackOffDelayPolicy recoveryBackOffDelayPolicy,
       BackOffDelayPolicy topologyBackOffDelayPolicy,
-      Function<String, String> hostResolver) {
+      Function<String, String> hostResolver,
+      int maxProducersByConnection,
+      int maxCommittingConsumersByConnection,
+      int maxConsumersByConnection) {
     this(
         scheduledExecutorService,
         clientParametersPrototype,
@@ -78,6 +81,9 @@ class StreamEnvironment implements Environment {
         recoveryBackOffDelayPolicy,
         topologyBackOffDelayPolicy,
         hostResolver,
+        maxProducersByConnection,
+        maxCommittingConsumersByConnection,
+        maxConsumersByConnection,
         cp -> new Client(cp));
   }
 
@@ -88,6 +94,9 @@ class StreamEnvironment implements Environment {
       BackOffDelayPolicy recoveryBackOffDelayPolicy,
       BackOffDelayPolicy topologyBackOffDelayPolicy,
       Function<String, String> hostResolver,
+      int maxProducersByConnection,
+      int maxCommittingConsumersByConnection,
+      int maxConsumersByConnection,
       Function<Client.ClientParameters, Client> clientFactory) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
@@ -128,8 +137,10 @@ class StreamEnvironment implements Environment {
 
     this.hostResolver = hostResolver;
 
-    this.producersCoordinator = new ProducersCoordinator(this);
-    this.consumersCoordinator = new ConsumersCoordinator(this);
+    this.producersCoordinator =
+        new ProducersCoordinator(
+            this, maxProducersByConnection, maxCommittingConsumersByConnection);
+    this.consumersCoordinator = new ConsumersCoordinator(this, maxConsumersByConnection);
     this.offsetCommittingCoordinator = new OffsetCommittingCoordinator(this);
 
     AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();

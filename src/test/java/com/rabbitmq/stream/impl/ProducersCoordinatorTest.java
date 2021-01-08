@@ -94,7 +94,12 @@ public class ProducersCoordinatorTest {
     when(committingConsumer.stream()).thenReturn("stream");
     when(client.declarePublisher(anyByte(), isNull(), anyString()))
         .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
-    coordinator = new ProducersCoordinator(environment, clientFactory);
+    coordinator =
+        new ProducersCoordinator(
+            environment,
+            ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
+            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            clientFactory);
   }
 
   @AfterEach

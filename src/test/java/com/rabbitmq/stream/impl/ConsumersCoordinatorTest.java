@@ -106,7 +106,9 @@ public class ConsumersCoordinatorTest {
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.hostResolver()).thenReturn(host -> host);
 
-    coordinator = new ConsumersCoordinator(environment, clientFactory);
+    coordinator =
+        new ConsumersCoordinator(
+            environment, ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT, clientFactory);
   }
 
   @AfterEach
