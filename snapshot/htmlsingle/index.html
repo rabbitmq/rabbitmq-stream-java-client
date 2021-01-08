@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(81a813b)</span>
+<br><span id="revremark">(4227843)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1469,7 +1469,14 @@ blocking when the limit is reached.</p></td>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchPublishingDelay</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Period to send a batch of messages.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">100 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">100 ms</p>
+<p class="tableblock"><a id="producer-confirm-timeout-configuration-entry"></a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>confirmTimeout</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Time before the client calls the confirm callback to signal
+outstanding unconfirmed messages timed out.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">30 seconds</p></td>
 </tr>
 </tbody>
 </table>
@@ -1676,6 +1683,7 @@ enables de-duplication:</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
     .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-app-producer</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .confirmTimeout(<span class="predefined-type">Duration</span>.ZERO)  <i class="conum" data-value="2"></i><b>(2)</b>
     .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
     .build();</code></pre>
 </div>
@@ -1686,6 +1694,10 @@ enables de-duplication:</p>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
 <td>Set a name for the producer</td>
 </tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Disable confirm timeout check</td>
+</tr>
 </table>
 </div>
 <div class="paragraph">
@@ -1693,6 +1705,29 @@ enables de-duplication:</p>
 on a given stream for this producer. If the producer connection unexpectedly closes, it
 will automatically recover and retry outstanding messages. The broker will then
 filter out messages it has already received and persisted. No more duplicates!</p>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+<div class="title">Why setting <code>confirmTimeout</code> to 0 when using de-duplication?</div>
+<div class="paragraph">
+<p>The point of de-duplication is to avoid duplicates when retrying unconfirmed messages.
+But why retrying in the first place? To avoid <em>losing</em> messages, that is enforcing
+<em>at-least-once</em> semantics. If the client does not stubbornly retry messages and gives
+up at some point, messages can be lost, which maps to <em>at-most-once</em> semantics. This
+is why the de-duplication examples set the
+<a href="#producer-confirm-timeout-configuration-entry"><code>confirmTimeout</code> setting</a> to <code>Duration.ZERO</code>:
+to disable the background task that calls the confirmation callback for outstanding
+messages that time out. This way the client will do its best to retry messages
+until they are confirmed.</p>
+</div>
+</td>
+</tr>
+</table>
 </div>
 <div class="paragraph">
 <p>Consider the producer name a logical name. It should not be a random sequence that
@@ -1797,13 +1832,14 @@ easily scroll to the next line and restart publishing from there.</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
     .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-app-producer</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .confirmTimeout(<span class="predefined-type">Duration</span>.ZERO)  <i class="conum" data-value="2"></i><b>(2)</b>
     .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
     .build();
-<span class="type">long</span> nextPublishingId = producer.getLastPublishingId() + <span class="integer">1</span>;  <i class="conum" data-value="2"></i><b>(2)</b>
+<span class="type">long</span> nextPublishingId = producer.getLastPublishingId() + <span class="integer">1</span>;  <i class="conum" data-value="3"></i><b>(3)</b>
 <span class="keyword">while</span> (moreContent(nextPublishingId)) {
-    <span class="type">byte</span><span class="type">[]</span> content = getContent(nextPublishingId); <i class="conum" data-value="3"></i><b>(3)</b>
+    <span class="type">byte</span><span class="type">[]</span> content = getContent(nextPublishingId); <i class="conum" data-value="4"></i><b>(4)</b>
     Message message = producer.messageBuilder()
-        .publishingId(nextPublishingId) <i class="conum" data-value="4"></i><b>(4)</b>
+        .publishingId(nextPublishingId) <i class="conum" data-value="5"></i><b>(5)</b>
         .addData(content)
         .build();
     producer.send(message, confirmationStatus -&gt; {});
@@ -1819,14 +1855,18 @@ easily scroll to the next line and restart publishing from there.</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Query last publishing ID for this producer and increment it</td>
+<td>Disable confirm timeout check</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Scroll to the content for the next publishing ID</td>
+<td>Query last publishing ID for this producer and increment it</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Scroll to the content for the next publishing ID</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
 <td>Set the message publishing</td>
 </tr>
 </table>
@@ -2665,7 +2705,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-01-07 17:01:40 UTC
+Last updated 2021-01-08 08:30:02 UTC
 </div>
 </div>
 <style>
