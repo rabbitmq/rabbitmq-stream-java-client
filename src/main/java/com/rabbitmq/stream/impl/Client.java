@@ -52,6 +52,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
@@ -177,6 +178,7 @@ public class Client implements AutoCloseable {
   static final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
   private final String host;
   private final int port;
+  private volatile ShutdownReason shutdownReason = null;
 
   public Client() {
     this(new ClientParameters());
@@ -1872,8 +1874,15 @@ public class Client implements AutoCloseable {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
       LOGGER.debug("Netty channel became inactive");
-      if (closing.compareAndSet(false, true)) {
-        executorService.submit(() -> closingSequence(ShutdownContext.ShutdownReason.UNKNOWN));
+      // the TCP connection can get closed by server after a SERVER_CLOSE is sent
+      // back from the client. The connection can then get inactive before
+      // the event is actually dispatched to the listener, emitting
+      // an UNKNOWN reason instead of SERVER_CLOSE. So we skip the closing here
+      // because it will be handled later anyway.
+      if (shutdownReason == null) {
+        if (closing.compareAndSet(false, true)) {
+          executorService.submit(() -> closingSequence(ShutdownReason.UNKNOWN));
+        }
       }
     }
 
@@ -1899,6 +1908,10 @@ public class Client implements AutoCloseable {
       LOGGER.warn("Error in stream handler", cause);
       ctx.close();
     }
+  }
+
+  void shutdownReason(ShutdownReason reason) {
+    this.shutdownReason = reason;
   }
 
   public SocketAddress localAddress() {

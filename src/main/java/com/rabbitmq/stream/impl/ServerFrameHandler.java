@@ -53,7 +53,7 @@ import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.QueryPublisherSequenceResponse;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.SaslAuthenticateResponse;
-import com.rabbitmq.stream.impl.Client.ShutdownContext;
+import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
 import com.rabbitmq.stream.metrics.MetricsCollector;
@@ -437,12 +437,14 @@ class ServerFrameHandler {
           .writeInt(correlationId)
           .writeShort(RESPONSE_CODE_OK);
 
+      client.shutdownReason(ShutdownReason.SERVER_CLOSE);
+
       ctx.writeAndFlush(byteBuf)
           .addListener(
               future -> {
                 if (client.closing.compareAndSet(false, true)) {
                   client.executorService.submit(
-                      () -> client.closingSequence(ShutdownContext.ShutdownReason.SERVER_CLOSE));
+                      () -> client.closingSequence(ShutdownReason.SERVER_CLOSE));
                 }
               });
       return read;
