@@ -18,6 +18,7 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Producer;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.UUID;
 
 public class ProducerUsage {
@@ -75,6 +76,7 @@ public class ProducerUsage {
         // tag::producer-with-name[]
         Producer producer = environment.producerBuilder()
             .name("my-app-producer")  // <1>
+            .confirmTimeout(Duration.ZERO)  // <2>
             .stream("my-stream")
             .build();
         // end::producer-with-name[]
@@ -92,13 +94,14 @@ public class ProducerUsage {
         // tag::producer-queries-last-publishing-id[]
         Producer producer = environment.producerBuilder()
             .name("my-app-producer")  // <1>
+            .confirmTimeout(Duration.ZERO)  // <2>
             .stream("my-stream")
             .build();
-        long nextPublishingId = producer.getLastPublishingId() + 1;  // <2>
+        long nextPublishingId = producer.getLastPublishingId() + 1;  // <3>
         while (moreContent(nextPublishingId)) {
-            byte[] content = getContent(nextPublishingId); // <3>
+            byte[] content = getContent(nextPublishingId); // <4>
             Message message = producer.messageBuilder()
-                .publishingId(nextPublishingId) // <4>
+                .publishingId(nextPublishingId) // <5>
                 .addData(content)
                 .build();
             producer.send(message, confirmationStatus -> {});

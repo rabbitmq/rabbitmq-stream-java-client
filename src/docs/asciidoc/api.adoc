@@ -267,6 +267,12 @@ blocking when the limit is reached.
 |`batchPublishingDelay`
 |Period to send a batch of messages.
 |100 ms
+
+[[producer-confirm-timeout-configuration-entry]]
+|`confirmTimeout`
+|Time before the client calls the confirm callback to signal
+outstanding unconfirmed messages timed out.
+|30 seconds
 |===
 
 ===== Sending Messages
@@ -380,11 +386,26 @@ enables de-duplication:
 include::{test-examples}/ProducerUsage.java[tag=producer-with-name]
 --------
 <1> Set a name for the producer
+<2> Disable confirm timeout check
 
 Thanks to the name, the broker will be able to track the messages it has persisted
 on a given stream for this producer. If the producer connection unexpectedly closes, it
 will automatically recover and retry outstanding messages. The broker will then
 filter out messages it has already received and persisted. No more duplicates!
+
+[IMPORTANT]
+.Why setting `confirmTimeout` to 0 when using de-duplication?
+====
+The point of de-duplication is to avoid duplicates when retrying unconfirmed messages.
+But why retrying in the first place? To avoid _losing_ messages, that is enforcing
+_at-least-once_ semantics. If the client does not stubbornly retry messages and gives
+up at some point, messages can be lost, which maps to _at-most-once_ semantics. This
+is why the de-duplication examples set the
+<<producer-confirm-timeout-configuration-entry,`confirmTimeout` setting>> to `Duration.ZERO`:
+to disable the background task that calls the confirmation callback for outstanding
+messages that time out. This way the client will do its best to retry messages
+until they are confirmed.
+====
 
 Consider the producer name a logical name. It should not be a random sequence that
 changes when the producer application is restarted. Names like `online-shop-order` or
@@ -452,9 +473,10 @@ The next snippet illustrates the use of `Producer#getLastPublishing()`:
 include::{test-examples}/ProducerUsage.java[tag=producer-queries-last-publishing-id]
 --------
 <1> Set a name for the producer
-<2> Query last publishing ID for this producer and increment it
-<3> Scroll to the content for the next publishing ID
-<4> Set the message publishing
+<2> Disable confirm timeout check
+<3> Query last publishing ID for this producer and increment it
+<4> Scroll to the content for the next publishing ID
+<5> Set the message publishing
 
 ==== Consumer
 
