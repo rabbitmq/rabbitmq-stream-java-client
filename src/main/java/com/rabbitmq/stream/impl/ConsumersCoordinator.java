@@ -327,14 +327,14 @@ class ConsumersCoordinator {
         new ConcurrentHashMap<>();
     private final ManagerPool owner;
     private volatile List<SubscriptionTracker> subscriptionTrackers =
-        new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
+        new ArrayList<>(maxConsumersByConnection);
 
     private ClientSubscriptionsManager(
         ManagerPool owner, Client.ClientParameters clientParameters) {
       this.owner = owner;
       String name = owner.name;
       LOGGER.debug("creating subscription manager on {}", name);
-      IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> subscriptionTrackers.add(null));
+      IntStream.range(0, maxConsumersByConnection).forEach(i -> subscriptionTrackers.add(null));
       this.client =
           clientFactory.apply(
               clientParameters
@@ -409,8 +409,8 @@ class ConsumersCoordinator {
                               streamToStreamSubscriptions.remove(stream);
                           if (subscriptions != null && !subscriptions.isEmpty()) {
                             List<SubscriptionTracker> newSubscriptions =
-                                new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
-                            for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                                new ArrayList<>(maxConsumersByConnection);
+                            for (int i = 0; i < maxConsumersByConnection; i++) {
                               newSubscriptions.add(subscriptionTrackers.get(i));
                             }
                             for (SubscriptionTracker subscription : subscriptions) {
@@ -612,16 +612,16 @@ class ConsumersCoordinator {
 
     private List<SubscriptionTracker> update(
         List<SubscriptionTracker> original, byte index, SubscriptionTracker newValue) {
-      List<SubscriptionTracker> newSubcriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
+      List<SubscriptionTracker> newSubcriptions = new ArrayList<>(maxConsumersByConnection);
       int intIndex = index & 0xFF;
-      for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+      for (int i = 0; i < maxConsumersByConnection; i++) {
         newSubcriptions.add(i == intIndex ? newValue : original.get(i));
       }
       return newSubcriptions;
     }
 
     synchronized boolean isFull() {
-      return trackersCount() == MAX_SUBSCRIPTIONS_PER_CLIENT;
+      return trackersCount() == maxConsumersByConnection;
     }
 
     synchronized boolean isEmpty() {

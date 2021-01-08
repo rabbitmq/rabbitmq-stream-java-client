@@ -357,9 +357,9 @@ class ProducersCoordinator {
   private class ClientProducersManager {
 
     private final ConcurrentMap<Byte, ProducerTracker> producers =
-        new ConcurrentHashMap<>(MAX_PRODUCERS_PER_CLIENT);
+        new ConcurrentHashMap<>(maxProducersByClient);
     private final Set<AgentTracker> committingConsumerTrackers =
-        ConcurrentHashMap.newKeySet(MAX_COMMITTING_CONSUMERS_PER_CLIENT);
+        ConcurrentHashMap.newKeySet(maxCommittingConsumersByClient);
     private final Map<String, Set<AgentTracker>> streamToTrackers = new ConcurrentHashMap<>();
     private final Client client;
     private final ManagerPool owner;
@@ -508,7 +508,7 @@ class ProducersCoordinator {
       if (tracker.identifiable()) {
         ProducerTracker producerTracker = (ProducerTracker) tracker;
         // using the next available slot
-        for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
+        for (int i = 0; i < maxProducersByClient; i++) {
           ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
           if (previousValue == null) {
             Response response =
@@ -556,9 +556,9 @@ class ProducersCoordinator {
 
     synchronized boolean isFullFor(AgentTracker tracker) {
       if (tracker.identifiable()) {
-        return producers.size() == MAX_PRODUCERS_PER_CLIENT;
+        return producers.size() == maxProducersByClient;
       } else {
-        return committingConsumerTrackers.size() == MAX_COMMITTING_CONSUMERS_PER_CLIENT;
+        return committingConsumerTrackers.size() == maxCommittingConsumersByClient;
       }
     }
 
