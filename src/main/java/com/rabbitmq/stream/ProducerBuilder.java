@@ -32,5 +32,7 @@ public interface ProducerBuilder {
 
   ProducerBuilder confirmTimeout(Duration timeout);
 
+  ProducerBuilder enqueueTimeout(Duration timeout);
+
   Producer build();
 }

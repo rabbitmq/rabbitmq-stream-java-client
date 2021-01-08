@@ -36,6 +36,8 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   private Duration confirmTimeout = Duration.ofSeconds(30);
 
+  private Duration enqueueTimeout = Duration.ofSeconds(10);
+
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
   }
@@ -95,6 +97,15 @@ class StreamProducerBuilder implements ProducerBuilder {
     return this;
   }
 
+  @Override
+  public ProducerBuilder enqueueTimeout(Duration timeout) {
+    if (timeout.isNegative()) {
+      throw new IllegalArgumentException("the enqueue timeout cannot be negative");
+    }
+    this.enqueueTimeout = timeout;
+    return this;
+  }
+
   public Producer build() {
     StreamProducer producer =
         new StreamProducer(
@@ -105,6 +116,7 @@ class StreamProducerBuilder implements ProducerBuilder {
             batchPublishingDelay,
             maxUnconfirmedMessages,
             confirmTimeout,
+            enqueueTimeout,
             environment);
     this.environment.addProducer(producer);
     return producer;

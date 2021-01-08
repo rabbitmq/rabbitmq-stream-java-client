@@ -73,6 +73,8 @@ class StreamProducer implements Producer {
   private volatile byte publisherId;
   private volatile Status status;
   private volatile ScheduledFuture<?> confirmTimeoutFuture;
+  private final long enqueueTimeoutMs;
+  private final boolean blockOnMaxUnconfirmed;
 
   StreamProducer(
       String name,
@@ -82,10 +84,13 @@ class StreamProducer implements Producer {
       Duration batchPublishingDelay,
       int maxUnconfirmedMessages,
       Duration confirmTimeout,
+      Duration enqueueTimeout,
       StreamEnvironment environment) {
     this.environment = environment;
     this.name = name;
     this.stream = stream;
+    this.enqueueTimeoutMs = enqueueTimeout.toMillis();
+    this.blockOnMaxUnconfirmed = enqueueTimeout.isZero();
     this.closingCallback = environment.registerProducer(this, name, this.stream);
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
     AtomicLong publishingSequence = new AtomicLong(computeFirstValueOfPublishingSequence());
@@ -277,25 +282,36 @@ class StreamProducer implements Producer {
   public void send(Message message, ConfirmationHandler confirmationHandler) {
     try {
       if (canSend()) {
-        if (unconfirmedMessagesSemaphore.tryAcquire(10, TimeUnit.SECONDS)) {
-          if (canSend()) {
-            if (accumulator.add(message, confirmationHandler)) {
-              synchronized (this) {
-                publishBatch(true);
-              }
-            }
-          } else {
-            failPublishing(message, confirmationHandler);
-          }
+        if (this.blockOnMaxUnconfirmed) {
+          unconfirmedMessagesSemaphore.acquire();
+          doSend(message, confirmationHandler);
         } else {
-          confirmationHandler.handle(
-              new ConfirmationStatus(message, false, CODE_MESSAGE_ENQUEUEING_FAILED));
+          if (unconfirmedMessagesSemaphore.tryAcquire(
+              this.enqueueTimeoutMs, TimeUnit.MILLISECONDS)) {
+            doSend(message, confirmationHandler);
+          } else {
+            confirmationHandler.handle(
+                new ConfirmationStatus(message, false, CODE_MESSAGE_ENQUEUEING_FAILED));
+          }
         }
       } else {
         failPublishing(message, confirmationHandler);
       }
     } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
       throw new StreamException("Interrupted while waiting to accumulate outbound message", e);
+    }
+  }
+
+  private void doSend(Message message, ConfirmationHandler confirmationHandler) {
+    if (canSend()) {
+      if (accumulator.add(message, confirmationHandler)) {
+        synchronized (this) {
+          publishBatch(true);
+        }
+      }
+    } else {
+      failPublishing(message, confirmationHandler);
     }
   }
 
