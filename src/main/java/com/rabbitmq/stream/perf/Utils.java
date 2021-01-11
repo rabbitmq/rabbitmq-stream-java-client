@@ -14,28 +14,20 @@
 package com.rabbitmq.stream.perf;
 
 import com.rabbitmq.stream.ByteCapacity;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
-import com.rabbitmq.stream.metrics.MetricsCollector;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,11 +55,6 @@ class Utils {
         | (array[5] & 0xFFL) << 16
         | (array[6] & 0xFFL) << 8
         | (array[7] & 0xFFL);
-  }
-
-  interface EnvironmentFactory extends AutoCloseable {
-
-    Environment get();
   }
 
   static class ByteCapacityTypeConverter implements CommandLine.ITypeConverter<ByteCapacity> {
@@ -178,6 +165,38 @@ class Utils {
     }
   }
 
+  private abstract static class RangeIntegerTypeConverter
+      implements CommandLine.ITypeConverter<Integer> {
+
+    private final int min, max;
+
+    private RangeIntegerTypeConverter(int min, int max) {
+      this.min = min;
+      this.max = max;
+    }
+
+    @Override
+    public Integer convert(String input) {
+      try {
+        Integer value = Integer.valueOf(input);
+        if (value < this.min || value > this.max) {
+          throw new IllegalArgumentException();
+        }
+        return value;
+      } catch (Exception e) {
+        throw new CommandLine.TypeConversionException(
+            input + " must an integer between " + this.min + " and " + this.max);
+      }
+    }
+  }
+
+  static class OneTo255RangeIntegerTypeConverter extends RangeIntegerTypeConverter {
+
+    OneTo255RangeIntegerTypeConverter() {
+      super(1, 255);
+    }
+  }
+
   static class NotNegativeIntegerTypeConverter implements CommandLine.ITypeConverter<Integer> {
 
     @Override
@@ -194,70 +213,28 @@ class Utils {
     }
   }
 
-  static class SingletonEnvironmentFactory implements EnvironmentFactory {
+  static class NamedThreadFactory implements ThreadFactory {
 
-    private final Environment environment;
+    private final ThreadFactory backingThreaFactory;
 
-    SingletonEnvironmentFactory(EnvironmentBuilder builder) {
-      this.environment = builder.build();
+    private final String prefix;
+
+    private final AtomicLong count = new AtomicLong(0);
+
+    public NamedThreadFactory(String prefix) {
+      this(Executors.defaultThreadFactory(), prefix);
+    }
+
+    public NamedThreadFactory(ThreadFactory backingThreaFactory, String prefix) {
+      this.backingThreaFactory = backingThreaFactory;
+      this.prefix = prefix;
     }
 
     @Override
-    public Environment get() {
-      return environment;
-    }
-
-    @Override
-    public void close() throws Exception {
-      environment.close();
-    }
-  }
-
-  static class AlwaysCreateEnvironmentFactory implements EnvironmentFactory {
-
-    private final List<String> uris;
-    private final MetricsCollector metricsCollector;
-    private final List<Environment> environments = new CopyOnWriteArrayList<>();
-    private final AtomicInteger sequence = new AtomicInteger(0);
-
-    AlwaysCreateEnvironmentFactory(List<String> uris, MetricsCollector metricsCollector) {
-      this.uris = Collections.unmodifiableList(new ArrayList<>(uris));
-      this.metricsCollector = metricsCollector;
-    }
-
-    @Override
-    public Environment get() {
-      List<String> rotatedUris = new ArrayList<>(this.uris);
-      Collections.rotate(rotatedUris, -(sequence.getAndIncrement() % this.uris.size()));
-      Environment environment =
-          Environment.builder().uris(rotatedUris).metricsCollector(metricsCollector).build();
-      return environment;
-    }
-
-    @Override
-    public void close() {
-      ExecutorService executorService = Executors.newCachedThreadPool();
-      List<Future<?>> tasks = new ArrayList<>(environments.size());
-      for (Environment environment : environments) {
-        Future<?> task =
-            executorService.submit(
-                () -> {
-                  try {
-                    environment.close();
-                  } catch (Exception e) {
-                    LOGGER.warn("Error while closing environment");
-                  }
-                });
-        tasks.add(task);
-      }
-      for (Future<?> task : tasks) {
-        try {
-          task.get(10, TimeUnit.SECONDS);
-        } catch (Exception e) {
-          // OK
-        }
-      }
-      executorService.shutdownNow();
+    public Thread newThread(Runnable r) {
+      Thread thread = this.backingThreaFactory.newThread(r);
+      thread.setName(prefix + count.getAndIncrement());
+      return thread;
     }
   }
 }

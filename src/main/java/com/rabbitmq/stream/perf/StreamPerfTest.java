@@ -17,21 +17,39 @@ package com.rabbitmq.stream.perf;
 import static java.lang.String.format;
 
 import com.google.common.util.concurrent.RateLimiter;
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.ByteCapacity;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
-import com.rabbitmq.stream.perf.Utils.AlwaysCreateEnvironmentFactory;
-import com.rabbitmq.stream.perf.Utils.EnvironmentFactory;
-import com.rabbitmq.stream.perf.Utils.SingletonEnvironmentFactory;
+import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import java.nio.charset.Charset;
 import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -198,10 +216,26 @@ public class StreamPerfTest implements Callable<Integer> {
   private boolean summaryFile;
 
   @CommandLine.Option(
-      names = {"--share-resources", "-sr"},
-      description = "whether producers and consumers share the same resources",
-      defaultValue = "false")
-  private boolean shareResources;
+      names = {"--producers-by-connection", "-pbc"},
+      description = "number of producers by connection. Value must be between 1 and 255.",
+      defaultValue = "1",
+      converter = Utils.OneTo255RangeIntegerTypeConverter.class)
+  private int producersByConnection;
+
+  @CommandLine.Option(
+      names = {"--committing-consumers-by-connection", "-ccbc"},
+      description =
+          "number of committing consumers by connection. Value must be between 1 and 255.",
+      defaultValue = "50",
+      converter = Utils.OneTo255RangeIntegerTypeConverter.class)
+  private int committingConsumersByConnection;
+
+  @CommandLine.Option(
+      names = {"--consumers-by-connection", "-cbc"},
+      description = "number of consumers by connection. Value must be between 1 and 255.",
+      defaultValue = "1",
+      converter = Utils.OneTo255RangeIntegerTypeConverter.class)
+  private int consumersByConnection;
 
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
@@ -256,18 +290,6 @@ public class StreamPerfTest implements Callable<Integer> {
     }
   }
 
-  private static EnvironmentFactory environmentFactory(
-      boolean shareResources, List<String> uris, MetricsCollector metricsCollector) {
-    if (shareResources) {
-      EnvironmentBuilder environmentBuilder =
-          Environment.builder().uris(uris).metricsCollector(metricsCollector);
-
-      return new SingletonEnvironmentFactory(environmentBuilder);
-    } else {
-      return new AlwaysCreateEnvironmentFactory(uris, metricsCollector);
-    }
-  }
-
   @Override
   public Integer call() throws Exception {
     if (this.version) {
@@ -293,13 +315,27 @@ public class StreamPerfTest implements Callable<Integer> {
 
     // FIXME add confirm latency
 
-    EnvironmentFactory environmentFactory =
-        environmentFactory(this.shareResources, this.uris, metricsCollector);
+    ScheduledExecutorService envExecutor =
+        Executors.newScheduledThreadPool(
+            Math.max(Runtime.getRuntime().availableProcessors(), this.producers),
+            new NamedThreadFactory("stream-perf-test-env-"));
 
-    shutdownService.wrap(closeStep("Closing environment(s)", () -> environmentFactory.close()));
+    shutdownService.wrap(
+        closeStep("Closing environment executor", () -> envExecutor.shutdownNow()));
+
+    Environment environment =
+        Environment.builder()
+            .uris(this.uris)
+            .scheduledExecutorService(envExecutor)
+            .metricsCollector(metricsCollector)
+            .maxProducersByConnection(this.producersByConnection)
+            .maxCommittingConsumersByConnection(this.committingConsumersByConnection)
+            .maxConsumersByConnection(this.consumersByConnection)
+            .build();
+
+    shutdownService.wrap(closeStep("Closing environment(s)", () -> environment.close()));
 
     if (!preDeclared) {
-      Environment environment = environmentFactory.get();
       for (String stream : streams) {
         StreamCreator streamCreator =
             environment.streamCreator().stream(stream)
@@ -350,8 +386,7 @@ public class StreamPerfTest implements Callable<Integer> {
                   String stream = stream();
 
                   Producer producer =
-                      environmentFactory
-                          .get()
+                      environment
                           .producerBuilder()
                           .subEntrySize(this.subEntrySize)
                           .batchSize(this.batchSize)
@@ -360,23 +395,6 @@ public class StreamPerfTest implements Callable<Integer> {
                           .build();
 
                   producers.add(producer);
-
-                  ScheduledExecutorService scheduledExecutorService =
-                      Executors.newScheduledThreadPool(this.producers);
-
-                  shutdownService.wrap(
-                      closeStep(
-                          "Closing scheduled executor service",
-                          () -> scheduledExecutorService.shutdownNow()));
-
-                  shutdownService.wrap(
-                      closeStep(
-                          "Closing producers",
-                          () -> {
-                            for (Producer p : producers) {
-                              p.close();
-                            }
-                          }));
 
                   return (Runnable)
                       () -> {
@@ -407,7 +425,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
                       AtomicLong messageCount = new AtomicLong(0);
                       String stream = stream();
-                      ConsumerBuilder consumerBuilder = environmentFactory.get().consumerBuilder();
+                      ConsumerBuilder consumerBuilder = environment.consumerBuilder();
                       consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
 
                       if (this.commitEvery > 0) {
@@ -461,7 +479,16 @@ public class StreamPerfTest implements Callable<Integer> {
 
     shutdownService.wrap(
         closeStep(
-            "Closing executor service",
+            "Closing producers",
+            () -> {
+              for (Producer p : producers) {
+                p.close();
+              }
+            }));
+
+    shutdownService.wrap(
+        closeStep(
+            "Closing producers executor service",
             () -> {
               if (executorService != null) {
                 executorService.shutdownNow();
