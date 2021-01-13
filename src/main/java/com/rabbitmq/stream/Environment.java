@@ -34,4 +34,7 @@ public interface Environment extends AutoCloseable {
   ProducerBuilder producerBuilder();
 
   ConsumerBuilder consumerBuilder();
+
+  @Override
+  void close();
 }
