@@ -40,30 +40,30 @@ public final class Constants {
   public static final short CODE_PRODUCER_CLOSED = 10_002;
   public static final short CODE_PUBLISH_CONFIRM_TIMEOUT = 10_003;
 
-  public static final short COMMAND_PUBLISH = 0;
-  public static final short COMMAND_PUBLISH_CONFIRM = 1;
-  public static final short COMMAND_SUBSCRIBE = 2;
-  public static final short COMMAND_DELIVER = 3;
-  public static final short COMMAND_CREDIT = 4;
-  public static final short COMMAND_UNSUBSCRIBE = 5;
-  public static final short COMMAND_PUBLISH_ERROR = 6;
-  public static final short COMMAND_METADATA_UPDATE = 7;
-  public static final short COMMAND_METADATA = 8;
-  public static final short COMMAND_SASL_HANDSHAKE = 9;
-  public static final short COMMAND_SASL_AUTHENTICATE = 10;
-  public static final short COMMAND_TUNE = 11;
-  public static final short COMMAND_OPEN = 12;
-  public static final short COMMAND_CLOSE = 13;
-  public static final short COMMAND_HEARTBEAT = 14;
-  public static final short COMMAND_PEER_PROPERTIES = 15;
-  public static final short COMMAND_COMMIT_OFFSET = 16;
-  public static final short COMMAND_QUERY_OFFSET = 17;
-  public static final short COMMAND_DECLARE_PUBLISHER = 18;
-  public static final short COMMAND_DELETE_PUBLISHER = 19;
-  public static final short COMMAND_QUERY_PUBLISHER_SEQUENCE = 20;
+  public static final short COMMAND_DECLARE_PUBLISHER = 0;
+  public static final short COMMAND_PUBLISH = 1;
+  public static final short COMMAND_PUBLISH_CONFIRM = 2;
+  public static final short COMMAND_PUBLISH_ERROR = 3;
+  public static final short COMMAND_QUERY_PUBLISHER_SEQUENCE = 4;
+  public static final short COMMAND_DELETE_PUBLISHER = 5;
+  public static final short COMMAND_SUBSCRIBE = 6;
+  public static final short COMMAND_DELIVER = 7;
+  public static final short COMMAND_CREDIT = 8;
+  public static final short COMMAND_COMMIT_OFFSET = 9;
+  public static final short COMMAND_QUERY_OFFSET = 10;
+  public static final short COMMAND_UNSUBSCRIBE = 11;
+  public static final short COMMAND_CREATE_STREAM = 12;
+  public static final short COMMAND_DELETE_STREAM = 13;
+  public static final short COMMAND_METADATA = 14;
+  public static final short COMMAND_METADATA_UPDATE = 15;
+  public static final short COMMAND_PEER_PROPERTIES = 16;
+  public static final short COMMAND_SASL_HANDSHAKE = 17;
+  public static final short COMMAND_SASL_AUTHENTICATE = 18;
+  public static final short COMMAND_TUNE = 19;
+  public static final short COMMAND_OPEN = 20;
+  public static final short COMMAND_CLOSE = 21;
+  public static final short COMMAND_HEARTBEAT = 22;
 
-  public static final short COMMAND_CREATE_STREAM = 998;
-  public static final short COMMAND_DELETE_STREAM = 999;
   public static final short VERSION_0 = 0;
 
   private Constants() {}
