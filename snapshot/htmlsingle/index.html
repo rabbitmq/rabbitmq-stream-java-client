@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(bd698ab)</span>
+<br><span id="revremark">(0592c7d)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2407,19 +2407,22 @@ docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test 
 <div class="listingblock">
 <div class="content">
 <pre>$ java -jar stream-perf-test-{version}.jar
-14:49:09.695 [main] INFO  c.r.stream.perf.StreamPerfTest - Created stream stream1
-14:49:09.935 [main] INFO  c.r.stream.perf.StreamPerfTest - Starting producer
-1, published 356120 msg/s, confirmed 353872 msg/s, consumed 351870 msg/s, latency min/median/75th/95th/99th 3925/14539/17383/23765/31068 µs, chunk size 1724
-2, published 554087 msg/s, confirmed 551654 msg/s, consumed 552472 msg/s, latency min/median/75th/95th/99th 3297/12430/15489/20140/25733 µs, chunk size 2301
-3, published 663102 msg/s, confirmed 660917 msg/s, consumed 662571 msg/s, latency min/median/75th/95th/99th 3146/11914/14645/19149/24354 µs, chunk size 2484
-4, published 714358 msg/s, confirmed 712882 msg/s, consumed 714016 msg/s, latency min/median/75th/95th/99th 2836/11651/14466/18840/24509 µs, chunk size 2624
-5, published 732703 msg/s, confirmed 731439 msg/s, consumed 732150 msg/s, latency min/median/75th/95th/99th 2992/11868/14593/18846/24066 µs, chunk size 2771
-6, published 768071 msg/s, confirmed 767277 msg/s, consumed 767941 msg/s, latency min/median/75th/95th/99th 2992/11719/14532/18388/23895 µs, chunk size 2855
-7, published 794034 msg/s, confirmed 793072 msg/s, consumed 793992 msg/s, latency min/median/75th/95th/99th 2992/11607/14251/18144/23895 µs, chunk size 2864
-8, published 801647 msg/s, confirmed 800804 msg/s, consumed 801628 msg/s, latency min/median/75th/95th/99th 2992/11460/14171/18063/24509 µs, chunk size 2914
+17:51:26.207 [main] INFO  c.r.stream.perf.StreamPerfTest - Starting producer
+1, published 560277 msg/s, confirmed 554088 msg/s, consumed 556983 msg/s, latency min/median/75th/95th/99th 2663/9799/13940/52304/57995 µs, chunk size 1125
+2, published 770722 msg/s, confirmed 768209 msg/s, consumed 768585 msg/s, latency min/median/75th/95th/99th 2454/9599/12206/23940/55519 µs, chunk size 1755
+3, published 915895 msg/s, confirmed 914079 msg/s, consumed 916103 msg/s, latency min/median/75th/95th/99th 2338/8820/11311/16750/52985 µs, chunk size 2121
+4, published 1004257 msg/s, confirmed 1003307 msg/s, consumed 1004981 msg/s, latency min/median/75th/95th/99th 2131/8322/10639/14368/45094 µs, chunk size 2228
+5, published 1061380 msg/s, confirmed 1060131 msg/s, consumed 1061610 msg/s, latency min/median/75th/95th/99th 2131/8247/10420/13905/37202 µs, chunk size 2379
+6, published 1096345 msg/s, confirmed 1095947 msg/s, consumed 1097447 msg/s, latency min/median/75th/95th/99th 2131/8225/10334/13722/33109 µs, chunk size 2454
+7, published 1127791 msg/s, confirmed 1127032 msg/s, consumed 1128039 msg/s, latency min/median/75th/95th/99th 1966/8150/10172/13500/23940 µs, chunk size 2513
+8, published 1148846 msg/s, confirmed 1148086 msg/s, consumed 1149121 msg/s, latency min/median/75th/95th/99th 1966/8079/10135/13248/16771 µs, chunk size 2558
+9, published 1167067 msg/s, confirmed 1166369 msg/s, consumed 1167311 msg/s, latency min/median/75th/95th/99th 1966/8063/9986/12977/16757 µs, chunk size 2631
+10, published 1182554 msg/s, confirmed 1181938 msg/s, consumed 1182804 msg/s, latency min/median/75th/95th/99th 1966/7963/9949/12632/16619 µs, chunk size 2664
+11, published 1197069 msg/s, confirmed 1196495 msg/s, consumed 1197291 msg/s, latency min/median/75th/95th/99th 1966/7917/9955/12503/15386 µs, chunk size 2761
+12, published 1206687 msg/s, confirmed 1206176 msg/s, consumed 1206917 msg/s, latency min/median/75th/95th/99th 1966/7893/9975/12503/15280 µs, chunk size 2771
 ...
 ^C
-Summary: published 783246 msg/s, confirmed 782755 msg/s, consumed 782755 msg/s, latency 95th 27212 µs, chunk size 3095</pre>
+Summary: published 1279444 msg/s, confirmed 1279019 msg/s, consumed 1279019 msg/s, latency 95th 12161 µs, chunk size 2910</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2730,7 +2733,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-01-19 14:06:52 UTC
+Last updated 2021-01-21 17:08:50 UTC
 </div>
 </div>
 <style>
