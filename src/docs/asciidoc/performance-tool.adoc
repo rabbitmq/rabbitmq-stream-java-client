@@ -207,6 +207,48 @@ java -jar stream-perf-test.jar --streams stream1,stream2,stream3 \
                                --pre-declared
 ----
 
+Specifying streams one by one can become tedious as their number grows, so the `--stream-count`
+option can be combined with the `--streams` option to specify a number or a range and a stream name
+pattern, respectively. The following table shows the usage of these 2 options and the resulting
+exercised streams. Do not forget to also specify the appropriate number of producers and
+consumers if you want all the declared streams to be used.
+
+[%header,cols=3*]
+|===
+|Options
+|Computed Streams
+|Details
+
+|`--stream-count 5 --streams stream`
+|`stream-1,stream-2,stream-3,stream-4,stream-5`
+|Stream count starts at 1.
+
+|`--stream-count 5 --streams stream-%d`
+|`stream-1,stream-2,stream-3,stream-4,stream-5`
+|Possible to specify a https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html[Java printf-style format string].
+
+|`--stream-count 10 --streams stream-%d`
+|`stream-1,stream-2,stream-3,..., stream-10`
+|Not bad, but not correctly sorted alphabetically.
+
+|`--stream-count 10 --streams stream-%02d`
+|`stream-01,stream-02,stream-03,..., stream-10`
+|Better for sorting.
+
+|`--stream-count 10 --streams stream`
+|`stream-01,stream-02,stream-03,..., stream-10`
+|The default format string handles the sorting issue.
+
+|`--stream-count 50-500 --streams stream-%03d`
+|`stream-050,stream-051,stream-052,..., stream-500`
+|Ranges are accepted.
+
+|`--stream-count 50-500`
+|`stream-050,stream-051,stream-052,..., stream-500`
+|Default format string.
+
+|===
+
 ===== Publishing Batch Size
 
 The default publishing batch size is 100, that is a publishing frame is sent every 100 messages.

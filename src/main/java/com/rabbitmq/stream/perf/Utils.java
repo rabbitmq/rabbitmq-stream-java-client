@@ -24,11 +24,13 @@ import java.time.temporal.TemporalAccessor;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -57,6 +59,40 @@ class Utils {
         | (array[7] & 0xFFL);
   }
 
+  static List<String> streams(String range, List<String> streams) {
+    if (range.contains(RANGE_SEPARATOR_2)) {
+      range = range.replace(RANGE_SEPARATOR_2, RANGE_SEPARATOR_1);
+    }
+    int from, to;
+    if (range.contains(RANGE_SEPARATOR_1)) {
+      String[] fromTo = range.split(RANGE_SEPARATOR_1);
+      from = Integer.parseInt(fromTo[0]);
+      to = Integer.parseInt(fromTo[1]) + 1;
+    } else {
+      int count = Integer.parseInt(range);
+      from = 1;
+      to = count + 1;
+    }
+    if (from == 1 && to == 2) {
+      return streams;
+    } else {
+      if (streams.size() != 1) {
+        throw new IllegalArgumentException("Enter only 1 stream when --stream-count is specified");
+      }
+      String format = streams.get(0);
+      String streamFormat;
+      if (!format.contains("%")) {
+        int digits = String.valueOf(to - 1).length();
+        streamFormat = format + "-%0" + digits + "d";
+      } else {
+        streamFormat = format;
+      }
+      return IntStream.range(from, to)
+          .mapToObj(i -> String.format(streamFormat, i))
+          .collect(Collectors.toList());
+    }
+  }
+
   static class ByteCapacityTypeConverter implements CommandLine.ITypeConverter<ByteCapacity> {
 
     @Override
@@ -68,6 +104,62 @@ class Utils {
             "'" + value + "' is not valid, valid example values: 100gb, 50mb");
       }
     }
+  }
+
+  private static final String RANGE_SEPARATOR_1 = "-";
+  private static final String RANGE_SEPARATOR_2 = "..";
+
+  static class RangeTypeConverter implements CommandLine.ITypeConverter<String> {
+
+    @Override
+    public String convert(String input) {
+      String value;
+      if (input.contains(RANGE_SEPARATOR_2)) {
+        value = input.replace(RANGE_SEPARATOR_2, RANGE_SEPARATOR_1);
+      } else {
+        value = input;
+      }
+      if (value.contains(RANGE_SEPARATOR_1)) {
+        String[] fromTo = value.split(RANGE_SEPARATOR_1);
+        if (fromTo == null || fromTo.length != 2) {
+          throwConversionException("'%s' is not valid, valid examples values: 10, 1-10", input);
+        }
+        Arrays.stream(fromTo)
+            .forEach(
+                v -> {
+                  try {
+                    int i = Integer.parseInt(v);
+                    if (i <= 0) {
+                      throwConversionException(
+                          "'%s' is not valid, the value must be a positive integer", v);
+                    }
+                  } catch (NumberFormatException e) {
+                    throwConversionException(
+                        "'%s' is not valid, the value must be a positive integer", v);
+                  }
+                });
+        int from = Integer.parseInt(fromTo[0]);
+        int to = Integer.parseInt(fromTo[1]);
+        if (from >= to) {
+          throwConversionException("'%s' is not valid, valid examples values: 10, 1-10", input);
+        }
+      } else {
+        try {
+          int count = Integer.parseInt(value);
+          if (count <= 0) {
+            throwConversionException(
+                "'%s' is not valid, the value must be a positive integer", input);
+          }
+        } catch (NumberFormatException e) {
+          throwConversionException("'%s' is not valid, valid example values: 10, 1-10", input);
+        }
+      }
+      return input;
+    }
+  }
+
+  private static void throwConversionException(String format, String... arguments) {
+    throw new CommandLine.TypeConversionException(String.format(format, arguments));
   }
 
   static class DurationTypeConverter implements CommandLine.ITypeConverter<Duration> {

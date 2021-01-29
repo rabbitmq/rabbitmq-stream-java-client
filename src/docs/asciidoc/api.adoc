@@ -266,9 +266,8 @@ The following table sums up the main settings to create a `Producer`:
 |The maximum number of messages to accumulate before sending them to the broker.
 |100
 
-[[producer-sub-entry-size-configuration-entry]]
 |`subEntrySize`
-|The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
+|[[producer-sub-entry-size-configuration-entry]]The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
 frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
 as well. Use this feature to increase throughput at the cost of increased latency and
 potential duplicated messages even when de-duplication is enabled.
@@ -283,9 +282,8 @@ blocking when the limit is reached.
 |Period to send a batch of messages.
 |100 ms
 
-[[producer-confirm-timeout-configuration-entry]]
 |`confirmTimeout`
-|Time before the client calls the confirm callback to signal
+|[[producer-confirm-timeout-configuration-entry]]Time before the client calls the confirm callback to signal
 outstanding unconfirmed messages timed out.
 |30 seconds
 

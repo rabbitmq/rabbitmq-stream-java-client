@@ -118,9 +118,16 @@ public class StreamPerfTest implements Callable<Integer> {
   private int confirms;
 
   @CommandLine.Option(
+      names = {"--stream-count", "-sc"},
+      description = "number of streams to send and consume from. Examples: 10, 1-10.",
+      defaultValue = "1",
+      converter = Utils.RangeTypeConverter.class)
+  private String streamCount;
+
+  @CommandLine.Option(
       names = {"--streams", "-st"},
       description = "stream(s) to send to and consume from, separated by commas",
-      defaultValue = "stream1",
+      defaultValue = "stream",
       split = ",")
   private List<String> streams;
 
@@ -334,6 +341,8 @@ public class StreamPerfTest implements Callable<Integer> {
             .build();
 
     shutdownService.wrap(closeStep("Closing environment(s)", () -> environment.close()));
+
+    streams = Utils.streams(this.streamCount, this.streams);
 
     if (!preDeclared) {
       for (String stream : streams) {
