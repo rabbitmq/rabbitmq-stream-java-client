@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(36fa99d)</span>
+<br><span id="revremark">(779bf0b)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1467,12 +1467,11 @@ publish to the leader node of the stream.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchSize</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of messages to accumulate before sending them to the broker.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">100</p>
-<p class="tableblock"><a id="producer-sub-entry-size-configuration-entry"></a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">100</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>subEntrySize</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a id="producer-sub-entry-size-configuration-entry"></a>The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
 frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
 as well. Use this feature to increase throughput at the cost of increased latency and
 potential duplicated messages even when de-duplication is enabled.</p></td>
@@ -1487,12 +1486,11 @@ blocking when the limit is reached.</p></td>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchPublishingDelay</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Period to send a batch of messages.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">100 ms</p>
-<p class="tableblock"><a id="producer-confirm-timeout-configuration-entry"></a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">100 ms</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>confirmTimeout</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Time before the client calls the confirm callback to signal
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a id="producer-confirm-timeout-configuration-entry"></a>Time before the client calls the confirm callback to signal
 outstanding unconfirmed messages timed out.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">30 seconds</p></td>
 </tr>
@@ -2574,6 +2572,64 @@ use the <code>--pre-declared</code> option:</p>
                                --pre-declared</pre>
 </div>
 </div>
+<div class="paragraph">
+<p>Specifying streams one by one can become tedious as their number grows, so the <code>--stream-count</code>
+option can be combined with the <code>--streams</code> option to specify a number or a range and a stream name
+pattern, respectively. The following table shows the usage of these 2 options and the resulting
+exercised streams. Do not forget to also specify the appropriate number of producers and
+consumers if you want all the declared streams to be used.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Options</th>
+<th class="tableblock halign-left valign-top">Computed Streams</th>
+<th class="tableblock halign-left valign-top">Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--stream-count 5 --streams stream</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-1,stream-2,stream-3,stream-4,stream-5</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Stream count starts at 1.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--stream-count 5 --streams stream-%d</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-1,stream-2,stream-3,stream-4,stream-5</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Possible to specify a <a href="https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html">Java printf-style format string</a>.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--stream-count 10 --streams stream-%d</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-1,stream-2,stream-3,&#8230;&#8203;, stream-10</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not bad, but not correctly sorted alphabetically.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--stream-count 10 --streams stream-%02d</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-01,stream-02,stream-03,&#8230;&#8203;, stream-10</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Better for sorting.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--stream-count 10 --streams stream</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-01,stream-02,stream-03,&#8230;&#8203;, stream-10</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The default format string handles the sorting issue.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--stream-count 50-500 --streams stream-%03d</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-050,stream-051,stream-052,&#8230;&#8203;, stream-500</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ranges are accepted.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--stream-count 50-500</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-050,stream-051,stream-052,&#8230;&#8203;, stream-500</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Default format string.</p></td>
+</tr>
+</tbody>
+</table>
 </div>
 <div class="sect4">
 <h5 id="publishing-batch-size"><a class="anchor" href="#publishing-batch-size"></a>Publishing Batch Size</h5>
@@ -2733,7 +2789,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-01-27 14:58:56 UTC
+Last updated 2021-01-29 11:05:50 UTC
 </div>
 </div>
 <style>
