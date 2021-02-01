@@ -29,6 +29,13 @@ configuration to make this possible.
 You can have a look at the https://docs.docker.com/network/[Docker network documentation]
 to find out more.
 
+[NOTE]
+.Docker on macOS
+====
+Docker runs on a virtual machine when using macOS, so do not expect high performance
+when using RabbitMQ Stream and the performance tool inside Docker on a Mac.
+====
+
 We show next a couple of options to easily use the Docker image.
 
 ===== With Docker Host Network Driver
@@ -45,6 +52,13 @@ docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
 docker run -it --rm --network host pivotalrabbitmq/stream-perf-test
 ----
 
+[NOTE]
+.Docker Host Network Driver Support
+====
+According to Docker's documentation, the host networking driver *only works on Linux hosts*.
+Nevertheless, the commands above work on some Mac hosts.
+====
+
 ===== With Docker Bridge Network Driver
 
 Containers need to be able to communicate with each other with
@@ -59,17 +73,21 @@ docker network create stream-perf-test
 docker run -it --rm --network stream-perf-test --name rabbitmq pivotalrabbitmq/rabbitmq-stream
 # open another terminal and run the performance tool
 docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test \
-    --addresses rabbitmq:5555
+    --uris rabbitmq-stream://rabbitmq:5555
 ----
 
 ==== With the Java Binary
 
-The Java binary is https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test[on Bintray].
+The Java binary is https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test[on Bintray]:
+
+----
+wget https://dl.bintray.com/rabbitmq/java-tools-dev/stream-perf-test/latest/stream-perf-test-latest.jar
+----
 
 To launch a run:
 
 ----
-$ java -jar stream-perf-test-{version}.jar
+$ java -jar stream-perf-test-latest.jar
 17:51:26.207 [main] INFO  c.r.stream.perf.StreamPerfTest - Starting producer
 1, published 560277 msg/s, confirmed 554088 msg/s, consumed 556983 msg/s, latency min/median/75th/95th/99th 2663/9799/13940/52304/57995 µs, chunk size 1125
 2, published 770722 msg/s, confirmed 768209 msg/s, consumed 768585 msg/s, latency min/median/75th/95th/99th 2454/9599/12206/23940/55519 µs, chunk size 1755
@@ -96,7 +114,7 @@ detailed metrics in a `stream-perf-test-current.txt` file that get renamed to
 To see the options:
 
 ----
-java -jar stream-perf-test-{version}.jar --help
+java -jar stream-perf-test-latest.jar --help
 ----
 
 The performance tool comes also with a completion script. You can download it and enable it in

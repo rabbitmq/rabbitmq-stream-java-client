@@ -6,12 +6,30 @@ generic Unix package.
 
 ==== With Docker
 
+There are different ways to make the broker visible to the client application when running
+in Docker. The next sections show a couple of options suitable for local development.
+
+[NOTE]
+.Docker on macOS
+====
+Docker runs on a virtual machine when using macOS, so do not expect high performance
+when using RabbitMQ Stream inside Docker on a Mac.
+====
+
+===== With Docker Bridge Network Driver
+
+This section shows how to start a broker instance for local development
+(the broker Docker container and the client application are assumed to run on the
+same host).
+
 The following command creates a one-time Docker container to run RabbitMQ
 with the stream plugin enabled:
 
 .Running the stream plugin with Docker
 ----
-docker run -it --rm --name rabbitmq -p 5555:5555 pivotalrabbitmq/rabbitmq-stream
+docker run -it --rm --name rabbitmq -p 5555:5555 \
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
+    pivotalrabbitmq/rabbitmq-stream
 ----
 
 The previous command exposes only the stream port (5555), you can expose
@@ -20,6 +38,7 @@ ports for other protocols:
 .Exposing the AMQP 0.9.1 and management ports:
 ----
 docker run -it --rm --name rabbitmq -p 5555:5555 -p 5672:5672 -p 15672:15672 \
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
     pivotalrabbitmq/rabbitmq-stream
 ----
 
@@ -29,6 +48,26 @@ image in the command line.
 
 The `pivotalrabbitmq/rabbitmq-stream` Docker image is meant for development usage only. It does not
 support all the features of the official Docker image, like TLS.
+
+===== With Docker Host Network Driver
+
+This is the simplest way to run the broker locally.
+The container uses the https://docs.docker.com/network/host/[host network],
+this is perfect for experimenting locally.
+
+.Running RabbitMQ Stream with the host network driver
+----
+docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
+----
+
+The command above will use the following ports: 5555 (for stream), 5672 (for AMQP),
+15672 (for management plugin).
+
+[NOTE]
+.Docker Host Network Driver Support
+====
+The host networking driver *only works on Linux hosts*.
+====
 
 ==== With the Generic Unix Package
 
