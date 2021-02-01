@@ -117,7 +117,8 @@ To see the options:
 java -jar stream-perf-test-latest.jar --help
 ----
 
-The performance tool comes also with a completion script. You can download it and enable it in
+The performance tool comes also with a
+https://dl.bintray.com/rabbitmq/java-tools-dev/stream-perf-test/latest/stream-perf-test-latest_completion[completion script]. You can download it and enable it in
 your `~/.zshrc` file:
 
 ----
