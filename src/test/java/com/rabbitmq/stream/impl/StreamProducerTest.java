@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -78,28 +79,43 @@ public class StreamProducerTest {
   }
 
   @AfterEach
-  void tearDown() throws Exception {
+  void tearDown() {
     environment.close();
   }
 
   @Test
   void send() throws Exception {
-    int batchSize = 100;
-    int messageCount = 10_000 * batchSize + 1; // don't want a multiple of batch size
+    int batchSize = 10;
+    int messageCount = 10 * batchSize + 1; // don't want a multiple of batch size
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
     Producer producer = environment.producerBuilder().stream(stream).batchSize(batchSize).build();
     AtomicLong count = new AtomicLong(0);
+    AtomicLong sequence = new AtomicLong(0);
+    Set<Long> idsSent = ConcurrentHashMap.newKeySet(messageCount);
+    Set<Long> idsConfirmed = ConcurrentHashMap.newKeySet(messageCount);
     IntStream.range(0, messageCount)
         .forEach(
             i -> {
+              long id = sequence.getAndIncrement();
+              idsSent.add(id);
               producer.send(
-                  producer.messageBuilder().addData("".getBytes()).build(),
+                  producer
+                      .messageBuilder()
+                      .properties()
+                      .messageId(id)
+                      .messageBuilder()
+                      .addData("".getBytes())
+                      .build(),
                   confirmationStatus -> {
+                    idsConfirmed.add(
+                        confirmationStatus.getMessage().getProperties().getMessageIdAsLong());
                     count.incrementAndGet();
                     publishLatch.countDown();
                   });
             });
     boolean completed = publishLatch.await(10, TimeUnit.SECONDS);
+    assertThat(idsSent).hasSameSizeAs(idsConfirmed);
+    idsSent.forEach(idSent -> assertThat(idsConfirmed).contains(idSent));
     assertThat(completed).isTrue();
   }
 
