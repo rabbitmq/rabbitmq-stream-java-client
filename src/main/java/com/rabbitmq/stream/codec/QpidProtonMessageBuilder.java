@@ -21,40 +21,47 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-import org.apache.qpid.proton.amqp.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.qpid.proton.amqp.Binary;
+import org.apache.qpid.proton.amqp.Symbol;
+import org.apache.qpid.proton.amqp.UnsignedByte;
+import org.apache.qpid.proton.amqp.UnsignedInteger;
+import org.apache.qpid.proton.amqp.UnsignedLong;
+import org.apache.qpid.proton.amqp.UnsignedShort;
 import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
 import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 
 class QpidProtonMessageBuilder implements MessageBuilder {
 
-  private boolean hasPublishingId = false;
-
-  private long publishingId = 0;
-
   private final org.apache.qpid.proton.message.Message message =
       org.apache.qpid.proton.message.Message.Factory.create();
-
+  private final AtomicBoolean built = new AtomicBoolean(false);
+  private boolean hasPublishingId = false;
+  private long publishingId = 0;
   private QpidProtonjPropertiesBuilder propertiesBuilder;
-
   private QpidProtonjApplicationPropertiesBuilder applicationPropertiesBuilder;
-
   private QpidProtonjMessageAnnotationsBuilder messageAnnotationsBuilder;
 
   @Override
   public Message build() {
-    if (propertiesBuilder != null) {
-      message.setProperties(propertiesBuilder.properties);
+    if (built.compareAndSet(false, true)) {
+      if (propertiesBuilder != null) {
+        message.setProperties(propertiesBuilder.properties);
+      }
+      if (applicationPropertiesBuilder != null) {
+        message.setApplicationProperties(
+            new ApplicationProperties(applicationPropertiesBuilder.applicationProperties));
+      }
+      if (messageAnnotationsBuilder != null) {
+        message.setMessageAnnotations(
+            new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
+      }
+      return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(
+          hasPublishingId, publishingId, message);
+    } else {
+      throw new IllegalStateException("A message builder can build only one message");
     }
-    if (applicationPropertiesBuilder != null) {
-      message.setApplicationProperties(
-          new ApplicationProperties(applicationPropertiesBuilder.applicationProperties));
-    }
-    if (messageAnnotationsBuilder != null) {
-      message.setMessageAnnotations(
-          new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
-    }
-    return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(hasPublishingId, publishingId, message);
   }
 
   @Override

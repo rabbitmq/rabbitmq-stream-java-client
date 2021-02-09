@@ -23,6 +23,7 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class WrapperMessageBuilder implements MessageBuilder {
 
@@ -33,20 +34,25 @@ public class WrapperMessageBuilder implements MessageBuilder {
   private WrapperPropertiesBuilder propertiesBuilder;
   private WrapperApplicationPropertiesBuilder applicationPropertiesBuilder;
   private WrapperMessageAnnotationsBuilder messageAnnotationsBuilder;
+  private final AtomicBoolean built = new AtomicBoolean(false);
 
   @Override
   public Message build() {
-    return new SimpleMessage(
-        this.hasPublishingId,
-        this.publishingId,
-        body,
-        this.messageAnnotationsBuilder == null
-            ? null
-            : this.messageAnnotationsBuilder.messageAnnotations,
-        this.propertiesBuilder == null ? null : this.propertiesBuilder.properties,
-        this.applicationPropertiesBuilder == null
-            ? null
-            : this.applicationPropertiesBuilder.applicationProperties);
+    if (built.compareAndSet(false, true)) {
+      return new SimpleMessage(
+          this.hasPublishingId,
+          this.publishingId,
+          body,
+          this.messageAnnotationsBuilder == null
+              ? null
+              : this.messageAnnotationsBuilder.messageAnnotations,
+          this.propertiesBuilder == null ? null : this.propertiesBuilder.properties,
+          this.applicationPropertiesBuilder == null
+              ? null
+              : this.applicationPropertiesBuilder.applicationProperties);
+    } else {
+      throw new IllegalStateException("A message builder can build only one message");
+    }
   }
 
   @Override

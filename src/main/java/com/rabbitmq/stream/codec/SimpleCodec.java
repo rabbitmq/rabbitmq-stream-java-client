@@ -19,6 +19,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Properties;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SimpleCodec implements Codec {
 
@@ -91,10 +92,15 @@ public class SimpleCodec implements Codec {
 
     private long publishingId = 0;
     private byte[] body;
+    private final AtomicBoolean built = new AtomicBoolean(false);
 
     @Override
     public Message build() {
-      return new SimpleMessage(hasPublishingId, publishingId, body);
+      if (built.compareAndSet(false, true)) {
+        return new SimpleMessage(hasPublishingId, publishingId, body);
+      } else {
+        throw new IllegalStateException("A message builder can build only one message");
+      }
     }
 
     @Override

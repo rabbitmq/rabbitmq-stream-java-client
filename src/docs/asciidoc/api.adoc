@@ -313,6 +313,14 @@ Messages are not only made of a `byte[]` payload, we will see in
 <<working-with-complex-messages,the next section>>
 they can also carry pre-defined and application properties.
 
+[NOTE]
+.Use a `MessageBuilder` instance only once
+====
+A `MessageBuilder` instance is meant to create only one message. You
+need to create a new instance of `MessageBuilder` for every message
+you want to create.
+====
+
 The `ConfirmationHandler` defines an asynchronous callback invoked
 when the client received from the broker the confirmation the message
 has been taken into account. The `ConfirmationHandler` is the place

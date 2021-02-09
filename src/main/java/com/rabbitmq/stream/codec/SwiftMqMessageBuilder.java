@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 class SwiftMqMessageBuilder implements MessageBuilder {
@@ -41,30 +42,35 @@ class SwiftMqMessageBuilder implements MessageBuilder {
   private SwiftMqApplicationPropertiesBuilder applicationPropertiesBuilder;
 
   private SwiftMqMessageAnnotationsBuilder messageAnnotationsBuilder;
+  private final AtomicBoolean built = new AtomicBoolean(false);
 
   @Override
   public Message build() {
-    if (messageAnnotationsBuilder != null) {
-      try {
-        outboundMessage.setMessageAnnotations(
-            new MessageAnnotations(messageAnnotationsBuilder.map));
-      } catch (IOException e) {
-        throw new StreamException("Error while setting message annotations", e);
+    if (built.compareAndSet(false, true)) {
+      if (messageAnnotationsBuilder != null) {
+        try {
+          outboundMessage.setMessageAnnotations(
+              new MessageAnnotations(messageAnnotationsBuilder.map));
+        } catch (IOException e) {
+          throw new StreamException("Error while setting message annotations", e);
+        }
       }
-    }
-    if (propertiesBuilder != null) {
-      outboundMessage.setProperties(propertiesBuilder.properties);
-    }
-    if (applicationPropertiesBuilder != null) {
-      try {
-        outboundMessage.setApplicationProperties(
-            new ApplicationProperties(applicationPropertiesBuilder.map));
-      } catch (IOException e) {
-        throw new StreamException("Error while setting application properties", e);
+      if (propertiesBuilder != null) {
+        outboundMessage.setProperties(propertiesBuilder.properties);
       }
+      if (applicationPropertiesBuilder != null) {
+        try {
+          outboundMessage.setApplicationProperties(
+              new ApplicationProperties(applicationPropertiesBuilder.map));
+        } catch (IOException e) {
+          throw new StreamException("Error while setting application properties", e);
+        }
+      }
+      return new SwiftMqCodec.SwiftMqAmqpMessageWrapper(
+          hasPublishingId, publishingId, outboundMessage);
+    } else {
+      throw new IllegalStateException("A message builder can build only one message");
     }
-    return new SwiftMqCodec.SwiftMqAmqpMessageWrapper(
-        hasPublishingId, publishingId, outboundMessage);
   }
 
   @Override
