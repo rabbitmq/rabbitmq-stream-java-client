@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(b7982bf)</span>
+<br><span id="revremark">(41982c4)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1615,6 +1615,23 @@ producer.send(
 <p>Messages are not only made of a <code>byte[]</code> payload, we will see in
 <a href="#working-with-complex-messages">the next section</a>
 they can also carry pre-defined and application properties.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Use a <code>MessageBuilder</code> instance only once</div>
+<div class="paragraph">
+<p>A <code>MessageBuilder</code> instance is meant to create only one message. You
+need to create a new instance of <code>MessageBuilder</code> for every message
+you want to create.</p>
+</div>
+</td>
+</tr>
+</table>
 </div>
 <div class="paragraph">
 <p>The <code>ConfirmationHandler</code> defines an asynchronous callback invoked
@@ -2896,7 +2913,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-02-09 10:25:26 UTC
+Last updated 2021-02-09 10:49:58 UTC
 </div>
 </div>
 <style>
