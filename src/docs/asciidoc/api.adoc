@@ -53,7 +53,7 @@ except the protocol must be `rabbitmq-stream` and TLS is not supported.
 
 When using one URI, the corresponding node will be the main entry point to connect to. The
 `Environment` will then use the stream protocol to find out more about streams topology
-(leaders and replicas) when asked to create `Producer`s and `Consumer`s. The `Environment`
+(leaders and replicas) when asked to create `Producer` and `Consumer` instances. The `Environment`
 may become blind if this node goes down though, so it may be more appropriate to specify
 several other URIs to try in case of failure of a node:
 
