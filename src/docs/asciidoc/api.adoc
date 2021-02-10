@@ -67,7 +67,7 @@ include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uri
 By specifying several URIs, the environment will try to connect to the first one, and
 will pick a new URI randomly in case of disconnection.
 
-The following table sums up the main settings to create a `Environment`:
+The following table sums up the main settings to create an `Environment`:
 
 [%header,cols=3*]
 |===
