@@ -321,6 +321,7 @@ class ServerFrameHandler {
       }
 
       metricsCollector.chunk(numEntries);
+      // FIXME don't count filtered messages
       metricsCollector.consume(numRecords);
 
       while (numRecords != 0) {

@@ -414,6 +414,10 @@ class ConsumersCoordinator {
                               newSubscriptions.add(subscriptionTrackers.get(i));
                             }
                             for (SubscriptionTracker subscription : subscriptions) {
+                              LOGGER.debug(
+                                  "Subscription {} was at offset {}",
+                                  subscription.subscriptionIdInClient,
+                                  subscription.offset);
                               newSubscriptions.set(
                                   subscription.subscriptionIdInClient & 0xFF, null);
                             }
@@ -534,7 +538,10 @@ class ConsumersCoordinator {
 
       List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
 
-      LOGGER.debug("Subscribing to {}", subscriptionTracker.stream);
+      LOGGER.debug(
+          "Subscribing to {}, offset specification is {}",
+          subscriptionTracker.stream,
+          offsetSpecification);
       try {
         // updating data structures before subscribing
         // (to make sure they are up-to-date in case message would arrive super fast)
