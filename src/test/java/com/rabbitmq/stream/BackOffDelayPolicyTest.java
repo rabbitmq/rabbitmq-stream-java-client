@@ -38,6 +38,7 @@ public class BackOffDelayPolicyTest {
     BackOffDelayPolicy policy =
         BackOffDelayPolicy.fixedWithInitialDelay(ofSeconds(2), ofSeconds(1));
     assertThat(policy.delay(0)).isEqualTo(ofSeconds(2));
+    assertThat(policy.delay(0)).isEqualTo(ofSeconds(2));
     IntStream.range(1, 10)
         .forEach(attempt -> assertThat(policy.delay(attempt)).isEqualTo(ofSeconds(1)));
   }
@@ -55,6 +56,7 @@ public class BackOffDelayPolicyTest {
     BackOffDelayPolicy policy =
         BackOffDelayPolicy.fixedWithInitialDelay(ofSeconds(5), ofSeconds(2), ofSeconds(20));
     assertThat(policy.delay(0)).isEqualTo(ofSeconds(5));
+    assertThat(policy.delay(0)).isEqualTo(ofSeconds(5));
     assertThat(policy.delay(1)).isEqualTo(ofSeconds(2));
     assertThat(policy.delay(2)).isEqualTo(ofSeconds(2));
     assertThat(policy.delay(7)).isEqualTo(ofSeconds(2));
@@ -63,6 +65,7 @@ public class BackOffDelayPolicyTest {
     assertThat(policy.delay(100)).isEqualTo(TIMEOUT);
 
     policy = BackOffDelayPolicy.fixedWithInitialDelay(ofSeconds(10), ofSeconds(5), ofSeconds(12));
+    assertThat(policy.delay(0)).isEqualTo(ofSeconds(10));
     assertThat(policy.delay(0)).isEqualTo(ofSeconds(10));
     assertThat(policy.delay(1)).isEqualTo(TIMEOUT);
   }

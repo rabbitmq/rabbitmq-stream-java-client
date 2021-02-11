@@ -15,7 +15,6 @@
 package com.rabbitmq.stream;
 
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Contract to determine a delay between attempts of some task.
@@ -74,7 +73,6 @@ public interface BackOffDelayPolicy {
 
     private final Duration initialDelay;
     private final Duration delay;
-    private final AtomicBoolean first = new AtomicBoolean(true);
 
     private FixedWithInitialDelayBackOffPolicy(Duration initialDelay, Duration delay) {
       this.initialDelay = initialDelay;
@@ -83,11 +81,7 @@ public interface BackOffDelayPolicy {
 
     @Override
     public Duration delay(int recoveryAttempt) {
-      if (first.compareAndSet(true, false)) {
-        return initialDelay;
-      } else {
-        return delay;
-      }
+      return recoveryAttempt == 0 ? initialDelay : delay;
     }
   }
 
@@ -95,7 +89,6 @@ public interface BackOffDelayPolicy {
 
     private final Duration initialDelay;
     private final Duration delay;
-    private final AtomicBoolean first = new AtomicBoolean(true);
     private final int attemptLimitBeforeTimeout;
 
     private FixedWithInitialDelayAndTimeoutBackOffPolicy(
@@ -111,7 +104,7 @@ public interface BackOffDelayPolicy {
 
     @Override
     public Duration delay(int recoveryAttempt) {
-      if (first.compareAndSet(true, false)) {
+      if (recoveryAttempt == 0) {
         return initialDelay;
       } else {
         if (recoveryAttempt >= attemptLimitBeforeTimeout) {
