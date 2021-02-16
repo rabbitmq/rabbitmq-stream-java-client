@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
@@ -38,8 +40,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.assertj.core.api.AssertDelegateTarget;
 import org.junit.jupiter.api.TestInfo;
@@ -50,6 +54,10 @@ import org.mockito.stubbing.Answer;
 final class TestUtils {
 
   private TestUtils() {}
+
+  static Duration waitAtMost(BooleanSupplier condition) throws InterruptedException {
+    return waitAtMost(10, condition, null);
+  }
 
   static Duration waitAtMost(int timeoutInSeconds, BooleanSupplier condition)
       throws InterruptedException {
@@ -91,6 +99,23 @@ final class TestUtils {
 
   static void publishAndWaitForConfirms(
       TestUtils.ClientFactory cf, String messagePrefix, int publishCount, String stream) {
+    AtomicLong sequence = new AtomicLong(0);
+    publishAndWaitForConfirms(
+        cf,
+        builder ->
+            builder
+                .addData(
+                    (messagePrefix + sequence.getAndIncrement()).getBytes(StandardCharsets.UTF_8))
+                .build(),
+        publishCount,
+        stream);
+  }
+
+  static void publishAndWaitForConfirms(
+      TestUtils.ClientFactory cf,
+      Function<MessageBuilder, Message> messageFactory,
+      int publishCount,
+      String stream) {
     CountDownLatch latchConfirm = new CountDownLatch(publishCount);
     Client.PublishConfirmListener publishConfirmListener =
         (publisherId, correlationId) -> latchConfirm.countDown();
@@ -100,13 +125,8 @@ final class TestUtils {
 
     client.declarePublisher(b(1), null, stream);
     for (int i = 1; i <= publishCount; i++) {
-      client.publish(
-          b(1),
-          Collections.singletonList(
-              client
-                  .messageBuilder()
-                  .addData((messagePrefix + i).getBytes(StandardCharsets.UTF_8))
-                  .build()));
+      Message message = messageFactory.apply(client.messageBuilder());
+      client.publish(b(1), Collections.singletonList(message));
     }
 
     try {

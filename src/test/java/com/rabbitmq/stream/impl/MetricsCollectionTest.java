@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -85,8 +86,8 @@ public class MetricsCollectionTest {
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     assertThat(metricsCollector.chunk.get()).isPositive();
-    assertThat(metricsCollector.entriesInChunk.get()).isEqualTo(messageCount);
-    assertThat(metricsCollector.consume.get()).isEqualTo(messageCount);
+    waitAtMost(() -> metricsCollector.entriesInChunk.get() == messageCount);
+    waitAtMost(() -> metricsCollector.consume.get() == messageCount);
   }
 
   @Test
@@ -164,14 +165,24 @@ public class MetricsCollectionTest {
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
     assertThat(metricsCollector.chunk.get()).isPositive();
-    assertThat(metricsCollector.entriesInChunk.get()).isEqualTo(batchCount);
-    assertThat(metricsCollector.consume.get()).isEqualTo(messageCount);
+    waitAtMost(() -> metricsCollector.entriesInChunk.get() == batchCount);
+    waitAtMost(() -> metricsCollector.consume.get() == messageCount);
   }
 
   @Test
   void filteredSmallerOffsetsInChunksShouldNotBeCounted() throws Exception {
     int messageCount = 50000;
-    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+    AtomicLong messageIdSequence = new AtomicLong(0);
+    TestUtils.publishAndWaitForConfirms(
+        cf,
+        builder ->
+            builder
+                .properties()
+                .messageId(messageIdSequence.incrementAndGet())
+                .messageBuilder()
+                .build(),
+        messageCount,
+        stream);
     for (int i = 0; i < 10; i++) {
       Map<Byte, CountDownLatch> latches = new ConcurrentHashMap<>();
       latches.put(b(1), new CountDownLatch(1));
@@ -188,8 +199,8 @@ public class MetricsCollectionTest {
               new ClientParameters()
                   .messageListener(
                       (subscriptionId, offset, message) -> {
-                        if (counts.get(subscriptionId).incrementAndGet()
-                            == expectedCounts.get(subscriptionId).get()) {
+                        counts.get(subscriptionId).incrementAndGet();
+                        if (message.getProperties().getMessageIdAsLong() == messageCount) {
                           latches.get(subscriptionId).countDown();
                         }
                       })
@@ -209,6 +220,13 @@ public class MetricsCollectionTest {
 
       assertThat(metricsCollector.consume.get())
           .isEqualTo(expectedCounts.get(b(1)).get() + expectedCounts.get(b(2)).get());
+
+      waitAtMost(
+          () ->
+              metricsCollector.consume.get()
+                  == expectedCounts.values().stream()
+                      .mapToLong(v -> v.get())
+                      .reduce(0, (a, b) -> a + b));
 
       client.close();
     }
