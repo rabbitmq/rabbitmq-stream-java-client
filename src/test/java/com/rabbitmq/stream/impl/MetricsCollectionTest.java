@@ -215,12 +215,8 @@ public class MetricsCollectionTest {
       assertThat(latches.get(b(1)).await(10, SECONDS)).isTrue();
       assertThat(latches.get(b(2)).await(10, SECONDS)).isTrue();
 
-      assertThat(counts.get(b(1)).get()).isEqualTo(expectedCounts.get(b(1)).get());
-      assertThat(counts.get(b(2)).get()).isEqualTo(expectedCounts.get(b(2)).get());
-
-      assertThat(metricsCollector.consume.get())
-          .isEqualTo(expectedCounts.get(b(1)).get() + expectedCounts.get(b(2)).get());
-
+      waitAtMost(() -> counts.get(b(1)).get() == expectedCounts.get(b(1)).get());
+      waitAtMost(() -> counts.get(b(2)).get() == expectedCounts.get(b(2)).get());
       waitAtMost(
           () ->
               metricsCollector.consume.get()
