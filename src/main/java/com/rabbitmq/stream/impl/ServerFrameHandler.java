@@ -68,6 +68,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -219,6 +220,7 @@ class ServerFrameHandler {
         ByteBuf bb,
         int read,
         boolean filter,
+        AtomicBoolean messageFiltered,
         long offset,
         long offsetLimit,
         Codec codec,
@@ -231,7 +233,7 @@ class ServerFrameHandler {
       read += entrySize;
 
       if (filter && Long.compareUnsigned(offset, offsetLimit) < 0) {
-        // filter
+        messageFiltered.set(true);
       } else {
         Message message = codec.decode(data);
         messageListener.handle(subscriptionId, offset, message);
@@ -321,8 +323,8 @@ class ServerFrameHandler {
       }
 
       metricsCollector.chunk(numEntries);
-      // FIXME don't count filtered messages
-      metricsCollector.consume(numRecords);
+      long messagesRead = 0;
+      AtomicBoolean messageFiltered = new AtomicBoolean(false);
 
       while (numRecords != 0) {
         byte entryType = message.readByte();
@@ -338,11 +340,17 @@ class ServerFrameHandler {
                   message,
                   read,
                   filter,
+                  messageFiltered,
                   offset,
                   offsetLimit,
                   codec,
                   messageListener,
                   subscriptionId);
+          if (messageFiltered.get()) {
+            messageFiltered.set(false);
+          } else {
+            messagesRead++;
+          }
           numRecords--;
           offset++; // works even for unsigned long
         } else {
@@ -371,16 +379,23 @@ class ServerFrameHandler {
                     message,
                     read,
                     filter,
+                    messageFiltered,
                     offset,
                     offsetLimit,
                     codec,
                     messageListener,
                     subscriptionId);
+            if (messageFiltered.get()) {
+              messageFiltered.set(false);
+            } else {
+              messagesRead++;
+            }
             numRecordsInBatch--;
             offset++; // works even for unsigned long
           }
         }
       }
+      metricsCollector.consume(messagesRead);
       return read;
     }
 

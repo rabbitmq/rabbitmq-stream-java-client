@@ -15,11 +15,16 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.metrics.MetricsCollector;
+import io.netty.channel.EventLoopGroup;
 import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -33,7 +38,7 @@ public class MetricsCollectionTest {
 
   String stream;
   TestUtils.ClientFactory cf;
-
+  EventLoopGroup eventLoopGroup;
   CountMetricsCollector metricsCollector;
 
   @BeforeEach
@@ -161,6 +166,52 @@ public class MetricsCollectionTest {
     assertThat(metricsCollector.chunk.get()).isPositive();
     assertThat(metricsCollector.entriesInChunk.get()).isEqualTo(batchCount);
     assertThat(metricsCollector.consume.get()).isEqualTo(messageCount);
+  }
+
+  @Test
+  void filteredSmallerOffsetsInChunksShouldNotBeCounted() throws Exception {
+    int messageCount = 50000;
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+    for (int i = 0; i < 10; i++) {
+      Map<Byte, CountDownLatch> latches = new ConcurrentHashMap<>();
+      latches.put(b(1), new CountDownLatch(1));
+      latches.put(b(2), new CountDownLatch(1));
+      Map<Byte, AtomicLong> counts = new ConcurrentHashMap<>();
+      counts.put(b(1), new AtomicLong());
+      counts.put(b(2), new AtomicLong());
+      Map<Byte, AtomicLong> expectedCounts = new ConcurrentHashMap<>();
+      expectedCounts.put(b(1), new AtomicLong(messageCount - 50));
+      expectedCounts.put(b(2), new AtomicLong(messageCount - 100));
+      CountMetricsCollector metricsCollector = new CountMetricsCollector();
+      Client client =
+          new Client(
+              new ClientParameters()
+                  .messageListener(
+                      (subscriptionId, offset, message) -> {
+                        if (counts.get(subscriptionId).incrementAndGet()
+                            == expectedCounts.get(subscriptionId).get()) {
+                          latches.get(subscriptionId).countDown();
+                        }
+                      })
+                  .chunkListener(
+                      (client1, subscriptionId, offset, msgCount, dataSize) ->
+                          client1.credit(subscriptionId, 1))
+                  .metricsCollector(metricsCollector)
+                  .eventLoopGroup(eventLoopGroup));
+      client.subscribe(b(1), stream, OffsetSpecification.offset(50), 10);
+      client.subscribe(b(2), stream, OffsetSpecification.offset(100), 10);
+
+      assertThat(latches.get(b(1)).await(10, SECONDS)).isTrue();
+      assertThat(latches.get(b(2)).await(10, SECONDS)).isTrue();
+
+      assertThat(counts.get(b(1)).get()).isEqualTo(expectedCounts.get(b(1)).get());
+      assertThat(counts.get(b(2)).get()).isEqualTo(expectedCounts.get(b(2)).get());
+
+      assertThat(metricsCollector.consume.get())
+          .isEqualTo(expectedCounts.get(b(1)).get() + expectedCounts.get(b(2)).get());
+
+      client.close();
+    }
   }
 
   private static class CountMetricsCollector implements MetricsCollector {
