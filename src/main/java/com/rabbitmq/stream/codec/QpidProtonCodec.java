@@ -460,7 +460,7 @@ public class QpidProtonCodec implements Codec {
 
     @Override
     public byte[] getBodyAsBinary() {
-      return ((Data) message.getBody()).getValue().getArray();
+      return message.getBody() == null ? null : ((Data) message.getBody()).getValue().getArray();
     }
 
     @Override
