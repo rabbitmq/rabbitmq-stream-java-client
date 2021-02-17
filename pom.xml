@@ -522,8 +522,7 @@
       </build>
     </profile>
     <profile>
-      <!-- Snapshot publishing -->
-      <id>ossrh-release</id>
+      <id>snapshots</id>
       <build>
         <plugins>
           <plugin>
