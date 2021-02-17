@@ -316,7 +316,7 @@ public class QpidProtonCodec implements Codec {
 
     @Override
     public String getMessageIdAsString() {
-      return properties.getMessageId().toString();
+      return properties.getMessageId() == null ? null : properties.getMessageId().toString();
     }
 
     @Override
@@ -326,17 +326,19 @@ public class QpidProtonCodec implements Codec {
 
     @Override
     public byte[] getMessageIdAsBinary() {
-      return ((Binary) properties.getMessageId()).getArray();
+      return properties.getMessageId() == null
+          ? null
+          : ((Binary) properties.getMessageId()).getArray();
     }
 
     @Override
     public UUID getMessageIdAsUuid() {
-      return (UUID) properties.getMessageId();
+      return properties.getMessageId() == null ? null : (UUID) properties.getMessageId();
     }
 
     @Override
     public byte[] getUserId() {
-      return properties.getUserId().getArray();
+      return properties.getUserId() == null ? null : properties.getUserId().getArray();
     }
 
     @Override
@@ -361,7 +363,9 @@ public class QpidProtonCodec implements Codec {
 
     @Override
     public String getCorrelationIdAsString() {
-      return properties.getCorrelationId().toString();
+      return properties.getCorrelationId() == null
+          ? null
+          : properties.getCorrelationId().toString();
     }
 
     @Override
@@ -371,22 +375,26 @@ public class QpidProtonCodec implements Codec {
 
     @Override
     public byte[] getCorrelationIdAsBinary() {
-      return ((Binary) properties.getCorrelationId()).getArray();
+      return properties.getCorrelationId() == null
+          ? null
+          : ((Binary) properties.getCorrelationId()).getArray();
     }
 
     @Override
     public UUID getCorrelationIdAsUuid() {
-      return (UUID) properties.getCorrelationId();
+      return properties.getCorrelationId() == null ? null : (UUID) properties.getCorrelationId();
     }
 
     @Override
     public String getContentType() {
-      return properties.getContentType().toString();
+      return properties.getContentType() == null ? null : properties.getContentType().toString();
     }
 
     @Override
     public String getContentEncoding() {
-      return properties.getContentEncoding().toString();
+      return properties.getContentEncoding() == null
+          ? null
+          : properties.getContentEncoding().toString();
     }
 
     @Override
