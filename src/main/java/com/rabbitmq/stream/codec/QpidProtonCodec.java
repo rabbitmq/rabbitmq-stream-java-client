@@ -303,6 +303,7 @@ public class QpidProtonCodec implements Codec {
   private static final class QpidProtonProperties implements Properties {
 
     private static final long NULL_GROUP_SEQUENCE = -1L;
+    private static final long NULL_TIMESTAMP = 0L;
     private final org.apache.qpid.proton.amqp.messaging.Properties properties;
 
     private QpidProtonProperties(org.apache.qpid.proton.amqp.messaging.Properties properties) {
@@ -399,12 +400,16 @@ public class QpidProtonCodec implements Codec {
 
     @Override
     public long getAbsoluteExpiryTime() {
-      return properties.getAbsoluteExpiryTime().getTime();
+      return properties.getAbsoluteExpiryTime() == null
+          ? NULL_TIMESTAMP
+          : properties.getAbsoluteExpiryTime().getTime();
     }
 
     @Override
     public long getCreationTime() {
-      return properties.getCreationTime().getTime();
+      return properties.getCreationTime() == null
+          ? NULL_TIMESTAMP
+          : properties.getCreationTime().getTime();
     }
 
     @Override
