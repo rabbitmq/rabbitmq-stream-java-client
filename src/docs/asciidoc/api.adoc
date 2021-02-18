@@ -562,6 +562,22 @@ and they are delivered as part of a chunk. A chunk can be made of one to several
 thousands of messages, depending on the ingress.
 ====
 
+The following figure shows the different offset specifications in a stream
+made of 2 chunks:
+
+.Offset specifications in a stream made of 2 chunks
+[ditaa]
+....
+   +------------------------------------------+ +-------------------------+
+   |  +-----+ +-----+ +-----+ +-----+ +-----+ | | +-----+ +-----+ +-----+ |
+   |  |  0  | |  1  | |  2  | |  3  | |  4  | | | |  5  | |  6  | |  7  | |
+   |  +-----+ +-----+ +-----+ +-----+ +-----+ | | +-----+ +-----+ +-----+ |
+   +------------------------------------------+ +-------------------------+
+         ^            Chunk 1    ^                   ^    Chunk 2            ^
+         |                       |                   |                       |
+       FIRST                  OFFSET 3              LAST                    NEXT
+....
+
 [[consumer-offset-tracking]]
 ===== Tracking the Offset for a Consumer
 
