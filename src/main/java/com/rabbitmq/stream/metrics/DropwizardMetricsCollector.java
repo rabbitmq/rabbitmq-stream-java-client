@@ -21,16 +21,19 @@ import com.codahale.metrics.MetricRegistry;
 
 public class DropwizardMetricsCollector implements MetricsCollector {
 
-  private final com.codahale.metrics.Meter publish;
-  private final com.codahale.metrics.Meter publishConfirm;
-  private final com.codahale.metrics.Meter publishError;
-  private final com.codahale.metrics.Meter chunk;
+  private final Counter connections;
+
+  private final Meter publish;
+  private final Meter publishConfirm;
+  private final Meter publishError;
+  private final Meter chunk;
   private final Meter consume;
 
   private final Counter outstandingPublishConfirm;
   private final Histogram chunkSize;
 
   public DropwizardMetricsCollector(MetricRegistry registry, String metricsPrefix) {
+    this.connections = registry.counter(metricsPrefix + ".connections");
     this.publish = registry.meter(metricsPrefix + ".published");
     this.publishConfirm = registry.meter(metricsPrefix + ".confirmed");
     this.publishError = registry.meter(metricsPrefix + ".errored");
@@ -47,6 +50,16 @@ public class DropwizardMetricsCollector implements MetricsCollector {
 
   public DropwizardMetricsCollector(MetricRegistry metricRegistry) {
     this(metricRegistry, "rabbitmq.stream");
+  }
+
+  @Override
+  public void openConnection() {
+    this.connections.inc();
+  }
+
+  @Override
+  public void closeConnection() {
+    this.connections.dec();
   }
 
   @Override

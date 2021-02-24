@@ -48,6 +48,21 @@ public class MetricsCollectionTest {
   }
 
   @Test
+  void connectionCountShouldIncreaseAndDecrease() {
+    assertThat(metricsCollector.connections.get()).isZero();
+    Client c1 = cf.get(new ClientParameters().metricsCollector(metricsCollector));
+    assertThat(metricsCollector.connections.get()).isEqualTo(1);
+    Client c2 = cf.get(new ClientParameters().metricsCollector(metricsCollector));
+    assertThat(metricsCollector.connections.get()).isEqualTo(2);
+    c2.close();
+    assertThat(metricsCollector.connections.get()).isEqualTo(1);
+    c1.close();
+    assertThat(metricsCollector.connections.get()).isZero();
+    c1.close();
+    assertThat(metricsCollector.connections.get()).isZero();
+  }
+
+  @Test
   void publishConfirmChunkConsumeShouldBeCollected() throws Exception {
     int messageCount = 1000;
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
@@ -230,12 +245,23 @@ public class MetricsCollectionTest {
 
   private static class CountMetricsCollector implements MetricsCollector {
 
+    private final AtomicLong connections = new AtomicLong();
     private final AtomicLong publish = new AtomicLong(0);
     private final AtomicLong confirm = new AtomicLong(0);
     private final AtomicLong error = new AtomicLong(0);
     private final AtomicLong chunk = new AtomicLong(0);
     private final AtomicLong entriesInChunk = new AtomicLong(0);
     private final AtomicLong consume = new AtomicLong(0);
+
+    @Override
+    public void openConnection() {
+      connections.incrementAndGet();
+    }
+
+    @Override
+    public void closeConnection() {
+      connections.decrementAndGet();
+    }
 
     @Override
     public void publish(int count) {

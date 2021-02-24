@@ -206,6 +206,7 @@ public class Client implements AutoCloseable {
               // even before having connected. The caller should be notified of the failure
               // by an exception anyway.
               if (started.get()) {
+                this.metricsCollector.closeConnection();
                 shutdownListener.handle(new ShutdownContext(shutdownReason));
               }
             });
@@ -273,6 +274,7 @@ public class Client implements AutoCloseable {
         tuneState.getHeartbeat());
     open(parameters.virtualHost);
     started.set(true);
+    this.metricsCollector.openConnection();
   }
 
   private static Map<String, String> clientProperties(Map<String, String> fromParameters) {

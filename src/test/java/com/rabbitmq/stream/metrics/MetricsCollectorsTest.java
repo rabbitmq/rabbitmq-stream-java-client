@@ -27,6 +27,14 @@ public class MetricsCollectorsTest {
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
     MetricsCollector collector = new MicrometerMetricsCollector(registry);
 
+    assertThat(registry.get("rabbitmq.stream.connections").gauge().value()).isZero();
+    collector.openConnection();
+    assertThat(registry.get("rabbitmq.stream.connections").gauge().value()).isEqualTo(1);
+    collector.openConnection();
+    assertThat(registry.get("rabbitmq.stream.connections").gauge().value()).isEqualTo(2);
+    collector.closeConnection();
+    assertThat(registry.get("rabbitmq.stream.connections").gauge().value()).isEqualTo(1);
+
     collector.publish(10);
     assertThat(registry.get("rabbitmq.stream.published").counter().count()).isEqualTo(10.0);
     assertThat(registry.get("rabbitmq.stream.outstanding_publish_confirm").gauge().value())
@@ -49,6 +57,14 @@ public class MetricsCollectorsTest {
   void dropwizard() {
     MetricRegistry registry = new MetricRegistry();
     MetricsCollector collector = new DropwizardMetricsCollector(registry);
+
+    assertThat(registry.counter("rabbitmq.stream.connections").getCount()).isZero();
+    collector.openConnection();
+    assertThat(registry.counter("rabbitmq.stream.connections").getCount()).isEqualTo(1);
+    collector.openConnection();
+    assertThat(registry.counter("rabbitmq.stream.connections").getCount()).isEqualTo(2);
+    collector.closeConnection();
+    assertThat(registry.counter("rabbitmq.stream.connections").getCount()).isEqualTo(1);
 
     collector.publish(10);
     assertThat(registry.meter("rabbitmq.stream.published").getCount()).isEqualTo(10);

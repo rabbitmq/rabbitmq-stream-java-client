@@ -18,6 +18,10 @@ public interface MetricsCollector {
 
   // FIXME track also client instances (connections) once a shutdown notification system is in place
 
+  void openConnection();
+
+  void closeConnection();
+
   void publish(int count);
 
   void publishConfirm(int count);

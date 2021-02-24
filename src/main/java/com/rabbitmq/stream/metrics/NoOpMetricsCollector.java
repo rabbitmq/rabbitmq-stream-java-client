@@ -21,6 +21,12 @@ public final class NoOpMetricsCollector implements MetricsCollector {
   private NoOpMetricsCollector() {}
 
   @Override
+  public void openConnection() {}
+
+  @Override
+  public void closeConnection() {}
+
+  @Override
   public void publish(int count) {}
 
   @Override

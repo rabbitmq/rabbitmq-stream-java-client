@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class MicrometerMetricsCollector implements MetricsCollector {
 
+  private final AtomicLong connections;
   private final Counter publish;
   private final Counter publishConfirm;
   private final Counter publishError;
@@ -44,6 +45,7 @@ public class MicrometerMetricsCollector implements MetricsCollector {
 
   public MicrometerMetricsCollector(
       final MeterRegistry registry, final String prefix, final Iterable<Tag> tags) {
+    this.connections = registry.gauge(prefix + ".connections", tags, new AtomicLong(0));
     this.publish = registry.counter(prefix + ".published", tags);
     this.publishConfirm = registry.counter(prefix + ".confirmed", tags);
     this.publishError = registry.counter(prefix + ".errored", tags);
@@ -52,6 +54,16 @@ public class MicrometerMetricsCollector implements MetricsCollector {
     this.consume = registry.counter(prefix + ".consumed", tags);
     this.outstandingPublishConfirm =
         registry.gauge(prefix + ".outstanding_publish_confirm", tags, new AtomicLong(0));
+  }
+
+  @Override
+  public void openConnection() {
+    this.connections.incrementAndGet();
+  }
+
+  @Override
+  public void closeConnection() {
+    this.connections.decrementAndGet();
   }
 
   @Override
