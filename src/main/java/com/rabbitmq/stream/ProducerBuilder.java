@@ -15,6 +15,7 @@
 package com.rabbitmq.stream;
 
 import java.time.Duration;
+import java.util.function.Function;
 
 public interface ProducerBuilder {
 
@@ -34,5 +35,12 @@ public interface ProducerBuilder {
 
   ProducerBuilder enqueueTimeout(Duration timeout);
 
+  ProducerBuilder routing(Function<Message, String> routingKeyExtractor, RoutingType routingType);
+
   Producer build();
+
+  enum RoutingType {
+    HASH,
+    KEY
+  }
 }

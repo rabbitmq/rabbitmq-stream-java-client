@@ -63,6 +63,8 @@ public final class Constants {
   public static final short COMMAND_OPEN = 20;
   public static final short COMMAND_CLOSE = 21;
   public static final short COMMAND_HEARTBEAT = 22;
+  public static final short COMMAND_ROUTE = 23;
+  public static final short COMMAND_PARTITIONS = 24;
 
   public static final short VERSION_0 = 0;
 

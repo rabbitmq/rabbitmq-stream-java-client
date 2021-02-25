@@ -71,8 +71,8 @@ public class StreamConsumerTest {
   void init() {
     if (Host.isOnDocker()) {
       // with a containerized broker in bridged network mode, the client should not
-      // reconnect to soon, as it would see the port still open but would not get any response.
-      // This then provokes some casdading timeouts in the test.
+      // reconnect too soon, as it would see the port still open but would not get any response.
+      // This then provokes some cascading timeouts in the test.
       recoveryInitialDelay = Duration.ofSeconds(10);
     } else {
       recoveryInitialDelay = RECOVERY_DELAY;

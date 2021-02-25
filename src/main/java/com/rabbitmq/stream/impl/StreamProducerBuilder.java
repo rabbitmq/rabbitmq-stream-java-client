@@ -14,9 +14,13 @@
 
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder;
+import com.rabbitmq.stream.StreamException;
+import java.lang.reflect.Field;
 import java.time.Duration;
+import java.util.function.Function;
 
 class StreamProducerBuilder implements ProducerBuilder {
 
@@ -37,6 +41,10 @@ class StreamProducerBuilder implements ProducerBuilder {
   private Duration confirmTimeout = Duration.ofSeconds(30);
 
   private Duration enqueueTimeout = Duration.ofSeconds(10);
+
+  private Function<Message, String> routingKeyExtractor;
+
+  private RoutingType routingType;
 
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -106,19 +114,56 @@ class StreamProducerBuilder implements ProducerBuilder {
     return this;
   }
 
+  @Override
+  public ProducerBuilder routing(
+      Function<Message, String> routingKeyExtractor, RoutingType routingType) {
+    if ((routingKeyExtractor == null && routingType == null)
+        || (routingKeyExtractor != null && routingType != null)) {
+      this.routingKeyExtractor = routingKeyExtractor;
+      this.routingType = routingType;
+    } else {
+      throw new IllegalArgumentException(
+          "both routing key extractor and routing type must be " + "non-null");
+    }
+    return this;
+  }
+
   public Producer build() {
-    StreamProducer producer =
-        new StreamProducer(
-            name,
-            stream,
-            subEntrySize,
-            batchSize,
-            batchPublishingDelay,
-            maxUnconfirmedMessages,
-            confirmTimeout,
-            enqueueTimeout,
-            environment);
-    this.environment.addProducer(producer);
+    Producer producer;
+    if (this.routingKeyExtractor == null) {
+      producer =
+          new StreamProducer(
+              name,
+              stream,
+              subEntrySize,
+              batchSize,
+              batchPublishingDelay,
+              maxUnconfirmedMessages,
+              confirmTimeout,
+              enqueueTimeout,
+              environment);
+      this.environment.addProducer((StreamProducer) producer);
+    } else {
+      RoutingStrategy routingStrategy =
+          this.routingType == RoutingType.HASH
+              ? new HashRoutingStrategy(this.stream, this.routingKeyExtractor, this.environment)
+              : new RoutingKeyRoutingStrategy(
+                  this.stream, this.routingKeyExtractor, this.environment);
+      producer = new SuperStreamProducer(this, stream, routingStrategy, environment);
+    }
     return producer;
+  }
+
+  StreamProducerBuilder duplicate() {
+    StreamProducerBuilder duplicate = new StreamProducerBuilder(this.environment);
+    for (Field field : StreamProducerBuilder.class.getDeclaredFields()) {
+      field.setAccessible(true);
+      try {
+        field.set(duplicate, field.get(this));
+      } catch (IllegalAccessException e) {
+        throw new StreamException("Error while duplicating stream producer builder", e);
+      }
+    }
+    return duplicate;
   }
 }

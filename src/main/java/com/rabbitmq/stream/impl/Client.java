@@ -24,10 +24,12 @@ import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
 import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
 import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
 import static com.rabbitmq.stream.Constants.COMMAND_OPEN;
+import static com.rabbitmq.stream.Constants.COMMAND_PARTITIONS;
 import static com.rabbitmq.stream.Constants.COMMAND_PEER_PROPERTIES;
 import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
+import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
 import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
@@ -1121,6 +1123,66 @@ public class Client implements AutoCloseable {
 
   int getPort() {
     return port;
+  }
+
+  public String route(String routingKey, String superStream) {
+    if (routingKey == null || superStream == null) {
+      throw new IllegalArgumentException("routing key and stream must not be null");
+    }
+    int length =
+        2
+            + 2
+            + 4
+            + 2
+            + routingKey.length()
+            + 2
+            + superStream.length(); // API code, version, correlation ID, 2 strings
+    int correlationId = correlationSequence.incrementAndGet();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(COMMAND_ROUTE);
+      bb.writeShort(VERSION_0);
+      bb.writeInt(correlationId);
+      bb.writeShort(routingKey.length());
+      bb.writeBytes(routingKey.getBytes(StandardCharsets.UTF_8));
+      bb.writeShort(superStream.length());
+      bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
+      OutstandingRequest<String> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb);
+      request.block();
+      return request.response.get();
+    } catch (RuntimeException e) {
+      outstandingRequests.remove(correlationId);
+      throw new StreamException(e);
+    }
+  }
+
+  public List<String> partitions(String superStream) {
+    if (superStream == null) {
+      throw new IllegalArgumentException("stream must not be null");
+    }
+    int length =
+        2 + 2 + 4 + +2 + superStream.length(); // API code, version, correlation ID, 1 string
+    int correlationId = correlationSequence.incrementAndGet();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(COMMAND_PARTITIONS);
+      bb.writeShort(VERSION_0);
+      bb.writeInt(correlationId);
+      bb.writeShort(superStream.length());
+      bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
+      OutstandingRequest<List<String>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb);
+      request.block();
+      return request.response.get();
+    } catch (RuntimeException e) {
+      outstandingRequests.remove(correlationId);
+      throw new StreamException(e);
+    }
   }
 
   public interface OutboundEntityMappingCallback {

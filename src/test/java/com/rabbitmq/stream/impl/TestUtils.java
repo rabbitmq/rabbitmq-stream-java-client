@@ -18,6 +18,9 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import com.rabbitmq.client.BuiltinExchangeType;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.Message;
@@ -45,6 +48,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import org.assertj.core.api.AssertDelegateTarget;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.*;
@@ -276,6 +280,48 @@ final class TestUtils {
     public void afterAll(ExtensionContext context) throws Exception {
       EventLoopGroup eventLoopGroup = eventLoopGroup(context);
       eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+    }
+  }
+
+  static void declareSuperStreamTopology(Connection connection, String superStream, int partitions)
+      throws Exception {
+    declareSuperStreamTopology(
+        connection,
+        superStream,
+        IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
+  }
+
+  static void declareSuperStreamTopology(
+      Connection connection, String superStream, String... routingKeys) throws Exception {
+    try (Channel ch = connection.createChannel()) {
+      ch.exchangeDeclare(superStream, BuiltinExchangeType.DIRECT, true);
+      for (String routingKey : routingKeys) {
+        String partitionName = superStream + "-" + routingKey;
+        ch.queueDeclare(
+            partitionName, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
+        // TODO consider adding some arguments to the bindings
+        // can be useful to identify a partition, e.g. partition number
+        ch.queueBind(partitionName, superStream, routingKey);
+      }
+    }
+  }
+
+  static void deleteSuperStreamTopology(Connection connection, String superStream, int partitions)
+      throws Exception {
+    deleteSuperStreamTopology(
+        connection,
+        superStream,
+        IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
+  }
+
+  static void deleteSuperStreamTopology(
+      Connection connection, String superStream, String... routingKeys) throws Exception {
+    try (Channel ch = connection.createChannel()) {
+      ch.exchangeDelete(superStream);
+      for (String routingKey : routingKeys) {
+        String partitionName = superStream + "-" + routingKey;
+        ch.queueDelete(partitionName);
+      }
     }
   }
 

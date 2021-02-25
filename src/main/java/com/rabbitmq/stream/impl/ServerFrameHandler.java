@@ -25,11 +25,13 @@ import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
 import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
 import static com.rabbitmq.stream.Constants.COMMAND_METADATA_UPDATE;
 import static com.rabbitmq.stream.Constants.COMMAND_OPEN;
+import static com.rabbitmq.stream.Constants.COMMAND_PARTITIONS;
 import static com.rabbitmq.stream.Constants.COMMAND_PEER_PROPERTIES;
 import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_CONFIRM;
 import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_ERROR;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
+import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
 import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
@@ -102,8 +104,9 @@ class ServerFrameHandler {
     handlers.put(COMMAND_CREDIT, new CreditNotificationFrameHandler());
     handlers.put(COMMAND_QUERY_OFFSET, new QueryOffsetFrameHandler());
     handlers.put(COMMAND_QUERY_PUBLISHER_SEQUENCE, new QueryPublisherSequenceFrameHandler());
-    HANDLERS =
-        new FrameHandler[1000]; // FIXME put create/delete stream command IDs back at the beginning
+    handlers.put(COMMAND_ROUTE, new RouteFrameHandler());
+    handlers.put(COMMAND_PARTITIONS, new PartitionsFrameHandler());
+    HANDLERS = new FrameHandler[handlers.size() + 10];
     handlers.entrySet().forEach(entry -> HANDLERS[entry.getKey()] = entry.getValue());
   }
 
@@ -785,6 +788,84 @@ class ServerFrameHandler {
       } else {
         Response response = new Response(responseCode);
         outstandingRequest.response().set(response);
+        outstandingRequest.countDown();
+      }
+      return read;
+    }
+  }
+
+  private static class RouteFrameHandler extends BaseFrameHandler {
+
+    @Override
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      int correlationId = message.readInt();
+      int read = 4;
+      short responseCode = message.readShort();
+      read += 2;
+      short streamSize = message.readShort();
+      read += 2;
+      String stream;
+      if (streamSize == -1) {
+        stream = null;
+      } else {
+        byte[] bytes = new byte[streamSize];
+        message.readBytes(bytes);
+        stream = new String(bytes, StandardCharsets.UTF_8);
+        read += stream.length();
+      }
+
+      if (responseCode != RESPONSE_CODE_OK) {
+        LOGGER.info("Route returned error: {}", Utils.formatConstant(responseCode));
+      }
+
+      OutstandingRequest<String> outstandingRequest =
+          remove(client.outstandingRequests, correlationId, String.class);
+      if (outstandingRequest == null) {
+        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+      } else {
+        outstandingRequest.response().set(stream);
+        outstandingRequest.countDown();
+      }
+      return read;
+    }
+  }
+
+  private static class PartitionsFrameHandler extends BaseFrameHandler {
+
+    @Override
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      int correlationId = message.readInt();
+      int read = 4;
+      short responseCode = message.readShort();
+      read += 2;
+      int streamCount = message.readInt();
+      read += 4;
+
+      List<String> streams;
+      if (streamCount == 0) {
+        streams = Collections.emptyList();
+      } else {
+        streams = new ArrayList<>(streamCount);
+        for (int i = 0; i < streamCount; i++) {
+          String stream = readString(message);
+          read += (2 + stream.length());
+          streams.add(stream);
+        }
+      }
+
+      if (responseCode != RESPONSE_CODE_OK) {
+        LOGGER.info("Route returned error: {}", Utils.formatConstant(responseCode));
+      }
+
+      OutstandingRequest<List<String>> outstandingRequest =
+          remove(
+              client.outstandingRequests,
+              correlationId,
+              new ParameterizedTypeReference<List<String>>() {});
+      if (outstandingRequest == null) {
+        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+      } else {
+        outstandingRequest.response().set(streams);
         outstandingRequest.countDown();
       }
       return read;
