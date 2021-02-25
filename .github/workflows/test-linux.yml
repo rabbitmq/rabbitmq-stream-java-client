@@ -16,7 +16,7 @@ jobs:
       rabbitmq:
         image: pivotalrabbitmq/rabbitmq-stream
         ports:
-          - 5555:5555
+          - 5551:5551
           - 5672:5672
 
     steps:
