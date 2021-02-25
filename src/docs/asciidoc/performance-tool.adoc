@@ -73,7 +73,7 @@ docker network create stream-perf-test
 docker run -it --rm --network stream-perf-test --name rabbitmq pivotalrabbitmq/rabbitmq-stream
 # open another terminal and run the performance tool
 docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test \
-    --uris rabbitmq-stream://rabbitmq:5555
+    --uris rabbitmq-stream://rabbitmq:5551
 ----
 
 ==== With the Java Binary
@@ -133,12 +133,12 @@ though.
 
 ===== Connection
 
-The performance tool connects by default to localhost, on port 5555, with
+The performance tool connects by default to localhost, on port 5551, with
 default credentials (`guest`/`guest`), on the default `/` virtual host.
 This can be changed with the `--uris` option:
 
 ----
-java -jar stream-perf-test.jar --uris rabbitmq-stream://rabbitmq-1:5555
+java -jar stream-perf-test.jar --uris rabbitmq-stream://rabbitmq-1:5551
 ----
 
 The URI follows the same rules as the
@@ -148,7 +148,7 @@ The next command shows how to set up the different elements of the URI:
 
 ----
 java -jar stream-perf-test.jar \
-  --uris rabbitmq-stream://guest:guest@localhost:5555/%2f
+  --uris rabbitmq-stream://guest:guest@localhost:5551/%2f
 ----
 
 The option accepts several values, separated by commas. By doing so, the tool
@@ -157,7 +157,7 @@ crashes:
 
 ----
 java -jar stream-perf-test.jar \
-  --uris rabbitmq-stream://rabbitmq-1:5555,rabbitmq-stream://rabbitmq-2:5555
+  --uris rabbitmq-stream://rabbitmq-1:5551,rabbitmq-stream://rabbitmq-2:5551
 ----
 
 Note the tool uses those URIs only for management purposes, it does not use them

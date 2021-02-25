@@ -78,7 +78,7 @@ public class StreamEnvironmentTest {
   void environmentCreationShouldFailWithIncorrectCredentialsInUri() {
     assertThatThrownBy(
             () ->
-                environmentBuilder.uri("rabbitmq-stream://bad:credentials@localhost:5555").build())
+                environmentBuilder.uri("rabbitmq-stream://bad:credentials@localhost:5551").build())
         .isInstanceOf(AuthenticationFailureException.class);
   }
 
@@ -87,7 +87,7 @@ public class StreamEnvironmentTest {
     assertThatThrownBy(
             () ->
                 environmentBuilder
-                    .uri("rabbitmq-stream://guest:guest@localhost:5555/dummy")
+                    .uri("rabbitmq-stream://guest:guest@localhost:5551/dummy")
                     .build())
         .isInstanceOf(StreamException.class)
         .hasMessageContaining(String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE));
@@ -95,7 +95,7 @@ public class StreamEnvironmentTest {
 
   @Test
   void environmentCreationShouldSucceedWithUrlContainingAllCorrectInformation() throws Exception {
-    environmentBuilder.uri("rabbitmq-stream://guest:guest@localhost:5555/%2f").build().close();
+    environmentBuilder.uri("rabbitmq-stream://guest:guest@localhost:5551/%2f").build().close();
   }
 
   @Test

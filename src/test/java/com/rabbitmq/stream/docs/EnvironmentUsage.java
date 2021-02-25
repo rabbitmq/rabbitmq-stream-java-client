@@ -33,7 +33,7 @@ public class EnvironmentUsage {
     void environmentCreationWithUri() {
         // tag::environment-creation-with-uri[]
         Environment environment = Environment.builder()
-                .uri("rabbitmq-stream://guest:guest@localhost:5555/%2f")  // <1>
+                .uri("rabbitmq-stream://guest:guest@localhost:5551/%2f")  // <1>
                 .build();
         // end::environment-creation-with-uri[]
     }
@@ -42,9 +42,9 @@ public class EnvironmentUsage {
         // tag::environment-creation-with-uris[]
         Environment environment = Environment.builder()
                 .uris(Arrays.asList(                     // <1>
-                        "rabbitmq-stream://host1:5555",
-                        "rabbitmq-stream://host2:5555",
-                        "rabbitmq-stream://host3:5555")
+                        "rabbitmq-stream://host1:5551",
+                        "rabbitmq-stream://host2:5551",
+                        "rabbitmq-stream://host3:5551")
                 )
                 .build();
         // end::environment-creation-with-uris[]

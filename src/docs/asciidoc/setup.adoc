@@ -27,17 +27,17 @@ with the stream plugin enabled:
 
 .Running the stream plugin with Docker
 ----
-docker run -it --rm --name rabbitmq -p 5555:5555 \
+docker run -it --rm --name rabbitmq -p 5551:5551 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
     pivotalrabbitmq/rabbitmq-stream
 ----
 
-The previous command exposes only the stream port (5555), you can expose
+The previous command exposes only the stream port (5551), you can expose
 ports for other protocols:
 
 .Exposing the AMQP 0.9.1 and management ports:
 ----
-docker run -it --rm --name rabbitmq -p 5555:5555 -p 5672:5672 -p 15672:15672 \
+docker run -it --rm --name rabbitmq -p 5551:5551 -p 5672:5672 -p 15672:15672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
     pivotalrabbitmq/rabbitmq-stream
 ----
@@ -60,7 +60,7 @@ this is perfect for experimenting locally.
 docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
 ----
 
-The command above will use the following ports: 5555 (for stream), 5672 (for AMQP),
+The command above will use the following ports: 5551 (for stream), 5672 (for AMQP),
 15672 (for management plugin).
 
 [NOTE]
@@ -76,7 +76,7 @@ The generic Unix package requires https://www.rabbitmq.com/which-erlang.html[Erl
 * Download the https://bintray.com/rabbitmq/all-dev/rabbitmq-stream[latest generic Unix alpha from Bintray].
 * Follow the https://www.rabbitmq.com/install-generic-unix.html[instructions to install the generic Unix package].
 * Enable the plugin `./rabbitmq-plugins enable rabbitmq_stream`.
-* Start the broker `./rabbitmq-server -detached`. This starts the stream listener on port 5555.
+* Start the broker `./rabbitmq-server -detached`. This starts the stream listener on port 5551.
 
 === Dependencies
 

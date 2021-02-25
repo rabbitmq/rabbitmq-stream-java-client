@@ -483,18 +483,18 @@ public class ProducersCoordinatorTest {
   }
 
   static Client.Broker leader() {
-    return new Client.Broker("leader", 5555);
+    return new Client.Broker("leader", 5551);
   }
 
   static Client.Broker leader1() {
-    return new Client.Broker("leader-1", 5555);
+    return new Client.Broker("leader-1", 5551);
   }
 
   static Client.Broker leader2() {
-    return new Client.Broker("leader-2", 5555);
+    return new Client.Broker("leader-2", 5551);
   }
 
   static List<Client.Broker> replicas() {
-    return Arrays.asList(new Client.Broker("replica1", 5555), new Client.Broker("replica2", 5555));
+    return Arrays.asList(new Client.Broker("replica1", 5551), new Client.Broker("replica2", 5551));
   }
 }

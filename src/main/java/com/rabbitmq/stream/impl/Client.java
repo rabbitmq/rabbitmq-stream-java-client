@@ -124,7 +124,7 @@ import org.slf4j.LoggerFactory;
  */
 public class Client implements AutoCloseable {
 
-  public static final int DEFAULT_PORT = 5555;
+  public static final int DEFAULT_PORT = 5551;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
