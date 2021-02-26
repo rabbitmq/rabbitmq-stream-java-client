@@ -52,7 +52,7 @@ public class DeliveryTest {
       int nbMessages, long chunkOffset, int dataSize, Iterable<byte[]> messages) {
     ByteBuf bb = ByteBufAllocator.DEFAULT.buffer(1024);
     bb.writeShort(Utils.encodeRequestCode(Constants.COMMAND_DELIVER))
-        .writeShort(Constants.VERSION_0)
+        .writeShort(Constants.VERSION_1)
         .writeByte(1) // subscription id
         .writeByte(1) // magic and version
         .writeByte(0) // chunk type, always 0 in our case

@@ -40,7 +40,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
-import static com.rabbitmq.stream.Constants.VERSION_0;
+import static com.rabbitmq.stream.Constants.VERSION_1;
 import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 
 import com.rabbitmq.stream.ChunkChecksum;
@@ -116,7 +116,7 @@ class ServerFrameHandler {
   }
 
   static FrameHandler lookup(short commandId, short version, ByteBuf message) {
-    if (version != VERSION_0) {
+    if (version != VERSION_1) {
       message.release();
       throw new StreamException("Unsupported version " + version + " for command " + commandId);
     }
@@ -453,7 +453,7 @@ class ServerFrameHandler {
       byteBuf
           .writeInt(length)
           .writeShort(encodeResponseCode(COMMAND_CLOSE))
-          .writeShort(VERSION_0)
+          .writeShort(VERSION_1)
           .writeInt(correlationId)
           .writeShort(RESPONSE_CODE_OK);
 
@@ -611,7 +611,7 @@ class ServerFrameHandler {
       byteBuf
           .writeInt(length)
           .writeShort(encodeResponseCode(COMMAND_TUNE))
-          .writeShort(VERSION_0)
+          .writeShort(VERSION_1)
           .writeInt(maxFrameSize)
           .writeInt(heartbeat);
       ctx.writeAndFlush(byteBuf);

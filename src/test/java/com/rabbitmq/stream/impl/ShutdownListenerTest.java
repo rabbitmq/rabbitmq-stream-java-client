@@ -60,7 +60,7 @@ public class ShutdownListenerTest {
     DataOutputStream dataOutputStream = new DataOutputStream(out);
     dataOutputStream.writeInt(4);
     dataOutputStream.writeShort(30000); // command ID
-    dataOutputStream.writeShort(Constants.VERSION_0);
+    dataOutputStream.writeShort(Constants.VERSION_1);
     client.send(out.toByteArray());
 
     assertThat(shutdownLatch.await(10, TimeUnit.SECONDS)).isTrue();

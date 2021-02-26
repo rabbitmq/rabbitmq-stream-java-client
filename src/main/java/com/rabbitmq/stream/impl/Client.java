@@ -38,7 +38,7 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
-import static com.rabbitmq.stream.Constants.VERSION_0;
+import static com.rabbitmq.stream.Constants.VERSION_1;
 import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
 import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
@@ -317,7 +317,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_PEER_PROPERTIES));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeInt(clientProperties.size());
       for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
@@ -377,7 +377,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_SASL_AUTHENTICATE));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(saslMechanism.getName().length());
       bb.writeBytes(saslMechanism.getName().getBytes(StandardCharsets.UTF_8));
@@ -405,7 +405,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_OPEN));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(virtualHost.length());
       bb.writeBytes(virtualHost.getBytes(StandardCharsets.UTF_8));
@@ -445,7 +445,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_CLOSE));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(code);
       bb.writeShort(reason.length());
@@ -475,7 +475,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_SASL_HANDSHAKE));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       OutstandingRequest<List<String>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
       outstandingRequests.put(correlationId, request);
@@ -502,7 +502,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_CREATE_STREAM));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
@@ -554,7 +554,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_DELETE_STREAM));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
@@ -583,7 +583,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_METADATA));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeInt(streams.length);
       for (String stream : streams) {
@@ -617,7 +617,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_DECLARE_PUBLISHER));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(publisherId);
       bb.writeShort(publisherReferenceSize);
@@ -644,7 +644,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_DELETE_PUBLISHER));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(publisherId);
       OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
@@ -856,7 +856,7 @@ public class Client implements AutoCloseable {
     ByteBuf out = allocateNoCheck(ch.alloc(), frameLength + 4);
     out.writeInt(frameLength);
     out.writeShort(encodeRequestCode(COMMAND_PUBLISH));
-    out.writeShort(VERSION_0);
+    out.writeShort(VERSION_1);
     out.writeByte(publisherId);
     int messageCount = 0;
     out.writeInt(toExcluded - fromIncluded);
@@ -890,7 +890,7 @@ public class Client implements AutoCloseable {
     ByteBuf bb = allocate(length + 4);
     bb.writeInt(length);
     bb.writeShort(encodeRequestCode(COMMAND_CREDIT));
-    bb.writeShort(VERSION_0);
+    bb.writeShort(VERSION_1);
     bb.writeByte(subscriptionId);
     bb.writeShort((short) credit);
     channel.writeAndFlush(bb);
@@ -923,7 +923,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_SUBSCRIBE));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(subscriptionId);
       bb.writeShort(stream.length());
@@ -960,7 +960,7 @@ public class Client implements AutoCloseable {
     ByteBuf bb = allocate(length + 4);
     bb.writeInt(length);
     bb.writeShort(encodeRequestCode(COMMAND_COMMIT_OFFSET));
-    bb.writeShort(VERSION_0);
+    bb.writeShort(VERSION_1);
     bb.writeInt(0); // correlation ID not used yet, may be used if commit offset has a confirm
     bb.writeShort(reference.length());
     bb.writeBytes(reference.getBytes(StandardCharsets.UTF_8));
@@ -985,7 +985,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_QUERY_OFFSET));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(reference.length());
       bb.writeBytes(reference.getBytes(StandardCharsets.UTF_8));
@@ -1023,7 +1023,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_QUERY_PUBLISHER_SEQUENCE));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(publisherReference.length());
       bb.writeBytes(publisherReference.getBytes(StandardCharsets.UTF_8));
@@ -1052,7 +1052,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_UNSUBSCRIBE));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(subscriptionId);
       OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
@@ -1144,7 +1144,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_ROUTE));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(routingKey.length());
       bb.writeBytes(routingKey.getBytes(StandardCharsets.UTF_8));
@@ -1172,7 +1172,7 @@ public class Client implements AutoCloseable {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
       bb.writeShort(encodeRequestCode(COMMAND_PARTITIONS));
-      bb.writeShort(VERSION_0);
+      bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(superStream.length());
       bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
@@ -1963,7 +1963,7 @@ public class Client implements AutoCloseable {
         } else if (e.state() == IdleState.WRITER_IDLE) {
           LOGGER.debug("Sending heartbeat frame");
           ByteBuf bb = allocate(ctx.alloc(), 4 + 2 + 2);
-          bb.writeInt(4).writeShort(encodeRequestCode(COMMAND_HEARTBEAT)).writeShort(VERSION_0);
+          bb.writeInt(4).writeShort(encodeRequestCode(COMMAND_HEARTBEAT)).writeShort(VERSION_1);
           ctx.writeAndFlush(bb);
         }
       }

@@ -26,10 +26,10 @@ public class UtilsTest {
 
   @Test
   void formatConstantOk() {
-    assertThat(formatConstant(RESPONSE_CODE_OK)).isEqualTo("0 (OK)");
+    assertThat(formatConstant(RESPONSE_CODE_OK)).isEqualTo("1 (OK)");
     assertThat(formatConstant(RESPONSE_CODE_STREAM_DOES_NOT_EXIST))
-        .isEqualTo("1 (STREAM_DOES_NOT_EXIST)");
+        .isEqualTo("2 (STREAM_DOES_NOT_EXIST)");
     assertThat(formatConstant(CODE_MESSAGE_ENQUEUEING_FAILED))
-        .isEqualTo("10000 (MESSAGE_ENQUEUEING_FAILED)");
+        .isEqualTo("10001 (MESSAGE_ENQUEUEING_FAILED)");
   }
 }

@@ -18,11 +18,11 @@ import java.util.Objects;
 
 public class OffsetSpecification {
 
-  private static final short TYPE_FIRST = 0;
-  private static final short TYPE_LAST = 1;
-  private static final short TYPE_NEXT = 2;
-  private static final short TYPE_OFFSET = 3;
-  private static final short TYPE_TIMESTAMP = 4;
+  private static final short TYPE_FIRST = 1;
+  private static final short TYPE_LAST = 2;
+  private static final short TYPE_NEXT = 3;
+  private static final short TYPE_OFFSET = 4;
+  private static final short TYPE_TIMESTAMP = 5;
 
   private static final long UNUSED_OFFSET = -1;
 
