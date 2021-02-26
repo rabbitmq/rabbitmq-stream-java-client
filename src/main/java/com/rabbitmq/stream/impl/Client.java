@@ -39,6 +39,8 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
 import static com.rabbitmq.stream.Constants.VERSION_0;
+import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
+import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -314,7 +316,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_PEER_PROPERTIES);
+      bb.writeShort(encodeRequestCode(COMMAND_PEER_PROPERTIES));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeInt(clientProperties.size());
@@ -374,7 +376,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_SASL_AUTHENTICATE);
+      bb.writeShort(encodeRequestCode(COMMAND_SASL_AUTHENTICATE));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(saslMechanism.getName().length());
@@ -402,7 +404,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_OPEN);
+      bb.writeShort(encodeRequestCode(COMMAND_OPEN));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(virtualHost.length());
@@ -442,7 +444,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_CLOSE);
+      bb.writeShort(encodeRequestCode(COMMAND_CLOSE));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(code);
@@ -472,7 +474,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_SASL_HANDSHAKE);
+      bb.writeShort(encodeRequestCode(COMMAND_SASL_HANDSHAKE));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       OutstandingRequest<List<String>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
@@ -499,7 +501,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_CREATE_STREAM);
+      bb.writeShort(encodeRequestCode(COMMAND_CREATE_STREAM));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
@@ -551,7 +553,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_DELETE_STREAM);
+      bb.writeShort(encodeRequestCode(COMMAND_DELETE_STREAM));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
@@ -580,7 +582,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_METADATA);
+      bb.writeShort(encodeRequestCode(COMMAND_METADATA));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeInt(streams.length);
@@ -614,7 +616,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_DECLARE_PUBLISHER);
+      bb.writeShort(encodeRequestCode(COMMAND_DECLARE_PUBLISHER));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeByte(publisherId);
@@ -641,7 +643,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_DELETE_PUBLISHER);
+      bb.writeShort(encodeRequestCode(COMMAND_DELETE_PUBLISHER));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeByte(publisherId);
@@ -853,7 +855,7 @@ public class Client implements AutoCloseable {
     // no check because it's been done already
     ByteBuf out = allocateNoCheck(ch.alloc(), frameLength + 4);
     out.writeInt(frameLength);
-    out.writeShort(COMMAND_PUBLISH);
+    out.writeShort(encodeRequestCode(COMMAND_PUBLISH));
     out.writeShort(VERSION_0);
     out.writeByte(publisherId);
     int messageCount = 0;
@@ -887,7 +889,7 @@ public class Client implements AutoCloseable {
 
     ByteBuf bb = allocate(length + 4);
     bb.writeInt(length);
-    bb.writeShort(COMMAND_CREDIT);
+    bb.writeShort(encodeRequestCode(COMMAND_CREDIT));
     bb.writeShort(VERSION_0);
     bb.writeByte(subscriptionId);
     bb.writeShort((short) credit);
@@ -920,7 +922,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_SUBSCRIBE);
+      bb.writeShort(encodeRequestCode(COMMAND_SUBSCRIBE));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeByte(subscriptionId);
@@ -957,7 +959,7 @@ public class Client implements AutoCloseable {
     int length = 2 + 2 + 4 + 2 + reference.length() + 2 + stream.length() + 8;
     ByteBuf bb = allocate(length + 4);
     bb.writeInt(length);
-    bb.writeShort(COMMAND_COMMIT_OFFSET);
+    bb.writeShort(encodeRequestCode(COMMAND_COMMIT_OFFSET));
     bb.writeShort(VERSION_0);
     bb.writeInt(0); // correlation ID not used yet, may be used if commit offset has a confirm
     bb.writeShort(reference.length());
@@ -982,7 +984,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_QUERY_OFFSET);
+      bb.writeShort(encodeRequestCode(COMMAND_QUERY_OFFSET));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(reference.length());
@@ -1020,7 +1022,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_QUERY_PUBLISHER_SEQUENCE);
+      bb.writeShort(encodeRequestCode(COMMAND_QUERY_PUBLISHER_SEQUENCE));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(publisherReference.length());
@@ -1049,7 +1051,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_UNSUBSCRIBE);
+      bb.writeShort(encodeRequestCode(COMMAND_UNSUBSCRIBE));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeByte(subscriptionId);
@@ -1141,7 +1143,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_ROUTE);
+      bb.writeShort(encodeRequestCode(COMMAND_ROUTE));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(routingKey.length());
@@ -1169,7 +1171,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(COMMAND_PARTITIONS);
+      bb.writeShort(encodeRequestCode(COMMAND_PARTITIONS));
       bb.writeShort(VERSION_0);
       bb.writeInt(correlationId);
       bb.writeShort(superStream.length());
@@ -1908,7 +1910,7 @@ public class Client implements AutoCloseable {
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
       ByteBuf m = (ByteBuf) msg;
       int frameSize = m.readableBytes();
-      short commandId = m.readShort();
+      short commandId = extractResponseCode(m.readShort());
       short version = m.readShort();
       Runnable task;
       if (closing.get()) {
@@ -1961,7 +1963,7 @@ public class Client implements AutoCloseable {
         } else if (e.state() == IdleState.WRITER_IDLE) {
           LOGGER.debug("Sending heartbeat frame");
           ByteBuf bb = allocate(ctx.alloc(), 4 + 2 + 2);
-          bb.writeInt(4).writeShort(COMMAND_HEARTBEAT).writeShort(VERSION_0);
+          bb.writeInt(4).writeShort(encodeRequestCode(COMMAND_HEARTBEAT)).writeShort(VERSION_0);
           ctx.writeAndFlush(bb);
         }
       }

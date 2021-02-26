@@ -41,6 +41,7 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
 import static com.rabbitmq.stream.Constants.VERSION_0;
+import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 
 import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.ChunkChecksumValidationException;
@@ -451,7 +452,7 @@ class ServerFrameHandler {
       ByteBuf byteBuf = client.allocate(ctx.alloc(), length + 4);
       byteBuf
           .writeInt(length)
-          .writeShort(COMMAND_CLOSE)
+          .writeShort(encodeResponseCode(COMMAND_CLOSE))
           .writeShort(VERSION_0)
           .writeInt(correlationId)
           .writeShort(RESPONSE_CODE_OK);
@@ -609,7 +610,7 @@ class ServerFrameHandler {
       ByteBuf byteBuf = client.allocateNoCheck(ctx.alloc(), length + 4);
       byteBuf
           .writeInt(length)
-          .writeShort(COMMAND_TUNE)
+          .writeShort(encodeResponseCode(COMMAND_TUNE))
           .writeShort(VERSION_0)
           .writeInt(maxFrameSize)
           .writeInt(heartbeat);

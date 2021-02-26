@@ -73,4 +73,16 @@ final class Utils {
   static String formatConstant(short value) {
     return value + " (" + CONSTANT_LABELS.getOrDefault(value, "UNKNOWN") + ")";
   }
+
+  static short encodeRequestCode(Short code) {
+    return code;
+  }
+
+  static short extractResponseCode(Short code) {
+    return (short) (code & 0B0111_1111_1111_1111);
+  }
+
+  static short encodeResponseCode(Short code) {
+    return (short) (code | 0B1000_0000_0000_0000);
+  }
 }

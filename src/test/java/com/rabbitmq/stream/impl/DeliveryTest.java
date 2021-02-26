@@ -51,7 +51,7 @@ public class DeliveryTest {
   ByteBuf generateFrameBuffer(
       int nbMessages, long chunkOffset, int dataSize, Iterable<byte[]> messages) {
     ByteBuf bb = ByteBufAllocator.DEFAULT.buffer(1024);
-    bb.writeShort(Constants.COMMAND_DELIVER)
+    bb.writeShort(Utils.encodeRequestCode(Constants.COMMAND_DELIVER))
         .writeShort(Constants.VERSION_0)
         .writeByte(1) // subscription id
         .writeByte(1) // magic and version
