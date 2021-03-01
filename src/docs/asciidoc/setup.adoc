@@ -73,7 +73,7 @@ The host networking driver *only works on Linux hosts*.
 
 The generic Unix package requires https://www.rabbitmq.com/which-erlang.html[Erlang] to be installed.
 
-* Download the https://bintray.com/rabbitmq/all-dev/rabbitmq-stream[latest generic Unix alpha from Bintray].
+* Download the https://github.com/rabbitmq/rabbitmq-server-binaries-dev/releases[latest generic Unix `alpha-stream` archive].
 * Follow the https://www.rabbitmq.com/install-generic-unix.html[instructions to install the generic Unix package].
 * Enable the plugin `./rabbitmq-plugins enable rabbitmq_stream`.
 * Start the broker `./rabbitmq-server -detached`. This starts the stream listener on port 5551.
