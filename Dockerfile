@@ -1,6 +1,6 @@
 FROM ubuntu:20.04 as builder
 
-# from https://dl.bintray.com/rabbitmq/java-tools-dev/stream-perf-test/
+# from https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/
 ARG stream_perf_test_version="set-version-here"
 
 RUN set -eux; \
@@ -11,9 +11,9 @@ RUN set -eux; \
 		wget \
 		gnupg
 
-ENV JAVA_VERSION="11.0.9"
-ENV JAVA_SHA256="e388fd7f3f2503856d0b04fde6e151cbaa91a1df3bcebf1deddfc3729d677ca3"
-ENV JAVA_URL="https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz"
+ENV JAVA_VERSION="11"
+ENV JAVA_SHA256="ae78aa45f84642545c01e8ef786dfd700d2226f8b12881c844d6a1f71789cb99"
+ENV JAVA_URL="https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.10%2B9/OpenJDK11U-jdk_x64_linux_hotspot_11.0.10_9.tar.gz"
 
 RUN set -eux; \
     \
@@ -38,7 +38,7 @@ ENV STREAM_PERF_TEST_HOME="/stream_perf_test"
 
 RUN set -eux; \
     \
-    STREAM_PERF_TEST_URL=https://dl.bintray.com/rabbitmq/java-tools-dev/stream-perf-test/$stream_perf_test_version/stream-perf-test-$stream_perf_test_version.jar; \
+    STREAM_PERF_TEST_URL=https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/download/v-stream-perf-test-$stream_perf_test_version/stream-perf-test-$stream_perf_test_version.jar; \
     STREAM_PERF_TEST_PATH="/usr/local/src/stream-perf-test-$stream_perf_test_version"; \
     \
     wget --progress dot:giga --output-document "$STREAM_PERF_TEST_PATH.jar.asc" "$STREAM_PERF_TEST_URL.asc"; \
