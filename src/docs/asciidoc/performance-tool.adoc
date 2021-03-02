@@ -2,7 +2,7 @@
 
 The library contains also a performance tool to test the RabbitMQ Stream plugin.
 It is usable as an uber JAR
-https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test[downloadable from Bintray]
+https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases[downloadable from GitHub Release]
 or as a https://hub.docker.com/r/pivotalrabbitmq/stream-perf-test[Docker image].
 It can be built separately as well.
 
@@ -78,10 +78,10 @@ docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test 
 
 ==== With the Java Binary
 
-The Java binary is https://bintray.com/rabbitmq/java-tools-dev/stream-perf-test[on Bintray]:
+The Java binary is https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases[on GitHub Release]:
 
 ----
-wget https://dl.bintray.com/rabbitmq/java-tools-dev/stream-perf-test/latest/stream-perf-test-latest.jar
+wget https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/download/v-stream-perf-test-latest/stream-perf-test-latest.jar
 ----
 
 To launch a run:
@@ -118,7 +118,8 @@ java -jar stream-perf-test-latest.jar --help
 ----
 
 The performance tool comes also with a
-https://dl.bintray.com/rabbitmq/java-tools-dev/stream-perf-test/latest/stream-perf-test-latest_completion[completion script]. You can download it and enable it in
+https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/download/v-stream-perf-test-latest/stream-perf-test-latest_completion[completion script].
+You can download it and enable it in
 your `~/.zshrc` file:
 
 ----
