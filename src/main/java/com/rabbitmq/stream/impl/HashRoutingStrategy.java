@@ -18,6 +18,7 @@ import com.rabbitmq.stream.Message;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
+import java.util.function.ToIntFunction;
 
 class HashRoutingStrategy implements RoutingStrategy {
 
@@ -29,21 +30,26 @@ class HashRoutingStrategy implements RoutingStrategy {
 
   private final List<String> partitions;
 
+  private final ToIntFunction<String> hash;
+
   HashRoutingStrategy(
-      String superStream, Function<Message, String> routingKeyExtractor, StreamEnvironment env) {
+      String superStream,
+      Function<Message, String> routingKeyExtractor,
+      StreamEnvironment env,
+      ToIntFunction<String> hash) {
     this.routingKeyExtractor = routingKeyExtractor;
     this.env = env;
     this.superStream = superStream;
     // TODO use async retry to get locator
     List<String> ps = this.env.locator().partitions(superStream);
     this.partitions = new CopyOnWriteArrayList<>(ps);
+    this.hash = hash;
   }
 
   @Override
   public String route(Message message) {
     String routingKey = routingKeyExtractor.apply(message);
-    // TODO use hash function like murmur or xxHash to hash routing key
-    int hash = routingKey.hashCode();
-    return this.partitions.get((hash & 0x7FFFFFFF) % this.partitions.size());
+    int hashValue = hash.applyAsInt(routingKey);
+    return this.partitions.get((hashValue & 0x7FFFFFFF) % this.partitions.size());
   }
 }

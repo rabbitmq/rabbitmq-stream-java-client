@@ -21,6 +21,7 @@ import com.rabbitmq.stream.StreamException;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.function.Function;
+import java.util.function.ToIntFunction;
 
 class StreamProducerBuilder implements ProducerBuilder {
 
@@ -45,6 +46,8 @@ class StreamProducerBuilder implements ProducerBuilder {
   private Function<Message, String> routingKeyExtractor;
 
   private RoutingType routingType;
+
+  private ToIntFunction<String> hash = HashUtils.MURMUR3;
 
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -117,6 +120,14 @@ class StreamProducerBuilder implements ProducerBuilder {
   @Override
   public ProducerBuilder routing(
       Function<Message, String> routingKeyExtractor, RoutingType routingType) {
+    return this.routing(routingKeyExtractor, routingType, HashUtils.MURMUR3);
+  }
+
+  @Override
+  public ProducerBuilder routing(
+      Function<Message, String> routingKeyExtractor,
+      RoutingType routingType,
+      ToIntFunction<String> hash) {
     if ((routingKeyExtractor == null && routingType == null)
         || (routingKeyExtractor != null && routingType != null)) {
       this.routingKeyExtractor = routingKeyExtractor;
@@ -144,9 +155,11 @@ class StreamProducerBuilder implements ProducerBuilder {
               environment);
       this.environment.addProducer((StreamProducer) producer);
     } else {
+      ToIntFunction<String> hashFunction = this.hash == null ? HashUtils.MURMUR3 : this.hash;
       RoutingStrategy routingStrategy =
           this.routingType == RoutingType.HASH
-              ? new HashRoutingStrategy(this.stream, this.routingKeyExtractor, this.environment)
+              ? new HashRoutingStrategy(
+                  this.stream, this.routingKeyExtractor, this.environment, hashFunction)
               : new RoutingKeyRoutingStrategy(
                   this.stream, this.routingKeyExtractor, this.environment);
       producer = new SuperStreamProducer(this, stream, routingStrategy, environment);
