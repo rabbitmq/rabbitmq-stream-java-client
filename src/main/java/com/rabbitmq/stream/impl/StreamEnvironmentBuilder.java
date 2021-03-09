@@ -55,12 +55,23 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
   @Override
   public StreamEnvironmentBuilder uri(String uri) {
-    try {
-      this.uris = Collections.singletonList(new URI(uri));
-    } catch (URISyntaxException e) {
-      throw new IllegalArgumentException("Invalid URI: " + uri, e);
-    }
+    this.uris = Collections.singletonList(toUri(uri));
     return this;
+  }
+
+  private static URI toUri(String uriString) {
+    try {
+      URI uri = new URI(uriString);
+      if (!"rabbitmq-stream".equalsIgnoreCase(uri.getScheme())) {
+        throw new IllegalArgumentException(
+            "Wrong scheme in rabbitmq-stream URI: "
+                + uri.getScheme()
+                + ". Should be rabbitmq-stream");
+      }
+      return uri;
+    } catch (URISyntaxException e) {
+      throw new IllegalArgumentException("Invalid URI: " + uriString, e);
+    }
   }
 
   @Override
@@ -68,17 +79,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     if (uris == null) {
       throw new IllegalArgumentException("URIs parameter cannot be null");
     }
-    this.uris =
-        uris.stream()
-            .map(
-                uriString -> {
-                  try {
-                    return new URI(uriString);
-                  } catch (URISyntaxException e) {
-                    throw new IllegalArgumentException("Invalid URI: " + uriString, e);
-                  }
-                })
-            .collect(Collectors.toList());
+    this.uris = uris.stream().map(StreamEnvironmentBuilder::toUri).collect(Collectors.toList());
     return this;
   }
 

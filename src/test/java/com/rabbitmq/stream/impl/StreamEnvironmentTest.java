@@ -94,12 +94,32 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  void environmentCreationShouldSucceedWithUrlContainingAllCorrectInformation() throws Exception {
-    environmentBuilder.uri("rabbitmq-stream://guest:guest@localhost:5551/%2f").build().close();
+  void environmentCreationShouldFailWithUrlUsingWrongPort() {
+    assertThatThrownBy(
+            () ->
+                environmentBuilder
+                    .uri("rabbitmq-stream://guest:guest@localhost:4242/%2f")
+                    .build()
+                    .close())
+        .hasMessageContaining("Connection refused");
   }
 
   @Test
-  void producersAndConsumersShouldBeClosedWhenEnvironmentIsClosed() throws Exception {
+  void environmentCreationShouldFailWhenUrlHasNoScheme() {
+    assertThatThrownBy(
+            () -> environmentBuilder.uri("guest:guest@localhost:5551/%2f").build().close())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("scheme")
+        .hasMessageContaining("rabbitmq-stream");
+  }
+
+  @Test
+  void environmentCreationShouldSucceedWithUrlContainingAllCorrectInformation() {
+    environmentBuilder.uri("guest:guest@localhost:5551/%2f").build().close();
+  }
+
+  @Test
+  void producersAndConsumersShouldBeClosedWhenEnvironmentIsClosed() {
     Environment environment = environmentBuilder.build();
     Collection<Producer> producers =
         IntStream.range(0, 2)
