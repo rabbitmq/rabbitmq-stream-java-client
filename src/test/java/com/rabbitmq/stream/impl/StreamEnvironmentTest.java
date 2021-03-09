@@ -115,7 +115,7 @@ public class StreamEnvironmentTest {
 
   @Test
   void environmentCreationShouldSucceedWithUrlContainingAllCorrectInformation() {
-    environmentBuilder.uri("guest:guest@localhost:5551/%2f").build().close();
+    environmentBuilder.uri("rabbitmq-stream://guest:guest@localhost:5551/%2f").build().close();
   }
 
   @Test
