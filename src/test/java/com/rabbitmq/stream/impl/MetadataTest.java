@@ -86,8 +86,7 @@ public class MetadataTest {
   @CsvSource({
     "1,1", "2,1", "5,1", "1,2", "2,2", "5,2", "1,3", "2,3", "5,3",
   })
-  void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount, TestInfo info)
-      throws Exception {
+  void metadataExistingNonExistingStreams(int existingCount, int nonExistingCount, TestInfo info) {
     Client streamClient = cf.get();
     List<String> existingStreams =
         IntStream.range(0, existingCount)

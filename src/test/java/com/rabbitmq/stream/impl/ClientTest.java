@@ -441,8 +441,6 @@ public class ClientTest {
     int publishCount = 100000;
     byte correlationId = 42;
     TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
-    MetricRegistry metrics = new MetricRegistry();
-    Meter consumed = metrics.meter("consumed");
 
     CountDownLatch latch = new CountDownLatch(publishCount);
 
@@ -453,18 +451,17 @@ public class ClientTest {
           client.credit(correlationId, 1);
         };
 
-    Client.MessageListener messageListener =
-        (corr, offset, message) -> {
-          consumed.mark();
-          latch.countDown();
-        };
+    Client.MessageListener messageListener = (corr, offset, message) -> latch.countDown();
 
     Client client =
         cf.get(
             new Client.ClientParameters()
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
-    client.subscribe(correlationId, stream, OffsetSpecification.first(), credit);
+    Response response =
+        client.subscribe(correlationId, stream, OffsetSpecification.first(), credit);
+    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+    assertThat(response.isOk()).isTrue();
 
     assertThat(latch.await(60, SECONDS)).isTrue();
     assertThat(receivedCorrelationId).hasValue(correlationId);
