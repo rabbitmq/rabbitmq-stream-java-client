@@ -63,7 +63,8 @@ public class DeliveryTest {
         .writeLong(chunkOffset) // offset
         .writeInt(0) // CRC
         .writeInt(dataSize) // data size
-        .writeInt(0); // trailer size
+        .writeInt(0) // trailer size
+        .writeInt(0); // 4 reserved bytes
 
     for (byte[] message : messages) {
       bb.writeInt(message.length).writeBytes(message);

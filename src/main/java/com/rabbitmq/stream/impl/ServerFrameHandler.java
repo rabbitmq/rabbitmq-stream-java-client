@@ -298,6 +298,8 @@ class ServerFrameHandler {
       read += 4;
       message.readUnsignedInt(); // trailer length, unused here
       read += 4;
+      message.readInt(); // 4 reserved bytes, unused here
+      read += 4;
 
       chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
 
