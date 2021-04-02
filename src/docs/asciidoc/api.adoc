@@ -327,6 +327,16 @@ has been taken into account. The `ConfirmationHandler` is the place
 for any logic on publishing confirmation, including
 re-publishing the message if it is negatively acknowledged.
 
+[WARNING]
+.Keep the confirmation callback as short as possible
+====
+The confirmation callback should be kept as short as possible
+to avoid blocking the connection thread. Not doing so can
+make the `Environment`, `Producer`, `Consumer` instances sluggish
+or even block them. Any long processing should be done in
+a separate thread (e.g. with an asynchronous `ExecutorService`).
+====
+
 [[working-with-complex-messages]]
 ===== Working with Complex Messages
 
@@ -529,6 +539,16 @@ include::{test-examples}/ConsumerUsage.java[tag=producer-creation]
 <6> Close consumer after usage
 
 The broker start sending messages as soon as the `Consumer` instance is created.
+
+[WARNING]
+.Keep the message processing callback as short as possible
+====
+The message processing callback should be kept as short as possible
+to avoid blocking the connection thread. Not doing so can
+make the `Environment`, `Producer`, `Consumer` instances sluggish
+or even block them. Any long processing should be done in
+a separate thread (e.g. with an asynchronous `ExecutorService`).
+====
 
 [[specifying-an-offset]]
 ===== Specifying an Offset
