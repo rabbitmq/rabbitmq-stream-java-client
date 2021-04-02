@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(ae0a6c5)</span>
+<br><span id="revremark">(66a28f0)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1640,6 +1640,25 @@ has been taken into account. The <code>ConfirmationHandler</code> is the place
 for any logic on publishing confirmation, including
 re-publishing the message if it is negatively acknowledged.</p>
 </div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="title">Keep the confirmation callback as short as possible</div>
+<div class="paragraph">
+<p>The confirmation callback should be kept as short as possible
+to avoid blocking the connection thread. Not doing so can
+make the <code>Environment</code>, <code>Producer</code>, <code>Consumer</code> instances sluggish
+or even block them. Any long processing should be done in
+a separate thread (e.g. with an asynchronous <code>ExecutorService</code>).</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
 </div>
 <div class="sect4">
 <h5 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h5>
@@ -2040,6 +2059,25 @@ consumer.close();  <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
 </div>
 <div class="paragraph">
 <p>The broker start sending messages as soon as the <code>Consumer</code> instance is created.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="title">Keep the message processing callback as short as possible</div>
+<div class="paragraph">
+<p>The message processing callback should be kept as short as possible
+to avoid blocking the connection thread. Not doing so can
+make the <code>Environment</code>, <code>Producer</code>, <code>Consumer</code> instances sluggish
+or even block them. Any long processing should be done in
+a separate thread (e.g. with an asynchronous <code>ExecutorService</code>).</p>
+</div>
+</td>
+</tr>
+</table>
 </div>
 </div>
 <div class="sect4">
@@ -2924,7 +2962,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-03-29 08:23:08 UTC
+Last updated 2021-04-02 10:15:23 UTC
 </div>
 </div>
 <style>
