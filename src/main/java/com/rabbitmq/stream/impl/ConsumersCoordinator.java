@@ -539,9 +539,10 @@ class ConsumersCoordinator {
       List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
 
       LOGGER.debug(
-          "Subscribing to {}, offset specification is {}",
+          "Subscribing to {}, offset specification is {}, offset tracking reference is {}",
           subscriptionTracker.stream,
-          offsetSpecification);
+          offsetSpecification,
+          subscriptionTracker.offsetTrackingReference);
       try {
         // updating data structures before subscribing
         // (to make sure they are up-to-date in case message would arrive super fast)
