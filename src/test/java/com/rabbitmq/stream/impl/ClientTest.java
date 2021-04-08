@@ -32,6 +32,7 @@ import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.nio.ByteBuffer;
@@ -562,6 +563,23 @@ public class ClientTest {
     Client.Response response = cf.get().create(stream);
     assertThat(response.isOk()).isFalse();
     assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_ALREADY_EXISTS);
+  }
+
+  @Test
+  void createStreamWithDifferentParametersShouldThrowException(TestInfo info) {
+    String s = streamName(info);
+    Client client = cf.get();
+    try {
+      StreamParametersBuilder streamParametersBuilder =
+          new StreamParametersBuilder().maxAge(Duration.ofDays(1));
+      Response response = client.create(s, streamParametersBuilder.build());
+      assertThat(response.isOk()).isTrue();
+      response = client.create(s, streamParametersBuilder.maxAge(Duration.ofDays(4)).build());
+      assertThat(response.isOk()).isFalse();
+      assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_PRECONDITION_FAILED);
+    } finally {
+      assertThat(client.delete(s).isOk()).isTrue();
+    }
   }
 
   @Test

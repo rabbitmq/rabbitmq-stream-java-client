@@ -56,6 +56,7 @@ public class StreamEnvironmentTest {
   EnvironmentBuilder environmentBuilder;
 
   String stream;
+  TestUtils.ClientFactory cf;
 
   @BeforeAll
   static void initAll() {
@@ -313,7 +314,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  void createDelete(TestInfo info) throws Exception {
+  void createDelete(TestInfo info) {
     try (Environment environment = environmentBuilder.build();
         Client client = new Client()) {
 
@@ -326,6 +327,19 @@ public class StreamEnvironmentTest {
       assertThat(metadata.isResponseOk()).isFalse();
       assertThat(metadata.getResponseCode())
           .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    }
+  }
+
+  @Test
+  void createStreamWithDifferentParametersShouldThrowException(TestInfo info) {
+    String s = streamName(info);
+    Client client = cf.get();
+    try (Environment env = environmentBuilder.build()) {
+      env.streamCreator().stream(s).maxAge(Duration.ofDays(1)).create();
+      assertThatThrownBy(() -> env.streamCreator().stream(s).maxAge(Duration.ofDays(4)).create())
+          .isInstanceOf(StreamException.class);
+    } finally {
+      assertThat(client.delete(s).isOk()).isTrue();
     }
   }
 }
