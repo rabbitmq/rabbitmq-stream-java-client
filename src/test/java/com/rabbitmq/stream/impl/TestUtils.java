@@ -25,6 +25,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
@@ -44,12 +45,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.assertj.core.api.AssertDelegateTarget;
+import org.assertj.core.api.Condition;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.*;
 import org.mockito.invocation.InvocationOnMock;
@@ -442,6 +445,19 @@ final class TestUtils {
 
   static CountDownLatchAssert latchAssert(CountDownLatch latch) {
     return new CountDownLatchAssert(latch);
+  }
+
+  static CountDownLatchAssert latchAssert(AtomicReference<CountDownLatch> latchReference) {
+    return new CountDownLatchAssert(latchReference.get());
+  }
+
+  static Condition<Throwable> responseCode(short expectedResponseCode) {
+    String message = "expected code for stream exception is " + expectedResponseCode;
+    return new Condition<>(
+        throwable ->
+            throwable instanceof StreamException
+                && ((StreamException) throwable).getCode() == expectedResponseCode,
+        message);
   }
 
   static Map<String, StreamMetadata> metadata(String stream, Broker leader, List<Broker> replicas) {

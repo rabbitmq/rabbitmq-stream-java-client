@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import java.util.Collection;
@@ -516,9 +517,12 @@ class ProducersCoordinator {
             if (response.isOk()) {
               tracker.assign((byte) i, this.client, this);
             } else {
-              LOGGER.info(
-                  "Error while declaring publisher: {}. Could not assign producer to client.",
-                  formatConstant(response.getResponseCode()));
+              String message =
+                  "Error while declaring publisher: "
+                      + formatConstant(response.getResponseCode())
+                      + ". Could not assign producer to client.";
+              LOGGER.info(message);
+              throw new StreamException(message, response.getResponseCode());
             }
             break;
           }

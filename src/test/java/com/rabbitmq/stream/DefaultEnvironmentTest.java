@@ -40,7 +40,7 @@ public class DefaultEnvironmentTest {
   }
 
   @Test
-  void defaultEnvironmentCanBeInstantiatedAndCanConnect() throws Exception {
+  void defaultEnvironmentCanBeInstantiatedAndCanConnect() {
     String stream = UUID.randomUUID().toString();
     try (Client client = new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup))) {
       Client.Response response = client.create(stream);
