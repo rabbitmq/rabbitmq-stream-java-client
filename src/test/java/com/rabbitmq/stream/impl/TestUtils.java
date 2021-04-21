@@ -30,6 +30,10 @@ import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.annotation.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -196,6 +200,12 @@ final class TestUtils {
   @Documented
   @ExtendWith(DisabledIfRabbitMqCtlNotSetCondition.class)
   @interface DisabledIfRabbitMqCtlNotSet {}
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
+  @ExtendWith(DisabledIfMqttNotEnabledCondition.class)
+  @interface DisabledIfMqttNotEnabled {}
 
   interface TaskWithException {
 
@@ -379,6 +389,40 @@ final class TestUtils {
         return ConditionEvaluationResult.enabled("rabbitmqctl.bin system property is set");
       }
     }
+  }
+
+  static class DisabledIfMqttNotEnabledCondition implements ExecutionCondition {
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      if (Host.rabbitmqctlCommand() == null) {
+        return ConditionEvaluationResult.disabled(
+            "rabbitmqctl.bin system property not set, cannot check if MQTT plugin is enabled");
+      } else {
+        try {
+          Process process = Host.rabbitmqctl("status");
+          String output = capture(process.getInputStream());
+          if (output.contains("rabbitmq_mqtt") && output.contains("protocol: mqtt")) {
+            return ConditionEvaluationResult.enabled("MQTT plugin enabled");
+          } else {
+            return ConditionEvaluationResult.disabled("MQTT plugin disabled");
+          }
+        } catch (Exception e) {
+          return ConditionEvaluationResult.disabled(
+              "Error while trying to detect MQTT plugin: " + e.getMessage());
+        }
+      }
+    }
+  }
+
+  private static String capture(InputStream is) throws IOException {
+    BufferedReader br = new BufferedReader(new InputStreamReader(is));
+    String line;
+    StringBuilder buff = new StringBuilder();
+    while ((line = br.readLine()) != null) {
+      buff.append(line).append("\n");
+    }
+    return buff.toString();
   }
 
   static <T> void forEach(Collection<T> in, CallableIndexConsumer<T> consumer) throws Exception {
