@@ -26,7 +26,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private final StreamEnvironment environment;
 
   private String stream;
-  private OffsetSpecification offsetSpecification = OffsetSpecification.first();
+  private OffsetSpecification offsetSpecification = null;
   private MessageHandler messageHandler;
   private String name;
   private DefaultAutoCommitStrategy autoCommitStrategy;

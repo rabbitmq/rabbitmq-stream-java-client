@@ -46,6 +46,9 @@ class ConsumersCoordinator {
 
   static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
 
+  private static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION =
+      OffsetSpecification.first();
+
   private static final Logger LOGGER = LoggerFactory.getLogger(ConsumersCoordinator.class);
   private final Random random = new Random();
   private final StreamEnvironment environment;
@@ -539,9 +542,9 @@ class ConsumersCoordinator {
       List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
 
       LOGGER.debug(
-          "Subscribing to {}, offset specification is {}, offset tracking reference is {}",
+          "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}",
           subscriptionTracker.stream,
-          offsetSpecification,
+          offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
           subscriptionTracker.offsetTrackingReference);
       try {
         // updating data structures before subscribing
@@ -559,6 +562,12 @@ class ConsumersCoordinator {
           long trackedOffset =
               client.queryOffset(offsetTrackingReference, subscriptionTracker.stream);
           if (trackedOffset != 0) {
+            if (offsetSpecification != null) {
+              LOGGER.warn(
+                  "Requested offset specification {} not used because offset tracking reference found for reference {}",
+                  offsetSpecification,
+                  offsetTrackingReference);
+            }
             LOGGER.debug(
                 "Using offset {} to start consuming from {} with consumer {} " + "(instead of {})",
                 trackedOffset,
@@ -568,6 +577,9 @@ class ConsumersCoordinator {
             offsetSpecification = OffsetSpecification.offset(trackedOffset + 1);
           }
         }
+
+        offsetSpecification =
+            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
 
         Client.Response subscribeResponse =
             client.subscribe(subscriptionId, subscriptionTracker.stream, offsetSpecification, 10);
