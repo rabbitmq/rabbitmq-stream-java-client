@@ -428,6 +428,11 @@ public class QpidProtonCodec implements Codec {
     public String getReplyToGroupId() {
       return properties.getReplyToGroupId();
     }
+
+    @Override
+    public String toString() {
+      return "QpidProtonProperties{" + "properties=" + properties + '}';
+    }
   }
 
   private static class QpidProtonMessage implements Message {

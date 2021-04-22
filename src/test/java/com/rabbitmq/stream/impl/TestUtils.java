@@ -207,6 +207,12 @@ final class TestUtils {
   @ExtendWith(DisabledIfMqttNotEnabledCondition.class)
   @interface DisabledIfMqttNotEnabled {}
 
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
+  @ExtendWith(DisabledIfStompNotEnabledCondition.class)
+  @interface DisabledIfStompNotEnabled {}
+
   interface TaskWithException {
 
     void run(Object context) throws Exception;
@@ -293,6 +299,12 @@ final class TestUtils {
     public void afterAll(ExtensionContext context) throws Exception {
       EventLoopGroup eventLoopGroup = eventLoopGroup(context);
       eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+    }
+  }
+
+  static <T> void doIfNotNull(T obj, Consumer<T> action) {
+    if (obj != null) {
+      action.accept(obj);
     }
   }
 
@@ -410,6 +422,30 @@ final class TestUtils {
         } catch (Exception e) {
           return ConditionEvaluationResult.disabled(
               "Error while trying to detect MQTT plugin: " + e.getMessage());
+        }
+      }
+    }
+  }
+
+  static class DisabledIfStompNotEnabledCondition implements ExecutionCondition {
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      if (Host.rabbitmqctlCommand() == null) {
+        return ConditionEvaluationResult.disabled(
+            "rabbitmqctl.bin system property not set, cannot check if STOMP plugin is enabled");
+      } else {
+        try {
+          Process process = Host.rabbitmqctl("status");
+          String output = capture(process.getInputStream());
+          if (output.contains("rabbitmq_stomp") && output.contains("protocol: stomp")) {
+            return ConditionEvaluationResult.enabled("STOMP plugin enabled");
+          } else {
+            return ConditionEvaluationResult.disabled("STOMP plugin disabled");
+          }
+        } catch (Exception e) {
+          return ConditionEvaluationResult.disabled(
+              "Error while trying to detect STOMP plugin: " + e.getMessage());
         }
       }
     }

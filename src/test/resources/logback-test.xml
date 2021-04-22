@@ -6,6 +6,7 @@
     </appender>
 
     <logger name="com.rabbitmq.stream" level="warn" />
+    <logger name="org.springframework" level="info" />
 
     <root level="info">
         <appender-ref ref="STDOUT" />

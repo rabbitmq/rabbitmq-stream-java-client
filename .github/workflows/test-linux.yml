@@ -19,6 +19,7 @@ jobs:
           - 5551:5551
           - 5672:5672
           - 1883:1883
+          - 61613:61613
 
     steps:
       - uses: actions/checkout@v2
@@ -33,7 +34,7 @@ jobs:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2
-      - name: Enable MQTT plugin
-        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_mqtt
+      - name: Enable MQTT and STOMP plugins
+        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_stomp
       - name: Test
         run: ./mvnw test -Drabbitmqctl.bin=DOCKER:${{job.services.rabbitmq.id}}
