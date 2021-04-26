@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.doIfNotNull;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static java.time.Duration.ofSeconds;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,7 +31,6 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,7 +42,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.messaging.simp.stomp.ReactorNettyTcpStompClient;
@@ -55,8 +54,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.util.MimeTypeUtils;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
-@Disabled
-//@DisabledIfStompNotEnabled
+@DisabledIfStompNotEnabled
 public class StompInteroperabilityTest {
 
   static EventLoopGroup eventLoopGroup;
@@ -318,7 +316,7 @@ public class StompInteroperabilityTest {
             }
           });
 
-      assertThat(latchAssert(latch)).completes();
+      assertThat(latchAssert(latch)).completes(ofSeconds(20));
       assertThat(first.get()).isEqualTo(0);
       assertThat(last.get()).isEqualTo(messageCount - 1);
     } finally {
@@ -386,7 +384,7 @@ public class StompInteroperabilityTest {
             }
           });
 
-      assertThat(latchAssert(latch)).completes();
+      assertThat(latchAssert(latch)).completes(ofSeconds(20));
       assertThat(first.get()).isEqualTo(chunkOffset.get());
       assertThat(last.get()).isEqualTo(lastOffset);
     } finally {
@@ -443,10 +441,9 @@ public class StompInteroperabilityTest {
             }
           });
 
-      assertThat(latchAssert(latch))
-          .doesNotComplete(Duration.ofSeconds(2)); // should not receive anything
+      assertThat(latchAssert(latch)).doesNotComplete(ofSeconds(2)); // should not receive anything
       TestUtils.publishAndWaitForConfirms(cf, secondWaveMessageCount, stream);
-      assertThat(latchAssert(latch)).completes();
+      assertThat(latchAssert(latch)).completes(ofSeconds(20));
       assertThat(first.get()).isEqualTo(firstWaveMessageCount);
       assertThat(last.get()).isEqualTo(lastOffset);
     } finally {
@@ -500,7 +497,7 @@ public class StompInteroperabilityTest {
             }
           });
 
-      assertThat(latchAssert(latch)).completes();
+      assertThat(latchAssert(latch)).completes(ofSeconds(20));
       assertThat(first.get()).isEqualTo(offset);
       assertThat(last.get()).isEqualTo(messageCount - 1);
     } finally {
@@ -564,7 +561,7 @@ public class StompInteroperabilityTest {
             }
           });
 
-      assertThat(latchAssert(latch)).completes();
+      assertThat(latchAssert(latch)).completes(ofSeconds(20));
       assertThat(first.get()).isEqualTo(firstWaveMessageCount);
       assertThat(last.get()).isEqualTo(lastOffset);
       consumed.stream()
