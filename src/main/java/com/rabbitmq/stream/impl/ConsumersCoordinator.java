@@ -114,7 +114,7 @@ class ConsumersCoordinator {
                         .host(newNode.getHost())
                         .port(newNode.getPort())));
 
-    managerPool.add(subscriptionTracker, offsetSpecification);
+    managerPool.add(subscriptionTracker, offsetSpecification, true);
 
     return subscriptionTracker::cancel;
   }
@@ -269,14 +269,16 @@ class ConsumersCoordinator {
     }
 
     private synchronized void add(
-        SubscriptionTracker subscriptionTracker, OffsetSpecification offsetSpecification) {
+        SubscriptionTracker subscriptionTracker,
+        OffsetSpecification offsetSpecification,
+        boolean isSubscription) {
       boolean added = false;
       // FIXME deal with manager unavailability (manager may be closing because of connection
       // closing)
       // try all of them until it succeeds, throw exception if failure
       for (ClientSubscriptionsManager manager : managers) {
         if (!manager.isFull()) {
-          manager.add(subscriptionTracker, offsetSpecification);
+          manager.add(subscriptionTracker, offsetSpecification, isSubscription);
           added = true;
           break;
         }
@@ -288,7 +290,7 @@ class ConsumersCoordinator {
             managers.size() + 1);
         ClientSubscriptionsManager manager = new ClientSubscriptionsManager(this, clientParameters);
         managers.add(manager);
-        manager.add(subscriptionTracker, offsetSpecification);
+        manager.add(subscriptionTracker, offsetSpecification, isSubscription);
       }
     }
 
@@ -500,7 +502,8 @@ class ConsumersCoordinator {
                           if (affectedSubscription.consumer.isOpen()) {
                             subscriptionPool.add(
                                 affectedSubscription,
-                                OffsetSpecification.offset(affectedSubscription.offset));
+                                OffsetSpecification.offset(affectedSubscription.offset),
+                                false);
                           }
                         }
                       }
@@ -529,7 +532,9 @@ class ConsumersCoordinator {
     }
 
     synchronized void add(
-        SubscriptionTracker subscriptionTracker, OffsetSpecification offsetSpecification) {
+        SubscriptionTracker subscriptionTracker,
+        OffsetSpecification offsetSpecification,
+        boolean isSubcription) {
       // FIXME check manager is still open (not closed because of connection failure)
       byte subscriptionId = 0;
       for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
@@ -562,7 +567,9 @@ class ConsumersCoordinator {
           long trackedOffset =
               client.queryOffset(offsetTrackingReference, subscriptionTracker.stream);
           if (trackedOffset != 0) {
-            if (offsetSpecification != null) {
+            if (offsetSpecification != null && isSubcription) {
+              // subscription call (not recovery), so telling the user their offset specification is
+              // ignored
               LOGGER.warn(
                   "Requested offset specification {} not used because offset tracking reference found for reference {}",
                   offsetSpecification,

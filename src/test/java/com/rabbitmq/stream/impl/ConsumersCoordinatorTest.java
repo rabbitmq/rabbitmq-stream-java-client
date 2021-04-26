@@ -784,8 +784,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
     Runnable closingRunnable =
-        coordinator.subscribe(
-            consumer, "stream", OffsetSpecification.first(), consumerName, (offset, message) -> {});
+        coordinator.subscribe(consumer, "stream", null, consumerName, (offset, message) -> {});
     verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
