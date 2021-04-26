@@ -42,7 +42,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.messaging.simp.stomp.ReactorNettyTcpStompClient;
@@ -55,8 +54,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.util.MimeTypeUtils;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
-//@DisabledIfStompNotEnabled
-@Disabled
+@DisabledIfStompNotEnabled
 public class StompInteroperabilityTest {
 
   static EventLoopGroup eventLoopGroup;
@@ -475,7 +473,7 @@ public class StompInteroperabilityTest {
       headers.setAck("client");
       int prefetchCount = 100;
       headers.set("prefetch-count", String.valueOf(prefetchCount));
-      headers.set("x-stream-offset", "offset:" + offset);
+      headers.set("x-stream-offset", "offset=" + offset);
 
       AtomicInteger count = new AtomicInteger(0);
 
@@ -536,7 +534,7 @@ public class StompInteroperabilityTest {
       headers.setAck("client");
       int prefetchCount = 100;
       headers.set("prefetch-count", String.valueOf(prefetchCount));
-      headers.set("x-stream-offset", "timestamp:" + timestampOffset / 1_000); // must be in seconds
+      headers.set("x-stream-offset", "timestamp=" + timestampOffset / 1_000); // must be in seconds
 
       AtomicInteger count = new AtomicInteger(0);
 
