@@ -28,6 +28,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import io.netty.channel.EventLoopGroup;
@@ -115,6 +116,7 @@ public class AlarmsTest {
     latch.set(new CountDownLatch(messageCount * 2));
     Consumer consumer =
         env.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
             .messageHandler((context, message) -> latch.get().countDown())
             .build();
 
@@ -161,6 +163,7 @@ public class AlarmsTest {
     latch.set(new CountDownLatch(messageCount * 2));
     Consumer consumer =
         env.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
             .messageHandler((context, message) -> latch.get().countDown())
             .build();
 
@@ -185,6 +188,7 @@ public class AlarmsTest {
       latch.set(new CountDownLatch(messageCount));
       Consumer consumer =
           env.consumerBuilder().stream(stream)
+              .offset(OffsetSpecification.first())
               .messageHandler((context, message) -> latch.get().countDown())
               .build();
       assertThat(latchAssert(latch)).completes();

@@ -28,6 +28,7 @@ import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import io.netty.channel.EventLoopGroup;
@@ -132,6 +133,7 @@ public class StreamConsumerTest {
 
     Consumer consumer =
         environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
             .messageHandler((offset, message) -> consumeLatch.countDown())
             .build();
 
@@ -176,6 +178,7 @@ public class StreamConsumerTest {
     StreamConsumer consumer =
         (StreamConsumer)
             environment.consumerBuilder().stream(s)
+                .offset(OffsetSpecification.first())
                 .messageHandler((offset, message) -> consumeLatch.countDown())
                 .build();
 
@@ -238,6 +241,7 @@ public class StreamConsumerTest {
     AtomicInteger commitCount = new AtomicInteger(0);
     Consumer consumer =
         environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
             .name("application-1")
             .manualCommitStrategy()
             .checkInterval(Duration.ZERO)
@@ -344,6 +348,7 @@ public class StreamConsumerTest {
       StreamConsumer consumer =
           (StreamConsumer)
               environment.consumerBuilder().stream(s)
+                  .offset(OffsetSpecification.first())
                   .messageHandler(
                       (offset, message) -> {
                         receivedMessageCount.incrementAndGet();
@@ -396,6 +401,7 @@ public class StreamConsumerTest {
     String reference = "ref-1";
     AtomicLong lastReceivedOffset = new AtomicLong(0);
     environment.consumerBuilder().name(reference).stream(stream)
+        .offset(OffsetSpecification.first())
         .messageHandler(
             (context, message) -> {
               lastReceivedOffset.set(context.offset());

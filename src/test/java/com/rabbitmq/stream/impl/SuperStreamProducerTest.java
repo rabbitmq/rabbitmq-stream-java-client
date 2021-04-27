@@ -24,6 +24,7 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder.RoutingType;
 import io.netty.channel.EventLoopGroup;
@@ -104,6 +105,7 @@ public class SuperStreamProducerTest {
               AtomicLong streamCount = new AtomicLong(0);
               counts.put(stream, streamCount);
               environment.consumerBuilder().stream(stream)
+                  .offset(OffsetSpecification.first())
                   .messageHandler(
                       (context, message) -> {
                         streamCount.incrementAndGet();
@@ -155,6 +157,7 @@ public class SuperStreamProducerTest {
       AtomicLong streamCount = new AtomicLong(0);
       counts.put(stream, streamCount);
       environment.consumerBuilder().stream(stream)
+          .offset(OffsetSpecification.first())
           .messageHandler(
               (context, message) -> {
                 streamCount.incrementAndGet();

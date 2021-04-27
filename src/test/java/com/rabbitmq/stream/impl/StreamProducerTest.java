@@ -24,6 +24,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.StreamProducer.Status;
@@ -311,6 +312,7 @@ public class StreamProducerTest {
 
     CountDownLatch consumeLatch = new CountDownLatch(confirmed.get());
     environment.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
         .messageHandler(
             (offset, message) -> {
               consumeLatch.countDown();
@@ -357,6 +359,7 @@ public class StreamProducerTest {
     CountDownLatch consumeLatch = new CountDownLatch(lineCount);
     AtomicInteger consumed = new AtomicInteger();
     environment.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
         .messageHandler(
             (offset, message) -> {
               consumed.incrementAndGet();
@@ -438,6 +441,7 @@ public class StreamProducerTest {
     CountDownLatch consumeLatch = new CountDownLatch((int) (lastConfirmed.get() + 1));
     AtomicInteger consumed = new AtomicInteger();
     environment.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
         .messageHandler(
             (offset, message) -> {
               consumed.incrementAndGet();
@@ -487,6 +491,7 @@ public class StreamProducerTest {
 
     CountDownLatch consumeLatch = new CountDownLatch(messageCount * 2);
     environment.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
         .messageHandler((ctx, msg) -> consumeLatch.countDown())
         .build();
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();

@@ -790,7 +790,7 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
         .element(0)
-        .isEqualTo(OffsetSpecification.first());
+        .isEqualTo(OffsetSpecification.next());
 
     messageListener.handle(
         subscriptionIdCaptor.getValue(), lastReceivedOffset, new WrapperMessageBuilder().build());
