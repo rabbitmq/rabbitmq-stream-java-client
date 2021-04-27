@@ -20,6 +20,7 @@ import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
@@ -140,12 +141,6 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "first",
       converter = Utils.OffsetSpecificationTypeConverter.class)
   private OffsetSpecification offset;
-
-  @CommandLine.Option(
-      names = {"--pre-declared", "-p"},
-      description = "whether streams are already declared or not",
-      defaultValue = "false")
-  private boolean preDeclared;
 
   @CommandLine.Option(
       names = {"--rate", "-r"},
@@ -344,35 +339,45 @@ public class StreamPerfTest implements Callable<Integer> {
 
     streams = Utils.streams(this.streamCount, this.streams);
 
-    if (!preDeclared) {
-      for (String stream : streams) {
-        StreamCreator streamCreator =
-            environment.streamCreator().stream(stream)
-                .maxLengthBytes(this.maxLengthBytes)
-                .maxSegmentSizeBytes(this.maxSegmentSize)
-                .leaderLocator(this.leaderLocator);
+    for (String stream : streams) {
+      StreamCreator streamCreator =
+          environment.streamCreator().stream(stream)
+              .maxLengthBytes(this.maxLengthBytes)
+              .maxSegmentSizeBytes(this.maxSegmentSize)
+              .leaderLocator(this.leaderLocator);
 
-        if (this.maxAge != null) {
-          streamCreator.maxAge(this.maxAge);
-        }
-
-        streamCreator.create();
+      if (this.maxAge != null) {
+        streamCreator.maxAge(this.maxAge);
       }
-      shutdownService.wrap(
-          closeStep(
-              "Deleting stream(s)",
-              () -> {
-                for (String stream : streams) {
-                  LOGGER.debug("Deleting {}", stream);
-                  try {
-                    environment.deleteStream(stream);
-                    LOGGER.debug("Deleted {}", stream);
-                  } catch (Exception e) {
-                    LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
-                  }
-                }
-              }));
+
+      try {
+        streamCreator.create();
+      } catch (StreamException e) {
+        if (e.getCode() == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
+          throw new StreamException(
+              "Error while creating stream '"
+                  + stream
+                  + "'. Already existing stream with same name but different properties?",
+              e.getCode());
+        } else {
+          throw e;
+        }
+      }
     }
+    shutdownService.wrap(
+        closeStep(
+            "Deleting stream(s)",
+            () -> {
+              for (String stream : streams) {
+                LOGGER.debug("Deleting {}", stream);
+                try {
+                  environment.deleteStream(stream);
+                  LOGGER.debug("Deleted {}", stream);
+                } catch (Exception e) {
+                  LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
+                }
+              }
+            }));
 
     // FIXME handle metadata update for consumers and publishers
     // they should at least issue a warning that their stream has been deleted and that they're now
