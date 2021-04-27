@@ -160,6 +160,12 @@ include::{test-examples}/EnvironmentUsage.java[tag=stream-creation]
 --------
 <1> Create the `my-stream` stream
 
+`StreamCreator#create` is idempotent: trying to re-create a stream with the same name
+and same properties (e.g. maximum size, see below) will not throw an exception. In other words,
+you can be sure the stream has been created once `StreamCreator#create` returns. Note it is
+not possible to create a stream with the same name as an existing stream but with different
+properties. Such a request will result in an exception.
+
 Streams can be deleted with the `Environment#delete(String)` method:
 
 .Deleting a stream

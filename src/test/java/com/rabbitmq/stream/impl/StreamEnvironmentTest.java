@@ -337,7 +337,21 @@ public class StreamEnvironmentTest {
     try (Environment env = environmentBuilder.build()) {
       env.streamCreator().stream(s).maxAge(Duration.ofDays(1)).create();
       assertThatThrownBy(() -> env.streamCreator().stream(s).maxAge(Duration.ofDays(4)).create())
-          .isInstanceOf(StreamException.class);
+          .isInstanceOf(StreamException.class)
+          .has(TestUtils.responseCode(Constants.RESPONSE_CODE_PRECONDITION_FAILED));
+    } finally {
+      assertThat(client.delete(s).isOk()).isTrue();
+    }
+  }
+
+  @Test
+  void streamCreationShouldBeIdempotent(TestInfo info) {
+    String s = streamName(info);
+    Client client = cf.get();
+    try (Environment env = environmentBuilder.build()) {
+      Duration retention = Duration.ofDays(4);
+      env.streamCreator().stream(s).maxAge(retention).create();
+      env.streamCreator().stream(s).maxAge(retention).create();
     } finally {
       assertThat(client.delete(s).isOk()).isTrue();
     }

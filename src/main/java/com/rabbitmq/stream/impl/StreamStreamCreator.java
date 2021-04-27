@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 
 import com.rabbitmq.stream.ByteCapacity;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
 import java.time.Duration;
@@ -69,11 +70,12 @@ class StreamStreamCreator implements StreamCreator {
     }
     Client.Response response =
         environment.locator().create(stream, streamParametersBuilder.build());
-    if (!response.isOk()) {
+    if (!response.isOk()
+        && response.getResponseCode() != Constants.RESPONSE_CODE_STREAM_ALREADY_EXISTS) {
       throw new StreamException(
-          "Error while creating stream "
+          "Error while creating stream '"
               + stream
-              + " ("
+              + "' ("
               + formatConstant(response.getResponseCode())
               + ")",
           response.getResponseCode());
