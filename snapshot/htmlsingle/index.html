@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(c7659d2)</span>
+<br><span id="revremark">(95bb513)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1336,6 +1336,13 @@ purposes.</p>
 <td>Create the <code>my-stream</code> stream</td>
 </tr>
 </table>
+</div>
+<div class="paragraph">
+<p><code>StreamCreator#create</code> is idempotent: trying to re-create a stream with the same name
+and same properties (e.g. maximum size, see below) will not throw an exception. In other words,
+you can be sure the stream has been created once <code>StreamCreator#create</code> returns. Note it is
+not possible to create a stream with the same name as an existing stream but with different
+properties. Such a request will result in an exception.</p>
 </div>
 <div class="paragraph">
 <p>Streams can be deleted with the <code>Environment#delete(String)</code> method:</p>
@@ -3052,7 +3059,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-04-27 08:57:09 UTC
+Last updated 2021-04-27 10:16:06 UTC
 </div>
 </div>
 <style>
