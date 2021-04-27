@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(abd755e)</span>
+<br><span id="revremark">(c7659d2)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -501,8 +501,8 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#specifying-an-offset">Specifying an Offset</a></li>
 <li><a href="#consumer-offset-tracking">Tracking the Offset for a Consumer</a>
 <ul class="sectlevel5">
-<li><a href="#automatic-offset-commit">Automatic Offset Commit</a></li>
-<li><a href="#manual-offset-commit">Manual Offset Commit</a></li>
+<li><a href="#consumer-automatic-offset-commit">Automatic Offset Commit</a></li>
+<li><a href="#consumer-manual-offset-commit">Manual Offset Commit</a></li>
 <li><a href="#considerations-on-offset-tracking">Considerations On Offset Tracking</a></li>
 </ul>
 </li>
@@ -1528,6 +1528,11 @@ publish to the leader node of the stream.</p>
 </thead>
 <tbody>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The stream to publish to.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No default, mandatory setting.</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>name</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The logical name of the producer. Specify a name to enable
 <a href="#outbound-message-de-deduplication">message de-deduplication</a>.</p></td>
@@ -2079,6 +2084,91 @@ a separate thread (e.g. with an asynchronous <code>ExecutorService</code>).</p>
 </tr>
 </table>
 </div>
+<div class="paragraph">
+<p>The following table sums up the main settings to create a <code>Consumer</code>:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Parameter Name</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The stream to consume from.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No default, mandatory setting.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>offset</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The offset to start consuming from.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>OffsetSpecification#next()</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>messageHandler</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The callback for inbound messages.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No default, mandatory setting.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>name</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The consumer name (for <a href="#consumer-offset-tracking">offset tracking</a>.)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>null</code> (no offset tracking)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoCommitStrategy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Enable and configure the <a href="#consumer-automatic-offset-commit">auto-commit strategy</a>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">This is the default commit strategy if a consumer <code>name</code> is provided.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoCommitStrategy#messageCountBeforeCommit</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Number of messages before committing.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10,000</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoCommitStrategy#flushInterval</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Interval to check and commit the last received offset in case of inactivity.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>Duration.ofSeconds(5)</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ManualCommitStrategy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Enable and configure the <a href="#consumer-manual-offset-commit">manual commit strategy</a>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Disabled by default.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ManualCommitStrategy#checkInterval</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Interval to check if the last requested committed offset has been actually committed.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>Duration.ofSeconds(5)</code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Why is my consumer not consuming?</div>
+<div class="paragraph">
+<p>A consumer starts consuming at the very end of a stream by default (<code>next</code> offset).
+This means the consumer will receive messages as soon as a producer publishes to the stream.
+<em>This also means that if no producers are currently publishing to the stream, the
+consumer will stay idle, waiting for new messages to come in</em>. Use the
+<code>ConsumerBuilder#offset(OffsetSpecification)</code> to change the default behavior and
+see the <a href="#specifying-an-offset">offset section</a> to find out more about the different
+types of offset specification.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
 </div>
 <div class="sect4">
 <h5 id="specifying-an-offset"><a class="anchor" href="#specifying-an-offset"></a>Specifying an Offset</h5>
@@ -2169,7 +2259,7 @@ offsets are committed depends on the commit strategy: automatic or manual.</p>
 <p>Whatever commit strategy you use, <strong>a consumer must have a name to be able to commit offsets</strong>.</p>
 </div>
 <div class="sect5">
-<h6 id="automatic-offset-commit"><a class="anchor" href="#automatic-offset-commit"></a>Automatic Offset Commit</h6>
+<h6 id="consumer-automatic-offset-commit"><a class="anchor" href="#consumer-automatic-offset-commit"></a>Automatic Offset Commit</h6>
 <div class="paragraph">
 <p>The following snippet shows how to enable automatic commit with the defaults:</p>
 </div>
@@ -2290,7 +2380,7 @@ manual commit.</p>
 </div>
 </div>
 <div class="sect5">
-<h6 id="manual-offset-commit"><a class="anchor" href="#manual-offset-commit"></a>Manual Offset Commit</h6>
+<h6 id="consumer-manual-offset-commit"><a class="anchor" href="#consumer-manual-offset-commit"></a>Manual Offset Commit</h6>
 <div class="paragraph">
 <p>The manual commit strategy lets the developer in charge of committing offsets
 whenever they want, not only after a given number of messages has been received
@@ -2962,7 +3052,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-04-22 11:13:05 UTC
+Last updated 2021-04-27 08:57:09 UTC
 </div>
 </div>
 <style>
