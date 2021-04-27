@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(95bb513)</span>
+<br><span id="revremark">(94f2343)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -537,7 +537,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="#advanced-usage">Advanced Usage</a>
 <ul class="sectlevel4">
-<li><a href="#retention">Retention</a></li>
+<li><a href="#performance-tool-retention">Retention</a></li>
 <li><a href="#offset-consumer">Offset (Consumer)</a></li>
 <li><a href="#offset-tracking-consumer">Offset Tracking (Consumer)</a></li>
 </ul>
@@ -2692,8 +2692,8 @@ Summary: published 1279444 msg/s, confirmed 1279019 msg/s, consumed 1279019 msg/
 </div>
 </div>
 <div class="paragraph">
-<p>The previous command will start publishing to and consuming from a <code>stream1</code> stream created
-only for the test. The tool outputs live metrics on the console and write more
+<p>The previous command will start publishing to and consuming from a <code>stream</code> stream that
+will be created. The tool outputs live metrics on the console and write more
 detailed metrics in a <code>stream-perf-test-current.txt</code> file that get renamed to
 <code>stream-perf-test-yyyy-MM-dd-HHmmss.txt</code> when the run ends.</p>
 </div>
@@ -2819,8 +2819,8 @@ so the rates should tend towards those values.</p>
 <div class="sect4">
 <h5 id="streams"><a class="anchor" href="#streams"></a>Streams</h5>
 <div class="paragraph">
-<p>The performance tool uses a <code>stream1</code> stream by default, the <code>--streams</code> option allows
-specifying streams that will be created and used only for the test run. Note producer
+<p>The performance tool uses a <code>stream</code> stream by default, the <code>--streams</code> option allows
+specifying streams that the tool will try to create. Note producer
 and consumer counts must be set accordingly, as they are not spread across the
 stream automatically. The following command will run a test with 3 streams, with
 a producer and a consumer on each of them:</p>
@@ -2841,6 +2841,31 @@ use the <code>--pre-declared</code> option:</p>
                                --producers 3 --consumers 3 \
                                --pre-declared</pre>
 </div>
+</div>
+<div class="paragraph">
+<p>The stream creation process has the following semantics:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>the tool always tries to create streams.</p>
+</li>
+<li>
+<p>if the target streams already exist and have the exact same properties
+as the ones the tool uses (see <a href="#performance-tool-retention">retention</a> below), the
+run will start normally as stream creation is idempotent.</p>
+</li>
+<li>
+<p>if the target streams already exist but do not have the exact same properties
+as the ones the tool uses, the creation process will fail, and the run will not start.</p>
+</li>
+<li>
+<p>the streams are not deleted after the run.</p>
+</li>
+<li>
+<p>if you want the tool to delete the streams after a run, use the <code>--delete-streams</code> flag.</p>
+</li>
+</ul>
 </div>
 <div class="paragraph">
 <p>Specifying streams one by one can become tedious as their number grows, so the <code>--stream-count</code>
@@ -2958,7 +2983,7 @@ slightly higher, as the body is wrapped in an <a href="#working-with-complex-mes
 <div class="sect3">
 <h4 id="advanced-usage"><a class="anchor" href="#advanced-usage"></a>Advanced Usage</h4>
 <div class="sect4">
-<h5 id="retention"><a class="anchor" href="#retention"></a>Retention</h5>
+<h5 id="performance-tool-retention"><a class="anchor" href="#performance-tool-retention"></a>Retention</h5>
 <div class="paragraph">
 <p>If you run performance tests for a long time, you might be interested in setting
 a <a href="#limiting-the-size-of-a-stream">retention strategy</a> for
@@ -2998,20 +3023,20 @@ a maximum segment size of 250 MB:</p>
 <div class="sect4">
 <h5 id="offset-consumer"><a class="anchor" href="#offset-consumer"></a>Offset (Consumer)</h5>
 <div class="paragraph">
-<p>Consumers start by default at the first available offset of stream, that is
-the beginning of the stream if it has not been truncated (offset 0). It is possible
-to specify an <a href="#specifying-an-offset">offset</a> to start from with the <code>--offset</code> option,
-if you have existing streams and you want to consume from them at a specific offset.
-The following command sets the consumer to start consuming at the very end of
-a stream, as soon as new messages are published:</p>
+<p>Consumers start by default at the very end of a stream (offset <code>next</code>).
+It is possible to specify an <a href="#specifying-an-offset">offset</a>
+to start from with the <code>--offset</code> option,
+if you have existing streams, and you want to consume from them at a specific offset.
+The following command sets the consumer to start consuming at the beginning of
+a stream:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre>java -jar stream-perf-test.jar --offset next</pre>
+<pre>java -jar stream-perf-test.jar --offset first</pre>
 </div>
 </div>
 <div class="paragraph">
-<p>The accepted values for <code>--offset</code> are <code>first</code> (the default), <code>last</code>, <code>next</code>,
+<p>The accepted values for <code>--offset</code> are <code>first</code>, <code>last</code>, <code>next</code> (the default),
 an unsigned long for a given offset, and an ISO 8601 formatted timestamp
 (eg. <code>2020-06-03T07:45:54Z</code>).</p>
 </div>
@@ -3059,7 +3084,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-04-27 10:16:06 UTC
+Last updated 2021-04-27 16:04:17 UTC
 </div>
 </div>
 <style>
