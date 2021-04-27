@@ -257,6 +257,10 @@ The following table sums up the main settings to create a `Producer`:
 |Description
 |Default
 
+|`stream`
+|The stream to publish to.
+|No default, mandatory setting.
+
 |`name`
 |The logical name of the producer. Specify a name to enable
 <<outbound-message-de-deduplication,message de-deduplication>>.
@@ -550,6 +554,63 @@ or even block them. Any long processing should be done in
 a separate thread (e.g. with an asynchronous `ExecutorService`).
 ====
 
+The following table sums up the main settings to create a `Consumer`:
+
+[%header,cols=3*]
+|===
+|Parameter Name
+|Description
+|Default
+
+|`stream`
+|The stream to consume from.
+|No default, mandatory setting.
+
+|`offset`
+|The offset to start consuming from.
+|`OffsetSpecification#next()`
+
+|`messageHandler`
+|The callback for inbound messages.
+|No default, mandatory setting.
+
+|`name`
+|The consumer name (for <<consumer-offset-tracking,offset tracking>>.)
+|`null` (no offset tracking)
+
+|`AutoCommitStrategy`
+|Enable and configure the <<consumer-automatic-offset-commit,auto-commit strategy>>.
+|This is the default commit strategy if a consumer `name` is provided.
+
+|`AutoCommitStrategy#messageCountBeforeCommit`
+|Number of messages before committing.
+|10,000
+
+|`AutoCommitStrategy#flushInterval`
+|Interval to check and commit the last received offset in case of inactivity.
+|`Duration.ofSeconds(5)`
+
+|`ManualCommitStrategy`
+|Enable and configure the <<consumer-manual-offset-commit,manual commit strategy>>.
+|Disabled by default.
+
+|`ManualCommitStrategy#checkInterval`
+|Interval to check if the last requested committed offset has been actually committed.
+|`Duration.ofSeconds(5)`
+|===
+
+[NOTE]
+.Why is my consumer not consuming?
+====
+A consumer starts consuming at the very end of a stream by default (`next` offset).
+This means the consumer will receive messages as soon as a producer publishes to the stream.
+_This also means that if no producers are currently publishing to the stream, the
+consumer will stay idle, waiting for new messages to come in_. Use the
+`ConsumerBuilder#offset(OffsetSpecification)` to change the default behavior and
+see the <<specifying-an-offset,offset section>> to find out more about the different
+types of offset specification.
+====
+
 [[specifying-an-offset]]
 ===== Specifying an Offset
 
@@ -614,6 +675,7 @@ offsets are committed depends on the commit strategy: automatic or manual.
 
 Whatever commit strategy you use, *a consumer must have a name to be able to commit offsets*.
 
+[[consumer-automatic-offset-commit]]
 ====== Automatic Offset Commit
 
 The following snippet shows how to enable automatic commit with the defaults:
@@ -662,6 +724,7 @@ Automatic commit is simple and provides good guarantees. It is nevertheless
 possible to have more fine-grained control over offset commit by using
 manual commit.
 
+[[consumer-manual-offset-commit]]
 ====== Manual Offset Commit
 
 The manual commit strategy lets the developer in charge of committing offsets
