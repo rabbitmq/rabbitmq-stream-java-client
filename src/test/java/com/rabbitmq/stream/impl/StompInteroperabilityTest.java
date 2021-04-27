@@ -170,6 +170,7 @@ public class StompInteroperabilityTest {
     CountDownLatch latch = new CountDownLatch(1);
     AtomicReference<Message> messageReference = new AtomicReference<>();
     env.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
         .messageHandler(
             (context, message1) -> {
               messageReference.set(message1);
