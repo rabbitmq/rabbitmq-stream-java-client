@@ -276,7 +276,7 @@ public class StompInteroperabilityTest {
 
   @Test
   void offsetTypeFirstShouldStartConsumingFromBeginning() throws Exception {
-    int messageCount = 5000;
+    int messageCount = 1000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
     CountDownLatch latch = new CountDownLatch(messageCount);
     AtomicLong first = new AtomicLong(-1);
@@ -328,7 +328,7 @@ public class StompInteroperabilityTest {
 
   @Test
   void offsetTypeLastShouldStartConsumingFromBeginning() throws Exception {
-    int messageCount = 5000;
+    int messageCount = 1000;
     long lastOffset = messageCount - 1;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
 
@@ -396,8 +396,8 @@ public class StompInteroperabilityTest {
 
   @Test
   void offsetTypeNextShouldReturnNewPublishedMessages() throws Exception {
-    int firstWaveMessageCount = 5000;
-    int secondWaveMessageCount = 2000;
+    int firstWaveMessageCount = 1000;
+    int secondWaveMessageCount = 400;
     int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
     TestUtils.publishAndWaitForConfirms(cf, firstWaveMessageCount, stream);
     CountDownLatch latch = new CountDownLatch(1);
@@ -455,7 +455,7 @@ public class StompInteroperabilityTest {
 
   @Test
   void offsetTypeOffsetShouldStartConsumingFromOffset() throws Exception {
-    int messageCount = 5000;
+    int messageCount = 1000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
     int offset = messageCount / 10;
     CountDownLatch latch = new CountDownLatch(messageCount - offset);
@@ -509,8 +509,8 @@ public class StompInteroperabilityTest {
 
   @Test
   void offsetTypeTimestampShouldStartConsumingFromTimestamp() throws Exception {
-    int firstWaveMessageCount = 5000;
-    int secondWaveMessageCount = 2000;
+    int firstWaveMessageCount = 1000;
+    int secondWaveMessageCount = 400;
     int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
     TestUtils.publishAndWaitForConfirms(cf, "first wave ", firstWaveMessageCount, stream);
     Thread.sleep(5000);
