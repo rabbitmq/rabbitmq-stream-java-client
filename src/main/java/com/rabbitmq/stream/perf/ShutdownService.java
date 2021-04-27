@@ -46,9 +46,17 @@ public class ShutdownService implements AutoCloseable {
   AutoCloseable wrap(CloseCallback closeCallback) {
     AtomicBoolean closingOrAlreadyClosed = new AtomicBoolean(false);
     AutoCloseable idempotentCloseCallback =
-        () -> {
-          if (closingOrAlreadyClosed.compareAndSet(false, true)) {
-            closeCallback.run();
+        new AutoCloseable() {
+          @Override
+          public void close() throws Exception {
+            if (closingOrAlreadyClosed.compareAndSet(false, true)) {
+              closeCallback.run();
+            }
+          }
+
+          @Override
+          public String toString() {
+            return closeCallback.toString();
           }
         };
     closeables.add(idempotentCloseCallback);
@@ -63,7 +71,7 @@ public class ShutdownService implements AutoCloseable {
         try {
           closeables.get(i).close();
         } catch (Exception e) {
-          LOGGER.warn("Could not properly closed {}", closeables.get(i), e);
+          LOGGER.warn("Could not properly execute closing step '{}'", closeables.get(i), e);
         }
       }
     }

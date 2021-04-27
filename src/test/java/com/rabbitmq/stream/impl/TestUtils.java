@@ -62,11 +62,11 @@ import org.junit.jupiter.api.extension.*;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
-final class TestUtils {
+public final class TestUtils {
 
   private TestUtils() {}
 
-  static Duration waitAtMost(BooleanSupplier condition) throws InterruptedException {
+  public static Duration waitAtMost(BooleanSupplier condition) throws InterruptedException {
     return waitAtMost(10, condition, null);
   }
 
@@ -218,7 +218,7 @@ final class TestUtils {
     void run(Object context) throws Exception;
   }
 
-  static class StreamTestInfrastructureExtension
+  public static class StreamTestInfrastructureExtension
       implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback {
 
     private static final ExtensionContext.Namespace NAMESPACE =
@@ -350,7 +350,7 @@ final class TestUtils {
     }
   }
 
-  static String streamName(TestInfo info) {
+  public static String streamName(TestInfo info) {
     return streamName(info.getTestClass().get(), info.getTestMethod().get());
   }
 
@@ -365,7 +365,7 @@ final class TestUtils {
         testClass.getSimpleName(), testMethod.getName(), uuid.substring(uuid.length() / 2));
   }
 
-  static class ClientFactory {
+  public static class ClientFactory {
 
     private final EventLoopGroup eventLoopGroup;
     private final Set<Client> clients = ConcurrentHashMap.newKeySet();

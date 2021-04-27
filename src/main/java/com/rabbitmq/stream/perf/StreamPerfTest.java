@@ -33,6 +33,7 @@ import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
+import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
@@ -133,12 +134,18 @@ public class StreamPerfTest implements Callable<Integer> {
   private List<String> streams;
 
   @CommandLine.Option(
+      names = {"--delete-streams", "-ds"},
+      description = "whether to delete stream(s) after the run or not",
+      defaultValue = "false")
+  private boolean deleteStreams;
+
+  @CommandLine.Option(
       names = {"--offset", "-o"},
       description =
           "offset to start listening from. "
               + "Valid values are 'first', 'last', 'next', an unsigned long, "
               + "or an ISO 8601 formatted timestamp (eg. 2020-06-03T07:45:54Z).",
-      defaultValue = "first",
+      defaultValue = "next",
       converter = Utils.OffsetSpecificationTypeConverter.class)
   private OffsetSpecification offset;
 
@@ -252,8 +259,12 @@ public class StreamPerfTest implements Callable<Integer> {
   }
 
   public static void main(String[] args) {
-    int exitCode = new CommandLine(new StreamPerfTest(args)).execute(args);
+    int exitCode = run(args);
     System.exit(exitCode);
+  }
+
+  static int run(String[] args) {
+    return new CommandLine(new StreamPerfTest(args)).execute(args);
   }
 
   private static void versionInformation() {
@@ -364,20 +375,23 @@ public class StreamPerfTest implements Callable<Integer> {
         }
       }
     }
-    shutdownService.wrap(
-        closeStep(
-            "Deleting stream(s)",
-            () -> {
-              for (String stream : streams) {
-                LOGGER.debug("Deleting {}", stream);
-                try {
-                  environment.deleteStream(stream);
-                  LOGGER.debug("Deleted {}", stream);
-                } catch (Exception e) {
-                  LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
+
+    if (this.deleteStreams) {
+      shutdownService.wrap(
+          closeStep(
+              "Deleting stream(s)",
+              () -> {
+                for (String stream : streams) {
+                  LOGGER.debug("Deleting {}", stream);
+                  try {
+                    environment.deleteStream(stream);
+                    LOGGER.debug("Deleted {}", stream);
+                  } catch (Exception e) {
+                    LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
+                  }
                 }
-              }
-            }));
+              }));
+    }
 
     // FIXME handle metadata update for consumers and publishers
     // they should at least issue a warning that their stream has been deleted and that they're now
@@ -519,7 +533,7 @@ public class StreamPerfTest implements Callable<Integer> {
     try {
       latch.await();
     } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+      // moving on to the closing sequence
     }
 
     shutdownService.close();
@@ -529,9 +543,17 @@ public class StreamPerfTest implements Callable<Integer> {
 
   private ShutdownService.CloseCallback closeStep(
       String message, ShutdownService.CloseCallback callback) {
-    return () -> {
-      LOGGER.debug(message);
-      callback.run();
+    return new CloseCallback() {
+      @Override
+      public void run() throws Exception {
+        LOGGER.debug(message);
+        callback.run();
+      }
+
+      @Override
+      public String toString() {
+        return message;
+      }
     };
   }
 

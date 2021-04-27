@@ -106,8 +106,8 @@ $ java -jar stream-perf-test-latest.jar
 Summary: published 1279444 msg/s, confirmed 1279019 msg/s, consumed 1279019 msg/s, latency 95th 12161 µs, chunk size 2910
 ----
 
-The previous command will start publishing to and consuming from a `stream1` stream created
-only for the test. The tool outputs live metrics on the console and write more
+The previous command will start publishing to and consuming from a `stream` stream that
+will be created. The tool outputs live metrics on the console and write more
 detailed metrics in a `stream-perf-test-current.txt` file that get renamed to
 `stream-perf-test-yyyy-MM-dd-HHmmss.txt` when the run ends.
 
@@ -207,8 +207,8 @@ so the rates should tend towards those values.
 
 ===== Streams
 
-The performance tool uses a `stream1` stream by default, the `--streams` option allows
-specifying streams that will be created and used only for the test run. Note producer
+The performance tool uses a `stream` stream by default, the `--streams` option allows
+specifying streams that the tool will try to create. Note producer
 and consumer counts must be set accordingly, as they are not spread across the
 stream automatically. The following command will run a test with 3 streams, with
 a producer and a consumer on each of them:
@@ -226,6 +226,17 @@ java -jar stream-perf-test.jar --streams stream1,stream2,stream3 \
                                --producers 3 --consumers 3 \
                                --pre-declared
 ----
+
+The stream creation process has the following semantics:
+
+* the tool always tries to create streams.
+* if the target streams already exist and have the exact same properties
+as the ones the tool uses (see <<performance-tool-retention,retention>> below), the
+run will start normally as stream creation is idempotent.
+* if the target streams already exist but do not have the exact same properties
+as the ones the tool uses, the creation process will fail, and the run will not start.
+* the streams are not deleted after the run.
+* if you want the tool to delete the streams after a run, use the `--delete-streams` flag.
 
 Specifying streams one by one can become tedious as their number grows, so the `--stream-count`
 option can be combined with the `--streams` option to specify a number or a range and a stream name
@@ -312,6 +323,7 @@ slightly higher, as the body is wrapped in an <<api.adoc#working-with-complex-me
 
 ==== Advanced Usage
 
+[[performance-tool-retention]]
 ===== Retention
 
 If you run performance tests for a long time, you might be interested in setting
@@ -345,18 +357,18 @@ https://en.wikipedia.org/wiki/ISO_8601#Durations[ISO 8601 duration format].
 
 ===== Offset (Consumer)
 
-Consumers start by default at the first available offset of stream, that is
-the beginning of the stream if it has not been truncated (offset 0). It is possible
-to specify an <<api.adoc#specifying-an-offset,offset>> to start from with the `--offset` option,
-if you have existing streams and you want to consume from them at a specific offset.
-The following command sets the consumer to start consuming at the very end of
-a stream, as soon as new messages are published:
+Consumers start by default at the very end of a stream (offset `next`).
+It is possible to specify an <<api.adoc#specifying-an-offset,offset>>
+to start from with the `--offset` option,
+if you have existing streams, and you want to consume from them at a specific offset.
+The following command sets the consumer to start consuming at the beginning of
+a stream:
 
 ----
-java -jar stream-perf-test.jar --offset next
+java -jar stream-perf-test.jar --offset first
 ----
 
-The accepted values for `--offset` are `first` (the default), `last`, `next`,
+The accepted values for `--offset` are `first`, `last`, `next` (the default),
 an unsigned long for a given offset, and an ISO 8601 formatted timestamp
 (eg. `2020-06-03T07:45:54Z`).
 
