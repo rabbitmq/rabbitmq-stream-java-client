@@ -24,6 +24,7 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.amqp.UnsignedByte;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfMqttNotEnabled;
 import io.netty.channel.EventLoopGroup;
@@ -106,6 +107,7 @@ public class MqttInteroperabilityTest {
     CountDownLatch latch = new CountDownLatch(1);
     AtomicReference<Message> messageReference = new AtomicReference<>();
     env.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
         .messageHandler(
             (context, message1) -> {
               messageReference.set(message1);
