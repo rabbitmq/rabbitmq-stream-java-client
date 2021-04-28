@@ -45,7 +45,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -457,9 +456,10 @@ public class StreamPerfTest implements Callable<Integer> {
                       consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
 
                       if (this.commitEvery > 0) {
+                        String consumerName = stream + "-" + i;
                         consumerBuilder =
                             consumerBuilder
-                                .name(UUID.randomUUID().toString())
+                                .name(consumerName)
                                 .autoCommitStrategy()
                                 .messageCountBeforeCommit(this.commitEvery)
                                 .builder();
