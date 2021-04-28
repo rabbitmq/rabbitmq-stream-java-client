@@ -20,12 +20,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.impl.TestUtils;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +40,9 @@ public class StreamPerfTestTest {
 
   static ExecutorService executor = Executors.newSingleThreadExecutor();
   TestUtils.ClientFactory cf;
+  Client client;
+  AtomicInteger exitCode;
+  String s;
 
   @BeforeAll
   static void init() {
@@ -46,53 +54,94 @@ public class StreamPerfTestTest {
     executor.shutdownNow();
   }
 
-  @Test
-  void streamsShouldNotBeDeletedByDefault(TestInfo info) throws Exception {
-    String s = TestUtils.streamName(info);
-    Client client = cf.get();
+  static ArgumentsBuilder builder() {
+    return new ArgumentsBuilder().rate(100);
+  }
 
-    try {
-      AtomicInteger exitCode = new AtomicInteger(-1);
-      Future<?> run =
-          executor.submit(
-              () -> exitCode.set(StreamPerfTest.run(("--rate 100 --streams " + s).split(" "))));
+  @BeforeEach
+  void initTest(TestInfo info) {
+    exitCode = new AtomicInteger(-1);
+    client = cf.get();
+    s = TestUtils.streamName(info);
+  }
 
-      waitAtMost(() -> client.metadata(s).get(s).isResponseOk());
-      Thread.sleep(1000L);
-      run.cancel(true);
+  @AfterEach
+  void tearDownTest() {
+    client.delete(s);
+  }
 
-      waitAtMost(() -> exitCode.get() == 0);
+  private void waitRunEnds(int expectedExitCode) throws Exception {
+    waitAtMost(() -> exitCode.get() == expectedExitCode);
+  }
 
-      assertThat(client.metadata(s).get(s).isResponseOk()).isTrue();
-    } finally {
-      client.delete(s);
-    }
+  private void waitRunEnds() throws Exception {
+    waitRunEnds(0);
   }
 
   @Test
-  void streamsShouldBeDeletedWithFlag(TestInfo info) throws Exception {
-    String s = TestUtils.streamName(info);
-    Client client = cf.get();
+  void streamsShouldNotBeDeletedByDefault() throws Exception {
+    Future<?> run = run(builder().stream(s));
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(streamExists(s)).isTrue();
+  }
 
-    try {
-      AtomicInteger exitCode = new AtomicInteger(-1);
-      Future<?> run =
-          executor.submit(
-              () ->
-                  exitCode.set(
-                      StreamPerfTest.run(
-                          ("--rate 100 --delete-streams --streams " + s).split(" "))));
+  @Test
+  void streamsShouldBeDeletedWithFlag() throws Exception {
+    Future<?> run = run(builder().stream(s).deleteStreams());
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(streamDoesNotExists(s)).isTrue();
+  }
 
-      waitAtMost(() -> client.metadata(s).get(s).isResponseOk());
-      Thread.sleep(1000L);
-      run.cancel(true);
+  boolean streamExists(String stream) {
+    return client.metadata(stream).get(stream).isResponseOk();
+  }
 
-      waitAtMost(() -> exitCode.get() == 0);
+  boolean streamDoesNotExists(String stream) {
+    return client.metadata(stream).get(stream).getResponseCode()
+        == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
+  }
 
-      assertThat(client.metadata(s).get(s).getResponseCode())
-          .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
-    } finally {
-      client.delete(s);
+  void waitUntilStreamExists(String stream) throws Exception {
+    waitAtMost(() -> streamExists(stream));
+  }
+
+  static void waitOneSecond() throws InterruptedException {
+    Thread.sleep(1000L);
+  }
+
+  Future<?> run(ArgumentsBuilder builder) {
+    return executor.submit(() -> exitCode.set(StreamPerfTest.run(builder.build().split(" "))));
+  }
+
+  static class ArgumentsBuilder {
+
+    private final Map<String, String> arguments = new HashMap<>();
+
+    ArgumentsBuilder rate(int rate) {
+      arguments.put("rate", String.valueOf(rate));
+      return this;
+    }
+
+    ArgumentsBuilder stream(String stream) {
+      arguments.put("streams", stream);
+      return this;
+    }
+
+    ArgumentsBuilder deleteStreams() {
+      arguments.put("delete-streams", "");
+      return this;
+    }
+
+    String build() {
+      return this.arguments.entrySet().stream()
+          .map(e -> "--" + e.getKey() + (e.getValue().isEmpty() ? "" : (" " + e.getValue())))
+          .collect(Collectors.joining(" "));
     }
   }
 }
