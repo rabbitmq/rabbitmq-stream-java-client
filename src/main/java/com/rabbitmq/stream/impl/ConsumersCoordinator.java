@@ -570,8 +570,8 @@ class ConsumersCoordinator {
             if (offsetSpecification != null && isSubcription) {
               // subscription call (not recovery), so telling the user their offset specification is
               // ignored
-              LOGGER.warn(
-                  "Requested offset specification {} not used because offset tracking reference found for reference {}",
+              LOGGER.info(
+                  "Requested offset specification {} not used in favor of committed offset found for reference {}",
                   offsetSpecification,
                   offsetTrackingReference);
             }
