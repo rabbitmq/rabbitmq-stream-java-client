@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -68,7 +69,7 @@ public class MqttInteroperabilityTest {
   @BeforeEach
   void init() {
     environmentBuilder = Environment.builder();
-    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
+    environmentBuilder.addressResolver(add -> localhost());
     env = environmentBuilder.eventLoopGroup(eventLoopGroup).build();
   }
 

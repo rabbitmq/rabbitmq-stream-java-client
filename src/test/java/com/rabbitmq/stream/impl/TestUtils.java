@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
+import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.Message;
@@ -97,6 +98,10 @@ public final class TestUtils {
       fail("Waited " + timeoutInSeconds + " second(s), " + message.get());
     }
     return Duration.ofMillis(waitedTime);
+  }
+
+  static Address localhost() {
+    return new Address("localhost", Client.DEFAULT_PORT);
   }
 
   static byte b(int value) {

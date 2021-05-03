@@ -183,6 +183,7 @@ public class Client implements AutoCloseable {
   private final String host;
   private final int port;
   private volatile ShutdownReason shutdownReason = null;
+  private final Map<String, String> serverProperties;
 
   public Client() {
     this(new ClientParameters());
@@ -267,7 +268,7 @@ public class Client implements AutoCloseable {
         new TuneState(
             parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
     this.clientProperties = clientProperties(parameters.clientProperties);
-    peerProperties();
+    this.serverProperties = peerProperties();
     authenticate();
     this.tuneState.await(Duration.ofSeconds(10));
     this.maxFrameSize = this.tuneState.getMaxFrameSize();
@@ -304,7 +305,7 @@ public class Client implements AutoCloseable {
     return this.maxFrameSize;
   }
 
-  private void peerProperties() {
+  private Map<String, String> peerProperties() {
     int clientPropertiesSize = 4; // size of the map, always there
     if (!clientProperties.isEmpty()) {
       for (Map.Entry<String, String> entry : clientProperties.entrySet()) {
@@ -330,6 +331,7 @@ public class Client implements AutoCloseable {
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
+      return request.response.get();
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
       throw new StreamException(e);
@@ -1986,5 +1988,13 @@ public class Client implements AutoCloseable {
 
   public SocketAddress remoteAddress() {
     return this.channel.remoteAddress();
+  }
+
+  String serverAdvertisedHost() {
+    return this.serverProperties.get("advertised_host");
+  }
+
+  int serverAdvertisedPort() {
+    return Integer.valueOf(this.serverProperties.get("advertised_port"));
   }
 }

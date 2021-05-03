@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 
+import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
@@ -64,7 +65,9 @@ class ConsumersCoordinator {
     this.clientFactory =
         clientParameters -> {
           ClientParameters parametersCopy = clientParameters.duplicate();
-          parametersCopy.host(environment.hostResolver().apply(parametersCopy.host));
+          Address address = new Address(parametersCopy.host, parametersCopy.port);
+          address = environment.addressResolver().resolve(address);
+          parametersCopy.host(address.host()).port(address.port());
           return clientFactory.apply(parametersCopy);
         };
     this.maxConsumersByConnection = maxConsumersByConnection;

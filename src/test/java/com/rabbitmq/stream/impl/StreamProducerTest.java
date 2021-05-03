@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,7 +76,7 @@ public class StreamProducerTest {
             .eventLoopGroup(eventLoopGroup)
             .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
             .topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)));
-    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
+    environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
   }
 

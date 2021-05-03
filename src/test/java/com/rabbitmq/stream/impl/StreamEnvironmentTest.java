@@ -14,11 +14,13 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
@@ -71,7 +73,7 @@ public class StreamEnvironmentTest {
   @BeforeEach
   void init() {
     environmentBuilder = Environment.builder();
-    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
+    environmentBuilder.addressResolver(add -> localhost());
     environmentBuilder.eventLoopGroup(eventLoopGroup);
   }
 
@@ -100,6 +102,7 @@ public class StreamEnvironmentTest {
             () ->
                 environmentBuilder
                     .uri("rabbitmq-stream://guest:guest@localhost:4242/%2f")
+                    .addressResolver(address -> new Address("localhost", 4242))
                     .build()
                     .close())
         .hasMessageContaining("Connection refused");

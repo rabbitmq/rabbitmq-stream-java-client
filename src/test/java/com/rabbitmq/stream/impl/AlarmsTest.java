@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.Host.diskAlarm;
 import static com.rabbitmq.stream.Host.memoryAlarm;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.responseCode;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.IntStream.range;
@@ -67,7 +68,7 @@ public class AlarmsTest {
   @BeforeEach
   void init() {
     environmentBuilder = Environment.builder();
-    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
+    environmentBuilder.addressResolver(add -> localhost());
     env = environmentBuilder.eventLoopGroup(eventLoopGroup).build();
   }
 

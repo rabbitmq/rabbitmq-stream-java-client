@@ -29,6 +29,8 @@ public interface EnvironmentBuilder {
 
   EnvironmentBuilder uris(List<String> uris);
 
+  EnvironmentBuilder addressResolver(AddressResolver addressResolver);
+
   EnvironmentBuilder host(String host);
 
   EnvironmentBuilder port(int port);

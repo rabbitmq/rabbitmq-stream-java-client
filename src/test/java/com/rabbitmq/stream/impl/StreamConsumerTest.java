@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,7 +87,7 @@ public class StreamConsumerTest {
             .topologyUpdateBackOffDelayPolicy(
                 BackOffDelayPolicy.fixedWithInitialDelay(TOPOLOGY_DELAY, TOPOLOGY_DELAY));
 
-    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
+    environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
   }
 

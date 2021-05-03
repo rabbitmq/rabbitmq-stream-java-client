@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ChunkChecksum;
@@ -31,7 +32,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class StreamEnvironmentBuilder implements EnvironmentBuilder {
@@ -44,7 +44,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private BackOffDelayPolicy topologyBackOffDelayPolicy =
       BackOffDelayPolicy.fixedWithInitialDelay(Duration.ofSeconds(5), Duration.ofSeconds(1));
 
-  private Function<String, String> hostResolver = host -> host;
+  private AddressResolver addressResolver = address -> address;
 
   private int maxProducersByConnection = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT;
   private int maxCommittingConsumersByConnection =
@@ -183,8 +183,9 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
-  EnvironmentBuilder hostResolver(Function<String, String> hostResolver) {
-    this.hostResolver = hostResolver;
+  @Override
+  public EnvironmentBuilder addressResolver(AddressResolver addressResolver) {
+    this.addressResolver = addressResolver;
     return this;
   }
 
@@ -234,7 +235,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         uris,
         recoveryBackOffDelayPolicy,
         topologyBackOffDelayPolicy,
-        hostResolver,
+        addressResolver,
         maxProducersByConnection,
         maxCommittingConsumersByConnection,
         maxConsumersByConnection);

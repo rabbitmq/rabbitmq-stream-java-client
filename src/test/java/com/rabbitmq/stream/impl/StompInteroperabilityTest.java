@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.doIfNotNull;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static java.time.Duration.ofSeconds;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -82,7 +83,7 @@ public class StompInteroperabilityTest {
   @BeforeEach
   void init() {
     environmentBuilder = Environment.builder();
-    ((StreamEnvironmentBuilder) environmentBuilder).hostResolver(h -> "localhost");
+    environmentBuilder.addressResolver(add -> localhost());
     env = environmentBuilder.eventLoopGroup(eventLoopGroup).build();
     taskScheduler = new ThreadPoolTaskScheduler();
     taskScheduler.setPoolSize(1);

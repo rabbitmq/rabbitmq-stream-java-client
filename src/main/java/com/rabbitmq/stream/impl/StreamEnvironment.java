@@ -17,8 +17,18 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.AddressResolver;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.ProducerBuilder;
+import com.rabbitmq.stream.StreamCreator;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.OffsetCommittingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
 import io.netty.channel.EventLoopGroup;
@@ -29,7 +39,12 @@ import java.net.URLDecoder;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -58,11 +73,11 @@ class StreamEnvironment implements Environment {
   private final ConsumersCoordinator consumersCoordinator;
   private final ProducersCoordinator producersCoordinator;
   private final OffsetCommittingCoordinator offsetCommittingCoordinator;
-  private volatile Client locator;
   private final AtomicBoolean closed = new AtomicBoolean(false);
-  private final Function<String, String> hostResolver;
+  private final AddressResolver addressResolver;
   private final Clock clock = new Clock();
-  private ScheduledFuture<?> clockRefreshFuture;
+  private final ScheduledFuture<?> clockRefreshFuture;
+  private volatile Client locator;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -70,7 +85,7 @@ class StreamEnvironment implements Environment {
       List<URI> uris,
       BackOffDelayPolicy recoveryBackOffDelayPolicy,
       BackOffDelayPolicy topologyBackOffDelayPolicy,
-      Function<String, String> hostResolver,
+      AddressResolver addressResolver,
       int maxProducersByConnection,
       int maxCommittingConsumersByConnection,
       int maxConsumersByConnection) {
@@ -80,7 +95,7 @@ class StreamEnvironment implements Environment {
         uris,
         recoveryBackOffDelayPolicy,
         topologyBackOffDelayPolicy,
-        hostResolver,
+        addressResolver,
         maxProducersByConnection,
         maxCommittingConsumersByConnection,
         maxConsumersByConnection,
@@ -93,7 +108,7 @@ class StreamEnvironment implements Environment {
       List<URI> uris,
       BackOffDelayPolicy recoveryBackOffDelayPolicy,
       BackOffDelayPolicy topologyBackOffDelayPolicy,
-      Function<String, String> hostResolver,
+      AddressResolver addressResolver,
       int maxProducersByConnection,
       int maxCommittingConsumersByConnection,
       int maxConsumersByConnection,
@@ -102,16 +117,20 @@ class StreamEnvironment implements Environment {
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
     clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
+    this.addressResolver = addressResolver;
+
     if (uris.isEmpty()) {
       this.addresses =
           Collections.singletonList(
-              new Address(
-                  hostResolver.apply(clientParametersPrototype.host),
-                  clientParametersPrototype.port));
+              new Address(clientParametersPrototype.host, clientParametersPrototype.port));
     } else {
       this.addresses =
           uris.stream()
-              .map(uriItem -> new Address(hostResolver, uriItem))
+              .map(
+                  uriItem ->
+                      new Address(
+                          uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
+                          uriItem.getPort() == -1 ? Client.DEFAULT_PORT : uriItem.getPort()))
               .collect(Collectors.toList());
     }
 
@@ -135,8 +154,6 @@ class StreamEnvironment implements Environment {
       this.privateScheduleExecutorService = false;
     }
 
-    this.hostResolver = hostResolver;
-
     this.producersCoordinator =
         new ProducersCoordinator(
             this, maxProducersByConnection, maxCommittingConsumersByConnection);
@@ -159,12 +176,13 @@ class StreamEnvironment implements Environment {
                           addresses.size() == 1
                               ? addresses.get(0)
                               : addresses.get(random.nextInt(addresses.size()));
+                      address = addressResolver.resolve(address);
                       LOGGER.debug("Trying to reconnect locator on {}", address);
                       Client newLocator =
                           clientFactory.apply(
                               newLocatorParameters
-                                  .host(address.host)
-                                  .port(address.port)
+                                  .host(address.host())
+                                  .port(address.port())
                                   .clientProperty("connection_name", "rabbitmq-stream-locator"));
                       LOGGER.debug("Locator connected on {}", address);
                       return newLocator;
@@ -179,11 +197,12 @@ class StreamEnvironment implements Environment {
     shutdownListenerReference.set(shutdownListener);
     RuntimeException lastException = null;
     for (Address address : addresses) {
+      address = addressResolver.resolve(address);
       Client.ClientParameters locatorParameters =
           clientParametersPrototype
               .duplicate()
-              .host(address.host)
-              .port(address.port)
+              .host(address.host())
+              .port(address.port())
               .clientProperty("connection_name", "rabbitmq-stream-locator")
               .shutdownListener(shutdownListenerReference.get());
       try {
@@ -393,8 +412,8 @@ class StreamEnvironment implements Environment {
     return this.clock;
   }
 
-  Function<String, String> hostResolver() {
-    return this.hostResolver;
+  AddressResolver addressResolver() {
+    return this.addressResolver;
   }
 
   Codec codec() {
@@ -404,6 +423,61 @@ class StreamEnvironment implements Environment {
   Client.ClientParameters clientParametersCopy() {
     return this.clientParametersPrototype.duplicate();
   }
+
+  CommittingConsumerRegistration registerCommittingConsumer(
+      StreamConsumer streamConsumer, CommitConfiguration configuration) {
+    Runnable closingCallable = this.producersCoordinator.registerCommittingConsumer(streamConsumer);
+    Registration offsetCommittingRegistration = null;
+    if (this.offsetCommittingCoordinator.needCommitRegistration(configuration)) {
+      offsetCommittingRegistration =
+          this.offsetCommittingCoordinator.registerCommittingConsumer(
+              streamConsumer, configuration);
+    }
+
+    return new CommittingConsumerRegistration(
+        closingCallable,
+        offsetCommittingRegistration == null
+            ? null
+            : offsetCommittingRegistration.postMessageProcessingCallback(),
+        offsetCommittingRegistration == null
+            ? Utils.NO_OP_LONG_CONSUMER
+            : offsetCommittingRegistration.commitCallback());
+  }
+
+  @Override
+  public String toString() {
+    Client locator = this.locator;
+    return "{ locator : "
+        + (locator == null ? "null" : ("'" + locator.getHost() + ":" + locator.getPort() + "'"))
+        + ", "
+        + "'producers' : "
+        + this.producersCoordinator
+        + ", 'consumers' : "
+        + this.consumersCoordinator
+        + "}";
+  }
+
+  //  private static final class Address {
+  //
+  //    private final String host;
+  //    private final int port;
+  //
+  //    private Address(Function<String, String> hostResolver, URI uri) {
+  //      this(
+  //          hostResolver.apply(uri.getHost() == null ? "localhost" : uri.getHost()),
+  //          uri.getPort() == -1 ? Client.DEFAULT_PORT : uri.getPort());
+  //    }
+  //
+  //    private Address(String host, int port) {
+  //      this.host = host;
+  //      this.port = port;
+  //    }
+  //
+  //    @Override
+  //    public String toString() {
+  //      return "Address{" + "host='" + host + '\'' + ", port=" + port + '}';
+  //    }
+  //  }
 
   static class CommittingConsumerRegistration {
 
@@ -431,60 +505,5 @@ class StreamEnvironment implements Environment {
     public Consumer<Context> postMessageProcessingCallback() {
       return postMessageProcessingCallback;
     }
-  }
-
-  CommittingConsumerRegistration registerCommittingConsumer(
-      StreamConsumer streamConsumer, CommitConfiguration configuration) {
-    Runnable closingCallable = this.producersCoordinator.registerCommittingConsumer(streamConsumer);
-    Registration offsetCommittingRegistration = null;
-    if (this.offsetCommittingCoordinator.needCommitRegistration(configuration)) {
-      offsetCommittingRegistration =
-          this.offsetCommittingCoordinator.registerCommittingConsumer(
-              streamConsumer, configuration);
-    }
-
-    return new CommittingConsumerRegistration(
-        closingCallable,
-        offsetCommittingRegistration == null
-            ? null
-            : offsetCommittingRegistration.postMessageProcessingCallback(),
-        offsetCommittingRegistration == null
-            ? Utils.NO_OP_LONG_CONSUMER
-            : offsetCommittingRegistration.commitCallback());
-  }
-
-  private static final class Address {
-
-    private final String host;
-    private final int port;
-
-    private Address(Function<String, String> hostResolver, URI uri) {
-      this(
-          hostResolver.apply(uri.getHost() == null ? "localhost" : uri.getHost()),
-          uri.getPort() == -1 ? Client.DEFAULT_PORT : uri.getPort());
-    }
-
-    private Address(String host, int port) {
-      this.host = host;
-      this.port = port;
-    }
-
-    @Override
-    public String toString() {
-      return "Address{" + "host='" + host + '\'' + ", port=" + port + '}';
-    }
-  }
-
-  @Override
-  public String toString() {
-    Client locator = this.locator;
-    return "{ locator : "
-        + (locator == null ? "null" : ("'" + locator.getHost() + ":" + locator.getPort() + "'"))
-        + ", "
-        + "'producers' : "
-        + this.producersCoordinator
-        + ", 'consumers' : "
-        + this.consumersCoordinator
-        + "}";
   }
 }
