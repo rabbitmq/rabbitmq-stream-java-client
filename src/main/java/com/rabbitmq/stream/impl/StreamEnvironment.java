@@ -156,8 +156,13 @@ class StreamEnvironment implements Environment {
 
     this.producersCoordinator =
         new ProducersCoordinator(
-            this, maxProducersByConnection, maxCommittingConsumersByConnection);
-    this.consumersCoordinator = new ConsumersCoordinator(this, maxConsumersByConnection);
+            this,
+            maxProducersByConnection,
+            maxCommittingConsumersByConnection,
+            Utils.coordinatorClientFactory(this));
+    this.consumersCoordinator =
+        new ConsumersCoordinator(
+            this, maxConsumersByConnection, Utils.coordinatorClientFactory(this));
     this.offsetCommittingCoordinator = new OffsetCommittingCoordinator(this);
 
     AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
@@ -456,28 +461,6 @@ class StreamEnvironment implements Environment {
         + this.consumersCoordinator
         + "}";
   }
-
-  //  private static final class Address {
-  //
-  //    private final String host;
-  //    private final int port;
-  //
-  //    private Address(Function<String, String> hostResolver, URI uri) {
-  //      this(
-  //          hostResolver.apply(uri.getHost() == null ? "localhost" : uri.getHost()),
-  //          uri.getPort() == -1 ? Client.DEFAULT_PORT : uri.getPort());
-  //    }
-  //
-  //    private Address(String host, int port) {
-  //      this.host = host;
-  //      this.port = port;
-  //    }
-  //
-  //    @Override
-  //    public String toString() {
-  //      return "Address{" + "host='" + host + '\'' + ", port=" + port + '}';
-  //    }
-  //  }
 
   static class CommittingConsumerRegistration {
 

@@ -14,7 +14,8 @@
 
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.*;
+import static com.rabbitmq.stream.impl.TestUtils.answer;
+import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,6 +33,7 @@ import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -42,7 +44,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,7 +57,7 @@ public class ProducersCoordinatorTest {
   @Mock Client locator;
   @Mock StreamProducer producer;
   @Mock StreamConsumer committingConsumer;
-  @Mock Function<Client.ClientParameters, Client> clientFactory;
+  @Mock ClientFactory clientFactory;
   @Mock Client client;
   AutoCloseable mocks;
   ProducersCoordinator coordinator;
@@ -67,6 +68,22 @@ public class ProducersCoordinatorTest {
 
   static Duration ms(long ms) {
     return Duration.ofMillis(ms);
+  }
+
+  static Client.Broker leader() {
+    return new Client.Broker("leader", 5551);
+  }
+
+  static Client.Broker leader1() {
+    return new Client.Broker("leader-1", 5551);
+  }
+
+  static Client.Broker leader2() {
+    return new Client.Broker("leader-2", 5551);
+  }
+
+  static List<Client.Broker> replicas() {
+    return Arrays.asList(new Client.Broker("replica1", 5551), new Client.Broker("replica2", 5551));
   }
 
   @BeforeEach
@@ -143,10 +160,65 @@ public class ProducersCoordinatorTest {
   @Test
   void registerShouldAllowPublishing() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     Runnable cleanTask = coordinator.registerProducer(producer, null, "stream");
 
+    verify(producer, times(1)).setClient(client);
+
+    cleanTask.run();
+  }
+
+  @Test
+  void
+      shouldRetryUntilGettingExactNodeWithAdvertisedHostNameClientFactoryAndNotExactNodeOnFirstTime() {
+    ClientFactory cf =
+        context ->
+            Utils.connectToAdvertisedNodeClientFactory(
+                    context.key(), clientFactory, Duration.ofMillis(1))
+                .client(context);
+    ProducersCoordinator c =
+        new ProducersCoordinator(
+            environment,
+            ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
+            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            cf);
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    when(client.serverAdvertisedHost()).thenReturn("foo").thenReturn(leader().getHost());
+    when(client.serverAdvertisedPort()).thenReturn(42).thenReturn(leader().getPort());
+
+    Runnable cleanTask = c.registerProducer(producer, null, "stream");
+
+    verify(clientFactory, times(2)).client(any());
+    verify(producer, times(1)).setClient(client);
+
+    cleanTask.run();
+  }
+
+  @Test
+  void shouldGetExactNodeImmediatelyWithAdvertisedHostNameClientFactoryAndExactNodeOnFirstTime() {
+    ClientFactory cf =
+        context ->
+            Utils.connectToAdvertisedNodeClientFactory(
+                    context.key(), clientFactory, Duration.ofMillis(1))
+                .client(context);
+    ProducersCoordinator c =
+        new ProducersCoordinator(
+            environment,
+            ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
+            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            cf);
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    when(client.serverAdvertisedHost()).thenReturn(leader().getHost());
+    when(client.serverAdvertisedPort()).thenReturn(leader().getPort());
+
+    Runnable cleanTask = c.registerProducer(producer, null, "stream");
+
+    verify(clientFactory, times(1)).client(any());
     verify(producer, times(1)).setClient(client);
 
     cleanTask.run();
@@ -165,7 +237,7 @@ public class ProducersCoordinatorTest {
         .thenReturn(metadata(null, replicas()))
         .thenReturn(metadata(leader(), replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
     doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
@@ -209,7 +281,7 @@ public class ProducersCoordinatorTest {
         .thenReturn(metadata(leader(), replicas())) // for the 2 registrations
         .thenReturn(metadata(null, replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
@@ -254,7 +326,7 @@ public class ProducersCoordinatorTest {
     String fixedStream = "fixed-stream";
     when(locator.metadata(fixedStream)).thenReturn(metadata(fixedStream, leader1(), replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     StreamProducer movingProducer = mock(StreamProducer.class);
     StreamProducer fixedProducer = mock(StreamProducer.class);
@@ -318,7 +390,7 @@ public class ProducersCoordinatorTest {
         .thenReturn(metadata(leader(), replicas()))
         .thenReturn(metadata(null, replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
@@ -351,7 +423,7 @@ public class ProducersCoordinatorTest {
         .thenReturn(metadata(leader(), replicas())) // for the 2 registrations
         .thenReturn(metadata(null, replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
@@ -384,7 +456,7 @@ public class ProducersCoordinatorTest {
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     int extraProducerCount = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT / 5;
     int producerCount = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT + extraProducerCount;
@@ -480,21 +552,5 @@ public class ProducersCoordinatorTest {
 
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
-  }
-
-  static Client.Broker leader() {
-    return new Client.Broker("leader", 5551);
-  }
-
-  static Client.Broker leader1() {
-    return new Client.Broker("leader-1", 5551);
-  }
-
-  static Client.Broker leader2() {
-    return new Client.Broker("leader-2", 5551);
-  }
-
-  static List<Client.Broker> replicas() {
-    return Arrays.asList(new Client.Broker("replica1", 5551), new Client.Broker("replica2", 5551));
   }
 }

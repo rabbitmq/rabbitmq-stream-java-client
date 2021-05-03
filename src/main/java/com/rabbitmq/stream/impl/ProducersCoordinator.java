@@ -16,13 +16,17 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 
-import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.MetadataListener;
+import com.rabbitmq.stream.impl.Client.PublishConfirmListener;
+import com.rabbitmq.stream.impl.Client.PublishErrorListener;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.Client.ShutdownListener;
+import com.rabbitmq.stream.impl.Utils.ClientFactory;
+import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +35,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,29 +45,17 @@ class ProducersCoordinator {
   static final int MAX_COMMITTING_CONSUMERS_PER_CLIENT = 50;
   private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
   private final StreamEnvironment environment;
-  private final Function<Client.ClientParameters, Client> clientFactory;
+  private final ClientFactory clientFactory;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
   private final int maxProducersByClient, maxCommittingConsumersByClient;
-
-  ProducersCoordinator(
-      StreamEnvironment environment, int maxProducersByClient, int maxCommittingConsumersByClient) {
-    this(environment, maxProducersByClient, maxCommittingConsumersByClient, Client::new);
-  }
 
   ProducersCoordinator(
       StreamEnvironment environment,
       int maxProducersByClient,
       int maxCommittingConsumersByClient,
-      Function<Client.ClientParameters, Client> clientFactory) {
+      ClientFactory clientFactory) {
     this.environment = environment;
-    this.clientFactory =
-        clientParameters -> {
-          ClientParameters parametersCopy = clientParameters.duplicate();
-          Address address = new Address(parametersCopy.host, parametersCopy.port);
-          address = environment.addressResolver().resolve(address);
-          parametersCopy.host(address.host()).port(address.port());
-          return clientFactory.apply(parametersCopy);
-        };
+    this.clientFactory = clientFactory;
     this.maxProducersByClient = maxProducersByClient;
     this.maxCommittingConsumersByClient = maxCommittingConsumersByClient;
   }
@@ -142,6 +133,31 @@ class ProducersCoordinator {
 
   int clientCount() {
     return pools.values().stream().map(pool -> pool.managers.size()).reduce(0, Integer::sum);
+  }
+
+  @Override
+  public String toString() {
+    return ("[ \n"
+            + pools.entrySet().stream()
+                .map(
+                    poolEntry ->
+                        "  { 'broker' : '"
+                            + poolEntry.getKey()
+                            + "', 'clients' : [ "
+                            + poolEntry.getValue().managers.stream()
+                                .map(
+                                    manager ->
+                                        "{ 'producer_count' : "
+                                            + manager.producers.size()
+                                            + ", "
+                                            + "  'committing_consumer_count' : "
+                                            + manager.committingConsumerTrackers.size()
+                                            + " }")
+                                .collect(Collectors.joining(", "))
+                            + " ] }")
+                .collect(Collectors.joining(", \n"))
+            + "\n]")
+        .replace("'", "\"");
   }
 
   private interface AgentTracker {
@@ -369,86 +385,86 @@ class ProducersCoordinator {
     private final ManagerPool owner;
 
     private ClientProducersManager(
-        ManagerPool owner,
-        Function<Client.ClientParameters, Client> cf,
-        Client.ClientParameters clientParameters) {
+        ManagerPool owner, ClientFactory cf, Client.ClientParameters clientParameters) {
       this.owner = owner;
       AtomicReference<Client> ref = new AtomicReference<>();
-      this.client =
-          cf.apply(
-              clientParameters
-                  .publishConfirmListener(
-                      (publisherId, publishingId) -> {
-                        ProducerTracker producerTracker = producers.get(publisherId);
-                        if (producerTracker == null) {
-                          LOGGER.warn(
-                              "Received publish confirm for unknown producer: {}", publisherId);
-                        } else {
-                          producerTracker.producer.confirm(publishingId);
-                        }
-                      })
-                  .publishErrorListener(
-                      (publisherId, publishingId, errorCode) -> {
-                        ProducerTracker producerTracker = producers.get(publisherId);
-                        if (producerTracker == null) {
-                          LOGGER.warn(
-                              "Received publish error for unknown producer: {}", publisherId);
-                        } else {
-                          producerTracker.producer.error(publishingId, errorCode);
-                        }
-                      })
-                  .shutdownListener(
-                      shutdownContext -> {
-                        owner.remove(this);
-                        if (shutdownContext.isShutdownUnexpected()) {
-                          LOGGER.debug(
-                              "Recovering {} producers after unexpected connection termination",
-                              producers.size());
-                          producers.forEach((publishingId, tracker) -> tracker.unavailable());
-                          committingConsumerTrackers.forEach(AgentTracker::unavailable);
-                          // execute in thread pool to free the IO thread
-                          environment
-                              .scheduledExecutorService()
-                              .execute(
-                                  () ->
-                                      streamToTrackers.forEach(
-                                          (stream, trackers) ->
-                                              assignProducersToNewManagers(
-                                                  trackers,
-                                                  stream,
-                                                  environment.recoveryBackOffDelayPolicy())));
-                        }
-                      })
-                  .metadataListener(
-                      (stream, code) -> {
-                        synchronized (ClientProducersManager.this) {
-                          Set<AgentTracker> affectedTrackers = streamToTrackers.remove(stream);
-                          if (affectedTrackers != null && !affectedTrackers.isEmpty()) {
-                            affectedTrackers.forEach(
-                                tracker -> {
-                                  tracker.unavailable();
-                                  if (tracker.identifiable()) {
-                                    producers.remove(tracker.id());
-                                  } else {
-                                    committingConsumerTrackers.remove(tracker);
-                                  }
-                                });
-                            environment
-                                .scheduledExecutorService()
-                                .execute(
-                                    () -> {
-                                      // close manager if no more trackers for it
-                                      // needs to be done in another thread than the IO thread
-                                      this.owner.maybeDisposeManager(this);
-                                      assignProducersToNewManagers(
-                                          affectedTrackers,
-                                          stream,
-                                          environment.topologyUpdateBackOffDelayPolicy());
-                                    });
-                          }
-                        }
-                      })
-                  .clientProperty("connection_name", "rabbitmq-stream-producer"));
+      PublishConfirmListener publishConfirmListener =
+          (publisherId, publishingId) -> {
+            ProducerTracker producerTracker = producers.get(publisherId);
+            if (producerTracker == null) {
+              LOGGER.warn("Received publish confirm for unknown producer: {}", publisherId);
+            } else {
+              producerTracker.producer.confirm(publishingId);
+            }
+          };
+      PublishErrorListener publishErrorListener =
+          (publisherId, publishingId, errorCode) -> {
+            ProducerTracker producerTracker = producers.get(publisherId);
+            if (producerTracker == null) {
+              LOGGER.warn("Received publish error for unknown producer: {}", publisherId);
+            } else {
+              producerTracker.producer.error(publishingId, errorCode);
+            }
+          };
+      ShutdownListener shutdownListener =
+          shutdownContext -> {
+            owner.remove(this);
+            if (shutdownContext.isShutdownUnexpected()) {
+              LOGGER.debug(
+                  "Recovering {} producers after unexpected connection termination",
+                  producers.size());
+              producers.forEach((publishingId, tracker) -> tracker.unavailable());
+              committingConsumerTrackers.forEach(AgentTracker::unavailable);
+              // execute in thread pool to free the IO thread
+              environment
+                  .scheduledExecutorService()
+                  .execute(
+                      () ->
+                          streamToTrackers.forEach(
+                              (stream, trackers) ->
+                                  assignProducersToNewManagers(
+                                      trackers, stream, environment.recoveryBackOffDelayPolicy())));
+            }
+          };
+      MetadataListener metadataListener =
+          (stream, code) -> {
+            synchronized (ClientProducersManager.this) {
+              Set<AgentTracker> affectedTrackers = streamToTrackers.remove(stream);
+              if (affectedTrackers != null && !affectedTrackers.isEmpty()) {
+                affectedTrackers.forEach(
+                    tracker -> {
+                      tracker.unavailable();
+                      if (tracker.identifiable()) {
+                        producers.remove(tracker.id());
+                      } else {
+                        committingConsumerTrackers.remove(tracker);
+                      }
+                    });
+                environment
+                    .scheduledExecutorService()
+                    .execute(
+                        () -> {
+                          // close manager if no more trackers for it
+                          // needs to be done in another thread than the IO thread
+                          this.owner.maybeDisposeManager(this);
+                          assignProducersToNewManagers(
+                              affectedTrackers,
+                              stream,
+                              environment.topologyUpdateBackOffDelayPolicy());
+                        });
+              }
+            }
+          };
+      ClientFactoryContext connectionFactoryContext =
+          ClientFactoryContext.fromParameters(
+                  clientParameters
+                      .publishConfirmListener(publishConfirmListener)
+                      .publishErrorListener(publishErrorListener)
+                      .shutdownListener(shutdownListener)
+                      .metadataListener(metadataListener)
+                      .clientProperty("connection_name", "rabbitmq-stream-producer"))
+              .key(owner.name);
+      this.client = cf.client(connectionFactoryContext);
       ref.set(this.client);
     }
 
@@ -580,30 +596,5 @@ class ProducersCoordinator {
         // ok
       }
     }
-  }
-
-  @Override
-  public String toString() {
-    return ("[ \n"
-            + pools.entrySet().stream()
-                .map(
-                    poolEntry ->
-                        "  { 'broker' : '"
-                            + poolEntry.getKey()
-                            + "', 'clients' : [ "
-                            + poolEntry.getValue().managers.stream()
-                                .map(
-                                    manager ->
-                                        "{ 'producer_count' : "
-                                            + manager.producers.size()
-                                            + ", "
-                                            + "  'committing_consumer_count' : "
-                                            + manager.committingConsumerTrackers.size()
-                                            + " }")
-                                .collect(Collectors.joining(", "))
-                            + " ] }")
-                .collect(Collectors.joining(", \n"))
-            + "\n]")
-        .replace("'", "\"");
   }
 }

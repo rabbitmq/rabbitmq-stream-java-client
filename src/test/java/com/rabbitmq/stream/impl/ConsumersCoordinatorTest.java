@@ -29,6 +29,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumersPoolInfo;
+import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,7 +38,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -56,7 +56,7 @@ public class ConsumersCoordinatorTest {
   @Mock StreamEnvironment environment;
   @Mock StreamConsumer consumer;
   @Mock Client locator;
-  @Mock Function<Client.ClientParameters, Client> clientFactory;
+  @Mock ClientFactory clientFactory;
   @Mock Client client;
   @Captor ArgumentCaptor<Byte> subscriptionIdCaptor;
   AutoCloseable mocks;
@@ -122,6 +122,57 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
+  void
+      shouldRetryUntilGettingExactNodeWithAdvertisedHostNameClientFactoryAndNotExactNodeOnFirstTime() {
+    ClientFactory cf =
+        context ->
+            Utils.connectToAdvertisedNodeClientFactory(
+                    context.key(), clientFactory, Duration.ofMillis(1))
+                .client(context);
+    ConsumersCoordinator c =
+        new ConsumersCoordinator(
+            environment, ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT, cf);
+
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+    when(client.serverAdvertisedHost()).thenReturn("foo").thenReturn(replica().get(0).getHost());
+    when(client.serverAdvertisedPort()).thenReturn(42).thenReturn(replica().get(0).getPort());
+
+    c.subscribe(consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
+    verify(clientFactory, times(2)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+  }
+
+  @Test
+  void shouldGetExactNodeImmediatelyWithAdvertisedHostNameClientFactoryAndExactNodeOnFirstTime() {
+    ClientFactory cf =
+        context ->
+            Utils.connectToAdvertisedNodeClientFactory(
+                    context.key(), clientFactory, Duration.ofMillis(1))
+                .client(context);
+    ConsumersCoordinator c =
+        new ConsumersCoordinator(
+            environment, ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT, cf);
+
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+    when(client.serverAdvertisedHost()).thenReturn(replica().get(0).getHost());
+    when(client.serverAdvertisedPort()).thenReturn(replica().get(0).getPort());
+
+    c.subscribe(consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
+  }
+
+  @Test
   void subscribeShouldThrowExceptionWhenNoMetadataForTheStream() {
     assertThatThrownBy(
             () ->
@@ -178,7 +229,7 @@ public class ConsumersCoordinatorTest {
   void subscribeShouldSubscribeToStreamAndDispatchesMessage_UnsubscribeShouldUnsubscribe() {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -191,7 +242,7 @@ public class ConsumersCoordinatorTest {
             OffsetSpecification.first(),
             null,
             (offset, message) -> messageHandlerCalls.incrementAndGet());
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -213,7 +264,7 @@ public class ConsumersCoordinatorTest {
   void subscribeShouldSubscribeToStreamAndDispatchesMessageWithManySubscriptions() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -233,7 +284,7 @@ public class ConsumersCoordinatorTest {
       closingRunnables.add(closingRunnable);
     }
 
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -275,7 +326,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(metadata(null, Collections.emptyList()))
         .thenReturn(metadata(null, replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -288,7 +339,7 @@ public class ConsumersCoordinatorTest {
             OffsetSpecification.first(),
             null,
             (offset, message) -> messageHandlerCalls.incrementAndGet());
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -327,7 +378,7 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -340,7 +391,7 @@ public class ConsumersCoordinatorTest {
             OffsetSpecification.first(),
             null,
             (offset, message) -> messageHandlerCalls.incrementAndGet());
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -384,7 +435,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(metadata(null, Collections.emptyList()))
         .thenReturn(metadata(null, replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -397,7 +448,7 @@ public class ConsumersCoordinatorTest {
             OffsetSpecification.first(),
             null,
             (offset, message) -> messageHandlerCalls.incrementAndGet());
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -439,7 +490,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(metadata(null, replicas()))
         .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -451,7 +502,7 @@ public class ConsumersCoordinatorTest {
         OffsetSpecification.first(),
         null,
         (offset, message) -> messageHandlerCalls.incrementAndGet());
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -483,7 +534,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(metadata(null, replicas()))
         .thenThrow(new IllegalStateException());
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -495,7 +546,7 @@ public class ConsumersCoordinatorTest {
         OffsetSpecification.first(),
         null,
         (offset, message) -> messageHandlerCalls.incrementAndGet());
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -519,7 +570,7 @@ public class ConsumersCoordinatorTest {
   void shouldUseNewClientsForMoreThanMaxSubscriptionsAndCloseClientAfterUnsubscriptions() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
@@ -542,7 +593,7 @@ public class ConsumersCoordinatorTest {
                         (offset, message) -> {}))
             .collect(Collectors.toList());
 
-    verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(2)).client(any());
     verify(client, times(subscriptionCount))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -576,7 +627,7 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas().subList(0, 1)));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -591,7 +642,7 @@ public class ConsumersCoordinatorTest {
                   consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
             });
     // the extra is allocated on another client from the same pool
-    verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(2)).client(any());
     verify(client, times(subscriptionCount))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -607,7 +658,7 @@ public class ConsumersCoordinatorTest {
     coordinator.subscribe(
         consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
 
-    verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(2 + 1)).client(any());
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
   }
@@ -621,7 +672,7 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas().subList(0, 1)));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(), anyString(), any(OffsetSpecification.class), anyInt()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
@@ -636,7 +687,7 @@ public class ConsumersCoordinatorTest {
                   consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
             });
     // the extra is allocated on another client from the same pool
-    verify(clientFactory, times(2)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(2)).client(any());
     verify(client, times(subscriptionCount))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -664,7 +715,7 @@ public class ConsumersCoordinatorTest {
     coordinator.subscribe(
         consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
 
-    verify(clientFactory, times(2 + 1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(2 + 1)).client(any());
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
 
@@ -709,7 +760,7 @@ public class ConsumersCoordinatorTest {
     ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
         ArgumentCaptor.forClass(OffsetSpecification.class);
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
             subscriptionIdCaptor.capture(),
             anyString(),
@@ -720,7 +771,7 @@ public class ConsumersCoordinatorTest {
     Runnable closingRunnable =
         coordinator.subscribe(
             consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
@@ -765,7 +816,7 @@ public class ConsumersCoordinatorTest {
         .thenReturn(metadata(null, Collections.emptyList()))
         .thenReturn(metadata(null, replicas()));
 
-    when(clientFactory.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    when(clientFactory.client(any())).thenReturn(client);
 
     String consumerName = "consumer-name";
     long lastCommittedOffset = 5;
@@ -785,7 +836,7 @@ public class ConsumersCoordinatorTest {
 
     Runnable closingRunnable =
         coordinator.subscribe(consumer, "stream", null, consumerName, (offset, message) -> {});
-    verify(clientFactory, times(1)).apply(any(Client.ClientParameters.class));
+    verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt());
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
@@ -820,5 +871,9 @@ public class ConsumersCoordinatorTest {
 
   List<Client.Broker> replicas() {
     return Arrays.asList(new Client.Broker("replica1", -1), new Client.Broker("replica2", -1));
+  }
+
+  List<Client.Broker> replica() {
+    return replicas().subList(0, 1);
   }
 }

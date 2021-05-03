@@ -16,7 +16,6 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 
-import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
@@ -25,7 +24,13 @@ import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.ChunkListener;
+import com.rabbitmq.stream.impl.Client.CreditNotification;
+import com.rabbitmq.stream.impl.Client.MessageListener;
+import com.rabbitmq.stream.impl.Client.MetadataListener;
+import com.rabbitmq.stream.impl.Client.ShutdownListener;
+import com.rabbitmq.stream.impl.Utils.ClientFactory;
+import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -37,7 +42,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -54,27 +58,14 @@ class ConsumersCoordinator {
   private final Random random = new Random();
   private final StreamEnvironment environment;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
-  private final Function<Client.ClientParameters, Client> clientFactory;
+  private final ClientFactory clientFactory;
   private final int maxConsumersByConnection;
 
   ConsumersCoordinator(
-      StreamEnvironment environment,
-      int maxConsumersByConnection,
-      Function<Client.ClientParameters, Client> clientFactory) {
+      StreamEnvironment environment, int maxConsumersByConnection, ClientFactory clientFactory) {
     this.environment = environment;
-    this.clientFactory =
-        clientParameters -> {
-          ClientParameters parametersCopy = clientParameters.duplicate();
-          Address address = new Address(parametersCopy.host, parametersCopy.port);
-          address = environment.addressResolver().resolve(address);
-          parametersCopy.host(address.host()).port(address.port());
-          return clientFactory.apply(parametersCopy);
-        };
+    this.clientFactory = clientFactory;
     this.maxConsumersByConnection = maxConsumersByConnection;
-  }
-
-  ConsumersCoordinator(StreamEnvironment environment, int maxConsumersByConnection) {
-    this(environment, maxConsumersByConnection, Client::new);
   }
 
   private static String keyForClientSubscription(Client.Broker broker) {
@@ -252,6 +243,32 @@ class ConsumersCoordinator {
     }
   }
 
+  private static final class MessageHandlerContext implements Context {
+
+    private final long offset;
+    private final Consumer consumer;
+
+    private MessageHandlerContext(long offset, Consumer consumer) {
+      this.offset = offset;
+      this.consumer = consumer;
+    }
+
+    @Override
+    public long offset() {
+      return this.offset;
+    }
+
+    @Override
+    public void commit() {
+      this.consumer.commit(this.offset);
+    }
+
+    @Override
+    public Consumer consumer() {
+      return this.consumer;
+    }
+  }
+
   /**
    * Maintains {@link ClientSubscriptionsManager} instances for a given host.
    *
@@ -343,116 +360,117 @@ class ConsumersCoordinator {
       String name = owner.name;
       LOGGER.debug("creating subscription manager on {}", name);
       IntStream.range(0, maxConsumersByConnection).forEach(i -> subscriptionTrackers.add(null));
-      this.client =
-          clientFactory.apply(
-              clientParameters
-                  .clientProperty("connection_name", "rabbitmq-stream-consumer")
-                  .chunkListener(
-                      (client, subscriptionId, offset, messageCount, dataSize) ->
-                          client.credit(subscriptionId, 1))
-                  .creditNotification(
-                      (subscriptionId, responseCode) ->
+      ChunkListener chunkListener =
+          (client, subscriptionId, offset, messageCount, dataSize) ->
+              client.credit(subscriptionId, 1);
+      CreditNotification creditNotification =
+          (subscriptionId, responseCode) ->
+              LOGGER.debug(
+                  "Received credit notification for subscription {}: {}",
+                  subscriptionId,
+                  responseCode);
+      MessageListener messageListener =
+          (subscriptionId, offset, message) -> {
+            SubscriptionTracker subscriptionTracker =
+                subscriptionTrackers.get(subscriptionId & 0xFF);
+            if (subscriptionTracker != null) {
+              subscriptionTracker.offset = offset;
+              subscriptionTracker.messageHandler.handle(
+                  new MessageHandlerContext(offset, subscriptionTracker.consumer), message);
+              // FIXME set offset here as well, best effort to avoid duplicates
+            } else {
+              LOGGER.debug("Could not find stream subscription {}", subscriptionId);
+            }
+          };
+      ShutdownListener shutdownListener =
+          shutdownContext -> {
+            // FIXME should the pool check if it's empty and so remove itself from the
+            // pools data structure?
+            owner.remove(this);
+            if (shutdownContext.isShutdownUnexpected()) {
+              LOGGER.debug(
+                  "Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment",
+                  name);
+              environment
+                  .scheduledExecutorService()
+                  .execute(
+                      () -> {
+                        subscriptionTrackers.stream()
+                            .filter(Objects::nonNull)
+                            .forEach(SubscriptionTracker::detachFromManager);
+                        for (Entry<String, Set<SubscriptionTracker>> entry :
+                            streamToStreamSubscriptions.entrySet()) {
+                          String stream = entry.getKey();
                           LOGGER.debug(
-                              "Received credit notification for subscription {}: {}",
-                              subscriptionId,
-                              responseCode))
-                  .messageListener(
-                      (subscriptionId, offset, message) -> {
-                        SubscriptionTracker subscriptionTracker =
-                            subscriptionTrackers.get(subscriptionId & 0xFF);
-                        if (subscriptionTracker != null) {
-                          subscriptionTracker.offset = offset;
-                          subscriptionTracker.messageHandler.handle(
-                              new MessageHandlerContext(offset, subscriptionTracker.consumer),
-                              message);
-                          // FIXME set offset here as well, best effort to avoid duplicates
-                        } else {
-                          LOGGER.debug("Could not find stream subscription {}", subscriptionId);
+                              "Re-assigning {} consumer(s) to stream {} after disconnection",
+                              entry.getValue().size(),
+                              stream);
+                          assignConsumersToStream(
+                              entry.getValue(),
+                              stream,
+                              attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt),
+                              false);
                         }
-                      })
-                  .shutdownListener(
-                      shutdownContext -> {
-                        // FIXME should the pool check if it's empty and so remove itself from the
-                        // pools data structure?
-                        owner.remove(this);
-                        if (shutdownContext.isShutdownUnexpected()) {
-                          LOGGER.debug(
-                              "Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment",
-                              name);
-                          environment
-                              .scheduledExecutorService()
-                              .execute(
-                                  () -> {
-                                    subscriptionTrackers.stream()
-                                        .filter(Objects::nonNull)
-                                        .forEach(SubscriptionTracker::detachFromManager);
-                                    for (Entry<String, Set<SubscriptionTracker>> entry :
-                                        streamToStreamSubscriptions.entrySet()) {
-                                      String stream = entry.getKey();
-                                      LOGGER.debug(
-                                          "Re-assigning {} consumer(s) to stream {} after disconnection",
-                                          entry.getValue().size(),
-                                          stream);
-                                      assignConsumersToStream(
-                                          entry.getValue(),
-                                          stream,
-                                          attempt ->
-                                              environment
-                                                  .recoveryBackOffDelayPolicy()
-                                                  .delay(attempt),
-                                          false);
-                                    }
-                                  });
-                        }
-                      })
-                  .metadataListener(
-                      (stream, code) -> {
-                        LOGGER.debug(
-                            "Received metadata notification for {}, stream is likely to have become unavailable",
-                            stream);
+                      });
+            }
+          };
+      MetadataListener metadataListener =
+          (stream, code) -> {
+            LOGGER.debug(
+                "Received metadata notification for {}, stream is likely to have become unavailable",
+                stream);
 
-                        Set<SubscriptionTracker> affectedSubscriptions;
-                        synchronized (ClientSubscriptionsManager.this) {
-                          Set<SubscriptionTracker> subscriptions =
-                              streamToStreamSubscriptions.remove(stream);
-                          if (subscriptions != null && !subscriptions.isEmpty()) {
-                            List<SubscriptionTracker> newSubscriptions =
-                                new ArrayList<>(maxConsumersByConnection);
-                            for (int i = 0; i < maxConsumersByConnection; i++) {
-                              newSubscriptions.add(subscriptionTrackers.get(i));
-                            }
-                            for (SubscriptionTracker subscription : subscriptions) {
-                              LOGGER.debug(
-                                  "Subscription {} was at offset {}",
-                                  subscription.subscriptionIdInClient,
-                                  subscription.offset);
-                              newSubscriptions.set(
-                                  subscription.subscriptionIdInClient & 0xFF, null);
-                            }
-                            this.subscriptionTrackers = newSubscriptions;
-                          }
-                          affectedSubscriptions = subscriptions;
-                        }
-                        if (isEmpty()) {
-                          this.owner.remove(this);
-                        }
-                        if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
-                          environment
-                              .scheduledExecutorService()
-                              .execute(
-                                  () -> {
-                                    LOGGER.debug(
-                                        "Trying to move {} subscription(s) (stream {})",
-                                        affectedSubscriptions.size(),
-                                        stream);
-                                    assignConsumersToStream(
-                                        affectedSubscriptions,
-                                        stream,
-                                        metadataUpdateBackOffDelayPolicy(),
-                                        isEmpty());
-                                  });
-                        }
-                      }));
+            Set<SubscriptionTracker> affectedSubscriptions;
+            synchronized (ClientSubscriptionsManager.this) {
+              Set<SubscriptionTracker> subscriptions = streamToStreamSubscriptions.remove(stream);
+              if (subscriptions != null && !subscriptions.isEmpty()) {
+                List<SubscriptionTracker> newSubscriptions =
+                    new ArrayList<>(maxConsumersByConnection);
+                for (int i = 0; i < maxConsumersByConnection; i++) {
+                  newSubscriptions.add(subscriptionTrackers.get(i));
+                }
+                for (SubscriptionTracker subscription : subscriptions) {
+                  LOGGER.debug(
+                      "Subscription {} was at offset {}",
+                      subscription.subscriptionIdInClient,
+                      subscription.offset);
+                  newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
+                }
+                this.subscriptionTrackers = newSubscriptions;
+              }
+              affectedSubscriptions = subscriptions;
+            }
+            if (isEmpty()) {
+              this.owner.remove(this);
+            }
+            if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
+              environment
+                  .scheduledExecutorService()
+                  .execute(
+                      () -> {
+                        LOGGER.debug(
+                            "Trying to move {} subscription(s) (stream {})",
+                            affectedSubscriptions.size(),
+                            stream);
+                        assignConsumersToStream(
+                            affectedSubscriptions,
+                            stream,
+                            metadataUpdateBackOffDelayPolicy(),
+                            isEmpty());
+                      });
+            }
+          };
+      ClientFactoryContext clientFactoryContext =
+          ClientFactoryContext.fromParameters(
+                  clientParameters
+                      .clientProperty("connection_name", "rabbitmq-stream-consumer")
+                      .chunkListener(chunkListener)
+                      .creditNotification(creditNotification)
+                      .messageListener(messageListener)
+                      .shutdownListener(shutdownListener)
+                      .metadataListener(metadataListener))
+              .key(owner.name);
+      this.client = clientFactory.client(clientFactoryContext);
     }
 
     private void assignConsumersToStream(
@@ -680,32 +698,6 @@ class ConsumersCoordinator {
 
         this.client.close();
       }
-    }
-  }
-
-  private static final class MessageHandlerContext implements Context {
-
-    private final long offset;
-    private final Consumer consumer;
-
-    private MessageHandlerContext(long offset, Consumer consumer) {
-      this.offset = offset;
-      this.consumer = consumer;
-    }
-
-    @Override
-    public long offset() {
-      return this.offset;
-    }
-
-    @Override
-    public void commit() {
-      this.consumer.commit(this.offset);
-    }
-
-    @Override
-    public Consumer consumer() {
-      return this.consumer;
     }
   }
 }
