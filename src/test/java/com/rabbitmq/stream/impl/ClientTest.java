@@ -718,4 +718,11 @@ public class ClientTest {
     client.send(out.toByteArray());
     waitAtMost(10, () -> client.isOpen() == false);
   }
+
+  @Test
+  void clientShouldContainServerAdvertisedHostAndPort() {
+    Client client = cf.get();
+    assertThat(client.serverAdvertisedHost()).isNotNull();
+    assertThat(client.serverAdvertisedPort()).isPositive();
+  }
 }
