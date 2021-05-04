@@ -119,8 +119,13 @@ final class Utils {
         clientFactory,
         client -> {
           String currentKey = client.serverAdvertisedHost() + ":" + client.serverAdvertisedPort();
-          LOGGER.debug("Expected client {}, got {}", expectedAdvertisedHostPort, currentKey);
-          return expectedAdvertisedHostPort.equals(currentKey);
+          boolean success = expectedAdvertisedHostPort.equals(currentKey);
+          LOGGER.debug(
+              "Expected client {}, got {}: {}",
+              expectedAdvertisedHostPort,
+              currentKey,
+              success ? "success" : "failure");
+          return success;
         },
         retryInterval);
   }
@@ -150,7 +155,7 @@ final class Utils {
           try {
             client.close();
           } catch (Exception e) {
-            LOGGER.warn("Error while trying to close client: " + e.getMessage());
+            LOGGER.warn("Error while trying to close client", e);
           }
         }
         try {

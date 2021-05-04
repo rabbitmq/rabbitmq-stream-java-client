@@ -42,6 +42,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -360,6 +361,7 @@ class ConsumersCoordinator {
       String name = owner.name;
       LOGGER.debug("creating subscription manager on {}", name);
       IntStream.range(0, maxConsumersByConnection).forEach(i -> subscriptionTrackers.add(null));
+      AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       ChunkListener chunkListener =
           (client, subscriptionId, offset, messageCount, dataSize) ->
               client.credit(subscriptionId, 1);
@@ -386,7 +388,12 @@ class ConsumersCoordinator {
           shutdownContext -> {
             // FIXME should the pool check if it's empty and so remove itself from the
             // pools data structure?
-            owner.remove(this);
+
+            // we may be closing the client because it's not the right node, so the manager
+            // should not be removed from its pool, because it's not really in it already
+            if (clientInitializedInManager.get()) {
+              owner.remove(this);
+            }
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
                   "Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment",
@@ -471,6 +478,7 @@ class ConsumersCoordinator {
                       .metadataListener(metadataListener))
               .key(owner.name);
       this.client = clientFactory.client(clientFactoryContext);
+      clientInitializedInManager.set(true);
     }
 
     private void assignConsumersToStream(

@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -388,6 +389,7 @@ class ProducersCoordinator {
         ManagerPool owner, ClientFactory cf, Client.ClientParameters clientParameters) {
       this.owner = owner;
       AtomicReference<Client> ref = new AtomicReference<>();
+      AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       PublishConfirmListener publishConfirmListener =
           (publisherId, publishingId) -> {
             ProducerTracker producerTracker = producers.get(publisherId);
@@ -408,7 +410,11 @@ class ProducersCoordinator {
           };
       ShutdownListener shutdownListener =
           shutdownContext -> {
-            owner.remove(this);
+            // we may be closing the client because it's not the right node, so the manager
+            // should not be removed from its pool, because it's not really in it already
+            if (clientInitializedInManager.get()) {
+              owner.remove(this);
+            }
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
                   "Recovering {} producers after unexpected connection termination",
@@ -465,6 +471,7 @@ class ProducersCoordinator {
                       .clientProperty("connection_name", "rabbitmq-stream-producer"))
               .key(owner.name);
       this.client = cf.client(connectionFactoryContext);
+      clientInitializedInManager.set(true);
       ref.set(this.client);
     }
 

@@ -255,6 +255,7 @@ public class Client implements AutoCloseable {
 
     ChannelFuture f;
     try {
+      LOGGER.debug("Trying to create stream connection to {}:{}", parameters.host, parameters.port);
       f = b.connect(parameters.host, parameters.port).sync();
       this.host = parameters.host;
       this.port = parameters.port;

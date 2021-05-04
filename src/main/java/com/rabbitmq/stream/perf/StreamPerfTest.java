@@ -17,6 +17,8 @@ package com.rabbitmq.stream.perf;
 import static java.lang.String.format;
 
 import com.google.common.util.concurrent.RateLimiter;
+import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
@@ -31,12 +33,15 @@ import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
+import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
 import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -51,6 +56,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -245,6 +251,12 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.OneTo255RangeIntegerTypeConverter.class)
   private int consumersByConnection;
 
+  @CommandLine.Option(
+      names = {"--load-balancer", "-lb"},
+      description = "assume URIs point to a load balancer",
+      defaultValue = "false")
+  private boolean loadBalancer;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
 
@@ -285,7 +297,7 @@ public class StreamPerfTest implements Callable<Integer> {
             System.getProperty("java.vendor"),
             System.getProperty("java.home"),
             Locale.getDefault().toString(),
-            Charset.defaultCharset().toString(),
+            Charset.defaultCharset(),
             System.getProperty("os.name"),
             System.getProperty("os.version"),
             System.getProperty("os.arch"));
@@ -335,9 +347,36 @@ public class StreamPerfTest implements Callable<Integer> {
     shutdownService.wrap(
         closeStep("Closing environment executor", () -> envExecutor.shutdownNow()));
 
+    AddressResolver addressResolver;
+    if (loadBalancer) {
+      List<Address> addresses =
+          this.uris.stream()
+              .map(
+                  uri -> {
+                    try {
+                      return new URI(uri);
+                    } catch (URISyntaxException e) {
+                      throw new IllegalArgumentException(
+                          "Error while parsing URI " + uri + ": " + e.getMessage());
+                    }
+                  })
+              .map(
+                  uriItem ->
+                      new Address(
+                          uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
+                          uriItem.getPort() == -1 ? Client.DEFAULT_PORT : uriItem.getPort()))
+              .collect(Collectors.toList());
+      AtomicInteger connectionAttemptCount = new AtomicInteger(0);
+      addressResolver =
+          address -> addresses.get(connectionAttemptCount.getAndIncrement() % addresses.size());
+    } else {
+      addressResolver = address -> address;
+    }
+
     Environment environment =
         Environment.builder()
             .uris(this.uris)
+            .addressResolver(addressResolver)
             .scheduledExecutorService(envExecutor)
             .metricsCollector(metricsCollector)
             .maxProducersByConnection(this.producersByConnection)
