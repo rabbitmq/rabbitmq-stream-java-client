@@ -260,7 +260,6 @@ public class PublisherTest {
     assertThat(c.queryPublisherSequence(publisherReference, stream)).isEqualTo(0);
 
     publishLatch.set(new CountDownLatch(messageCount));
-    c.declarePublisher(b(1), null, stream);
     IntConsumer publishing =
         i ->
             c.publish(
