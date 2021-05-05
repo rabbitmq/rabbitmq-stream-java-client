@@ -50,7 +50,7 @@
     <logback.version>1.2.3</logback.version>
     <netty.version>4.1.63.Final</netty.version>
     <proton-j.version>0.33.8</proton-j.version>
-    <metrics.version>4.1.20</metrics.version>
+    <metrics.version>4.1.21</metrics.version>
     <micrometer.version>1.6.6</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.6.1</picocli.version>
