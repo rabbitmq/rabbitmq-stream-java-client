@@ -20,9 +20,6 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codahale.metrics.Histogram;
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.MetricRegistry;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
@@ -472,25 +469,16 @@ public class ClientTest {
   @Test
   void publishAndConsume() throws Exception {
     int publishCount = 1000000;
-    MetricRegistry metrics = new MetricRegistry();
-    Meter consumed = metrics.meter("consumed");
-    Meter published = metrics.meter("published");
-    Histogram chunkSize = metrics.histogram("chunk.size");
 
     CountDownLatch consumedLatch = new CountDownLatch(publishCount);
     Client.ChunkListener chunkListener =
         (client, correlationId, offset, messageCount, dataSize) -> {
-          chunkSize.update(messageCount);
           if (consumedLatch.getCount() != 0) {
             client.credit(correlationId, 1);
           }
         };
 
-    Client.MessageListener messageListener =
-        (corr, offset, data) -> {
-          consumed.mark();
-          consumedLatch.countDown();
-        };
+    Client.MessageListener messageListener = (corr, offset, data) -> consumedLatch.countDown();
 
     Client client =
         cf.get(
@@ -518,7 +506,6 @@ public class ClientTest {
                             .messageBuilder()
                             .addData(("message" + messageId).getBytes(StandardCharsets.UTF_8))
                             .build()));
-                published.mark();
               }
             })
         .start();
