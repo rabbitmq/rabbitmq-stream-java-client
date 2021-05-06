@@ -14,7 +14,7 @@ cp target/generated-docs/index.html snapshot/htmlsingle
 mkdir -p snapshot/pdf
 cp target/generated-docs/index.pdf snapshot/pdf
 mkdir -p snapshot/api
-cp -r target/site/apidocs/* /snapshot/api/
+cp -r target/site/apidocs/* snapshot/api/
 git add snapshot/
 git commit -m "$MESSAGE"
 git push origin gh-pages
