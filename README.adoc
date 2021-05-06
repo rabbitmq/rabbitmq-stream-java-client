@@ -37,7 +37,7 @@ The library requires Java 8 or more.
 === Documentation
 
 * https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[Reference documentation]
-* file:///home/acogoluegnes/prog/rabbitmq/rabbitmq-stream-java-client/target/site/apidocs/index.html[API documentation]
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/api/com/rabbitmq/stream/package-summary.html[API documentation]
 
 == Build Instructions
 
