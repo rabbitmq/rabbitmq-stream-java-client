@@ -14,6 +14,12 @@
 
 package com.rabbitmq.stream;
 
+/**
+ * The status to confirm or fail a message.
+ *
+ * @see ConfirmationHandler
+ * @see Producer#send(Message, ConfirmationHandler)
+ */
 public class ConfirmationStatus {
 
   private final Message message;
@@ -32,10 +38,19 @@ public class ConfirmationStatus {
     return message;
   }
 
+  /**
+   * Whether the message is confirmed or not.
+   * @return true if the message is confirmed by the broker, false otherwise
+   */
   public boolean isConfirmed() {
     return confirmed;
   }
 
+  /**
+   * The status code.
+   * @return status code
+   * @see Constants
+   */
   public short getCode() {
     return code;
   }

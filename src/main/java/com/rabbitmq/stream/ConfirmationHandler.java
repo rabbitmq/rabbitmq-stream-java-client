@@ -14,7 +14,17 @@
 
 package com.rabbitmq.stream;
 
+/**
+ * Callback API to confirm or fail a message.
+ *
+ * @see Producer#send(Message, ConfirmationHandler)
+ * @see ConfirmationStatus
+ */
 public interface ConfirmationHandler {
 
+  /**
+   * Callback to confirm or fail a message.
+   * @param confirmationStatus the status
+   */
   void handle(ConfirmationStatus confirmationStatus);
 }

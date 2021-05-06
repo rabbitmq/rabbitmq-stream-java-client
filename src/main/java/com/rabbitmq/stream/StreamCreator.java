@@ -16,33 +16,71 @@ package com.rabbitmq.stream;
 
 import java.time.Duration;
 
+/** API to configure and create a stream. */
 public interface StreamCreator {
 
+  /**
+   * The name of the stream
+   *
+   * @param stream
+   * @return this creator instance
+   */
   StreamCreator stream(String stream);
 
+  /**
+   * The maximum size of the stream before it gets truncated.
+   *
+   * @param byteCapacity
+   * @return this creator instance
+   */
   StreamCreator maxLengthBytes(ByteCapacity byteCapacity);
 
+  /**
+   * The maximum size of each stream segments.
+   *
+   * @param byteCapacity
+   * @return this creator instance
+   */
   StreamCreator maxSegmentSizeBytes(ByteCapacity byteCapacity);
 
+  /**
+   * The maximum age of a stream before it gets truncated.
+   *
+   * @param maxAge
+   * @return this creator instance
+   */
   StreamCreator maxAge(Duration maxAge);
 
+  /**
+   * The {@link LeaderLocator} strategy.
+   *
+   * @param leaderLocator
+   * @return this creator instance
+   */
   StreamCreator leaderLocator(LeaderLocator leaderLocator);
 
+  /**
+   * Create the stream.
+   *
+   * <p>This method is idempotent: the stream exists when it returns.
+   */
   void create();
 
+  /** The leader locator strategy. */
   enum LeaderLocator {
+    /** The stream leader will be on the node the client is connected to. */
     CLIENT_LOCAL("client-local"),
+
+    /** The stream leader will be a randon node of the cluster. */
     RANDOM("random"),
+
+    /** The stream leader will be on the node with the least number of stream leaders. */
     LEAST_LEADERS("least-leaders");
 
     String value;
 
     LeaderLocator(String value) {
       this.value = value;
-    }
-
-    public String value() {
-      return this.value;
     }
 
     public static LeaderLocator from(String value) {
@@ -52,6 +90,10 @@ public interface StreamCreator {
         }
       }
       throw new IllegalArgumentException("Unknown leader locator value: " + value);
+    }
+
+    public String value() {
+      return this.value;
     }
   }
 }

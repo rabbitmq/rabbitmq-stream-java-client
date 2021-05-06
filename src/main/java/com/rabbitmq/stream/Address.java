@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream;
 
+/** Utility class to represent a hostname and a port. */
 public class Address {
 
   private final String host;

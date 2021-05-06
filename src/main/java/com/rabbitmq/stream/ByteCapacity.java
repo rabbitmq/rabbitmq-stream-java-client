@@ -21,6 +21,9 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * API to easily configure byte capacities.
+ */
 public class ByteCapacity {
 
   private static final String UNIT_MB = "mb";

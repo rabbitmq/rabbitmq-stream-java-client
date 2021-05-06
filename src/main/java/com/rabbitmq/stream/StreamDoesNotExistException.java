@@ -14,6 +14,9 @@
 
 package com.rabbitmq.stream;
 
+/**
+ * Exception to indicate a stream does not exist.
+ */
 public class StreamDoesNotExistException extends StreamException {
 
   private final String stream;

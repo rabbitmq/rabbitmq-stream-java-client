@@ -36,6 +36,11 @@
     </developer>
   </developers>
 
+  <organization>
+    <name>VMware, Inc. or its affiliates.</name>
+    <url>https://www.rabbitmq.com</url>
+  </organization>
+
   <scm>
     <url>https://github.com/rabbitmq/rabbitmq-stream-java-client</url>
     <connection>scm:git:git://github.com/rabbitmq/rabbitmq-stream-java-client.git</connection>
@@ -330,6 +335,18 @@
       </plugin>
 
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>${maven-javadoc-plugin.version}</version>
+        <configuration>
+          <quiet>true</quiet>
+          <source>8</source>
+          <additionalOptions>-Xdoclint:none</additionalOptions>
+          <additionalJOption>${javadoc.joption}</additionalJOption>
+        </configuration>
+      </plugin>
+
+      <plugin>
         <groupId>org.asciidoctor</groupId>
         <artifactId>asciidoctor-maven-plugin</artifactId>
         <version>${asciidoctor.maven.plugin.version}</version>
@@ -613,24 +630,7 @@
               </execution>
             </executions>
           </plugin>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-javadoc-plugin</artifactId>
-            <version>${maven-javadoc-plugin.version}</version>
-            <configuration>
-              <quiet>true</quiet>
-              <source>8</source>
-              <additionalOptions>-Xdoclint:none</additionalOptions>
-              <additionalJOption>${javadoc.joption}</additionalJOption>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
+
         </plugins>
       </build>
       <distributionManagement>

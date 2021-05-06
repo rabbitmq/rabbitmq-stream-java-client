@@ -17,20 +17,74 @@ package com.rabbitmq.stream;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+/**
+ * API to configure and create a {@link Message}.
+ *
+ * <p>A {@link MessageBuilder} is meant to create only one message, it should not be re-used for
+ * several message instances.
+ *
+ * <p>Please see section 3.2 "message format" of the AMQP 1.0 specification to find out about the
+ * exact meaning of the message sections.
+ *
+ * @see Message
+ */
 public interface MessageBuilder {
 
+  /**
+   * Create the message.
+   *
+   * @return the message
+   */
   Message build();
 
+  /**
+   * Set the publishing ID (for de-duplication).
+   *
+   * <p>This is value is used only for outbound messages and is not persisted.
+   *
+   * @param publishingId
+   * @return this builder instance
+   */
   MessageBuilder publishingId(long publishingId);
 
+  /**
+   * The builder for {@link Properties}.
+   *
+   * @return the properties builder
+   * @see Message#getProperties()
+   */
   PropertiesBuilder properties();
 
+  /**
+   * The builder to set application properties.
+   *
+   * @return the application properties builder
+   * @see Message#getApplicationProperties()
+   */
   ApplicationPropertiesBuilder applicationProperties();
 
+  /**
+   * The builder to set message annotations.
+   *
+   * @return the message annotations builder
+   * @see Message#getMessageAnnotations()
+   */
   MessageAnnotationsBuilder messageAnnotations();
 
+  /**
+   * Set binary data of the message.
+   *
+   * @param data
+   * @return this builder instance
+   * @see Message#getBodyAsBinary()
+   */
   MessageBuilder addData(byte[] data);
 
+  /**
+   * API to set application properties.
+   *
+   * @see Message#getApplicationProperties()
+   */
   interface ApplicationPropertiesBuilder {
 
     ApplicationPropertiesBuilder entry(String key, boolean value);
@@ -73,9 +127,19 @@ public interface MessageBuilder {
 
     ApplicationPropertiesBuilder entrySymbol(String key, String value);
 
+    /**
+     * Go back to the message builder
+     *
+     * @return the message builder
+     */
     MessageBuilder messageBuilder();
   }
 
+  /**
+   * API to set message annotations.
+   *
+   * @see Message#getMessageAnnotations()
+   */
   interface MessageAnnotationsBuilder {
 
     MessageAnnotationsBuilder entry(String key, boolean value);
@@ -118,49 +182,178 @@ public interface MessageBuilder {
 
     MessageAnnotationsBuilder entrySymbol(String key, String value);
 
+    /**
+     * Go back to the message builder
+     *
+     * @return the message builder
+     */
     MessageBuilder messageBuilder();
   }
 
+  /**
+   * API to set message properties.
+   *
+   * @see Message#getProperties()
+   */
   interface PropertiesBuilder {
 
+    /**
+     * Set the message ID as a string.
+     *
+     * @param id
+     * @return this properties builder
+     */
     PropertiesBuilder messageId(String id);
 
+    /**
+     * Set the message ID as long.
+     *
+     * @param id
+     * @return this properties builder
+     */
     PropertiesBuilder messageId(long id);
 
+    /**
+     * Set the message ID as an array of bytes.
+     *
+     * @param id
+     * @return this properties builder
+     */
     PropertiesBuilder messageId(byte[] id);
 
+    /**
+     * Set the message ID as an UUID.
+     *
+     * @param id
+     * @return this properties builder
+     */
     PropertiesBuilder messageId(UUID id);
 
+    /**
+     * Set the user ID.
+     *
+     * @param userId
+     * @return this properties builder
+     */
     PropertiesBuilder userId(byte[] userId);
 
+    /**
+     * Set the to address.
+     *
+     * @param address
+     * @return this properties builder
+     */
     PropertiesBuilder to(String address);
 
+    /**
+     * Set the subject.
+     *
+     * @param subject
+     * @return this properties builder
+     */
     PropertiesBuilder subject(String subject);
 
+    /**
+     * Set the reply to address.
+     *
+     * @param replyTo
+     * @return this properties builder
+     */
     PropertiesBuilder replyTo(String replyTo);
 
+    /**
+     * Set the correlation ID as a string.
+     *
+     * @param correlationId
+     * @return this properties builder
+     */
     PropertiesBuilder correlationId(String correlationId);
 
+    /**
+     * Set the correlation ID as a long.
+     *
+     * @param correlationId
+     * @return this properties builder
+     */
     PropertiesBuilder correlationId(long correlationId);
 
+    /**
+     * Set the correlation ID as an array of bytes.
+     *
+     * @param correlationId
+     * @return this properties builder
+     */
     PropertiesBuilder correlationId(byte[] correlationId);
 
+    /**
+     * Set the correlation ID as an UUID.
+     *
+     * @param correlationId
+     * @return this properties builder
+     */
     PropertiesBuilder correlationId(UUID correlationId);
 
+    /**
+     * Set the content type.
+     *
+     * @param contentType
+     * @return this properties builder
+     */
     PropertiesBuilder contentType(String contentType);
 
+    /**
+     * Set the content encoding.
+     *
+     * @param contentEncoding
+     * @return this properties builder
+     */
     PropertiesBuilder contentEncoding(String contentEncoding);
 
+    /**
+     * Set the expiry time.
+     *
+     * @param absoluteExpiryTime
+     * @return this properties builder
+     */
     PropertiesBuilder absoluteExpiryTime(long absoluteExpiryTime);
 
+    /**
+     * Set the creation time.
+     *
+     * @param creationTime
+     * @return this properties builder
+     */
     PropertiesBuilder creationTime(long creationTime);
 
+    /**
+     * Set the group ID.
+     *
+     * @param groupId
+     * @return this properties builder
+     */
     PropertiesBuilder groupId(String groupId);
 
+    /**
+     * Set the group sequence.
+     *
+     * @param groupSequence
+     * @return this properties builder
+     */
     PropertiesBuilder groupSequence(long groupSequence);
 
+    /**
+     * Set the reply-to group ID.
+     *
+     * @param replyToGroupId
+     * @return this properties builder
+     */
     PropertiesBuilder replyToGroupId(String replyToGroupId);
 
+    /**
+     * Go back to the message builder.
+     *
+     * @return the message builder
+     */
     MessageBuilder messageBuilder();
   }
 }

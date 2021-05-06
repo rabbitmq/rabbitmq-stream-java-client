@@ -16,6 +16,7 @@ package com.rabbitmq.stream;
 
 import java.util.Objects;
 
+/** API to specify an offset in a stream. */
 public class OffsetSpecification {
 
   private static final short TYPE_FIRST = 1;
@@ -39,22 +40,53 @@ public class OffsetSpecification {
     this.offset = offset;
   }
 
+  /**
+   * The first available offset in the stream.
+   *
+   * <p>If the stream has not been truncated, this means the beginning of the stream (offset 0).
+   *
+   * @return first offset in a stream
+   */
   public static OffsetSpecification first() {
     return FIRST;
   }
 
+  /**
+   * The last chunk of messages in the stream.
+   *
+   * @return the offset of the last chunk of messages
+   */
   public static OffsetSpecification last() {
     return LAST;
   }
 
+  /**
+   * The next offset to be written, that is the end of the stream.
+   *
+   * @return The next offset to be written
+   */
   public static OffsetSpecification next() {
     return NEXT;
   }
 
+  /**
+   * A specific offset in the stream.
+   *
+   * <p>The first offset of a non-truncated stream is 0.
+   *
+   * @param offset
+   * @return the absolute offset
+   */
   public static OffsetSpecification offset(long offset) {
     return new OffsetSpecification(TYPE_OFFSET, offset);
   }
 
+  /**
+   * Offset of messages stored after the specified timestamp.
+   *
+   * @param timestamp
+   * @return messages stored after the specified timestamp
+   */
   public static OffsetSpecification timestamp(long timestamp) {
     return new OffsetSpecification(TYPE_TIMESTAMP, timestamp);
   }

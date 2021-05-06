@@ -22,17 +22,17 @@ import java.util.function.Supplier;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
-public class JdkChunkChecksum implements ChunkChecksum {
+class JdkChunkChecksum implements ChunkChecksum {
 
   private static final Supplier<Checksum> CRC32_SUPPLIER = CRC32::new;
   static final ChunkChecksum CRC32_SINGLETON = new JdkChunkChecksum(CRC32_SUPPLIER);
   private final Supplier<Checksum> checksumSupplier;
 
-  public JdkChunkChecksum() {
+  JdkChunkChecksum() {
     this(CRC32_SUPPLIER);
   }
 
-  public JdkChunkChecksum(Supplier<Checksum> checksumSupplier) {
+  JdkChunkChecksum(Supplier<Checksum> checksumSupplier) {
     this.checksumSupplier = checksumSupplier;
   }
 

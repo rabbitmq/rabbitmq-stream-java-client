@@ -14,6 +14,11 @@
 
 package com.rabbitmq.stream;
 
+/**
+ * Codec to encode and decode messages.
+ *
+ * The codec is expected to use the AMQP 1.0 message format.
+ */
 public interface Codec {
 
   EncodedMessage encode(Message message);

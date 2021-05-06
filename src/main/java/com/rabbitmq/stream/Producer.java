@@ -14,14 +14,45 @@
 
 package com.rabbitmq.stream;
 
+/**
+ * API to send message to a RabbitMQ Stream.
+ *
+ * <p>Instances are created and configured with a {@link ProducerBuilder}.
+ *
+ * @see ProducerBuilder
+ * @see Environment#producerBuilder()
+ */
 public interface Producer extends AutoCloseable {
 
+  /**
+   * Return a {@link MessageBuilder} to create a {@link Message}.
+   *
+   * <p>A {@link MessageBuilder} instance is meant to create only {@link Message} instance.
+   *
+   * @return a single-usage {@link MessageBuilder}
+   * @see MessageBuilder
+   */
   MessageBuilder messageBuilder();
 
+  /**
+   * Get the last publishing ID for a named producer.
+   *
+   * <p>The value can be mapped to a business index to restart publishing where a previous
+   * incarnation of the producer left off.
+   *
+   * @return the last publishing ID for this named producer
+   */
   long getLastPublishingId();
 
+  /**
+   * Publish a message.
+   *
+   * @param message the message
+   * @param confirmationHandler the callback when the message is confirmed or failed
+   */
   void send(Message message, ConfirmationHandler confirmationHandler);
 
+  /** Close the producer. */
   @Override
   void close();
 }

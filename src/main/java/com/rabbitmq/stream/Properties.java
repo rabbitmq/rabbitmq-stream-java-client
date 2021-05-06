@@ -16,6 +16,12 @@ package com.rabbitmq.stream;
 
 import java.util.UUID;
 
+/**
+ * Message properties.
+ *
+ * <p>Please see section 3.2 "message format" of the AMQP 1.0 specification to find out about the
+ * exact meaning of the message sections.
+ */
 public interface Properties {
 
   Object getMessageId();

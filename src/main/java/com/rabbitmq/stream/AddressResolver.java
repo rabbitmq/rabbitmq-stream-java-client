@@ -14,7 +14,18 @@
 
 package com.rabbitmq.stream;
 
+/**
+ * API to potentially change resolved node address to connect to
+ *
+ * @see EnvironmentBuilder#addressResolver(AddressResolver)
+ */
 public interface AddressResolver {
 
+  /**
+   * Compute an address to connect to.
+   *
+   * @param address address hint
+   * @return address to connect to
+   */
   Address resolve(Address address);
 }

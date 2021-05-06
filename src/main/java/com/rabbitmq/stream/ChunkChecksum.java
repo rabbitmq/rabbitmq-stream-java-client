@@ -16,6 +16,11 @@ package com.rabbitmq.stream;
 
 import io.netty.buffer.ByteBuf;
 
+/**
+ * API to check the content of message chunks.
+ * 
+ * @see EnvironmentBuilder#chunkChecksum(ChunkChecksum) 
+ */
 public interface ChunkChecksum {
 
   ChunkChecksum NO_OP = (byteBuf, dataLength, expected) -> {};

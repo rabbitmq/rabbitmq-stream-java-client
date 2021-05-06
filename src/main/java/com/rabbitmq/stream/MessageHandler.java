@@ -14,16 +14,45 @@
 
 package com.rabbitmq.stream;
 
+/**
+ * Callback API for inbound messages.
+ *
+ * @see ConsumerBuilder#messageHandler(MessageHandler)
+ * @see Consumer
+ */
 public interface MessageHandler {
 
+  /**
+   * Callback for an inbound message.
+   *
+   * @param context context on the message
+   * @param message the message
+   */
   void handle(Context context, Message message);
 
+  /** Information about the message. */
   interface Context {
 
+    /**
+     * The offset of the message in the stream.
+     *
+     * @return
+     */
     long offset();
 
+    /**
+     * Shortcut to send a commit for the message offset.
+     *
+     * @see Consumer#commit(long)
+     */
     void commit();
 
+    /**
+     * The consumer that receives the message.
+     *
+     * @return
+     * @see Consumer#commit(long)
+     */
     Consumer consumer();
   }
 }
