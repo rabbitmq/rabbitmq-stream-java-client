@@ -40,6 +40,7 @@ public class ConfirmationStatus {
 
   /**
    * Whether the message is confirmed or not.
+   *
    * @return true if the message is confirmed by the broker, false otherwise
    */
   public boolean isConfirmed() {
@@ -48,6 +49,7 @@ public class ConfirmationStatus {
 
   /**
    * The status code.
+   *
    * @return status code
    * @see Constants
    */

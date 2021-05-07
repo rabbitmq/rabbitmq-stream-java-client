@@ -20,6 +20,7 @@ import java.time.Duration;
  * Contract to determine a delay between attempts of some task.
  *
  * <p>The task is typically the creation of a connection.
+ *
  * @see EnvironmentBuilder#recoveryBackOffDelayPolicy(BackOffDelayPolicy)
  * @see EnvironmentBuilder#topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy)
  */

@@ -14,9 +14,7 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Indicate a checksum error for a chunk.
- */
+/** Indicate a checksum error for a chunk. */
 public class ChunkChecksumValidationException extends StreamException {
 
   private final long expected;

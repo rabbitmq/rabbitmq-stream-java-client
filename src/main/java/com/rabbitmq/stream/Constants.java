@@ -14,9 +14,7 @@
 
 package com.rabbitmq.stream;
 
-/**
- * Various constants (response codes, errors, etc)
- */
+/** Various constants (response codes, errors, etc) */
 public final class Constants {
 
   public static final short RESPONSE_CODE_OK = 1;

@@ -18,8 +18,8 @@ import io.netty.channel.Channel;
 
 /**
  * An extension point to customize Netty's {@link io.netty.channel.Channel}s used for connection.
- * 
- * @see EnvironmentBuilder#channelCustomizer(ChannelCustomizer) 
+ *
+ * @see EnvironmentBuilder#channelCustomizer(ChannelCustomizer)
  */
 public interface ChannelCustomizer {
 

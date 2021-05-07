@@ -18,8 +18,8 @@ import io.netty.buffer.ByteBuf;
 
 /**
  * API to check the content of message chunks.
- * 
- * @see EnvironmentBuilder#chunkChecksum(ChunkChecksum) 
+ *
+ * @see EnvironmentBuilder#chunkChecksum(ChunkChecksum)
  */
 public interface ChunkChecksum {
 

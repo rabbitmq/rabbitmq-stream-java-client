@@ -17,7 +17,7 @@ package com.rabbitmq.stream;
 /**
  * API to consume messages from a RabbitMQ Stream.
  *
- * Instances are configured and created with a {@link ConsumerBuilder}.
+ * <p>Instances are configured and created with a {@link ConsumerBuilder}.
  *
  * @see ConsumerBuilder
  * @see Environment#consumerBuilder()
@@ -26,13 +26,12 @@ public interface Consumer extends AutoCloseable {
 
   /**
    * Commit the offset.
+   *
    * @param offset
    */
   void commit(long offset);
 
-  /**
-   * Close the consumer.
-   */
+  /** Close the consumer. */
   @Override
   void close();
 }

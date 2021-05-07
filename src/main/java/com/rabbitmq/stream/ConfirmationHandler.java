@@ -24,6 +24,7 @@ public interface ConfirmationHandler {
 
   /**
    * Callback to confirm or fail a message.
+   *
    * @param confirmationStatus the status
    */
   void handle(ConfirmationStatus confirmationStatus);

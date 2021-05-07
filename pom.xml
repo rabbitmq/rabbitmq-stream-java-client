@@ -69,8 +69,6 @@
     <gson.version>2.8.6</gson.version>
     <vavr.version>0.10.3</vavr.version>
     <paho.version>1.2.5</paho.version>
-    <spring.version>5.3.6</spring.version>
-    <reactor-netty.version>1.0.6</reactor-netty.version>
     <maven.compiler.plugin.version>3.8.1</maven.compiler.plugin.version>
     <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
     <spring-boot-maven-plugin.version>2.3.3.RELEASE</spring-boot-maven-plugin.version>
@@ -211,47 +209,6 @@
       <groupId>org.eclipse.paho</groupId>
       <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
       <version>${paho.version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-messaging</artifactId>
-      <version>${spring.version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-context</artifactId>
-      <version>${spring.version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>io.projectreactor.netty</groupId>
-      <artifactId>reactor-netty</artifactId>
-      <version>${reactor-netty.version}</version>
-      <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>io.netty</groupId>
-          <artifactId>*</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-
-    <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-resolver-dns</artifactId>
-      <version>${netty.version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-transport-native-unix-common</artifactId>
-      <version>${netty.version}</version>
       <scope>test</scope>
     </dependency>
 
