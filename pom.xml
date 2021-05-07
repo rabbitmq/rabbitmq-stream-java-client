@@ -86,7 +86,7 @@
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jruby.version>9.2.13.0</jruby.version>
     <jmh.version>1.29</jmh.version>
-    <spotless.version>2.2.0</spotless.version>
+    <spotless.version>2.11.0</spotless.version>
     <!-- to sign artifacts when releasing -->
     <gpg.keyname>6026DFCA</gpg.keyname>
     <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
@@ -413,7 +413,7 @@
             </excludes>
 
             <googleJavaFormat>
-              <version>1.9</version>
+              <version>1.10.0</version>
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
