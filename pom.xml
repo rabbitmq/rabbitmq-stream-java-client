@@ -85,7 +85,7 @@
     <asciidoctorj.diagram.version>2.0.2</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jruby.version>9.2.13.0</jruby.version>
-    <jmh.version>1.29</jmh.version>
+    <jmh.version>1.30</jmh.version>
     <spotless.version>2.11.0</spotless.version>
     <!-- to sign artifacts when releasing -->
     <gpg.keyname>6026DFCA</gpg.keyname>
