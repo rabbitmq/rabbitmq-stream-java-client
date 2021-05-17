@@ -60,9 +60,9 @@
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.6.1</picocli.version>
     <guava.version>30.1.1-jre</guava.version>
-    <junit.jupiter.version>5.7.1</junit.jupiter.version>
+    <junit.jupiter.version>5.7.2</junit.jupiter.version>
     <assertj.version>3.19.0</assertj.version>
-    <mockito.version>3.9.0</mockito.version>
+    <mockito.version>3.10.0</mockito.version>
     <amqp-client.version>5.12.0</amqp-client.version>
     <commons-lang3.version>3.12.0</commons-lang3.version>
     <commons-codec.version>1.15</commons-codec.version>
@@ -85,7 +85,7 @@
     <asciidoctorj.diagram.version>2.0.2</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jruby.version>9.2.13.0</jruby.version>
-    <jmh.version>1.30</jmh.version>
+    <jmh.version>1.31</jmh.version>
     <spotless.version>2.11.0</spotless.version>
     <!-- to sign artifacts when releasing -->
     <gpg.keyname>6026DFCA</gpg.keyname>
