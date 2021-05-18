@@ -914,6 +914,30 @@ public class Client implements AutoCloseable {
    */
   public Response subscribe(
       byte subscriptionId, String stream, OffsetSpecification offsetSpecification, int credit) {
+    return this.subscribe(
+        subscriptionId, stream, offsetSpecification, credit, Collections.emptyMap());
+  }
+
+  /**
+   * Subscribe to receive messages from a stream.
+   *
+   * <p>Note the offset is an unsigned long. Longs are signed in Java, but unsigned longs can be
+   * used as long as some care is taken for some operations. See the <code>unsigned*</code> static
+   * methods in {@link Long}.
+   *
+   * @param subscriptionId identifier to correlate inbound messages to this subscription
+   * @param stream the stream to consume from
+   * @param offsetSpecification the specification of the offset to consume from
+   * @param credit the initial number of credits
+   * @param properties some optional properties to describe the subscription
+   * @return the subscription confirmation
+   */
+  public Response subscribe(
+      byte subscriptionId,
+      String stream,
+      OffsetSpecification offsetSpecification,
+      int credit,
+      Map<String, String> properties) {
     if (credit < 0 || credit > Short.MAX_VALUE) {
       throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
     }
@@ -921,6 +945,14 @@ public class Client implements AutoCloseable {
     if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
       length += 8;
     }
+    int propertiesSize = 0;
+    if (properties != null && !properties.isEmpty()) {
+      propertiesSize = 4; // size of the map
+      for (Map.Entry<String, String> entry : properties.entrySet()) {
+        propertiesSize += 2 + entry.getKey().length() + 2 + entry.getValue().length();
+      }
+    }
+    length += propertiesSize;
     int correlationId = correlationSequence.getAndIncrement();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -936,6 +968,15 @@ public class Client implements AutoCloseable {
         bb.writeLong(offsetSpecification.getOffset());
       }
       bb.writeShort(credit);
+      if (properties != null && !properties.isEmpty()) {
+        bb.writeInt(properties.size());
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+          bb.writeShort(entry.getKey().length())
+              .writeBytes(entry.getKey().getBytes(StandardCharsets.UTF_8))
+              .writeShort(entry.getValue().length())
+              .writeBytes(entry.getValue().getBytes(StandardCharsets.UTF_8));
+        }
+      }
       OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
       outstandingRequests.put(correlationId, request);
       if (offsetSpecification.isOffset()) {

@@ -26,6 +26,7 @@ import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,8 +36,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class OffsetTest {
@@ -45,8 +49,21 @@ public class OffsetTest {
   TestUtils.ClientFactory cf;
   EventLoopGroup eventLoopGroup;
 
-  @Test
-  void offsetTypeFirstShouldStartConsumingFromBeginning() throws Exception {
+  static Stream<Map<String, String>> subscriptionProperties() {
+    return Stream.of(Collections.emptyMap(), subscriptionMap());
+  }
+
+  static Map<String, String> subscriptionMap() {
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("key1", "value1");
+    map.put("key2", "value2");
+    return map;
+  }
+
+  @ParameterizedTest
+  @MethodSource("subscriptionProperties")
+  void offsetTypeFirstShouldStartConsumingFromBeginning(Map<String, String> subscriptionProperties)
+      throws Exception {
     int messageCount = 50000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
     CountDownLatch latch = new CountDownLatch(messageCount);
@@ -64,7 +81,7 @@ public class OffsetTest {
                       last.set(offset1);
                       latch.countDown();
                     }));
-    client.subscribe(b(1), stream, OffsetSpecification.first(), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.first(), 10, subscriptionProperties);
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(first.get()).isEqualTo(0);
     assertThat(last.get()).isEqualTo(messageCount - 1);
@@ -99,8 +116,10 @@ public class OffsetTest {
     }
   }
 
-  @Test
-  void offsetTypeLastShouldReturnLastChunk() throws Exception {
+  @ParameterizedTest
+  @MethodSource("subscriptionProperties")
+  void offsetTypeLastShouldReturnLastChunk(Map<String, String> subscriptionProperties)
+      throws Exception {
     int messageCount = 50000;
     long lastOffset = messageCount - 1;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
@@ -126,7 +145,7 @@ public class OffsetTest {
                         latch.countDown();
                       }
                     }));
-    client.subscribe(b(1), stream, OffsetSpecification.last(), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.last(), 10, subscriptionProperties);
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(chunkCount.get()).isEqualTo(1);
     assertThat(first.get()).isEqualTo(chunkOffset.get());
@@ -178,8 +197,10 @@ public class OffsetTest {
     }
   }
 
-  @Test
-  void offsetTypeNextShouldReturnNewPublishedMessages() throws Exception {
+  @ParameterizedTest
+  @MethodSource("subscriptionProperties")
+  void offsetTypeNextShouldReturnNewPublishedMessages(Map<String, String> subscriptionProperties)
+      throws Exception {
     int firstWaveMessageCount = 50000;
     int secondWaveMessageCount = 20000;
     int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
@@ -201,7 +222,7 @@ public class OffsetTest {
                         latch.countDown();
                       }
                     }));
-    client.subscribe(b(1), stream, OffsetSpecification.next(), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.next(), 10, subscriptionProperties);
     assertThat(latch.await(2, SECONDS)).isFalse(); // should not receive anything
     TestUtils.publishAndWaitForConfirms(cf, secondWaveMessageCount, stream);
     assertThat(latch.await(10, SECONDS)).isTrue();
@@ -244,8 +265,10 @@ public class OffsetTest {
     }
   }
 
-  @Test
-  void offsetTypeOffsetShouldStartConsumingFromOffset() throws Exception {
+  @ParameterizedTest
+  @MethodSource("subscriptionProperties")
+  void offsetTypeOffsetShouldStartConsumingFromOffset(Map<String, String> subscriptionProperties)
+      throws Exception {
     int messageCount = 50000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
     int offset = messageCount / 10;
@@ -264,7 +287,7 @@ public class OffsetTest {
                       last.set(offset1);
                       latch.countDown();
                     }));
-    client.subscribe(b(1), stream, OffsetSpecification.offset(offset), 10);
+    client.subscribe(b(1), stream, OffsetSpecification.offset(offset), 10, subscriptionProperties);
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(first.get()).isEqualTo(offset);
     assertThat(last.get()).isEqualTo(messageCount - 1);
@@ -300,8 +323,10 @@ public class OffsetTest {
     }
   }
 
-  @Test
-  void offsetTypeTimestampShouldStartConsumingFromTimestamp() throws Exception {
+  @ParameterizedTest
+  @MethodSource("subscriptionProperties")
+  void offsetTypeTimestampShouldStartConsumingFromTimestamp(
+      Map<String, String> subscriptionProperties) throws Exception {
     int firstWaveMessageCount = 50000;
     int secondWaveMessageCount = 20000;
     int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
@@ -329,7 +354,8 @@ public class OffsetTest {
                         latch.countDown();
                       }
                     }));
-    client.subscribe(b(1), stream, OffsetSpecification.timestamp(timestampOffset), 10);
+    client.subscribe(
+        b(1), stream, OffsetSpecification.timestamp(timestampOffset), 10, subscriptionProperties);
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(first.get()).isEqualTo(firstWaveMessageCount);
     assertThat(last.get()).isEqualTo(lastOffset);

@@ -34,6 +34,7 @@ import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -617,8 +618,19 @@ class ConsumersCoordinator {
         offsetSpecification =
             offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
 
+        Map<String, String> subscriptionProperties = Collections.emptyMap();
+        if (subscriptionTracker.offsetTrackingReference != null) {
+          subscriptionProperties = new HashMap<>(1);
+          subscriptionProperties.put("name", subscriptionTracker.offsetTrackingReference);
+        }
+
         Client.Response subscribeResponse =
-            client.subscribe(subscriptionId, subscriptionTracker.stream, offsetSpecification, 10);
+            client.subscribe(
+                subscriptionId,
+                subscriptionTracker.stream,
+                offsetSpecification,
+                10,
+                subscriptionProperties);
         if (!subscribeResponse.isOk()) {
           String message =
               "Subscription to stream "
