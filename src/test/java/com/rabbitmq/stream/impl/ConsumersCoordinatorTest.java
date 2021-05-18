@@ -181,6 +181,30 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
+  void shouldSubscribeWithEmptyPropertiesWithUnamedConsumer() {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    ArgumentCaptor<Map<String, String>> subscriptionPropertiesArgumentCaptor =
+        ArgumentCaptor.forClass(Map.class);
+    when(client.subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            subscriptionPropertiesArgumentCaptor.capture()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    coordinator.subscribe(
+        consumer, "stream", OffsetSpecification.first(), null, (offset, message) -> {});
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    assertThat(subscriptionPropertiesArgumentCaptor.getValue()).isEmpty();
+  }
+
+  @Test
   void subscribeShouldThrowExceptionWhenNoMetadataForTheStream() {
     assertThatThrownBy(
             () ->
@@ -851,6 +875,7 @@ public class ConsumersCoordinatorTest {
 
   @ParameterizedTest
   @MethodSource("disruptionArguments")
+  @SuppressWarnings("unchecked")
   void shouldUseCommittedOffsetOnRecovery(Consumer<ConsumersCoordinatorTest> configurator)
       throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
