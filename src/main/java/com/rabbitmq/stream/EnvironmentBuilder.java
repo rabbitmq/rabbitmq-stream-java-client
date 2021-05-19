@@ -33,7 +33,7 @@ public interface EnvironmentBuilder {
   /**
    * The URI of a node to connect to.
    *
-   * <p>URI must be of the form <code>rabbitmq-stream://guest:guest@localhost:5551/%2f</code>.
+   * <p>URI must be of the form <code>rabbitmq-stream://guest:guest@localhost:5552/%2f</code>.
    *
    * @param uri
    * @return this builder instance
@@ -43,7 +43,7 @@ public interface EnvironmentBuilder {
   /**
    * A list of URIs of nodes of the same cluster to use to connect to.
    *
-   * <p>URIs must be of the form <code>rabbitmq-stream://guest:guest@localhost:5551/%2f</code>.
+   * <p>URIs must be of the form <code>rabbitmq-stream://guest:guest@localhost:5552/%2f</code>.
    *
    * @param uris
    * @return this builder instance

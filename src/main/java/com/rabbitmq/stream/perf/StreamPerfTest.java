@@ -91,8 +91,8 @@ public class StreamPerfTest implements Callable<Integer> {
   @CommandLine.Option(
       names = {"--uris", "-u"},
       description =
-          "servers to connect to, e.g. rabbitmq-stream://localhost:5551, separated by commas",
-      defaultValue = "rabbitmq-stream://localhost:5551",
+          "servers to connect to, e.g. rabbitmq-stream://localhost:5552, separated by commas",
+      defaultValue = "rabbitmq-stream://localhost:5552",
       split = ",")
   private List<String> uris;
 

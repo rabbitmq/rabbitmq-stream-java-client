@@ -26,7 +26,7 @@ way to create an `Environment` instance:
 --------
 include::{test-examples}/EnvironmentUsage.java[tag=environment-creation]
 --------
-<1> Create an environment that will connect to localhost:5551
+<1> Create an environment that will connect to localhost:5552
 <2> Close the environment after usage
 
 Note the environment must be closed to release resources when it is no
@@ -77,11 +77,11 @@ The following table sums up the main settings to create an `Environment`:
 
 |`uri`
 |The URI of the node to connect to (single node).
-|`rabbitmq-stream://guest:guest@localhost:5551/%2f`
+|`rabbitmq-stream://guest:guest@localhost:5552/%2f`
 
 |`uris`
 |The URI of the nodes to try to connect to (cluster).
-|`rabbitmq-stream://guest:guest@localhost:5551/%2f` singleton list
+|`rabbitmq-stream://guest:guest@localhost:5552/%2f` singleton list
 
 |`host`
 |Host to connect to.
@@ -89,7 +89,7 @@ The following table sums up the main settings to create an `Environment`:
 
 |`port`
 |Port to use.
-|`5551`
+|`5552`
 
 |`username`
 |Username to use to connect.

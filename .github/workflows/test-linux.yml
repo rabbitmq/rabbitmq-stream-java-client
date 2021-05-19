@@ -18,7 +18,7 @@ jobs:
         env:
           RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbitmq_stream advertised_host localhost
         ports:
-          - 5551:5551
+          - 5552:5552
           - 5672:5672
           - 1883:1883
           - 61613:61613

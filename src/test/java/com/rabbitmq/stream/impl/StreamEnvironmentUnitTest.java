@@ -65,7 +65,7 @@ public class StreamEnvironmentUnitTest {
     mocks = MockitoAnnotations.openMocks(this);
     when(cf.apply(any(Client.ClientParameters.class))).thenReturn(client);
     when(client.getHost()).thenReturn("localhost");
-    when(client.getPort()).thenReturn(5551);
+    when(client.getPort()).thenReturn(5552);
 
     this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     environment =
@@ -124,7 +124,7 @@ public class StreamEnvironmentUnitTest {
         .thenThrow(new RuntimeException())
         .thenReturn(client);
 
-    URI uri = new URI("rabbitmq-stream://localhost:5551");
+    URI uri = new URI("rabbitmq-stream://localhost:5552");
     environment =
         new StreamEnvironment(
             scheduledExecutorService,
