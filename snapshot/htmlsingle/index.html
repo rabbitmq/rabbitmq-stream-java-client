@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(3085601)</span>
+<br><span id="revremark">(bb09921)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -738,19 +738,19 @@ with the stream plugin enabled:</p>
 <div class="listingblock">
 <div class="title">Running the stream plugin with Docker</div>
 <div class="content">
-<pre>docker run -it --rm --name rabbitmq -p 5551:5551 \
+<pre>docker run -it --rm --name rabbitmq -p 5552:5552 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
     pivotalrabbitmq/rabbitmq-stream</pre>
 </div>
 </div>
 <div class="paragraph">
-<p>The previous command exposes only the stream port (5551), you can expose
+<p>The previous command exposes only the stream port (5552), you can expose
 ports for other protocols:</p>
 </div>
 <div class="listingblock">
 <div class="title">Exposing the AMQP 0.9.1 and management ports:</div>
 <div class="content">
-<pre>docker run -it --rm --name rabbitmq -p 5551:5551 -p 5672:5672 -p 15672:15672 \
+<pre>docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
     pivotalrabbitmq/rabbitmq-stream</pre>
 </div>
@@ -779,7 +779,7 @@ this is perfect for experimenting locally.</p>
 </div>
 </div>
 <div class="paragraph">
-<p>The command above will use the following ports: 5551 (for stream), 5672 (for AMQP),
+<p>The command above will use the following ports: 5552 (for stream), 5672 (for AMQP),
 15672 (for management plugin).</p>
 </div>
 <div class="admonitionblock note">
@@ -816,7 +816,7 @@ this is perfect for experimenting locally.</p>
 <p>Enable the plugin <code>./rabbitmq-plugins enable rabbitmq_stream</code>.</p>
 </li>
 <li>
-<p>Start the broker <code>./rabbitmq-server -detached</code>. This starts the stream listener on port 5551.</p>
+<p>Start the broker <code>./rabbitmq-server -detached</code>. This starts the stream listener on port 5552.</p>
 </li>
 </ul>
 </div>
@@ -1137,7 +1137,7 @@ environment.close(); <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Create an environment that will connect to localhost:5551</td>
+<td>Create an environment that will connect to localhost:5552</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
@@ -1161,7 +1161,7 @@ connect to a node:</p>
 <div class="title">Creating an environment with a URI</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder()
-        .uri(<span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://guest:guest@localhost:5551/%2f</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+        .uri(<span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://guest:guest@localhost:5552/%2f</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
         .build();</code></pre>
 </div>
 </div>
@@ -1192,9 +1192,9 @@ several other URIs to try in case of failure of a node:</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder()
         .uris(<span class="predefined-type">Arrays</span>.asList(                     <i class="conum" data-value="1"></i><b>(1)</b>
-                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host1:5551</span><span class="delimiter">&quot;</span></span>,
-                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host2:5551</span><span class="delimiter">&quot;</span></span>,
-                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host3:5551</span><span class="delimiter">&quot;</span></span>)
+                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host1:5552</span><span class="delimiter">&quot;</span></span>,
+                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host2:5552</span><span class="delimiter">&quot;</span></span>,
+                <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream://host3:5552</span><span class="delimiter">&quot;</span></span>)
         )
         .build();</code></pre>
 </div>
@@ -1231,12 +1231,12 @@ will pick a new URI randomly in case of disconnection.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>uri</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The URI of the node to connect to (single node).</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream://guest:guest@localhost:5551/%2f</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream://guest:guest@localhost:5552/%2f</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>uris</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The URI of the nodes to try to connect to (cluster).</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream://guest:guest@localhost:5551/%2f</code> singleton list</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream://guest:guest@localhost:5552/%2f</code> singleton list</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>host</code></p></td>
@@ -1246,7 +1246,7 @@ will pick a new URI randomly in case of disconnection.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>port</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Port to use.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>5551</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>5552</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>username</code></p></td>
@@ -2652,7 +2652,7 @@ docker network create stream-perf-test
 docker run -it --rm --network stream-perf-test --name rabbitmq pivotalrabbitmq/rabbitmq-stream
 # open another terminal and run the performance tool
 docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test \
-    --uris rabbitmq-stream://rabbitmq:5551</pre>
+    --uris rabbitmq-stream://rabbitmq:5552</pre>
 </div>
 </div>
 </div>
@@ -2727,13 +2727,13 @@ though.</p>
 <div class="sect4">
 <h5 id="connection"><a class="anchor" href="#connection"></a>Connection</h5>
 <div class="paragraph">
-<p>The performance tool connects by default to localhost, on port 5551, with
+<p>The performance tool connects by default to localhost, on port 5552, with
 default credentials (<code>guest</code>/<code>guest</code>), on the default <code>/</code> virtual host.
 This can be changed with the <code>--uris</code> option:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre>java -jar stream-perf-test.jar --uris rabbitmq-stream://rabbitmq-1:5551</pre>
+<pre>java -jar stream-perf-test.jar --uris rabbitmq-stream://rabbitmq-1:5552</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2745,7 +2745,7 @@ The next command shows how to set up the different elements of the URI:</p>
 <div class="listingblock">
 <div class="content">
 <pre>java -jar stream-perf-test.jar \
-  --uris rabbitmq-stream://guest:guest@localhost:5551/%2f</pre>
+  --uris rabbitmq-stream://guest:guest@localhost:5552/%2f</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2756,7 +2756,7 @@ crashes:</p>
 <div class="listingblock">
 <div class="content">
 <pre>java -jar stream-perf-test.jar \
-  --uris rabbitmq-stream://rabbitmq-1:5551,rabbitmq-stream://rabbitmq-2:5551</pre>
+  --uris rabbitmq-stream://rabbitmq-1:5552,rabbitmq-stream://rabbitmq-2:5552</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -3084,7 +3084,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-05-19 08:46:36 UTC
+Last updated 2021-05-19 13:42:25 UTC
 </div>
 </div>
 <style>
