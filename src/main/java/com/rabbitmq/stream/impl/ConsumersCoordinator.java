@@ -231,7 +231,10 @@ class ConsumersCoordinator {
 
     synchronized void cancel() {
       if (this.manager != null) {
+        LOGGER.debug("Removing consumer from manager");
         this.manager.remove(this);
+      } else {
+        LOGGER.debug("No manager to remove consumer from");
       }
     }
 
@@ -403,11 +406,17 @@ class ConsumersCoordinator {
                   .scheduledExecutorService()
                   .execute(
                       () -> {
+                        if (Thread.currentThread().isInterrupted()) {
+                          return;
+                        }
                         subscriptionTrackers.stream()
                             .filter(Objects::nonNull)
                             .forEach(SubscriptionTracker::detachFromManager);
                         for (Entry<String, Set<SubscriptionTracker>> entry :
                             streamToStreamSubscriptions.entrySet()) {
+                          if (Thread.currentThread().isInterrupted()) {
+                            break;
+                          }
                           String stream = entry.getKey();
                           LOGGER.debug(
                               "Re-assigning {} consumer(s) to stream {} after disconnection",
@@ -456,6 +465,9 @@ class ConsumersCoordinator {
                   .scheduledExecutorService()
                   .execute(
                       () -> {
+                        if (Thread.currentThread().isInterrupted()) {
+                          return;
+                        }
                         LOGGER.debug(
                             "Trying to move {} subscription(s) (stream {})",
                             affectedSubscriptions.size(),
@@ -536,6 +548,8 @@ class ConsumersCoordinator {
                                 false);
                           }
                         }
+                      } else {
+                        LOGGER.debug("Not re-assigning consumer because it has been closed");
                       }
                     } catch (Exception e) {
                       LOGGER.warn(
@@ -707,7 +721,9 @@ class ConsumersCoordinator {
             .forEach(
                 tracker -> {
                   try {
-                    this.client.unsubscribe(tracker.subscriptionIdInClient);
+                    if (this.client != null && this.client.isOpen() && tracker.consumer.isOpen()) {
+                      this.client.unsubscribe(tracker.subscriptionIdInClient);
+                    }
                   } catch (Exception e) {
                     // OK, moving on
                   }
@@ -716,7 +732,9 @@ class ConsumersCoordinator {
         streamToStreamSubscriptions.clear();
         subscriptionTrackers.clear();
 
-        this.client.close();
+        if (this.client != null && this.client.isOpen()) {
+          this.client.close();
+        }
       }
     }
   }

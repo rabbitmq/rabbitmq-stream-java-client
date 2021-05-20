@@ -180,6 +180,8 @@ class ProducersCoordinator {
     String stream();
 
     String reference();
+
+    boolean isOpen();
   }
 
   private static class ProducerTracker implements AgentTracker {
@@ -250,6 +252,11 @@ class ProducersCoordinator {
     public void closeAfterStreamDeletion() {
       this.producer.closeAfterStreamDeletion();
     }
+
+    @Override
+    public boolean isOpen() {
+      return producer.isOpen();
+    }
   }
 
   private static class CommittingConsumerTracker implements AgentTracker {
@@ -315,6 +322,11 @@ class ProducersCoordinator {
     public void closeAfterStreamDeletion() {
       // nothing to do here, the consumer will be closed by the consumers coordinator if
       // the stream has been deleted
+    }
+
+    @Override
+    public boolean isOpen() {
+      return this.consumer.isOpen();
     }
   }
 
@@ -425,11 +437,18 @@ class ProducersCoordinator {
               environment
                   .scheduledExecutorService()
                   .execute(
-                      () ->
-                          streamToTrackers.forEach(
-                              (stream, trackers) ->
-                                  assignProducersToNewManagers(
-                                      trackers, stream, environment.recoveryBackOffDelayPolicy())));
+                      () -> {
+                        if (Thread.currentThread().isInterrupted()) {
+                          return;
+                        }
+                        streamToTrackers.forEach(
+                            (stream, trackers) -> {
+                              if (!Thread.currentThread().isInterrupted()) {
+                                assignProducersToNewManagers(
+                                    trackers, stream, environment.recoveryBackOffDelayPolicy());
+                              }
+                            });
+                      });
             }
           };
       MetadataListener metadataListener =
@@ -450,6 +469,9 @@ class ProducersCoordinator {
                     .scheduledExecutorService()
                     .execute(
                         () -> {
+                          if (Thread.currentThread().isInterrupted()) {
+                            return;
+                          }
                           // close manager if no more trackers for it
                           // needs to be done in another thread than the IO thread
                           this.owner.maybeDisposeManager(this);
@@ -500,8 +522,12 @@ class ProducersCoordinator {
                 trackers.forEach(
                     tracker -> {
                       try {
-                        pool.add(tracker);
-                        tracker.running();
+                        if (tracker.isOpen()) {
+                          pool.add(tracker);
+                          tracker.running();
+                        } else {
+                          LOGGER.debug("Not re-assigning producer because it has been closed");
+                        }
                       } catch (Exception e) {
                         LOGGER.info(
                             "Error while re-assigning producer {} to {}: {}. Moving on.",
@@ -598,7 +624,9 @@ class ProducersCoordinator {
 
     private void close() {
       try {
-        this.client.close();
+        if (this.client.isOpen()) {
+          this.client.close();
+        }
       } catch (Exception e) {
         // ok
       }

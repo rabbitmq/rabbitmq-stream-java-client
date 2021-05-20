@@ -122,14 +122,18 @@ class StreamConsumer implements Consumer {
     if (closed.compareAndSet(false, true)) {
       this.environment.removeConsumer(this);
       closeFromEnvironment();
+      LOGGER.debug("Closed consumer successfully");
     }
   }
 
   void closeFromEnvironment() {
+    LOGGER.debug("Calling consumer closing callback");
     this.closingCallback.run();
+    LOGGER.debug("Calling committing consumer closing callback (may be no-op)");
     this.closingCommitCallback.run();
     closed.set(true);
     this.status = Status.CLOSED;
+    LOGGER.debug("Closed consumer successfully");
   }
 
   void closeAfterStreamDeletion() {

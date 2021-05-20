@@ -348,7 +348,7 @@ class StreamEnvironment implements Environment {
       this.offsetCommittingCoordinator.close();
 
       try {
-        if (this.locator != null) {
+        if (this.locator != null && this.locator.isOpen()) {
           this.locator.close();
           this.locator = null;
         }

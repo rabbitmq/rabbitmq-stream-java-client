@@ -334,12 +334,18 @@ class StreamProducer implements Producer {
   @Override
   public void close() {
     if (this.closed.compareAndSet(false, true)) {
-      Response response = this.client.deletePublisher(this.publisherId);
-      if (!response.isOk()) {
-        LOGGER.info(
-            "Could not delete publisher {} on producer closing: {}",
-            this.publisherId,
-            formatConstant(response.getResponseCode()));
+      if (this.status == Status.RUNNING && this.client != null) {
+        LOGGER.debug("Deleting producer {}", this.publisherId);
+        Response response = this.client.deletePublisher(this.publisherId);
+        if (!response.isOk()) {
+          LOGGER.info(
+              "Could not delete publisher {} on producer closing: {}",
+              this.publisherId,
+              formatConstant(response.getResponseCode()));
+        }
+      } else {
+        LOGGER.debug(
+            "No need to delete producer {}, it is currently unavailable", this.publisherId);
       }
       this.environment.removeProducer(this);
       closeFromEnvironment();
@@ -351,6 +357,7 @@ class StreamProducer implements Producer {
     cancelConfirmTimeoutTask();
     this.closed.set(true);
     this.status = Status.CLOSED;
+    LOGGER.debug("Closed publisher {} successfully", this.publisherId);
   }
 
   void closeAfterStreamDeletion() {

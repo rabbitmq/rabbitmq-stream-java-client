@@ -14,8 +14,10 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,13 +32,16 @@ import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -278,6 +283,51 @@ public class StreamEnvironmentTest {
 
       streams.stream().forEach(stream -> environment.deleteStream(stream));
     }
+  }
+
+  @Test
+  @TestUtils.DisabledIfRabbitMqCtlNotSet
+  void environmentPublishersConsumersShouldCloseSuccessfullyWhenBrokerIsDown(TestInfo info)
+      throws Exception {
+    Environment environment =
+        environmentBuilder
+            .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(10)))
+            .build();
+    CountDownLatch consumeLatch = new CountDownLatch(2);
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .messageHandler((context, message) -> consumeLatch.countDown())
+            .build();
+    // will be closed by the environment
+    environment.consumerBuilder().stream(stream)
+        .messageHandler((context, message) -> consumeLatch.countDown())
+        .build();
+
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    // will be closed by the environment
+    environment.producerBuilder().stream(stream).build();
+
+    producer.send(
+        producer.messageBuilder().addData("".getBytes(StandardCharsets.UTF_8)).build(),
+        confirmationStatus -> {});
+
+    latchAssert(consumeLatch).completes();
+
+    try {
+      Host.rabbitmqctl("stop_app");
+      producer.close();
+      consumer.close();
+      environment.close();
+    } finally {
+      Host.rabbitmqctl("start_app");
+    }
+    waitAtMost(
+        30,
+        () -> {
+          Client client = cf.get();
+          Map<String, StreamMetadata> metadata = client.metadata(stream);
+          return metadata.containsKey(stream) && metadata.get(stream).isResponseOk();
+        });
   }
 
   @Test

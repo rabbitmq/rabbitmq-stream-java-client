@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import java.time.Duration;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -43,6 +44,11 @@ class AsyncRetry<V> {
     AtomicInteger attempts = new AtomicInteger(0);
     Runnable retryableTask =
         () -> {
+          if (Thread.currentThread().isInterrupted()) {
+            LOGGER.debug("Task '{}' interrupted, failing future");
+            this.completableFuture.completeExceptionally(new CancellationException());
+            return;
+          }
           try {
             V result = task.call();
             LOGGER.debug("Task '{}' succeeded, completing future", description);

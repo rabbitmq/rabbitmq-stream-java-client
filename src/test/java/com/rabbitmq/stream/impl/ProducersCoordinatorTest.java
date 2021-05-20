@@ -239,6 +239,9 @@ public class ProducersCoordinatorTest {
 
     when(clientFactory.client(any())).thenReturn(client);
 
+    when(producer.isOpen()).thenReturn(true);
+    when(committingConsumer.isOpen()).thenReturn(true);
+
     CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
     doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
     doAnswer(answer(() -> setClientLatch.countDown())).when(committingConsumer).setClient(client);
@@ -336,6 +339,11 @@ public class ProducersCoordinatorTest {
     when(fixedCommittingConsumer.stream()).thenReturn(fixedStream);
 
     CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
+
+    when(fixedProducer.isOpen()).thenReturn(true);
+    when(movingProducer.isOpen()).thenReturn(true);
+    when(movingCommittingConsumer.isOpen()).thenReturn(true);
+    when(fixedCommittingConsumer.isOpen()).thenReturn(true);
 
     doAnswer(answer(() -> setClientLatch.countDown())).when(movingProducer).setClient(client);
 

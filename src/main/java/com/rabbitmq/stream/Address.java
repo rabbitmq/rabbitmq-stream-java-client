@@ -33,4 +33,9 @@ public class Address {
   public int port() {
     return this.port;
   }
+
+  @Override
+  public String toString() {
+    return "Address{" + "host='" + host + '\'' + ", port=" + port + '}';
+  }
 }
