@@ -77,7 +77,7 @@ public class StreamPerfTestTest {
   }
 
   private void waitRunEnds(int expectedExitCode) throws Exception {
-    waitAtMost(() -> exitCode.get() == expectedExitCode);
+    TestUtils.waitAtMost(20, () -> exitCode.get() == expectedExitCode);
   }
 
   private void waitRunEnds() throws Exception {

@@ -71,7 +71,7 @@ public final class TestUtils {
     return waitAtMost(10, condition, null);
   }
 
-  static Duration waitAtMost(int timeoutInSeconds, BooleanSupplier condition)
+  public static Duration waitAtMost(int timeoutInSeconds, BooleanSupplier condition)
       throws InterruptedException {
     return waitAtMost(timeoutInSeconds, condition, null);
   }
