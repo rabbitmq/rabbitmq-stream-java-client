@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(bb09921)</span>
+<br><span id="revremark">(a14e35f)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2991,12 +2991,12 @@ the streams the performance tool creates for a run. This
 would typically avoid saturating the storage devices of your servers.
 The default values are 20 GB for the maximum size of a stream and
 500 MB for each segment files that composes a stream. You can change
-these values with the <code>--max-length-bytes</code> and <code>--max-segment-size</code> options:</p>
+these values with the <code>--max-length-bytes</code> and <code>--stream-max-segment-size-bytes</code> options:</p>
 </div>
 <div class="listingblock">
 <div class="content">
 <pre>java -jar stream-perf-test.jar --max-length-bytes 10gb \
-                               --max-segment-size 250mb</pre>
+                               --stream-max-segment-size-bytes 250mb</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -3012,7 +3012,7 @@ a maximum segment size of 250 MB:</p>
 <div class="listingblock">
 <div class="content">
 <pre>java -jar stream-perf-test.jar --max-age PT5M \
-                               --max-segment-size 250mb</pre>
+                               --stream-max-segment-size-bytes 250mb</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -3084,7 +3084,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-05-19 13:42:25 UTC
+Last updated 2021-05-20 09:05:35 UTC
 </div>
 </div>
 <style>
