@@ -1898,7 +1898,7 @@ public class Client implements AutoCloseable {
     }
 
     public StreamParametersBuilder maxSegmentSizeBytes(long bytes) {
-      this.parameters.put("max-segment-size", String.valueOf(bytes));
+      this.parameters.put("stream-max-segment-size-bytes", String.valueOf(bytes));
       return this;
     }
 
