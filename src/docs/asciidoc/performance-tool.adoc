@@ -332,11 +332,11 @@ the streams the performance tool creates for a run. This
 would typically avoid saturating the storage devices of your servers.
 The default values are 20 GB for the maximum size of a stream and
 500 MB for each segment files that composes a stream. You can change
-these values with the `--max-length-bytes` and `--max-segment-size` options:
+these values with the `--max-length-bytes` and `--stream-max-segment-size-bytes` options:
 
 ----
 java -jar stream-perf-test.jar --max-length-bytes 10gb \
-                               --max-segment-size 250mb
+                               --stream-max-segment-size-bytes 250mb
 ----
 
 Both options accept units (`kb`, `mb`, `gb`, `tb`), as well as no unit to
@@ -349,7 +349,7 @@ a maximum segment size of 250 MB:
 
 ----
 java -jar stream-perf-test.jar --max-age PT5M \
-                               --max-segment-size 250mb
+                               --stream-max-segment-size-bytes 250mb
 ----
 
 The `--max-age` option uses the

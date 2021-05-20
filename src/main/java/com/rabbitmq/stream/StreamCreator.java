@@ -71,7 +71,7 @@ public interface StreamCreator {
     /** The stream leader will be on the node the client is connected to. */
     CLIENT_LOCAL("client-local"),
 
-    /** The stream leader will be a randon node of the cluster. */
+    /** The stream leader will be a random node of the cluster. */
     RANDOM("random"),
 
     /** The stream leader will be on the node with the least number of stream leaders. */
