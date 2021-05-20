@@ -118,7 +118,7 @@ public class RetentionClientTest {
               Map<String, Object> arguments = new HashMap<>();
               arguments.put("x-queue-type", "stream");
               arguments.put("x-max-length-bytes", messageCount * payloadSize / 10);
-              arguments.put("x-max-segment-size", messageCount * payloadSize / 20);
+              arguments.put("x-stream-max-segment-size-bytes", messageCount * payloadSize / 20);
               ch.queueDeclare(stream, true, false, false, arguments);
             }
           },
@@ -133,7 +133,7 @@ public class RetentionClientTest {
               Map<String, Object> arguments = new HashMap<>();
               arguments.put("x-queue-type", "stream");
               arguments.put("x-max-age", "2s");
-              arguments.put("x-max-segment-size", messageCount * payloadSize / 20);
+              arguments.put("x-stream-max-segment-size-bytes", messageCount * payloadSize / 20);
               ch.queueDeclare(stream, true, false, false, arguments);
             }
           },

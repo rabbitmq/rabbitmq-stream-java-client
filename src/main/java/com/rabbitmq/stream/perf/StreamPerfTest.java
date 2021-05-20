@@ -188,7 +188,7 @@ public class StreamPerfTest implements Callable<Integer> {
   private ByteCapacity maxLengthBytes;
 
   @CommandLine.Option(
-      names = {"--max-segment-size", "-mss"},
+      names = {"--stream-max-segment-size-bytes", "-smssb"},
       description = "max size of segments",
       defaultValue = "500mb",
       converter = Utils.ByteCapacityTypeConverter.class)
