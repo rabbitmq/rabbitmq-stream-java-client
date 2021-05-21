@@ -51,6 +51,7 @@ import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ChunkListener;
 import com.rabbitmq.stream.impl.Client.MessageListener;
+import com.rabbitmq.stream.impl.Client.OpenResponse;
 import com.rabbitmq.stream.impl.Client.OutstandingRequest;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.QueryPublisherSequenceResponse;
@@ -91,7 +92,7 @@ class ServerFrameHandler {
     handlers.put(COMMAND_DELETE_PUBLISHER, RESPONSE_FRAME_HANDLER);
     handlers.put(COMMAND_CREATE_STREAM, RESPONSE_FRAME_HANDLER);
     handlers.put(COMMAND_DELETE_STREAM, RESPONSE_FRAME_HANDLER);
-    handlers.put(COMMAND_OPEN, RESPONSE_FRAME_HANDLER);
+    handlers.put(COMMAND_OPEN, new OpenFrameHandler());
     handlers.put(COMMAND_PUBLISH_CONFIRM, new ConfirmFrameHandler());
     handlers.put(COMMAND_DELIVER, new DeliverFrameHandler());
     handlers.put(COMMAND_PUBLISH_ERROR, new PublishErrorHandler());
@@ -575,6 +576,44 @@ class ServerFrameHandler {
         LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
       } else {
         outstandingRequest.response().set(Collections.unmodifiableMap(serverProperties));
+        outstandingRequest.countDown();
+      }
+      return read;
+    }
+  }
+
+  private static class OpenFrameHandler extends BaseFrameHandler {
+
+    @Override
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      int correlationId = message.readInt();
+      int read = 4;
+
+      short responseCode = message.readShort();
+      read += 2;
+
+      Map<String, String> connectionProperties;
+      if (message.isReadable()) {
+        int connectionPropertiesCount = message.readInt();
+        read += 4;
+        connectionProperties = new LinkedHashMap<>(connectionPropertiesCount);
+        for (int i = 0; i < connectionPropertiesCount; i++) {
+          String key = readString(message);
+          read += 2 + key.length();
+          String value = readString(message);
+          read += 2 + value.length();
+          connectionProperties.put(key, value);
+        }
+      } else {
+        connectionProperties = Collections.emptyMap();
+      }
+
+      OutstandingRequest<OpenResponse> outstandingRequest =
+          remove(client.outstandingRequests, correlationId, OpenResponse.class);
+      if (outstandingRequest == null) {
+        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+      } else {
+        outstandingRequest.response().set(new OpenResponse(responseCode, connectionProperties));
         outstandingRequest.countDown();
       }
       return read;

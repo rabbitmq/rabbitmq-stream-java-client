@@ -184,6 +184,7 @@ public class Client implements AutoCloseable {
   private final int port;
   private volatile ShutdownReason shutdownReason = null;
   private final Map<String, String> serverProperties;
+  private final Map<String, String> connectionProperties;
 
   public Client() {
     this(new ClientParameters());
@@ -278,7 +279,7 @@ public class Client implements AutoCloseable {
         "Connection tuned with max frame size {} and heartbeat {}",
         this.maxFrameSize(),
         tuneState.getHeartbeat());
-    open(parameters.virtualHost);
+    this.connectionProperties = open(parameters.virtualHost);
     started.set(true);
     this.metricsCollector.openConnection();
   }
@@ -401,7 +402,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private void open(String virtualHost) {
+  private Map<String, String> open(String virtualHost) {
     int length = 2 + 2 + 4 + 2 + virtualHost.length();
     int correlationId = correlationSequence.incrementAndGet();
     try {
@@ -412,7 +413,7 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(virtualHost.length());
       bb.writeBytes(virtualHost.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<OpenResponse> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -421,6 +422,7 @@ public class Client implements AutoCloseable {
             "Unexpected response code when connecting to virtual host: "
                 + formatConstant(request.response.get().getResponseCode()));
       }
+      return request.response.get().connectionProperties;
     } catch (StreamException e) {
       outstandingRequests.remove(correlationId);
       throw e;
@@ -1519,6 +1521,16 @@ public class Client implements AutoCloseable {
     }
   }
 
+  static class OpenResponse extends Response {
+
+    private final Map<String, String> connectionProperties;
+
+    OpenResponse(short responseCode, Map<String, String> connectionProperties) {
+      super(responseCode);
+      this.connectionProperties = connectionProperties;
+    }
+  }
+
   static class QueryOffsetResponse extends Response {
 
     private final long offset;
@@ -2033,10 +2045,23 @@ public class Client implements AutoCloseable {
   }
 
   String serverAdvertisedHost() {
-    return this.serverProperties.get("advertised_host");
+    return this.connectionProperties("advertised_host");
   }
 
   int serverAdvertisedPort() {
-    return Integer.valueOf(this.serverProperties.get("advertised_port"));
+    return Integer.valueOf(this.connectionProperties("advertised_port"));
+  }
+
+  private String connectionProperties(String key) {
+    if (this.connectionProperties != null && this.connectionProperties.containsKey(key)) {
+      return this.connectionProperties.get(key);
+    } else {
+      throw new IllegalArgumentException(
+          "Connection property '"
+              + key
+              + "' missing. Available properties: "
+              + this.connectionProperties
+              + ".");
+    }
   }
 }
