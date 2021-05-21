@@ -233,6 +233,7 @@ public class ProducersCoordinatorTest {
     when(locator.metadata("stream"))
         .thenReturn(metadata(leader(), replicas()))
         .thenReturn(metadata(leader(), replicas()))
+        .thenReturn(metadata(leader(), replicas()))
         .thenReturn(metadata(null, replicas()))
         .thenReturn(metadata(null, replicas()))
         .thenReturn(metadata(leader(), replicas()));
@@ -242,19 +243,30 @@ public class ProducersCoordinatorTest {
     when(producer.isOpen()).thenReturn(true);
     when(committingConsumer.isOpen()).thenReturn(true);
 
-    CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
+    StreamProducer producerClosedAfterDisconnection = mock(StreamProducer.class);
+    when(producerClosedAfterDisconnection.isOpen()).thenReturn(false);
+
+    CountDownLatch setClientLatch = new CountDownLatch(2 + 2 + 1);
     doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
     doAnswer(answer(() -> setClientLatch.countDown())).when(committingConsumer).setClient(client);
+    doAnswer(answer(() -> setClientLatch.countDown()))
+        .when(producerClosedAfterDisconnection)
+        .setClient(client);
 
     CountDownLatch runningLatch = new CountDownLatch(1 + 1);
     doAnswer(answer(() -> runningLatch.countDown())).when(producer).running();
     doAnswer(answer(() -> runningLatch.countDown())).when(committingConsumer).running();
+    doAnswer(answer(() -> runningLatch.countDown()))
+        .when(producerClosedAfterDisconnection)
+        .running();
 
     coordinator.registerProducer(producer, null, "stream");
     coordinator.registerCommittingConsumer(committingConsumer);
+    coordinator.registerProducer(producerClosedAfterDisconnection, null, "stream");
 
     verify(producer, times(1)).setClient(client);
     verify(committingConsumer, times(1)).setClient(client);
+    verify(producerClosedAfterDisconnection, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -269,6 +281,9 @@ public class ProducersCoordinatorTest {
     verify(committingConsumer, times(1)).unavailable();
     verify(committingConsumer, times(2)).setClient(client);
     verify(committingConsumer, times(1)).running();
+    verify(producerClosedAfterDisconnection, times(1)).unavailable();
+    verify(producerClosedAfterDisconnection, times(1)).setClient(client);
+    verify(producerClosedAfterDisconnection, never()).running();
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
   }
@@ -322,7 +337,8 @@ public class ProducersCoordinatorTest {
     String movingStream = "moving-stream";
     when(locator.metadata(movingStream))
         .thenReturn(metadata(movingStream, leader1(), replicas()))
-        .thenReturn(metadata(movingStream, leader1(), replicas())) // for the first 2 registrations
+        .thenReturn(metadata(movingStream, leader1(), replicas()))
+        .thenReturn(metadata(movingStream, leader1(), replicas())) // for the first 3 registrations
         .thenReturn(metadata(movingStream, null, replicas()))
         .thenReturn(metadata(movingStream, leader2(), replicas()));
 
@@ -338,7 +354,10 @@ public class ProducersCoordinatorTest {
     when(movingCommittingConsumer.stream()).thenReturn(movingStream);
     when(fixedCommittingConsumer.stream()).thenReturn(fixedStream);
 
-    CountDownLatch setClientLatch = new CountDownLatch(2 + 2);
+    StreamProducer producerClosedAfterDisconnection = mock(StreamProducer.class);
+    when(producerClosedAfterDisconnection.isOpen()).thenReturn(false);
+
+    CountDownLatch setClientLatch = new CountDownLatch(2 + 2 + 1);
 
     when(fixedProducer.isOpen()).thenReturn(true);
     when(movingProducer.isOpen()).thenReturn(true);
@@ -351,17 +370,23 @@ public class ProducersCoordinatorTest {
         .when(movingCommittingConsumer)
         .setClient(client);
 
+    doAnswer(answer(() -> setClientLatch.countDown()))
+        .when(producerClosedAfterDisconnection)
+        .setClient(client);
+
     CountDownLatch runningLatch = new CountDownLatch(1 + 1);
     doAnswer(answer(() -> runningLatch.countDown())).when(movingProducer).running();
     doAnswer(answer(() -> runningLatch.countDown())).when(movingCommittingConsumer).running();
 
     coordinator.registerProducer(movingProducer, null, movingStream);
     coordinator.registerProducer(fixedProducer, null, fixedStream);
+    coordinator.registerProducer(producerClosedAfterDisconnection, null, movingStream);
     coordinator.registerCommittingConsumer(movingCommittingConsumer);
     coordinator.registerCommittingConsumer(fixedCommittingConsumer);
 
     verify(movingProducer, times(1)).setClient(client);
     verify(fixedProducer, times(1)).setClient(client);
+    verify(producerClosedAfterDisconnection, times(1)).setClient(client);
     verify(movingCommittingConsumer, times(1)).setClient(client);
     verify(fixedCommittingConsumer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
@@ -377,6 +402,10 @@ public class ProducersCoordinatorTest {
     verify(movingCommittingConsumer, times(1)).unavailable();
     verify(movingCommittingConsumer, times(2)).setClient(client);
     verify(movingCommittingConsumer, times(1)).running();
+
+    verify(producerClosedAfterDisconnection, times(1)).unavailable();
+    verify(producerClosedAfterDisconnection, times(1)).setClient(client);
+    verify(producerClosedAfterDisconnection, never()).running();
 
     verify(fixedProducer, never()).unavailable();
     verify(fixedProducer, times(1)).setClient(client);

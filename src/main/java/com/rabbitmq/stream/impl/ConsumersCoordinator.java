@@ -523,23 +523,23 @@ class ConsumersCoordinator {
                 } else {
                   for (SubscriptionTracker affectedSubscription : subscriptions) {
                     try {
-                      Client.Broker broker = pickBroker(candidates);
-                      LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
-                      String key = keyForClientSubscription(broker);
-                      // FIXME in case the broker is no longer there, we may have to deal with an
-                      // error here
-                      // we could renew the list of candidates for the stream
-                      ManagerPool subscriptionPool =
-                          pools.computeIfAbsent(
-                              key,
-                              s ->
-                                  new ManagerPool(
-                                      key,
-                                      environment
-                                          .clientParametersCopy()
-                                          .host(broker.getHost())
-                                          .port(broker.getPort())));
                       if (affectedSubscription.consumer.isOpen()) {
+                        Client.Broker broker = pickBroker(candidates);
+                        LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
+                        String key = keyForClientSubscription(broker);
+                        // FIXME in case the broker is no longer there, we may have to deal with an
+                        // error here
+                        // we could renew the list of candidates for the stream
+                        ManagerPool subscriptionPool =
+                            pools.computeIfAbsent(
+                                key,
+                                s ->
+                                    new ManagerPool(
+                                        key,
+                                        environment
+                                            .clientParametersCopy()
+                                            .host(broker.getHost())
+                                            .port(broker.getPort())));
                         synchronized (affectedSubscription.consumer) {
                           if (affectedSubscription.consumer.isOpen()) {
                             subscriptionPool.add(

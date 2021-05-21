@@ -509,20 +509,22 @@ class ProducersCoordinator {
               broker -> {
                 String key = keyForManagerPool(broker);
                 LOGGER.debug("Assigning {} producer(s) to {}", trackers.size(), key);
-                ManagerPool pool =
-                    pools.computeIfAbsent(
-                        key,
-                        s ->
-                            new ManagerPool(
-                                key,
-                                environment
-                                    .clientParametersCopy()
-                                    .host(broker.getHost())
-                                    .port(broker.getPort())));
+
                 trackers.forEach(
                     tracker -> {
                       try {
                         if (tracker.isOpen()) {
+                          // we create the pool only if necessary
+                          ManagerPool pool =
+                              pools.computeIfAbsent(
+                                  key,
+                                  s ->
+                                      new ManagerPool(
+                                          key,
+                                          environment
+                                              .clientParametersCopy()
+                                              .host(broker.getHost())
+                                              .port(broker.getPort())));
                           pool.add(tracker);
                           tracker.running();
                         } else {
@@ -532,7 +534,7 @@ class ProducersCoordinator {
                         LOGGER.info(
                             "Error while re-assigning producer {} to {}: {}. Moving on.",
                             tracker.identifiable() ? tracker.id() : "(committing consumer)",
-                            pool.name,
+                            key,
                             e.getMessage());
                       }
                     });

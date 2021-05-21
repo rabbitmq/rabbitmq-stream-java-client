@@ -20,18 +20,30 @@ import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyByte;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
+import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumersPoolInfo;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
@@ -65,6 +77,7 @@ public class ConsumersCoordinatorTest {
   ScheduledExecutorService scheduledExecutorService;
   volatile Client.MetadataListener metadataListener;
   volatile Client.MessageListener messageListener;
+  List<Client.MessageListener> messageListeners = new CopyOnWriteArrayList<>();
   volatile Client.ShutdownListener shutdownListener;
   List<Client.ShutdownListener> shutdownListeners =
       new CopyOnWriteArrayList<>(); // when we need several of them in the test
@@ -73,6 +86,20 @@ public class ConsumersCoordinatorTest {
 
   static Duration ms(long ms) {
     return Duration.ofMillis(ms);
+  }
+
+  static Stream<Consumer<ConsumersCoordinatorTest>> disruptionArguments() {
+    return Stream.of(
+        namedConsumer(
+            test ->
+                test.shutdownListener.handle(
+                    new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN)),
+            "disconnection"),
+        namedConsumer(
+            test ->
+                test.metadataListener.handle(
+                    "stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE),
+            "topology change"));
   }
 
   @BeforeEach
@@ -90,6 +117,7 @@ public class ConsumersCoordinatorTest {
           @Override
           public Client.ClientParameters messageListener(Client.MessageListener messageListener) {
             ConsumersCoordinatorTest.this.messageListener = messageListener;
+            ConsumersCoordinatorTest.this.messageListeners.add(messageListener);
             return super.messageListener(messageListener);
           }
 
@@ -361,10 +389,11 @@ public class ConsumersCoordinatorTest {
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
-        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata(null, replica()))
+        .thenReturn(metadata(null, replica())) // for the second consumer
         .thenReturn(metadata(null, Collections.emptyList()))
         .thenReturn(metadata(null, Collections.emptyList()))
-        .thenReturn(metadata(null, replicas()));
+        .thenReturn(metadata(null, replica()));
 
     when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
@@ -374,6 +403,9 @@ public class ConsumersCoordinatorTest {
             anyInt(),
             anyMap()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    StreamConsumer consumerClosedAfterConnectionLost = mock(StreamConsumer.class);
+    when(consumerClosedAfterConnectionLost.isOpen()).thenReturn(false);
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     Runnable closingRunnable =
@@ -388,19 +420,32 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(0);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getAllValues().get(0), 1, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
+
+    coordinator.subscribe(
+        consumerClosedAfterConnectionLost,
+        "stream",
+        OffsetSpecification.first(),
+        null,
+        (offset, message) -> {});
+
+    verify(client, times(1 + 1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
 
     Thread.sleep(retryDelay.toMillis() * 5);
 
-    verify(client, times(2))
+    // the second consumer does not re-subscribe because it returns it is not open
+    verify(client, times(2 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getAllValues().get(0), 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
@@ -423,6 +468,10 @@ public class ConsumersCoordinatorTest {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
+
+    StreamConsumer consumerClosedAfterMetadataUpdate = mock(StreamConsumer.class);
+    when(consumerClosedAfterMetadataUpdate.isOpen()).thenReturn(false);
+
     when(client.subscribe(
             subscriptionIdCaptor.capture(),
             anyString(),
@@ -443,19 +492,33 @@ public class ConsumersCoordinatorTest {
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
+    coordinator.subscribe(
+        consumerClosedAfterMetadataUpdate,
+        "stream",
+        OffsetSpecification.first(),
+        null,
+        (offset, message) -> {});
+
+    verify(client, times(1 + 1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
     assertThat(messageHandlerCalls.get()).isEqualTo(0);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+    firstMessageListener()
+        .handle(subscriptionIdCaptor.getAllValues().get(0), 1, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
 
-    metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+    this.metadataListeners.forEach(
+        ml -> ml.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE));
 
     Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
 
-    verify(client, times(2))
+    // the second consumer does not re-subscribe because it returns it is not open
+    verify(client, times(2 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+    lastMessageListener()
+        .handle(subscriptionIdCaptor.getAllValues().get(0), 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
@@ -464,7 +527,8 @@ public class ConsumersCoordinatorTest {
     closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
-    messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+    lastMessageListener()
+        .handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
     assertThat(coordinator.poolSize()).isZero();
@@ -799,20 +863,6 @@ public class ConsumersCoordinatorTest {
         .isEqualTo(subscriptionCount + 1);
   }
 
-  static Stream<Consumer<ConsumersCoordinatorTest>> disruptionArguments() {
-    return Stream.of(
-        namedConsumer(
-            test ->
-                test.shutdownListener.handle(
-                    new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN)),
-            "disconnection"),
-        namedConsumer(
-            test ->
-                test.metadataListener.handle(
-                    "stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE),
-            "topology change"));
-  }
-
   @ParameterizedTest
   @MethodSource("disruptionArguments")
   void shouldRestartWhereItLeftOffAfterDisruption(Consumer<ConsumersCoordinatorTest> configurator)
@@ -957,5 +1007,13 @@ public class ConsumersCoordinatorTest {
 
   List<Client.Broker> replica() {
     return replicas().subList(0, 1);
+  }
+
+  private MessageListener firstMessageListener() {
+    return this.messageListeners.get(0);
+  }
+
+  private MessageListener lastMessageListener() {
+    return this.messageListeners.get(messageListeners.size() - 1);
   }
 }
