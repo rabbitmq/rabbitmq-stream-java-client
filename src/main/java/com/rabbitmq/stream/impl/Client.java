@@ -1825,7 +1825,7 @@ public class Client implements AutoCloseable {
 
     public ClientParameters sslContext(SslContext sslContext) {
       this.sslContext = sslContext;
-      if (this.port == DEFAULT_PORT) {
+      if (this.port == DEFAULT_PORT && sslContext != null) {
         this.port = DEFAULT_TLS_PORT;
       }
       return this;
