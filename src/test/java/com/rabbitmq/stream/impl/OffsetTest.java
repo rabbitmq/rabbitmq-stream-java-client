@@ -22,11 +22,16 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.impl.TestUtils.AlwaysTrustTrustManager;
 import io.netty.channel.EventLoopGroup;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,9 +42,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import javax.net.ssl.SSLException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -60,10 +67,27 @@ public class OffsetTest {
     return map;
   }
 
+  static Stream<Arguments> offsetArguments() throws SSLException {
+    return sslContexts()
+        .flatMap(
+            sslContext -> subscriptionProperties().map(props -> Arguments.of(props, sslContext)));
+  }
+  ;
+
+  static Stream<SslContext> sslContexts() throws SSLException {
+    List<SslContext> contexts = new ArrayList<>();
+    contexts.add(null);
+    if (TestUtils.tlsAvailable()) {
+      contexts.add(
+          SslContextBuilder.forClient().trustManager(new AlwaysTrustTrustManager()).build());
+    }
+    return contexts.stream();
+  }
+
   @ParameterizedTest
-  @MethodSource("subscriptionProperties")
-  void offsetTypeFirstShouldStartConsumingFromBeginning(Map<String, String> subscriptionProperties)
-      throws Exception {
+  @MethodSource("offsetArguments")
+  void offsetTypeFirstShouldStartConsumingFromBeginning(
+      Map<String, String> subscriptionProperties, SslContext sslContext) throws Exception {
     int messageCount = 50000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
     CountDownLatch latch = new CountDownLatch(messageCount);
@@ -72,6 +96,7 @@ public class OffsetTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
+                .sslContext(sslContext)
                 .chunkListener(
                     (client1, subscriptionId, offset12, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
@@ -117,9 +142,9 @@ public class OffsetTest {
   }
 
   @ParameterizedTest
-  @MethodSource("subscriptionProperties")
-  void offsetTypeLastShouldReturnLastChunk(Map<String, String> subscriptionProperties)
-      throws Exception {
+  @MethodSource("offsetArguments")
+  void offsetTypeLastShouldReturnLastChunk(
+      Map<String, String> subscriptionProperties, SslContext sslContext) throws Exception {
     int messageCount = 50000;
     long lastOffset = messageCount - 1;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
@@ -131,6 +156,7 @@ public class OffsetTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
+                .sslContext(sslContext)
                 .chunkListener(
                     (client1, subscriptionId, offset12, messageCount1, dataSize) -> {
                       client1.credit(subscriptionId, 1);
@@ -198,9 +224,9 @@ public class OffsetTest {
   }
 
   @ParameterizedTest
-  @MethodSource("subscriptionProperties")
-  void offsetTypeNextShouldReturnNewPublishedMessages(Map<String, String> subscriptionProperties)
-      throws Exception {
+  @MethodSource("offsetArguments")
+  void offsetTypeNextShouldReturnNewPublishedMessages(
+      Map<String, String> subscriptionProperties, SslContext sslContext) throws Exception {
     int firstWaveMessageCount = 50000;
     int secondWaveMessageCount = 20000;
     int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
@@ -211,6 +237,7 @@ public class OffsetTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
+                .sslContext(sslContext)
                 .chunkListener(
                     (client1, subscriptionId, offset, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
@@ -266,9 +293,9 @@ public class OffsetTest {
   }
 
   @ParameterizedTest
-  @MethodSource("subscriptionProperties")
-  void offsetTypeOffsetShouldStartConsumingFromOffset(Map<String, String> subscriptionProperties)
-      throws Exception {
+  @MethodSource("offsetArguments")
+  void offsetTypeOffsetShouldStartConsumingFromOffset(
+      Map<String, String> subscriptionProperties, SslContext sslContext) throws Exception {
     int messageCount = 50000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
     int offset = messageCount / 10;
@@ -278,6 +305,7 @@ public class OffsetTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
+                .sslContext(sslContext)
                 .chunkListener(
                     (client1, subscriptionId, offset12, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
@@ -324,9 +352,9 @@ public class OffsetTest {
   }
 
   @ParameterizedTest
-  @MethodSource("subscriptionProperties")
+  @MethodSource("offsetArguments")
   void offsetTypeTimestampShouldStartConsumingFromTimestamp(
-      Map<String, String> subscriptionProperties) throws Exception {
+      Map<String, String> subscriptionProperties, SslContext sslContext) throws Exception {
     int firstWaveMessageCount = 50000;
     int secondWaveMessageCount = 20000;
     int lastOffset = firstWaveMessageCount + secondWaveMessageCount - 1;
@@ -342,6 +370,7 @@ public class OffsetTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
+                .sslContext(sslContext)
                 .chunkListener(
                     (client1, subscriptionId, offset, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
@@ -442,8 +471,9 @@ public class OffsetTest {
     }
   }
 
-  @Test
-  void consumeFromTail() throws Exception {
+  @ParameterizedTest
+  @MethodSource("sslContexts")
+  void consumeFromTail(SslContext sslContext) throws Exception {
     int messageCount = 10000;
     CountDownLatch firstWaveLatch = new CountDownLatch(messageCount);
     CountDownLatch secondWaveLatch = new CountDownLatch(messageCount * 2);
@@ -474,6 +504,7 @@ public class OffsetTest {
     Client consumer =
         cf.get(
             new Client.ClientParameters()
+                .sslContext(sslContext)
                 .chunkListener(
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
@@ -502,8 +533,10 @@ public class OffsetTest {
         .forEach(v -> assertThat(v).startsWith("second wave").doesNotStartWith("first wave"));
   }
 
-  @Test
-  void shouldReachTailWhenPublisherStopWhileConsumerIsBehind() throws Exception {
+  @ParameterizedTest
+  @MethodSource("sslContexts")
+  void shouldReachTailWhenPublisherStopWhileConsumerIsBehind(SslContext sslContext)
+      throws Exception {
     int messageCount = 100000;
     int messageLimit = messageCount * 2;
     AtomicLong lastConfirmed = new AtomicLong();
@@ -524,6 +557,7 @@ public class OffsetTest {
     Client consumer =
         cf.get(
             new Client.ClientParameters()
+                .sslContext(sslContext)
                 .chunkListener(
                     (client, subscriptionId, offset, msgCount, dataSize) -> client.credit(b(0), 1))
                 .messageListener(

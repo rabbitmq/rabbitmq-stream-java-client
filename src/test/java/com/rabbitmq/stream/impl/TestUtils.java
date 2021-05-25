@@ -35,10 +35,15 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.annotation.*;
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -56,10 +61,18 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
+import javax.net.ssl.X509TrustManager;
 import org.assertj.core.api.AssertDelegateTarget;
 import org.assertj.core.api.Condition;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.extension.*;
+import org.junit.jupiter.api.extension.AfterAllCallback;
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeAllCallback;
+import org.junit.jupiter.api.extension.BeforeEachCallback;
+import org.junit.jupiter.api.extension.ConditionEvaluationResult;
+import org.junit.jupiter.api.extension.ExecutionCondition;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.ExtensionContext;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
@@ -200,6 +213,132 @@ public final class TestUtils {
     };
   }
 
+  static <T> void doIfNotNull(T obj, Consumer<T> action) {
+    if (obj != null) {
+      action.accept(obj);
+    }
+  }
+
+  static void declareSuperStreamTopology(Connection connection, String superStream, int partitions)
+      throws Exception {
+    declareSuperStreamTopology(
+        connection,
+        superStream,
+        IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
+  }
+
+  static void declareSuperStreamTopology(
+      Connection connection, String superStream, String... routingKeys) throws Exception {
+    try (Channel ch = connection.createChannel()) {
+      ch.exchangeDeclare(superStream, BuiltinExchangeType.DIRECT, true);
+      for (String routingKey : routingKeys) {
+        String partitionName = superStream + "-" + routingKey;
+        ch.queueDeclare(
+            partitionName, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
+        // TODO consider adding some arguments to the bindings
+        // can be useful to identify a partition, e.g. partition number
+        ch.queueBind(partitionName, superStream, routingKey);
+      }
+    }
+  }
+
+  static void deleteSuperStreamTopology(Connection connection, String superStream, int partitions)
+      throws Exception {
+    deleteSuperStreamTopology(
+        connection,
+        superStream,
+        IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
+  }
+
+  static void deleteSuperStreamTopology(
+      Connection connection, String superStream, String... routingKeys) throws Exception {
+    try (Channel ch = connection.createChannel()) {
+      ch.exchangeDelete(superStream);
+      for (String routingKey : routingKeys) {
+        String partitionName = superStream + "-" + routingKey;
+        ch.queueDelete(partitionName);
+      }
+    }
+  }
+
+  public static String streamName(TestInfo info) {
+    return streamName(info.getTestClass().get(), info.getTestMethod().get());
+  }
+
+  private static String streamName(ExtensionContext context) {
+    return streamName(context.getTestInstance().get().getClass(), context.getTestMethod().get());
+  }
+
+  private static String streamName(Class<?> testClass, Method testMethod) {
+    String uuid = UUID.randomUUID().toString();
+    return String.format(
+        "%s_%s%s",
+        testClass.getSimpleName(), testMethod.getName(), uuid.substring(uuid.length() / 2));
+  }
+
+  static boolean tlsAvailable() {
+    if (Host.rabbitmqctlCommand() == null) {
+      throw new IllegalStateException(
+          "rabbitmqctl.bin system property not set, cannot check if MQTT plugin is enabled");
+    } else {
+      try {
+        Process process = Host.rabbitmqctl("status");
+        String output = capture(process.getInputStream());
+        return output.contains("stream/ssl");
+      } catch (Exception e) {
+        throw new RuntimeException("Error while trying to detect TLS: " + e.getMessage());
+      }
+    }
+  }
+
+  private static String capture(InputStream is) throws IOException {
+    BufferedReader br = new BufferedReader(new InputStreamReader(is));
+    String line;
+    StringBuilder buff = new StringBuilder();
+    while ((line = br.readLine()) != null) {
+      buff.append(line).append("\n");
+    }
+    return buff.toString();
+  }
+
+  static <T> void forEach(Collection<T> in, CallableIndexConsumer<T> consumer) throws Exception {
+    int count = 0;
+    for (T t : in) {
+      consumer.accept(count++, t);
+    }
+  }
+
+  static CountDownLatchAssert latchAssert(CountDownLatch latch) {
+    return new CountDownLatchAssert(latch);
+  }
+
+  static CountDownLatchAssert latchAssert(AtomicReference<CountDownLatch> latchReference) {
+    return new CountDownLatchAssert(latchReference.get());
+  }
+
+  static Condition<Throwable> responseCode(short expectedResponseCode) {
+    String message = "expected code for stream exception is " + expectedResponseCode;
+    return new Condition<>(
+        throwable ->
+            throwable instanceof StreamException
+                && ((StreamException) throwable).getCode() == expectedResponseCode,
+        message);
+  }
+
+  static Map<String, StreamMetadata> metadata(String stream, Broker leader, List<Broker> replicas) {
+    return metadata(stream, leader, replicas, Constants.RESPONSE_CODE_OK);
+  }
+
+  static Map<String, StreamMetadata> metadata(
+      String stream, Broker leader, List<Broker> replicas, short code) {
+    return Collections.singletonMap(
+        stream, new Client.StreamMetadata(stream, code, leader, replicas));
+  }
+
+  static Map<String, StreamMetadata> metadata(Broker leader, List<Broker> replicas) {
+    return metadata("stream", leader, replicas);
+  }
+
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
@@ -218,9 +357,25 @@ public final class TestUtils {
   @ExtendWith(DisabledIfStompNotEnabledCondition.class)
   @interface DisabledIfStompNotEnabled {}
 
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
+  @ExtendWith(DisabledIfTlsNotEnabledCondition.class)
+  @interface DisabledIfTlsNotEnabled {}
+
   interface TaskWithException {
 
     void run(Object context) throws Exception;
+  }
+
+  interface CallableIndexConsumer<T> {
+
+    void accept(int index, T t) throws Exception;
+  }
+
+  interface CallableConsumer<T> {
+
+    void accept(T t) throws Exception;
   }
 
   public static class StreamTestInfrastructureExtension
@@ -305,69 +460,6 @@ public final class TestUtils {
       EventLoopGroup eventLoopGroup = eventLoopGroup(context);
       eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
     }
-  }
-
-  static <T> void doIfNotNull(T obj, Consumer<T> action) {
-    if (obj != null) {
-      action.accept(obj);
-    }
-  }
-
-  static void declareSuperStreamTopology(Connection connection, String superStream, int partitions)
-      throws Exception {
-    declareSuperStreamTopology(
-        connection,
-        superStream,
-        IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
-  }
-
-  static void declareSuperStreamTopology(
-      Connection connection, String superStream, String... routingKeys) throws Exception {
-    try (Channel ch = connection.createChannel()) {
-      ch.exchangeDeclare(superStream, BuiltinExchangeType.DIRECT, true);
-      for (String routingKey : routingKeys) {
-        String partitionName = superStream + "-" + routingKey;
-        ch.queueDeclare(
-            partitionName, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
-        // TODO consider adding some arguments to the bindings
-        // can be useful to identify a partition, e.g. partition number
-        ch.queueBind(partitionName, superStream, routingKey);
-      }
-    }
-  }
-
-  static void deleteSuperStreamTopology(Connection connection, String superStream, int partitions)
-      throws Exception {
-    deleteSuperStreamTopology(
-        connection,
-        superStream,
-        IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
-  }
-
-  static void deleteSuperStreamTopology(
-      Connection connection, String superStream, String... routingKeys) throws Exception {
-    try (Channel ch = connection.createChannel()) {
-      ch.exchangeDelete(superStream);
-      for (String routingKey : routingKeys) {
-        String partitionName = superStream + "-" + routingKey;
-        ch.queueDelete(partitionName);
-      }
-    }
-  }
-
-  public static String streamName(TestInfo info) {
-    return streamName(info.getTestClass().get(), info.getTestMethod().get());
-  }
-
-  private static String streamName(ExtensionContext context) {
-    return streamName(context.getTestInstance().get().getClass(), context.getTestMethod().get());
-  }
-
-  private static String streamName(Class<?> testClass, Method testMethod) {
-    String uuid = UUID.randomUUID().toString();
-    return String.format(
-        "%s_%s%s",
-        testClass.getSimpleName(), testMethod.getName(), uuid.substring(uuid.length() / 2));
   }
 
   public static class ClientFactory {
@@ -456,31 +548,16 @@ public final class TestUtils {
     }
   }
 
-  private static String capture(InputStream is) throws IOException {
-    BufferedReader br = new BufferedReader(new InputStreamReader(is));
-    String line;
-    StringBuilder buff = new StringBuilder();
-    while ((line = br.readLine()) != null) {
-      buff.append(line).append("\n");
+  static class DisabledIfTlsNotEnabledCondition implements ExecutionCondition {
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      if (tlsAvailable()) {
+        return ConditionEvaluationResult.enabled("TLS is enabled");
+      } else {
+        return ConditionEvaluationResult.disabled("TLS is disabled");
+      }
     }
-    return buff.toString();
-  }
-
-  static <T> void forEach(Collection<T> in, CallableIndexConsumer<T> consumer) throws Exception {
-    int count = 0;
-    for (T t : in) {
-      consumer.accept(count++, t);
-    }
-  }
-
-  interface CallableIndexConsumer<T> {
-
-    void accept(int index, T t) throws Exception;
-  }
-
-  interface CallableConsumer<T> {
-
-    void accept(T t) throws Exception;
   }
 
   static class CountDownLatchAssert implements AssertDelegateTarget {
@@ -528,34 +605,16 @@ public final class TestUtils {
     }
   }
 
-  static CountDownLatchAssert latchAssert(CountDownLatch latch) {
-    return new CountDownLatchAssert(latch);
-  }
+  static class AlwaysTrustTrustManager implements X509TrustManager {
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
 
-  static CountDownLatchAssert latchAssert(AtomicReference<CountDownLatch> latchReference) {
-    return new CountDownLatchAssert(latchReference.get());
-  }
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
 
-  static Condition<Throwable> responseCode(short expectedResponseCode) {
-    String message = "expected code for stream exception is " + expectedResponseCode;
-    return new Condition<>(
-        throwable ->
-            throwable instanceof StreamException
-                && ((StreamException) throwable).getCode() == expectedResponseCode,
-        message);
-  }
-
-  static Map<String, StreamMetadata> metadata(String stream, Broker leader, List<Broker> replicas) {
-    return metadata(stream, leader, replicas, Constants.RESPONSE_CODE_OK);
-  }
-
-  static Map<String, StreamMetadata> metadata(
-      String stream, Broker leader, List<Broker> replicas, short code) {
-    return Collections.singletonMap(
-        stream, new Client.StreamMetadata(stream, code, leader, replicas));
-  }
-
-  static Map<String, StreamMetadata> metadata(Broker leader, List<Broker> replicas) {
-    return metadata("stream", leader, replicas);
+    @Override
+    public X509Certificate[] getAcceptedIssuers() {
+      return new X509Certificate[0];
+    }
   }
 }
