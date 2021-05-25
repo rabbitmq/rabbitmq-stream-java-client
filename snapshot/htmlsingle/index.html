@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(172bb80)</span>
+<br><span id="revremark">(4c898cb)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1007,17 +1007,18 @@ have been received:</p>
 <span class="predefined-type">CountDownLatch</span> consumeLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
 Consumer consumer = environment.consumerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
         .stream(stream)
-        .messageHandler((offset, message) -&gt; {  <i class="conum" data-value="2"></i><b>(2)</b>
-            sum.addAndGet(<span class="predefined-type">Long</span>.parseLong(<span class="keyword">new</span> <span class="predefined-type">String</span>(message.getBodyAsBinary())));  <i class="conum" data-value="3"></i><b>(3)</b>
-            consumeLatch.countDown();  <i class="conum" data-value="4"></i><b>(4)</b>
+        .offset(OffsetSpecification.first()) <i class="conum" data-value="2"></i><b>(2)</b>
+        .messageHandler((offset, message) -&gt; {  <i class="conum" data-value="3"></i><b>(3)</b>
+            sum.addAndGet(<span class="predefined-type">Long</span>.parseLong(<span class="keyword">new</span> <span class="predefined-type">String</span>(message.getBodyAsBinary())));  <i class="conum" data-value="4"></i><b>(4)</b>
+            consumeLatch.countDown();  <i class="conum" data-value="5"></i><b>(5)</b>
         })
         .build();
 
-consumeLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
+consumeLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="6"></i><b>(6)</b>
 
-<span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Sum: </span><span class="delimiter">&quot;</span></span> + sum.get());  <i class="conum" data-value="6"></i><b>(6)</b>
+<span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Sum: </span><span class="delimiter">&quot;</span></span> + sum.get());  <i class="conum" data-value="7"></i><b>(7)</b>
 
-consumer.close();  <i class="conum" data-value="7"></i><b>(7)</b></code></pre>
+consumer.close();  <i class="conum" data-value="8"></i><b>(8)</b></code></pre>
 </div>
 </div>
 <div class="colist arabic">
@@ -1028,26 +1029,30 @@ consumer.close();  <i class="conum" data-value="7"></i><b>(7)</b></code></pre>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Set up the logic to handle messages</td>
+<td>Start consuming from the beginning of the stream</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Add the value in the message body to the sum</td>
+<td>Set up the logic to handle messages</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Count down on each message</td>
+<td>Add the value in the message body to the sum</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="5"></i><b>5</b></td>
-<td>Wait for all messages to have arrived</td>
+<td>Count down on each message</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="6"></i><b>6</b></td>
-<td>Output the sum</td>
+<td>Wait for all messages to have arrived</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="7"></i><b>7</b></td>
+<td>Output the sum</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="8"></i><b>8</b></td>
 <td>Close the consumer</td>
 </tr>
 </table>
@@ -3084,7 +3089,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-05-21 08:28:09 UTC
+Last updated 2021-05-25 15:00:28 UTC
 </div>
 </div>
 <style>
