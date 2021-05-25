@@ -82,6 +82,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.flush.FlushConsolidationHandler;
+import io.netty.handler.ssl.SslContext;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
@@ -127,6 +128,7 @@ import org.slf4j.LoggerFactory;
 public class Client implements AutoCloseable {
 
   public static final int DEFAULT_PORT = 5552;
+  public static final int DEFAULT_TLS_PORT = 5551;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
@@ -250,6 +252,13 @@ public class Client implements AutoCloseable {
                     NETTY_HANDLER_FRAME_DECODER,
                     new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, 0, 4));
             ch.pipeline().addLast(NETTY_HANDLER_STREAM, new StreamHandler());
+            if (parameters.sslContext != null) {
+              ch.pipeline()
+                  .addFirst(
+                      "ssl",
+                      parameters.sslContext.newHandler(
+                          ch.alloc(), parameters.host, parameters.port));
+            }
             channelCustomizer.customize(ch);
           }
         });
@@ -1683,6 +1692,7 @@ public class Client implements AutoCloseable {
     private ChannelCustomizer channelCustomizer = ch -> {};
     private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
+    private SslContext sslContext;
 
     public ClientParameters host(String host) {
       this.host = host;
@@ -1810,6 +1820,14 @@ public class Client implements AutoCloseable {
 
     public ClientParameters shutdownListener(ShutdownListener shutdownListener) {
       this.shutdownListener = shutdownListener;
+      return this;
+    }
+
+    public ClientParameters sslContext(SslContext sslContext) {
+      this.sslContext = sslContext;
+      if (this.port == DEFAULT_PORT) {
+        this.port = DEFAULT_TLS_PORT;
+      }
       return this;
     }
 
