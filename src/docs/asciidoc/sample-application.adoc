@@ -61,12 +61,13 @@ have been received:
 include::{test-examples}/SampleApplication.java[tag=sample-consumer]
 --------
 <1> Create the `Consumer` with `Environment#consumerBuilder`
-<2> Set up the logic to handle messages
-<3> Add the value in the message body to the sum
-<4> Count down on each message
-<5> Wait for all messages to have arrived
-<6> Output the sum
-<7> Close the consumer
+<2> Start consuming from the beginning of the stream
+<3> Set up the logic to handle messages
+<4> Add the value in the message body to the sum
+<5> Count down on each message
+<6> Wait for all messages to have arrived
+<7> Output the sum
+<8> Close the consumer
 
 The application has some cleaning to do before terminating, that is
 deleting the stream and closing the environment:

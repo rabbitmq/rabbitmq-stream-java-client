@@ -57,17 +57,18 @@ public class SampleApplication {
         CountDownLatch consumeLatch = new CountDownLatch(messageCount);
         Consumer consumer = environment.consumerBuilder()  // <1>
                 .stream(stream)
-                .messageHandler((offset, message) -> {  // <2>
-                    sum.addAndGet(Long.parseLong(new String(message.getBodyAsBinary())));  // <3>
-                    consumeLatch.countDown();  // <4>
+                .offset(OffsetSpecification.first()) // <2>
+                .messageHandler((offset, message) -> {  // <3>
+                    sum.addAndGet(Long.parseLong(new String(message.getBodyAsBinary())));  // <4>
+                    consumeLatch.countDown();  // <5>
                 })
                 .build();
 
-        consumeLatch.await(10, TimeUnit.SECONDS);  // <5>
+        consumeLatch.await(10, TimeUnit.SECONDS);  // <6>
 
-        System.out.println("Sum: " + sum.get());  // <6>
+        System.out.println("Sum: " + sum.get());  // <7>
 
-        consumer.close();  // <7>
+        consumer.close();  // <8>
         // end::sample-consumer[]
 
         // tag::sample-environment-close[]
