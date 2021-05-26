@@ -26,6 +26,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamCreator;
@@ -40,11 +41,13 @@ import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import io.netty.handler.ssl.SslContextBuilder;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -314,6 +317,10 @@ public class StreamPerfTest implements Callable<Integer> {
     }
   }
 
+  private static boolean isTls(Collection<String> uris) {
+    return uris.stream().anyMatch(uri -> uri.toLowerCase().startsWith("rabbitmq-stream+tls"));
+  }
+
   @Override
   public Integer call() throws Exception {
     if (this.version) {
@@ -347,8 +354,10 @@ public class StreamPerfTest implements Callable<Integer> {
     shutdownService.wrap(
         closeStep("Closing environment executor", () -> envExecutor.shutdownNow()));
 
+    boolean tls = isTls(this.uris);
     AddressResolver addressResolver;
     if (loadBalancer) {
+      int defaultPort = tls ? Client.DEFAULT_TLS_PORT : Client.DEFAULT_PORT;
       List<Address> addresses =
           this.uris.stream()
               .map(
@@ -364,7 +373,7 @@ public class StreamPerfTest implements Callable<Integer> {
                   uriItem ->
                       new Address(
                           uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
-                          uriItem.getPort() == -1 ? Client.DEFAULT_PORT : uriItem.getPort()))
+                          uriItem.getPort() == -1 ? defaultPort : uriItem.getPort()))
               .collect(Collectors.toList());
       AtomicInteger connectionAttemptCount = new AtomicInteger(0);
       addressResolver =
@@ -373,7 +382,7 @@ public class StreamPerfTest implements Callable<Integer> {
       addressResolver = address -> address;
     }
 
-    Environment environment =
+    EnvironmentBuilder environmentBuilder =
         Environment.builder()
             .uris(this.uris)
             .addressResolver(addressResolver)
@@ -381,9 +390,20 @@ public class StreamPerfTest implements Callable<Integer> {
             .metricsCollector(metricsCollector)
             .maxProducersByConnection(this.producersByConnection)
             .maxCommittingConsumersByConnection(this.committingConsumersByConnection)
-            .maxConsumersByConnection(this.consumersByConnection)
-            .build();
+            .maxConsumersByConnection(this.consumersByConnection);
 
+    if (tls) {
+      environmentBuilder =
+          environmentBuilder
+              .tls()
+              .sslContext(
+                  SslContextBuilder.forClient()
+                      .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
+                      .build())
+              .environmentBuilder();
+    }
+
+    Environment environment = environmentBuilder.build();
     shutdownService.wrap(closeStep("Closing environment(s)", () -> environment.close()));
 
     streams = Utils.streams(this.streamCount, this.streams);

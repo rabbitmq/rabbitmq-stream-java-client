@@ -33,9 +33,27 @@ import org.slf4j.LoggerFactory;
 
 final class Utils {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
-
   static final LongConsumer NO_OP_LONG_CONSUMER = someLong -> {};
+  static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
+  private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
+  private static final Map<Short, String> CONSTANT_LABELS;
+
+  static {
+    Map<Short, String> labels = new HashMap<>();
+    Arrays.stream(Constants.class.getDeclaredFields())
+        .filter(f -> f.getName().startsWith("RESPONSE_CODE_") || f.getName().startsWith("CODE_"))
+        .forEach(
+            field -> {
+              try {
+                labels.put(
+                    field.getShort(null),
+                    field.getName().replace("RESPONSE_CODE_", "").replace("CODE_", ""));
+              } catch (IllegalAccessException e) {
+                LOGGER.info("Error while trying to access field Constants." + field.getName());
+              }
+            });
+    CONSTANT_LABELS = Collections.unmodifiableMap(labels);
+  }
 
   private Utils() {}
 
@@ -55,25 +73,6 @@ final class Utils {
         action.accept(t);
       }
     };
-  }
-
-  private static final Map<Short, String> CONSTANT_LABELS;
-
-  static {
-    Map<Short, String> labels = new HashMap<>();
-    Arrays.stream(Constants.class.getDeclaredFields())
-        .filter(f -> f.getName().startsWith("RESPONSE_CODE_") || f.getName().startsWith("CODE_"))
-        .forEach(
-            field -> {
-              try {
-                labels.put(
-                    field.getShort(null),
-                    field.getName().replace("RESPONSE_CODE_", "").replace("CODE_", ""));
-              } catch (IllegalAccessException e) {
-                LOGGER.info("Error while trying to access field Constants." + field.getName());
-              }
-            });
-    CONSTANT_LABELS = Collections.unmodifiableMap(labels);
   }
 
   static String formatConstant(short value) {
@@ -132,6 +131,11 @@ final class Utils {
         retryInterval);
   }
 
+  interface ClientFactory {
+
+    Client client(ClientFactoryContext context);
+  }
+
   static class ExactNodeRetryClientFactory implements ClientFactory {
 
     private static final Duration RETRY_INTERVAL = Duration.ofSeconds(1);
@@ -170,11 +174,6 @@ final class Utils {
     }
   }
 
-  interface ClientFactory {
-
-    Client client(ClientFactoryContext context);
-  }
-
   static class ClientFactoryContext {
 
     private ClientParameters parameters;
@@ -202,8 +201,6 @@ final class Utils {
       return this;
     }
   }
-
-  static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
 
   private static class TrustEverythingTrustManager implements X509TrustManager {
     @Override

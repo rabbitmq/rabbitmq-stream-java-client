@@ -16,6 +16,7 @@ package com.rabbitmq.stream.perf;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
@@ -31,13 +32,17 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 class Utils {
 
+  static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
+  private static final String RANGE_SEPARATOR_1 = "-";
+  private static final String RANGE_SEPARATOR_2 = "..";
 
   static void writeLong(byte[] array, long value) {
     // from Guava Longs
@@ -93,6 +98,10 @@ class Utils {
     }
   }
 
+  private static void throwConversionException(String format, String... arguments) {
+    throw new CommandLine.TypeConversionException(String.format(format, arguments));
+  }
+
   static class ByteCapacityTypeConverter implements CommandLine.ITypeConverter<ByteCapacity> {
 
     @Override
@@ -105,9 +114,6 @@ class Utils {
       }
     }
   }
-
-  private static final String RANGE_SEPARATOR_1 = "-";
-  private static final String RANGE_SEPARATOR_2 = "..";
 
   static class RangeTypeConverter implements CommandLine.ITypeConverter<String> {
 
@@ -156,10 +162,6 @@ class Utils {
       }
       return input;
     }
-  }
-
-  private static void throwConversionException(String format, String... arguments) {
-    throw new CommandLine.TypeConversionException(String.format(format, arguments));
   }
 
   static class DurationTypeConverter implements CommandLine.ITypeConverter<Duration> {
@@ -327,6 +329,19 @@ class Utils {
       Thread thread = this.backingThreaFactory.newThread(r);
       thread.setName(prefix + count.getAndIncrement());
       return thread;
+    }
+  }
+
+  private static class TrustEverythingTrustManager implements X509TrustManager {
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+    @Override
+    public X509Certificate[] getAcceptedIssuers() {
+      return new X509Certificate[0];
     }
   }
 }
