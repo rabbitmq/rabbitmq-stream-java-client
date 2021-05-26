@@ -35,6 +35,7 @@ import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -131,7 +132,7 @@ class StreamEnvironment implements Environment {
       try {
         SslContext sslContext =
             tlsConfiguration.sslContext() == null
-                ? tlsConfiguration.sslContextBuilder().build()
+                ? SslContextBuilder.forClient().build()
                 : tlsConfiguration.sslContext();
 
         clientParametersPrototype.sslContext(sslContext);

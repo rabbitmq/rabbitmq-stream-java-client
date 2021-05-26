@@ -296,11 +296,6 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     }
 
     @Override
-    public SslContextBuilder sslContextBuilder() {
-      return SslContextBuilder.forClient();
-    }
-
-    @Override
     public TlsConfiguration trustEverything() {
       LOGGER.warn(
           "SECURITY ALERT: this feature trusts every server certificate, effectively disabling peer verification. "
@@ -308,7 +303,9 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
               + "Please see https://www.rabbitmq.com/ssl.html to learn more about peer certificate verification.");
       try {
         this.sslContext(
-            sslContextBuilder().trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER).build());
+            SslContextBuilder.forClient()
+                .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
+                .build());
       } catch (SSLException e) {
         throw new StreamException("Error while creating Netty SSL context", e);
       }
