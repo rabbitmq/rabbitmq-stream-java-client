@@ -17,16 +17,30 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.TestUtils.AlwaysTrustTrustManager;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import java.io.File;
+import java.io.FileInputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLHandshakeException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -47,8 +61,58 @@ public class TlsTest {
     }
   }
 
+  static X509Certificate caCertificate() throws Exception {
+    return loadCertificate(caCertificateFile());
+  }
+
+  static String caCertificateFile() {
+    return System.getProperty("ca.certificate", "/tmp/tls-gen/basic/result/ca_certificate.pem");
+  }
+
+  static X509Certificate clientCertificate() throws Exception {
+    return loadCertificate(clientCertificateFile());
+  }
+
+  static String clientCertificateFile() {
+    return System.getProperty(
+        "client.certificate", "/tmp/tls-gen/basic/result/client_certificate.pem");
+  }
+
+  static PrivateKey clientKey() throws Exception {
+    return loadPrivateKey(clientKeyFile());
+  }
+
+  static PrivateKey loadPrivateKey(String filename) throws Exception {
+    File file = new File(filename);
+    String key = new String(Files.readAllBytes(file.toPath()), Charset.defaultCharset());
+
+    String privateKeyPEM =
+        key.replace("-----BEGIN PRIVATE KEY-----", "")
+            .replaceAll(System.lineSeparator(), "")
+            .replace("-----END PRIVATE KEY-----", "");
+
+    byte[] decoded = Base64.getDecoder().decode(privateKeyPEM);
+
+    KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+    PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(decoded);
+    PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+    return privateKey;
+  }
+
+  static String clientKeyFile() {
+    return System.getProperty("client.key", "/tmp/tls-gen/basic/result/client_key.pem");
+  }
+
+  static X509Certificate loadCertificate(String file) throws Exception {
+    try (FileInputStream inputStream = new FileInputStream(file)) {
+      CertificateFactory fact = CertificateFactory.getInstance("X.509");
+      X509Certificate certificate = (X509Certificate) fact.generateCertificate(inputStream);
+      return certificate;
+    }
+  }
+
   @Test
-  void publishAndConsume() throws Exception {
+  void publishAndConsumeWithUnverifiedConnection() throws Exception {
     int publishCount = 1_000_000;
 
     CountDownLatch consumedLatch = new CountDownLatch(publishCount);
@@ -97,5 +161,35 @@ public class TlsTest {
     assertThat(confirmedLatch.await(15, SECONDS)).isTrue();
     assertThat(consumedLatch.await(15, SECONDS)).isTrue();
     client.unsubscribe(b(1));
+  }
+
+  @Test
+  void unverifiedConnection() {
+    cf.get(new ClientParameters().sslContext(sslContext()));
+  }
+
+  @Test
+  void verifiedConnectionWithCorrectServerCertificate() throws Exception {
+    SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
+    cf.get(new ClientParameters().sslContext(context));
+  }
+
+  @Test
+  void verifiedConnectionWithWrongServerCertificate() throws Exception {
+    SslContext context = SslContextBuilder.forClient().trustManager(clientCertificate()).build();
+    assertThatThrownBy(() -> cf.get(new ClientParameters().sslContext(context)))
+        .isInstanceOf(StreamException.class)
+        .hasCauseInstanceOf(SSLHandshakeException.class);
+  }
+
+  @Test
+  void verifiedConnectionWithCorrectClientPrivateKey() throws Exception {
+    SslContext context =
+        SslContextBuilder.forClient()
+            .trustManager(caCertificate())
+            .keyManager(clientKey(), clientCertificate())
+            .build();
+
+    cf.get(new ClientParameters().sslContext(context));
   }
 }

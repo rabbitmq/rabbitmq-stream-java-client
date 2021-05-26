@@ -80,6 +80,7 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.ssl.SslContext;
@@ -111,6 +112,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.ToLongFunction;
+import javax.net.ssl.SSLHandshakeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -342,7 +344,13 @@ public class Client implements AutoCloseable {
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
-      return request.response.get();
+      if (request.error() == null) {
+        return request.response.get();
+      } else {
+        throw new StreamException("Error when establishing stream connection", request.error());
+      }
+    } catch (StreamException e) {
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
       throw new StreamException(e);
@@ -1853,6 +1861,8 @@ public class Client implements AutoCloseable {
 
     private final AtomicReference<T> response = new AtomicReference<>();
 
+    private final AtomicReference<Throwable> error = new AtomicReference<>();
+
     private OutstandingRequest(Duration timeout) {
       this.timeout = timeout;
     }
@@ -1868,6 +1878,15 @@ public class Client implements AutoCloseable {
       if (!completed) {
         throw new StreamException("Could not get response in " + timeout.toMillis() + " ms");
       }
+    }
+
+    void completeExceptionally(Throwable cause) {
+      error.set(cause);
+      latch.countDown();
+    }
+
+    Throwable error() {
+      return error.get();
     }
 
     AtomicReference<T> response() {
@@ -2045,6 +2064,20 @@ public class Client implements AutoCloseable {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+      if (cause instanceof DecoderException && cause.getCause() instanceof SSLHandshakeException) {
+        LOGGER.debug("Error during TLS handshake");
+        // likely to be an error during the handshake, there should be only one outstanding request
+        if (outstandingRequests.size() == 1) {
+          // the response may have arrived in between, making a copy
+          List<OutstandingRequest<?>> requests = new ArrayList<>(outstandingRequests.values());
+          if (requests.size() == 1) {
+            OutstandingRequest<?> outstandingRequest = requests.get(0);
+            outstandingRequest.completeExceptionally(cause.getCause());
+          }
+        } else {
+          LOGGER.debug("More than 1 outstanding request: {}", outstandingRequests);
+        }
+      }
       LOGGER.warn("Error in stream handler", cause);
       ctx.close();
     }
