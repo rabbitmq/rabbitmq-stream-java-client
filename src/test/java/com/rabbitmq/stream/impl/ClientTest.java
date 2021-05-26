@@ -710,6 +710,6 @@ public class ClientTest {
   void clientShouldContainServerAdvertisedHostAndPort() {
     Client client = cf.get();
     assertThat(client.serverAdvertisedHost()).isNotNull();
-    assertThat(client.serverAdvertisedPort()).isPositive();
+    assertThat(client.serverAdvertisedPort()).isEqualTo(Client.DEFAULT_PORT);
   }
 }

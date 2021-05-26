@@ -18,6 +18,8 @@ import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
 import io.netty.channel.EventLoopGroup;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -275,4 +277,35 @@ public interface EnvironmentBuilder {
    * @return the configured environment
    */
   Environment build();
+
+  TlsConfiguration tls();
+
+  interface TlsConfiguration {
+
+    TlsConfiguration hostnameVerification();
+
+    TlsConfiguration hostnameVerification(boolean hostnameVerification);
+
+    /**
+     * Netty {@link SslContext} for TLS connections.
+     *
+     * <p>Use {@link SslContextBuilder#forClient()} to configure and create an instance.
+     *
+     * @param sslContext
+     * @return
+     */
+    TlsConfiguration sslContext(SslContext sslContext);
+
+    /**
+     * Convenience method to set a {@link SslContext} that trusts all servers.
+     *
+     * <p>When this feature is enabled, no peer verification is performed, which <strong>provides no
+     * protection against Man-in-the-Middle (MITM) attacks</strong>.
+     *
+     * <p><strong>Use this only in development and QA environments</strong>.
+     */
+    TlsConfiguration trustEverything();
+
+    EnvironmentBuilder environmentBuilder();
+  }
 }

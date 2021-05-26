@@ -79,6 +79,7 @@ public class StreamEnvironmentUnitTest {
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
             ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            null,
             cf);
   }
 
@@ -136,6 +137,7 @@ public class StreamEnvironmentUnitTest {
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
             ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            null,
             cf);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }

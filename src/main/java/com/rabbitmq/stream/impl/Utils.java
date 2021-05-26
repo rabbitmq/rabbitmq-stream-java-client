@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -26,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.function.Predicate;
+import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -198,6 +200,21 @@ final class Utils {
     ClientFactoryContext key(String key) {
       this.key = key;
       return this;
+    }
+  }
+
+  static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
+
+  private static class TrustEverythingTrustManager implements X509TrustManager {
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+    @Override
+    public X509Certificate[] getAcceptedIssuers() {
+      return new X509Certificate[0];
     }
   }
 }

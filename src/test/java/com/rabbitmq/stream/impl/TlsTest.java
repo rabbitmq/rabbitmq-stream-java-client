@@ -15,14 +15,18 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.Utils.TRUST_EVERYTHING_TRUST_MANAGER;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
-import com.rabbitmq.stream.impl.TestUtils.AlwaysTrustTrustManager;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -39,6 +43,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
+import java.util.stream.IntStream;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
 import org.junit.jupiter.api.Test;
@@ -55,7 +60,7 @@ public class TlsTest {
 
   static SslContext alwaysTrustSslContext() {
     try {
-      return SslContextBuilder.forClient().trustManager(new AlwaysTrustTrustManager()).build();
+      return SslContextBuilder.forClient().trustManager(TRUST_EVERYTHING_TRUST_MANAGER).build();
     } catch (SSLException e) {
       throw new RuntimeException(e);
     }
@@ -210,5 +215,59 @@ public class TlsTest {
             .sslContext(context)
             .host("127.0.0.1")
             .tlsHostnameVerification(false));
+  }
+
+  @Test
+  void metadataShouldReturnTlsPortForTlsConnection() {
+    assertThat(cf.get().metadata(stream).get(stream).getLeader().getPort())
+        .isEqualTo(Client.DEFAULT_PORT);
+    assertThat(
+            cf.get(new ClientParameters().sslContext(alwaysTrustSslContext()))
+                .metadata(stream)
+                .get(stream)
+                .getLeader()
+                .getPort())
+        .isEqualTo(Client.DEFAULT_TLS_PORT);
+  }
+
+  @Test
+  void environmentPublisherConsumer() throws Exception {
+    try (Environment env =
+        Environment.builder()
+            .uri("rabbitmq-stream+tls://localhost")
+            .tls()
+            .sslContext(SslContextBuilder.forClient().trustManager(caCertificate()).build())
+            .environmentBuilder()
+            .build()) {
+
+      int messageCount = 10_000;
+
+      CountDownLatch latchConfirm = new CountDownLatch(messageCount);
+      Producer producer = env.producerBuilder().stream(this.stream).build();
+      ConfirmationHandler confirmationHandler = confirmationStatus -> latchConfirm.countDown();
+      IntStream.range(0, messageCount)
+          .forEach(
+              i ->
+                  producer.send(
+                      producer
+                          .messageBuilder()
+                          .addData("".getBytes(StandardCharsets.UTF_8))
+                          .build(),
+                      confirmationHandler));
+      assertThat(latchAssert(latchConfirm)).completes();
+
+      CountDownLatch latchConsume = new CountDownLatch(messageCount);
+      env.consumerBuilder().stream(this.stream)
+          .offset(OffsetSpecification.first())
+          .messageHandler((context, message) -> latchConsume.countDown())
+          .build();
+      assertThat(latchAssert(latchConsume)).completes();
+    }
+  }
+
+  @Test
+  void clientShouldContainServerAdvertisedTlsPort() {
+    Client client = cf.get(new ClientParameters().sslContext(alwaysTrustSslContext()));
+    assertThat(client.serverAdvertisedPort()).isEqualTo(Client.DEFAULT_TLS_PORT);
   }
 }

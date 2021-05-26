@@ -21,10 +21,13 @@ import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
 import io.netty.channel.EventLoopGroup;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
@@ -33,19 +36,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
+import javax.net.ssl.SSLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(StreamEnvironmentBuilder.class);
+
   private final Client.ClientParameters clientParameters = new Client.ClientParameters();
+  private final DefaultTlsConfiguration tls = new DefaultTlsConfiguration(this);
   private ScheduledExecutorService scheduledExecutorService;
   private List<URI> uris = Collections.emptyList();
   private BackOffDelayPolicy recoveryBackOffDelayPolicy =
       BackOffDelayPolicy.fixed(Duration.ofSeconds(5));
   private BackOffDelayPolicy topologyBackOffDelayPolicy =
       BackOffDelayPolicy.fixedWithInitialDelay(Duration.ofSeconds(5), Duration.ofSeconds(1));
-
   private AddressResolver addressResolver = address -> address;
-
   private int maxProducersByConnection = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT;
   private int maxCommittingConsumersByConnection =
       ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT;
@@ -53,20 +60,15 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
   public StreamEnvironmentBuilder() {}
 
-  @Override
-  public StreamEnvironmentBuilder uri(String uri) {
-    this.uris = Collections.singletonList(toUri(uri));
-    return this;
-  }
-
   private static URI toUri(String uriString) {
     try {
       URI uri = new URI(uriString);
-      if (!"rabbitmq-stream".equalsIgnoreCase(uri.getScheme())) {
+      if (!"rabbitmq-stream".equalsIgnoreCase(uri.getScheme())
+          && !"rabbitmq-stream+tls".equalsIgnoreCase(uri.getScheme())) {
         throw new IllegalArgumentException(
             "Wrong scheme in rabbitmq-stream URI: "
                 + uri.getScheme()
-                + ". Should be rabbitmq-stream");
+                + ". Should be rabbitmq-stream or rabbitmq-stream+tls");
       }
       return uri;
     } catch (URISyntaxException e) {
@@ -75,11 +77,26 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
+  public StreamEnvironmentBuilder uri(String uriString) {
+    URI uri = toUri(uriString);
+    this.uris = Collections.singletonList(uri);
+    if (uri.getScheme().toLowerCase().endsWith("+tls")) {
+      this.tls.enable();
+    }
+    return this;
+  }
+
+  @Override
   public StreamEnvironmentBuilder uris(List<String> uris) {
     if (uris == null) {
       throw new IllegalArgumentException("URIs parameter cannot be null");
     }
     this.uris = uris.stream().map(StreamEnvironmentBuilder::toUri).collect(Collectors.toList());
+    boolean tls =
+        this.uris.stream().anyMatch(uri -> uri.getScheme().toLowerCase().endsWith("+tls"));
+    if (tls) {
+      this.tls.enable();
+    }
     return this;
   }
 
@@ -228,6 +245,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
+  public TlsConfiguration tls() {
+    this.tls.enable();
+    return this.tls;
+  }
+
+  @Override
   public Environment build() {
     return new StreamEnvironment(
         scheduledExecutorService,
@@ -238,6 +261,79 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         addressResolver,
         maxProducersByConnection,
         maxCommittingConsumersByConnection,
-        maxConsumersByConnection);
+        maxConsumersByConnection,
+        tls);
+  }
+
+  static final class DefaultTlsConfiguration implements TlsConfiguration {
+
+    private final EnvironmentBuilder environmentBuilder;
+
+    private boolean enabled = false;
+    private boolean hostnameVerification = true;
+    private SslContext sslContext;
+
+    private DefaultTlsConfiguration(EnvironmentBuilder environmentBuilder) {
+      this.environmentBuilder = environmentBuilder;
+    }
+
+    @Override
+    public TlsConfiguration hostnameVerification() {
+      this.hostnameVerification = true;
+      return this;
+    }
+
+    @Override
+    public TlsConfiguration hostnameVerification(boolean hostnameVerification) {
+      this.hostnameVerification = hostnameVerification;
+      return this;
+    }
+
+    @Override
+    public TlsConfiguration sslContext(SslContext sslContext) {
+      this.sslContext = sslContext;
+      return this;
+    }
+
+    @Override
+    public SslContextBuilder sslContextBuilder() {
+      return SslContextBuilder.forClient();
+    }
+
+    @Override
+    public TlsConfiguration trustEverything() {
+      LOGGER.warn(
+          "SECURITY ALERT: this feature trusts every server certificate, effectively disabling peer verification. "
+              + "This is convenient for local development but offers no protection against man-in-the-middle attacks. "
+              + "Please see https://www.rabbitmq.com/ssl.html to learn more about peer certificate verification.");
+      try {
+        this.sslContext(
+            sslContextBuilder().trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER).build());
+      } catch (SSLException e) {
+        throw new StreamException("Error while creating Netty SSL context", e);
+      }
+      return this;
+    }
+
+    @Override
+    public EnvironmentBuilder environmentBuilder() {
+      return this.environmentBuilder;
+    }
+
+    void enable() {
+      this.enabled = true;
+    }
+
+    public boolean enabled() {
+      return enabled;
+    }
+
+    public boolean hostnameVerificationEnabled() {
+      return hostnameVerification;
+    }
+
+    public SslContext sslContext() {
+      return sslContext;
+    }
   }
 }

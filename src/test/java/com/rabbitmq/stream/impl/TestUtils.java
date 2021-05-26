@@ -43,7 +43,6 @@ import java.lang.annotation.Target;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -61,7 +60,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
-import javax.net.ssl.X509TrustManager;
 import org.assertj.core.api.AssertDelegateTarget;
 import org.assertj.core.api.Condition;
 import org.junit.jupiter.api.TestInfo;
@@ -602,19 +600,6 @@ public final class TestUtils {
         Thread.interrupted();
         throw new RuntimeException(e);
       }
-    }
-  }
-
-  static class AlwaysTrustTrustManager implements X509TrustManager {
-    @Override
-    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
-
-    @Override
-    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
-
-    @Override
-    public X509Certificate[] getAcceptedIssuers() {
-      return new X509Certificate[0];
     }
   }
 }

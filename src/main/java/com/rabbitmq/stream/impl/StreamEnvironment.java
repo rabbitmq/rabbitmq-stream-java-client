@@ -31,8 +31,10 @@ import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.OffsetCommittingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
+import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.handler.ssl.SslContext;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -51,6 +53,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
+import javax.net.ssl.SSLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,7 +91,8 @@ class StreamEnvironment implements Environment {
       AddressResolver addressResolver,
       int maxProducersByConnection,
       int maxCommittingConsumersByConnection,
-      int maxConsumersByConnection) {
+      int maxConsumersByConnection,
+      DefaultTlsConfiguration tlsConfiguration) {
     this(
         scheduledExecutorService,
         clientParametersPrototype,
@@ -99,6 +103,7 @@ class StreamEnvironment implements Environment {
         maxProducersByConnection,
         maxCommittingConsumersByConnection,
         maxConsumersByConnection,
+        tlsConfiguration,
         cp -> new Client(cp));
   }
 
@@ -112,6 +117,7 @@ class StreamEnvironment implements Environment {
       int maxProducersByConnection,
       int maxCommittingConsumersByConnection,
       int maxConsumersByConnection,
+      DefaultTlsConfiguration tlsConfiguration,
       Function<Client.ClientParameters, Client> clientFactory) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
@@ -119,18 +125,39 @@ class StreamEnvironment implements Environment {
 
     this.addressResolver = addressResolver;
 
+    boolean tls;
+    if (tlsConfiguration != null && tlsConfiguration.enabled()) {
+      tls = true;
+      try {
+        SslContext sslContext =
+            tlsConfiguration.sslContext() == null
+                ? tlsConfiguration.sslContextBuilder().build()
+                : tlsConfiguration.sslContext();
+
+        clientParametersPrototype.sslContext(sslContext);
+        clientParametersPrototype.tlsHostnameVerification(
+            tlsConfiguration.hostnameVerificationEnabled());
+
+      } catch (SSLException e) {
+        throw new StreamException("Error while creating Netty SSL context", e);
+      }
+    } else {
+      tls = false;
+    }
+
     if (uris.isEmpty()) {
       this.addresses =
           Collections.singletonList(
               new Address(clientParametersPrototype.host, clientParametersPrototype.port));
     } else {
+      int defaultPort = tls ? Client.DEFAULT_TLS_PORT : Client.DEFAULT_PORT;
       this.addresses =
           uris.stream()
               .map(
                   uriItem ->
                       new Address(
                           uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
-                          uriItem.getPort() == -1 ? Client.DEFAULT_PORT : uriItem.getPort()))
+                          uriItem.getPort() == -1 ? defaultPort : uriItem.getPort()))
               .collect(Collectors.toList());
     }
 

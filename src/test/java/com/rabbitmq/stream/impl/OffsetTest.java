@@ -22,7 +22,6 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.impl.TestUtils.AlwaysTrustTrustManager;
 import io.netty.channel.EventLoopGroup;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -79,7 +78,7 @@ public class OffsetTest {
     contexts.add(null);
     if (TestUtils.tlsAvailable()) {
       contexts.add(
-          SslContextBuilder.forClient().trustManager(new AlwaysTrustTrustManager()).build());
+          SslContextBuilder.forClient().trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER).build());
     }
     return contexts.stream();
   }
