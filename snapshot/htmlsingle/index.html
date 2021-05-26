@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(4c898cb)</span>
+<br><span id="revremark">(f7cf886)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -478,6 +478,8 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#environment">Environment</a>
 <ul class="sectlevel4">
 <li><a href="#creating-the-environment">Creating the Environment</a></li>
+<li><a href="#enabling-tls">Enabling TLS</a></li>
+<li><a href="#configuring-the-environment">Configuring the Environment</a></li>
 <li><a href="#managing-streams">Managing Streams</a></li>
 </ul>
 </li>
@@ -1183,7 +1185,8 @@ connect to a node:</p>
 username, password, and virtual host (<code>/</code>, which is encoded as <code>%2f</code>).
 The URI follows the same rules as the
 <a href="https://www.rabbitmq.com/uri-spec.html">AMQP 0.9.1 URI</a>,
-except the protocol must be <code>rabbitmq-stream</code> and TLS is not supported.</p>
+except the protocol must be <code>rabbitmq-stream</code>. <a href="#enabling-tls">TLS is enabled</a> by using
+the <code>rabbitmq-stream+tls</code> scheme in the URI.</p>
 </div>
 <div class="paragraph">
 <p>When using one URI, the corresponding node will be the main entry point to connect to. The
@@ -1216,6 +1219,93 @@ several other URIs to try in case of failure of a node:</p>
 <p>By specifying several URIs, the environment will try to connect to the first one, and
 will pick a new URI randomly in case of disconnection.</p>
 </div>
+</div>
+<div class="sect4">
+<h5 id="enabling-tls"><a class="anchor" href="#enabling-tls"></a>Enabling TLS</h5>
+<div class="paragraph">
+<p>TLS can be enabled by using the <code>rabbitmq-stream+tls</code> scheme in the URI.
+The default TLS port is 5551.</p>
+</div>
+<div class="paragraph">
+<p>Use the <code>EnvironmentBuilder#tls</code> method to configure TLS.
+The most important setting is a <code>io.netty.handler.ssl.SslContext</code> instance,
+which is created and configured with the
+<code>io.netty.handler.ssl.SslContext#forClient</code> method. Note hostname verification
+is enabled by default.</p>
+</div>
+<div class="paragraph">
+<p>The following snippet shows a common configuration, whereby
+the client is instructed to trust servers with certificates
+signed by the configured certificate authority (CA).</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating an environment that uses TLS</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">X509Certificate</span> certificate;
+<span class="keyword">try</span> (<span class="predefined-type">FileInputStream</span> inputStream =
+            <span class="keyword">new</span> <span class="predefined-type">FileInputStream</span>(<span class="string"><span class="delimiter">&quot;</span><span class="content">/path/to/ca_certificate.pem</span><span class="delimiter">&quot;</span></span>)) {
+    <span class="predefined-type">CertificateFactory</span> fact = <span class="predefined-type">CertificateFactory</span>.getInstance(<span class="string"><span class="delimiter">&quot;</span><span class="content">X.509</span><span class="delimiter">&quot;</span></span>);
+    certificate = (<span class="predefined-type">X509Certificate</span>) fact.generateCertificate(inputStream); <i class="conum" data-value="1"></i><b>(1)</b>
+}
+SslContext sslContext = SslContextBuilder
+    .forClient()
+    .trustManager(certificate)  <i class="conum" data-value="2"></i><b>(2)</b>
+    .build();
+
+Environment environment = Environment.builder()
+    .uri(<span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream+tls://guest:guest@localhost:5551/%2f</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="3"></i><b>(3)</b>
+    .tls().sslContext(sslContext)  <i class="conum" data-value="4"></i><b>(4)</b>
+    .environmentBuilder()
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Load certificate authority (CA) certificate from PEM file</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Configure Netty <code>SslContext</code> to trust CA certificate</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Use TLS scheme in environment URI</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Set <code>SslContext</code> in environment configuration</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>It is sometimes handy to trust any server certificates
+in development environments. <code>EnvironmentBuilder#tls</code> provides the
+<code>trustEverything</code> method to do so. <strong>This should
+not be used in a production environment</strong>.</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating a TLS environment that trusts all server certificates for development</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Environment environment = Environment.builder()
+    .uri(<span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq-stream+tls://guest:guest@localhost:5551/%2f</span><span class="delimiter">&quot;</span></span>)
+    .tls().trustEverything()  <i class="conum" data-value="1"></i><b>(1)</b>
+    .environmentBuilder()
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Trust all server certificates</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect4">
+<h5 id="configuring-the-environment"><a class="anchor" href="#configuring-the-environment"></a>Configuring the Environment</h5>
 <div class="paragraph">
 <p>The following table sums up the main settings to create an <code>Environment</code>:</p>
 </div>
@@ -1313,6 +1403,30 @@ can maintain before a new connection is open. The value must be between 1 and 25
 <td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of <code>Consumer</code> instances a single connection can maintain before
 a new connection is open. The value must be between 1 and 255.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">255</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Configuration helper for TLS.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">TLS is enabled if a <code>rabbitmq-stream+tls</code> URI is provided.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls#hostnameVerification</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Enable or disable hostname verification.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Enabled by default.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls#sslContext</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set the <code>io.netty.handler.ssl.SslContext</code> used for the TLS connection.
+Use <code>io.netty.handler.ssl.SslContextBuilder#forClient</code> to configure it.
+The server certificate chain and the client private key are the typical
+elements that need to be configured.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The JDK trust manager and no client private key.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls#trustEverything</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Helper to configure a <code>SslContext</code> that trusts all server certificates
+and does not use a client private key. <strong>Only for development</strong>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Disabled by default.</p></td>
 </tr>
 </tbody>
 </table>
@@ -3089,7 +3203,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-05-25 15:00:28 UTC
+Last updated 2021-05-26 14:13:08 UTC
 </div>
 </div>
 <style>
