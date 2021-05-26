@@ -53,7 +53,7 @@ public class TlsTest {
   TestUtils.ClientFactory cf;
   int credit = 10;
 
-  static SslContext sslContext() {
+  static SslContext alwaysTrustSslContext() {
     try {
       return SslContextBuilder.forClient().trustManager(new AlwaysTrustTrustManager()).build();
     } catch (SSLException e) {
@@ -128,7 +128,7 @@ public class TlsTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
-                .sslContext(sslContext())
+                .sslContext(alwaysTrustSslContext())
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
 
@@ -140,7 +140,7 @@ public class TlsTest {
               Client publisher =
                   cf.get(
                       new Client.ClientParameters()
-                          .sslContext(sslContext())
+                          .sslContext(alwaysTrustSslContext())
                           .publishConfirmListener(
                               (publisherId, correlationId) -> confirmedLatch.countDown()));
               int messageId = 0;
@@ -165,7 +165,7 @@ public class TlsTest {
 
   @Test
   void unverifiedConnection() {
-    cf.get(new ClientParameters().sslContext(sslContext()));
+    cf.get(new ClientParameters().sslContext(alwaysTrustSslContext()));
   }
 
   @Test
@@ -191,5 +191,24 @@ public class TlsTest {
             .build();
 
     cf.get(new ClientParameters().sslContext(context));
+  }
+
+  @Test
+  void hostnameVerificationShouldFailWhenSettingHostToLoopbackInterface() throws Exception {
+    SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
+    assertThatThrownBy(() -> cf.get(new ClientParameters().sslContext(context).host("127.0.0.1")))
+        .isInstanceOf(StreamException.class)
+        .hasCauseInstanceOf(SSLHandshakeException.class);
+  }
+
+  @Test
+  void shouldConnectWhenSettingHostToLoopbackInterfaceAndDisablingHostnameVerification()
+      throws Exception {
+    SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
+    cf.get(
+        new ClientParameters()
+            .sslContext(context)
+            .host("127.0.0.1")
+            .tlsHostnameVerification(false));
   }
 }

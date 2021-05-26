@@ -84,6 +84,7 @@ import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
@@ -112,7 +113,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.ToLongFunction;
+import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.SSLParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -255,11 +258,15 @@ public class Client implements AutoCloseable {
                     new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, 0, 4));
             ch.pipeline().addLast(NETTY_HANDLER_STREAM, new StreamHandler());
             if (parameters.sslContext != null) {
-              ch.pipeline()
-                  .addFirst(
-                      "ssl",
-                      parameters.sslContext.newHandler(
-                          ch.alloc(), parameters.host, parameters.port));
+              SslHandler sslHandler =
+                  parameters.sslContext.newHandler(ch.alloc(), parameters.host, parameters.port);
+              if (parameters.tlsHostnameVerification) {
+                SSLEngine sslEngine = sslHandler.engine();
+                SSLParameters sslParameters = sslEngine.getSSLParameters();
+                sslParameters.setEndpointIdentificationAlgorithm("HTTPS");
+                sslEngine.setSSLParameters(sslParameters);
+              }
+              ch.pipeline().addFirst("ssl", sslHandler);
             }
             channelCustomizer.customize(ch);
           }
@@ -1701,6 +1708,7 @@ public class Client implements AutoCloseable {
     private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
+    private boolean tlsHostnameVerification = true;
 
     public ClientParameters host(String host) {
       this.host = host;
@@ -1836,6 +1844,11 @@ public class Client implements AutoCloseable {
       if (this.port == DEFAULT_PORT && sslContext != null) {
         this.port = DEFAULT_TLS_PORT;
       }
+      return this;
+    }
+
+    public ClientParameters tlsHostnameVerification(boolean tlsHostnameVerification) {
+      this.tlsHostnameVerification = tlsHostnameVerification;
       return this;
     }
 
