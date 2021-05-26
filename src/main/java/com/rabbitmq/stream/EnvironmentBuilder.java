@@ -278,12 +278,33 @@ public interface EnvironmentBuilder {
    */
   Environment build();
 
+  /**
+   * Enable and configure TLS.
+   *
+   * @return the TLS configuration helper
+   */
   TlsConfiguration tls();
 
+  /** Helper to configure TLS. */
   interface TlsConfiguration {
 
+    /**
+     * Enable hostname verification.
+     *
+     * <p>Hostname verification is enabled by default.
+     *
+     * @return the TLS configuration helper
+     */
     TlsConfiguration hostnameVerification();
 
+    /**
+     * Enable or disable hostname verification.
+     *
+     * <p>Hostname verification is enabled by default.
+     *
+     * @param hostnameVerification
+     * @return the TLS configuration helper
+     */
     TlsConfiguration hostnameVerification(boolean hostnameVerification);
 
     /**
@@ -306,6 +327,11 @@ public interface EnvironmentBuilder {
      */
     TlsConfiguration trustEverything();
 
+    /**
+     * Go back to the environment builder
+     *
+     * @return the environment builder
+     */
     EnvironmentBuilder environmentBuilder();
   }
 }

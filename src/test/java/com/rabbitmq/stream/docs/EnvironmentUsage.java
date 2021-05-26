@@ -17,6 +17,11 @@ package com.rabbitmq.stream.docs;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Environment;
 
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import java.io.FileInputStream;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Arrays;
 
@@ -48,6 +53,37 @@ public class EnvironmentUsage {
                 )
                 .build();
         // end::environment-creation-with-uris[]
+    }
+
+    void environmentCreationWithTls() throws Exception {
+        // tag::environment-creation-with-tls[]
+        X509Certificate certificate;
+        try (FileInputStream inputStream =
+                    new FileInputStream("/path/to/ca_certificate.pem")) {
+            CertificateFactory fact = CertificateFactory.getInstance("X.509");
+            certificate = (X509Certificate) fact.generateCertificate(inputStream); // <1>
+        }
+        SslContext sslContext = SslContextBuilder
+            .forClient()
+            .trustManager(certificate)  // <2>
+            .build();
+
+        Environment environment = Environment.builder()
+            .uri("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f")  // <3>
+            .tls().sslContext(sslContext)  // <4>
+            .environmentBuilder()
+            .build();
+        // end::environment-creation-with-tls[]
+    }
+
+    void environmentCreationWithTlsTrustEverything() throws Exception {
+        // tag::environment-creation-with-tls-trust-everything[]
+        Environment environment = Environment.builder()
+            .uri("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f")
+            .tls().trustEverything()  // <1>
+            .environmentBuilder()
+            .build();
+        // end::environment-creation-with-tls-trust-everything[]
     }
 
     void createStream() {

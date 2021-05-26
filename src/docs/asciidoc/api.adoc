@@ -49,7 +49,8 @@ The previous snippet uses a URI that specifies the following information: host, 
 username, password, and virtual host (`/`, which is encoded as `%2f`).
 The URI follows the same rules as the
 https://www.rabbitmq.com/uri-spec.html[AMQP 0.9.1 URI],
-except the protocol must be `rabbitmq-stream` and TLS is not supported.
+except the protocol must be `rabbitmq-stream`. <<enabling-tls,TLS is enabled>> by using
+the `rabbitmq-stream+tls` scheme in the URI.
 
 When using one URI, the corresponding node will be the main entry point to connect to. The
 `Environment` will then use the stream protocol to find out more about streams topology
@@ -66,6 +67,45 @@ include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uri
 
 By specifying several URIs, the environment will try to connect to the first one, and
 will pick a new URI randomly in case of disconnection.
+
+===== Enabling TLS
+
+TLS can be enabled by using the `rabbitmq-stream+tls` scheme in the URI.
+The default TLS port is 5551.
+
+Use the `EnvironmentBuilder#tls` method to configure TLS.
+The most important setting is a `io.netty.handler.ssl.SslContext` instance,
+which is created and configured with the
+`io.netty.handler.ssl.SslContext#forClient` method. Note hostname verification
+is enabled by default.
+
+The following snippet shows a common configuration, whereby
+the client is instructed to trust servers with certificates
+signed by the configured certificate authority (CA).
+
+.Creating an environment that uses TLS
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-tls]
+--------
+<1> Load certificate authority (CA) certificate from PEM file
+<2> Configure Netty `SslContext` to trust CA certificate
+<3> Use TLS scheme in environment URI
+<4> Set `SslContext` in environment configuration
+
+It is sometimes handy to trust any server certificates
+in development environments. `EnvironmentBuilder#tls` provides the
+`trustEverything` method to do so. **This should
+not be used in a production environment**.
+
+.Creating a TLS environment that trusts all server certificates for development
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-tls-trust-everything]
+--------
+<1> Trust all server certificates
+
+===== Configuring the Environment
 
 The following table sums up the main settings to create an `Environment`:
 
@@ -141,6 +181,26 @@ can maintain before a new connection is open. The value must be between 1 and 25
 |The maximum number of `Consumer` instances a single connection can maintain before
 a new connection is open. The value must be between 1 and 255.
 |255
+
+|`tls`
+|Configuration helper for TLS.
+|TLS is enabled if a `rabbitmq-stream+tls` URI is provided.
+
+|`tls#hostnameVerification`
+|Enable or disable hostname verification.
+|Enabled by default.
+
+|`tls#sslContext`
+|Set the `io.netty.handler.ssl.SslContext` used for the TLS connection.
+Use `io.netty.handler.ssl.SslContextBuilder#forClient` to configure it.
+The server certificate chain and the client private key are the typical
+elements that need to be configured.
+|The JDK trust manager and no client private key.
+
+|`tls#trustEverything`
+|Helper to configure a `SslContext` that trusts all server certificates
+and does not use a client private key. **Only for development**.
+|Disabled by default.
 |===
 
 
