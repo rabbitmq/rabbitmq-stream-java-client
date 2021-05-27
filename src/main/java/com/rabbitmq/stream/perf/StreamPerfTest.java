@@ -508,7 +508,11 @@ public class StreamPerfTest implements Callable<Integer> {
 
                         // FIXME do not increment producer confirm in case of publish error
                         ConfirmationHandler confirmationHandler =
-                            confirmationStatus -> producerConfirm.increment();
+                            confirmationStatus -> {
+                              if (confirmationStatus.isConfirmed()) {
+                                producerConfirm.increment();
+                              }
+                            };
                         while (true && !Thread.currentThread().isInterrupted()) {
                           rateLimiterCallback.run();
                           long creationTime = System.nanoTime();
