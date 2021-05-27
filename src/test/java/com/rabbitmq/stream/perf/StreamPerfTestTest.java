@@ -57,7 +57,7 @@ public class StreamPerfTestTest {
   }
 
   ArgumentsBuilder builder() {
-    return new ArgumentsBuilder().stream(s).rate(100);
+    return new ArgumentsBuilder().stream(s).rate(100).output("none");
   }
 
   static void waitOneSecond() throws InterruptedException {
@@ -211,6 +211,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder commitEvery(int commitEvery) {
       arguments.put("commit-every", String.valueOf(commitEvery));
+      return this;
+    }
+
+    ArgumentsBuilder output(String output) {
+      arguments.put("output", output);
       return this;
     }
 

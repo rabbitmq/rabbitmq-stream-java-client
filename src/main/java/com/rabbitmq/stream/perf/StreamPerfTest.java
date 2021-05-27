@@ -42,6 +42,7 @@ import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.handler.ssl.SslContextBuilder;
+import java.io.PrintStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
@@ -260,8 +261,17 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "false")
   private boolean loadBalancer;
 
+  @CommandLine.Option(
+      names = {"--output"},
+      description = "where to output messages",
+      defaultValue = "console",
+      hidden = true)
+  private String output;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
+
+  private PrintStream out;
 
   // constructor for completion script generation
   public StreamPerfTest() {
@@ -335,8 +345,14 @@ public class StreamPerfTest implements Callable<Integer> {
 
     Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
 
+    if ("console".equals(this.output)) {
+      this.out = System.out;
+    } else {
+      this.out = new PrintStream(Utils.nullOutputStream());
+    }
+
     this.performanceMetrics =
-        new DefaultPerformanceMetrics(meterRegistry, metricsPrefix, this.summaryFile);
+        new DefaultPerformanceMetrics(meterRegistry, metricsPrefix, this.summaryFile, this.out);
 
     this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
 

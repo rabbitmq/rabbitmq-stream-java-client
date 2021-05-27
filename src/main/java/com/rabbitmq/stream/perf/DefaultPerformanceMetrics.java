@@ -43,11 +43,16 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   private final MetricRegistry metricRegistry;
   private final Timer latency;
   private final boolean summaryFile;
+  private final PrintStream out;
   private volatile Closeable closingSequence = () -> {};
 
   DefaultPerformanceMetrics(
-      CompositeMeterRegistry meterRegistry, String metricsPrefix, boolean summaryFile) {
+      CompositeMeterRegistry meterRegistry,
+      String metricsPrefix,
+      boolean summaryFile,
+      PrintStream out) {
     this.summaryFile = summaryFile;
+    this.out = out;
     DropwizardConfig dropwizardConfig =
         new DropwizardConfig() {
           @Override
@@ -149,7 +154,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                 meters.entrySet().forEach(entry -> builder.append(formatMeter.apply(entry)));
                 builder.append(formatLatency.apply(latency)).append(", ");
                 builder.append(formatChunkSize.apply(chunkSize));
-                System.out.println(builder);
+                this.out.println(builder);
                 reportCount.incrementAndGet();
               } catch (Exception e) {
                 LOGGER.warn("Error while metrics report: {}", e.getMessage());
@@ -187,8 +192,8 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
           meters.entrySet().forEach(entry -> builder.append(formatMeterSummary.apply(entry)));
           builder.append(formatLatencySummary.apply(latency)).append(", ");
           builder.append(formatChunkSize.apply(chunkSize));
-          System.out.println();
-          System.out.println(builder);
+          this.out.println();
+          this.out.println(builder);
         };
   }
 
