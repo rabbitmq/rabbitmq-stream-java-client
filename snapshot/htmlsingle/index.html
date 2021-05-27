@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(8f04d0f)</span>
+<br><span id="revremark">(2e3f3c2)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -542,6 +542,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#performance-tool-retention">Retention</a></li>
 <li><a href="#offset-consumer">Offset (Consumer)</a></li>
 <li><a href="#offset-tracking-consumer">Offset Tracking (Consumer)</a></li>
+<li><a href="#consumer-names">Consumer Names</a></li>
 </ul>
 </li>
 </ul>
@@ -3189,6 +3190,68 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 </div>
 </div>
 </div>
+<div class="sect4">
+<h5 id="consumer-names"><a class="anchor" href="#consumer-names"></a>Consumer Names</h5>
+<div class="paragraph">
+<p>When using <code>--commit-every</code> (see above) for <a href="#consumer-offset-tracking">offset tracking</a>,
+the performance tool uses a default name using the pattern <code>{stream-name}-{consumer-number}</code>.
+So the default name of a single committing consumer consuming from <code>stream</code> will be <code>stream-1</code>.</p>
+</div>
+<div class="paragraph">
+<p>The consumer names pattern can be set with the <code>--consumer-names</code> option, which uses
+the <a href="https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html">Java printf-style format string</a>.
+The stream name and the consumer number are injected as arguments, in this order.</p>
+</div>
+<div class="paragraph">
+<p>The following table illustrates some examples for the <code>--consumer-names</code> option
+for a <code>s1</code> stream and a second consumer:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Option</th>
+<th class="tableblock halign-left valign-top">Computed Name</th>
+<th class="tableblock halign-left valign-top">Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>%s-%d</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>s1-2</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Default pattern.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-%s-consumer-%d</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stream-s1-consumer-2</code></p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>consumer-%2$d-on-stream-%1$s</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>consumer-2-on-stream-s1</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The argument indexes (<code>1$</code> for the stream, <code>2$</code> for the consumer number) must be used
+as the pattern uses the consumer number first, which is not the pre-defined order of arguments.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>uuid</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>7cc75659-ea67-4874-96ef-151a505e1a55</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.oracle.com/javase/7/docs/api/java/util/UUID.html#randomUUID()">Random UUID</a> that
+changes for every run.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>Note you can use <code>--consumer-names uuid</code> to change the consumer names for every run. This
+can be useful when you want to use committing consumers in different runs but you want to
+force the offset they start consuming from. With consumer names that do not change between runs,
+committing consumers would ignore the specified offset and would start where they left off
+(this is the purpose of offset committing).</p>
+</div>
+</div>
 </div>
 </div>
 <div class="sect2">
@@ -3216,7 +3279,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-05-27 09:29:43 UTC
+Last updated 2021-05-27 13:50:51 UTC
 </div>
 </div>
 <style>
