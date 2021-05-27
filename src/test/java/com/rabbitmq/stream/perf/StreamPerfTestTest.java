@@ -136,9 +136,9 @@ public class StreamPerfTestTest {
 
   @Test
   void offsetShouldBeCommittedWhenOptionIsEnabled() throws Exception {
-    Future<?> run = run(builder().commitEvery(10));
+    Future<?> run = run(builder().commitEvery(10).consumerNames("consumer-%2$d-on-stream-%1$s"));
     waitUntilStreamExists(s);
-    String consumerName = s + "-0"; // convention
+    String consumerName = "consumer-1-on-stream-" + s;
     long offset = client.queryOffset(consumerName, s);
     waitOneSecond();
     waitAtMost(() -> client.queryOffset(consumerName, s) > offset);
@@ -216,6 +216,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder output(String output) {
       arguments.put("output", output);
+      return this;
+    }
+
+    ArgumentsBuilder consumerNames(String pattern) {
+      arguments.put("consumer-names", pattern);
       return this;
     }
 

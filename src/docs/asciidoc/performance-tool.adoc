@@ -395,6 +395,50 @@ The following command shows how to commit the offset every 100,000 messages:
 java -jar stream-perf-test.jar --commit-every 100000
 ----
 
+===== Consumer Names
+
+When using `--commit-every` (see above) for <<api.adoc#consumer-offset-tracking, offset tracking>>,
+the performance tool uses a default name using the pattern `{stream-name}-{consumer-number}`.
+So the default name of a single committing consumer consuming from `stream` will be `stream-1`.
+
+The consumer names pattern can be set with the `--consumer-names` option, which uses
+the https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html[Java printf-style format string].
+The stream name and the consumer number are injected as arguments, in this order.
+
+The following table illustrates some examples for the `--consumer-names` option
+for a `s1` stream and a second consumer:
+
+[%header,cols=3*]
+|===
+|Option
+|Computed Name
+|Details
+
+|`%s-%d`
+|`s1-2`
+|Default pattern.
+
+|`stream-%s-consumer-%d`
+|`stream-s1-consumer-2`
+|
+
+|`consumer-%2$d-on-stream-%1$s`
+|`consumer-2-on-stream-s1`
+|The argument indexes (`1$` for the stream, `2$` for the consumer number) must be used
+as the pattern uses the consumer number first, which is not the pre-defined order of arguments.
+
+|`uuid`
+|`7cc75659-ea67-4874-96ef-151a505e1a55`
+|https://docs.oracle.com/javase/7/docs/api/java/util/UUID.html#randomUUID()[Random UUID] that
+changes for every run.
+|===
+
+Note you can use `--consumer-names uuid` to change the consumer names for every run. This
+can be useful when you want to use committing consumers in different runs but you want to
+force the offset they start consuming from. With consumer names that do not change between runs,
+committing consumers would ignore the specified offset and would start where they left off
+(this is the purpose of offset committing).
+
 === Building the Performance Tool
 
 To build the uber JAR:

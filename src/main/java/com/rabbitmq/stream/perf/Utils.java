@@ -29,9 +29,11 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.net.ssl.X509TrustManager;
@@ -101,7 +103,7 @@ class Utils {
   }
 
   private static void throwConversionException(String format, String... arguments) {
-    throw new CommandLine.TypeConversionException(String.format(format, arguments));
+    throw new CommandLine.TypeConversionException(String.format(format, (Object[]) arguments));
   }
 
   static class ByteCapacityTypeConverter implements CommandLine.ITypeConverter<ByteCapacity> {
@@ -113,6 +115,19 @@ class Utils {
       } catch (IllegalArgumentException e) {
         throw new CommandLine.TypeConversionException(
             "'" + value + "' is not valid, valid example values: 100gb, 50mb");
+      }
+    }
+  }
+
+  static class ConsumerNameStrategyConverter
+      implements CommandLine.ITypeConverter<BiFunction<String, Integer, String>> {
+
+    @Override
+    public BiFunction<String, Integer, String> convert(String input) {
+      if ("uuid".equals(input)) {
+        return (stream, index) -> UUID.randomUUID().toString();
+      } else {
+        return new PatternConsumerNameStrategy(input);
       }
     }
   }
@@ -372,5 +387,19 @@ class Utils {
         closed = true;
       }
     };
+  }
+
+  static final class PatternConsumerNameStrategy implements BiFunction<String, Integer, String> {
+
+    private final String pattern;
+
+    PatternConsumerNameStrategy(String pattern) {
+      this.pattern = pattern;
+    }
+
+    @Override
+    public String apply(String stream, Integer index) {
+      return String.format(pattern, stream, index);
+    }
   }
 }

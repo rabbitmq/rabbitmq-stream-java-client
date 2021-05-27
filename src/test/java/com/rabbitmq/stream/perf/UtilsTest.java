@@ -21,17 +21,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.params.provider.Arguments.of;
 
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.perf.Utils.PatternConsumerNameStrategy;
 import com.rabbitmq.stream.perf.Utils.RangeTypeConverter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import picocli.CommandLine;
@@ -105,6 +108,17 @@ public class UtilsTest {
   void offsetSpecificationTypeConverterKo(String value) {
     assertThatThrownBy(() -> offsetSpecificationConverter.convert(value))
         .isInstanceOf(CommandLine.TypeConversionException.class);
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "%s-%d,s1-2",
+    "stream-%s-consumer-%d,stream-s1-consumer-2",
+    "consumer-%2$d-on-stream-%1$s,consumer-2-on-stream-s1"
+  })
+  void consumerNameStrategy(String pattern, String expected) {
+    BiFunction<String, Integer, String> strategy = new PatternConsumerNameStrategy(pattern);
+    assertThat(strategy.apply("s1", 2)).isEqualTo(expected);
   }
 
   @Test

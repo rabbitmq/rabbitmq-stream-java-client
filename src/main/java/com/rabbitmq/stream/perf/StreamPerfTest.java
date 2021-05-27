@@ -62,6 +62,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -267,6 +268,15 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "console",
       hidden = true)
   private String output;
+
+  @CommandLine.Option(
+      names = {"--consumer-names", "-cn"},
+      description =
+          "naming strategy for consumer names. Valid are values are 'uuid' or a pattern with "
+              + "stream name and consumer index as arguments.",
+      defaultValue = "%s-%d",
+      converter = Utils.ConsumerNameStrategyConverter.class)
+  private BiFunction<String, Integer, String> consumerNameStrategy;
 
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
@@ -539,7 +549,7 @@ public class StreamPerfTest implements Callable<Integer> {
                       consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
 
                       if (this.commitEvery > 0) {
-                        String consumerName = stream + "-" + i;
+                        String consumerName = this.consumerNameStrategy.apply(stream, i + 1);
                         consumerBuilder =
                             consumerBuilder
                                 .name(consumerName)
