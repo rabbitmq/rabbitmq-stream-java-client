@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(f7cf886)</span>
+<br><span id="revremark">(8f04d0f)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2858,7 +2858,7 @@ This can be changed with the <code>--uris</code> option:</p>
 <div class="paragraph">
 <p>The URI follows the same rules as the
 <a href="https://www.rabbitmq.com/uri-spec.html">AMQP 0.9.1 URI</a>,
-except the protocol must be <code>rabbitmq-stream</code> and TLS is not supported.
+except the protocol must be <code>rabbitmq-stream</code>.
 The next command shows how to set up the different elements of the URI:</p>
 </div>
 <div class="listingblock">
@@ -2881,6 +2881,19 @@ crashes:</p>
 <div class="paragraph">
 <p>Note the tool uses those URIs only for management purposes, it does not use them
 to distribute publishers and consumers across a cluster.</p>
+</div>
+<div class="paragraph">
+<p>It is also possible to enable <a href="#enabling-tls">TLS</a> by using the <code>rabbitmq-stream+tls</code> scheme:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar \
+  --uris rabbitmq-stream+tls://guest:guest@localhost:5551/%2f</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Note the performance tool will automatically configure the client to trust all
+server certificates and to not use a private key (for client authentication).</p>
 </div>
 </div>
 <div class="sect4">
@@ -3203,7 +3216,7 @@ The following command shows how to commit the offset every 100,000 messages:</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-05-26 14:13:08 UTC
+Last updated 2021-05-27 09:29:43 UTC
 </div>
 </div>
 <style>
