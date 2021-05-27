@@ -17,7 +17,7 @@ package com.rabbitmq.stream;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,21 +38,27 @@ public class ByteCapacity {
   private static final String UNIT_GB = "gb";
   private static final String UNIT_TB = "tb";
 
-  private static final Map<String, Function<Long, ByteCapacity>> CONSTRUCTORS =
+  private static final Map<String, BiFunction<Long, String, ByteCapacity>> CONSTRUCTORS =
       Collections.unmodifiableMap(
-          new HashMap<String, Function<Long, ByteCapacity>>() {
+          new HashMap<String, BiFunction<Long, String, ByteCapacity>>() {
             {
-              put(UNIT_KB, size -> ByteCapacity.kB(size));
-              put(UNIT_MB, size -> ByteCapacity.MB(size));
-              put(UNIT_GB, size -> ByteCapacity.GB(size));
-              put(UNIT_TB, size -> ByteCapacity.TB(size));
+              put(UNIT_KB, (size, input) -> ByteCapacity.kB(size, input));
+              put(UNIT_MB, (size, input) -> ByteCapacity.MB(size, input));
+              put(UNIT_GB, (size, input) -> ByteCapacity.GB(size, input));
+              put(UNIT_TB, (size, input) -> ByteCapacity.TB(size, input));
             }
           });
 
   private final long bytes;
+  private final String input;
 
   private ByteCapacity(long bytes) {
+    this(bytes, String.valueOf(bytes));
+  }
+
+  private ByteCapacity(long bytes, String input) {
     this.bytes = bytes;
+    this.input = input;
   }
 
   public static ByteCapacity B(long bytes) {
@@ -75,6 +81,22 @@ public class ByteCapacity {
     return new ByteCapacity(terabytes * TERABYTES_MULTIPLIER);
   }
 
+  private static ByteCapacity kB(long kilobytes, String input) {
+    return new ByteCapacity(kilobytes * KILOBYTES_MULTIPLIER, input);
+  }
+
+  private static ByteCapacity MB(long megabytes, String input) {
+    return new ByteCapacity(megabytes * MEGABYTES_MULTIPLIER, input);
+  }
+
+  private static ByteCapacity GB(long gigabytes, String input) {
+    return new ByteCapacity(gigabytes * GIGABYTES_MULTIPLIER, input);
+  }
+
+  private static ByteCapacity TB(long terabytes, String input) {
+    return new ByteCapacity(terabytes * TERABYTES_MULTIPLIER, input);
+  }
+
   public long toBytes() {
     return bytes;
   }
@@ -91,14 +113,19 @@ public class ByteCapacity {
         return CONSTRUCTORS
             .getOrDefault(
                 unit.toLowerCase(),
-                s -> {
+                (v, input) -> {
                   throw new IllegalArgumentException("Unknown capacity unit: " + unit);
                 })
-            .apply(size);
+            .apply(size, value);
       }
       return result;
     } else {
       throw new IllegalArgumentException("Cannot parse value for byte capacity: " + value);
     }
+  }
+
+  @Override
+  public String toString() {
+    return this.input;
   }
 }

@@ -46,6 +46,7 @@ public class ByteCapacityTest {
   void fromOk(String value, long expectedValueInBytes) {
     ByteCapacity capacity = ByteCapacity.from(value);
     assertThat(capacity.toBytes()).isEqualTo(expectedValueInBytes);
+    assertThat(capacity.toString()).isEqualTo(value);
   }
 
   @ParameterizedTest

@@ -439,11 +439,15 @@ public class StreamPerfTest implements Callable<Integer> {
         streamCreator.create();
       } catch (StreamException e) {
         if (e.getCode() == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
-          throw new StreamException(
-              "Error while creating stream '"
-                  + stream
-                  + "'. Already existing stream with same name but different properties?",
-              e.getCode());
+          String message =
+              String.format(
+                  "Warning: stream '%s' already exists, but with different properties than "
+                      + "max-length-bytes=%s, stream-max-segment-size-bytes=%s, queue-leader-locator=%s",
+                  stream, this.maxLengthBytes, this.maxSegmentSize, this.leaderLocator);
+          if (this.maxAge != null) {
+            message += String.format(", max-age=%s", this.maxAge);
+          }
+          this.out.println(message);
         } else {
           throw e;
         }
@@ -573,7 +577,7 @@ public class StreamPerfTest implements Callable<Integer> {
     if (this.producers > 0) {
       executorService = Executors.newFixedThreadPool(this.producers);
       for (Runnable producer : producerRunnables) {
-        LOGGER.info("Starting producer");
+        this.out.println("Starting producer");
         executorService.submit(producer);
       }
     } else {
