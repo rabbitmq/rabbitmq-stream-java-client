@@ -144,7 +144,7 @@ java -jar stream-perf-test.jar --uris rabbitmq-stream://rabbitmq-1:5552
 
 The URI follows the same rules as the
 https://www.rabbitmq.com/uri-spec.html[AMQP 0.9.1 URI],
-except the protocol must be `rabbitmq-stream` and TLS is not supported.
+except the protocol must be `rabbitmq-stream`.
 The next command shows how to set up the different elements of the URI:
 
 ----
@@ -163,6 +163,16 @@ java -jar stream-perf-test.jar \
 
 Note the tool uses those URIs only for management purposes, it does not use them
 to distribute publishers and consumers across a cluster.
+
+It is also possible to enable <<api.adoc#enabling-tls,TLS>> by using the `rabbitmq-stream+tls` scheme:
+
+----
+java -jar stream-perf-test.jar \
+  --uris rabbitmq-stream+tls://guest:guest@localhost:5551/%2f
+----
+
+Note the performance tool will automatically configure the client to trust all
+server certificates and to not use a private key (for client authentication).
 
 ===== Publishing Rate
 
