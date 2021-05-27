@@ -87,6 +87,17 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
             .register(meterRegistry);
   }
 
+  private long getPublishedCount() {
+    return this.metricRegistry.getMeters().get("rabbitmqStreamPublished").getCount();
+  }
+
+  private long getConsumedCount() {
+    return this.metricRegistry.getMeters().get("rabbitmqStreamConsumed").getCount();
+  }
+
+  private volatile long lastPublishedCount = 0;
+  private volatile long lastConsumedCount = 0;
+
   @Override
   public void start(String description) throws Exception {
     String metricPublished = "rabbitmqStreamPublished";
@@ -149,12 +160,14 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
         scheduledExecutorService.scheduleAtFixedRate(
             () -> {
               try {
-                StringBuilder builder = new StringBuilder();
-                builder.append(reportCount.get()).append(", ");
-                meters.entrySet().forEach(entry -> builder.append(formatMeter.apply(entry)));
-                builder.append(formatLatency.apply(latency)).append(", ");
-                builder.append(formatChunkSize.apply(chunkSize));
-                this.out.println(builder);
+                if (checkActivity()) {
+                  StringBuilder builder = new StringBuilder();
+                  builder.append(reportCount.get()).append(", ");
+                  meters.entrySet().forEach(entry -> builder.append(formatMeter.apply(entry)));
+                  builder.append(formatLatency.apply(latency)).append(", ");
+                  builder.append(formatChunkSize.apply(chunkSize));
+                  this.out.println(builder);
+                }
                 reportCount.incrementAndGet();
               } catch (Exception e) {
                 LOGGER.warn("Error while metrics report: {}", e.getMessage());
@@ -239,6 +252,19 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
       summaryFileClosingSequence = () -> {};
     }
     return summaryFileClosingSequence;
+  }
+
+  boolean checkActivity() {
+    long currentPublishedCount = getPublishedCount();
+    long currentConsumedCount = getConsumedCount();
+    boolean activity =
+        this.lastPublishedCount != currentPublishedCount
+            || this.lastConsumedCount != currentConsumedCount;
+    if (activity) {
+      this.lastPublishedCount = currentPublishedCount;
+      this.lastConsumedCount = currentConsumedCount;
+    }
+    return activity;
   }
 
   @Override
