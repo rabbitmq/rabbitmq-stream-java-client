@@ -26,7 +26,7 @@ RUN set -eux; \
     JAVA_PATH="/usr/lib/jdk-$JAVA_VERSION"; \
     mkdir $JAVA_PATH && \
     tar --extract  --file jdk.tar.gz --directory "$JAVA_PATH" --strip-components 1; \
-	  $JAVA_PATH/bin/jlink --compress=2 --output /jre --add-modules java.base,java.naming,java.xml,jdk.unsupported; \
+	  $JAVA_PATH/bin/jlink --compress=2 --output /jre --add-modules java.base,java.naming,java.xml,jdk.unsupported,jdk.crypto.cryptoki; \
 	  /jre/bin/java -version
 
 # pgpkeys.uk is quite reliable, but allow for substitutions locally
