@@ -324,7 +324,7 @@ public class StreamProducerTest {
   }
 
   @ParameterizedTest
-  @ValueSource(ints = {1})
+  @ValueSource(ints = {1, 7})
   void producerShouldBeClosedWhenStreamIsDeleted(int subEntrySize, TestInfo info) throws Exception {
     String s = streamName(info);
     environment.streamCreator().stream(s).create();
