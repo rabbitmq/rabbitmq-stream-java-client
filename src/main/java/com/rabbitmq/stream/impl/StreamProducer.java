@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
 class StreamProducer implements Producer {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamProducer.class);
-
+  private static final ConfirmationHandler NO_OP_CONFIRMATION_HANDLER = confirmationStatus -> {};
   private final MessageAccumulator accumulator;
   // FIXME investigate a more optimized data structure to handle pending messages
   private final ConcurrentMap<Long, AccumulatedEntity> unconfirmedMessages;
@@ -69,12 +69,12 @@ class StreamProducer implements Producer {
   private final Codec codec;
   private final ToLongFunction<Object> publishSequenceFunction =
       entity -> ((AccumulatedEntity) entity).publishindId();
+  private final long enqueueTimeoutMs;
+  private final boolean blockOnMaxUnconfirmed;
   private volatile Client client;
   private volatile byte publisherId;
   private volatile Status status;
   private volatile ScheduledFuture<?> confirmTimeoutFuture;
-  private final long enqueueTimeoutMs;
-  private final boolean blockOnMaxUnconfirmed;
 
   StreamProducer(
       String name,
@@ -280,6 +280,9 @@ class StreamProducer implements Producer {
 
   @Override
   public void send(Message message, ConfirmationHandler confirmationHandler) {
+    if (confirmationHandler == null) {
+      confirmationHandler = NO_OP_CONFIRMATION_HANDLER;
+    }
     try {
       if (canSend()) {
         if (this.blockOnMaxUnconfirmed) {
@@ -360,8 +363,18 @@ class StreamProducer implements Producer {
     LOGGER.debug("Closed publisher {} successfully", this.publisherId);
   }
 
-  void closeAfterStreamDeletion() {
+  void closeAfterStreamDeletion(short code) {
     if (closed.compareAndSet(false, true)) {
+      if (!this.unconfirmedMessages.isEmpty()) {
+        Iterator<Entry<Long, AccumulatedEntity>> iterator =
+            unconfirmedMessages.entrySet().iterator();
+        while (iterator.hasNext()) {
+          AccumulatedEntity entry = iterator.next().getValue();
+          int confirmedCount = entry.confirmationCallback().handle(false, code);
+          this.unconfirmedMessagesSemaphore.release(confirmedCount);
+          iterator.remove();
+        }
+      }
       cancelConfirmTimeoutTask();
       this.environment.removeProducer(this);
       this.status = Status.CLOSED;

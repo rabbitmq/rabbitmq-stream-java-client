@@ -175,7 +175,7 @@ class ProducersCoordinator {
 
     void cancel();
 
-    void closeAfterStreamDeletion();
+    void closeAfterStreamDeletion(short code);
 
     String stream();
 
@@ -249,8 +249,8 @@ class ProducersCoordinator {
     }
 
     @Override
-    public void closeAfterStreamDeletion() {
-      this.producer.closeAfterStreamDeletion();
+    public void closeAfterStreamDeletion(short code) {
+      this.producer.closeAfterStreamDeletion(code);
     }
 
     @Override
@@ -319,7 +319,7 @@ class ProducersCoordinator {
     }
 
     @Override
-    public void closeAfterStreamDeletion() {
+    public void closeAfterStreamDeletion(short code) {
       // nothing to do here, the consumer will be closed by the consumers coordinator if
       // the stream has been deleted
     }
@@ -550,7 +550,14 @@ class ProducersCoordinator {
                   // be put in a state whereby they refuse all new commit commands and inform
                   // with an exception they should be restarted.
                   try {
-                    tracker.closeAfterStreamDeletion();
+                    short code;
+                    if (ex instanceof StreamDoesNotExistException
+                        || ex.getCause() instanceof StreamDoesNotExistException) {
+                      code = Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
+                    } else {
+                      code = Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
+                    }
+                    tracker.closeAfterStreamDeletion(code);
                   } catch (Exception e) {
                     LOGGER.debug("Error while closing producer: {}", e.getMessage());
                   }

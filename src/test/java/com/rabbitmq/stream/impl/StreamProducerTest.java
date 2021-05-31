@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -320,6 +321,58 @@ public class StreamProducerTest {
             })
         .build();
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {1})
+  void producerShouldBeClosedWhenStreamIsDeleted(int subEntrySize, TestInfo info) throws Exception {
+    String s = streamName(info);
+    environment.streamCreator().stream(s).create();
+
+    StreamProducer producer =
+        (StreamProducer) environment.producerBuilder().subEntrySize(subEntrySize).stream(s).build();
+
+    AtomicInteger published = new AtomicInteger(0);
+    AtomicInteger confirmed = new AtomicInteger(0);
+    AtomicInteger errored = new AtomicInteger(0);
+    Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
+
+    Thread publishThread =
+        new Thread(
+            () -> {
+              ConfirmationHandler confirmationHandler =
+                  confirmationStatus -> {
+                    if (confirmationStatus.isConfirmed()) {
+                      confirmed.incrementAndGet();
+                    } else {
+                      errored.incrementAndGet();
+                      errorCodes.add(confirmationStatus.getCode());
+                    }
+                  };
+              while (true) {
+                try {
+                  producer.send(
+                      producer
+                          .messageBuilder()
+                          .addData("".getBytes(StandardCharsets.UTF_8))
+                          .build(),
+                      confirmationHandler);
+                  published.incrementAndGet();
+                } catch (StreamException e) {
+                  // OK
+                }
+              }
+            });
+    publishThread.start();
+
+    Thread.sleep(1000L);
+
+    assertThat(producer.isOpen()).isTrue();
+
+    environment.deleteStream(s);
+
+    waitAtMost(10, () -> !producer.isOpen());
+    assertThat(errorCodes).isNotEmpty().contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
   }
 
   @ParameterizedTest

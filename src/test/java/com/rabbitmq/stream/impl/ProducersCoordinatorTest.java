@@ -302,7 +302,9 @@ public class ProducersCoordinatorTest {
     when(clientFactory.client(any())).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
-    doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
+    doAnswer(answer(() -> closeClientLatch.countDown()))
+        .when(producer)
+        .closeAfterStreamDeletion(any(Short.class));
 
     coordinator.registerProducer(producer, null, "stream");
     coordinator.registerCommittingConsumer(committingConsumer);
@@ -430,7 +432,9 @@ public class ProducersCoordinatorTest {
     when(clientFactory.client(any())).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
-    doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
+    doAnswer(answer(() -> closeClientLatch.countDown()))
+        .when(producer)
+        .closeAfterStreamDeletion(any(Short.class));
 
     coordinator.registerProducer(producer, null, "stream");
 
@@ -463,7 +467,9 @@ public class ProducersCoordinatorTest {
     when(clientFactory.client(any())).thenReturn(client);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
-    doAnswer(answer(() -> closeClientLatch.countDown())).when(producer).closeAfterStreamDeletion();
+    doAnswer(answer(() -> closeClientLatch.countDown()))
+        .when(producer)
+        .closeAfterStreamDeletion(any(Short.class));
 
     coordinator.registerProducer(producer, null, "stream");
     coordinator.registerCommittingConsumer(committingConsumer);
