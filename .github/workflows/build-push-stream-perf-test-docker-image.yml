@@ -1,0 +1,25 @@
+name: Build and push Stream Perf Test Docker image
+
+on:
+  repository_dispatch:
+    types: [new_release]
+
+jobs:
+  push_to_registry:
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      - name: Push to Docker Hub
+        uses: docker/build-push-action@v2
+        with:
+          build-args:
+            - stream_perf_test_version: ${{ github.event.client_payload.version }}
+          push: true
+          tags: pivotalrabbitmq/stream-perf-test:latest
