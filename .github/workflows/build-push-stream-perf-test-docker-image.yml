@@ -19,7 +19,7 @@ jobs:
       - name: Push to Docker Hub
         uses: docker/build-push-action@v2
         with:
-          build-args:
-            - stream_perf_test_version: ${{ github.event.client_payload.version }}
+          build-args: |
+            stream_perf_test_version=${{ github.event.client_payload.version }}
           push: true
           tags: pivotalrabbitmq/stream-perf-test:latest
