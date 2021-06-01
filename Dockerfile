@@ -12,10 +12,6 @@ RUN set -eux; \
 		gnupg \
 		jq
 
-ENV JAVA_VERSION="11"
-ENV JAVA_SHA256="ae78aa45f84642545c01e8ef786dfd700d2226f8b12881c844d6a1f71789cb99"
-ENV JAVA_URL="https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.10%2B9/OpenJDK11U-jdk_x64_linux_hotspot_11.0.10_9.tar.gz"
-
 ARG JAVA_VERSION="11"
 
 RUN wget "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?jdk_version=$JAVA_VERSION&ext=tar.gz&os=linux&arch=x86&hw_bitness=64&release_status=ga" -O jdk-info.json
