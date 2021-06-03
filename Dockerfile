@@ -14,17 +14,24 @@ RUN set -eux; \
 
 ARG JAVA_VERSION="11"
 
-RUN if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ; then echo "ARM"; ARCH="arm"; else echo "x86"; ARCH="x86"; fi \
-    && wget "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?jdk_version=$JAVA_VERSION&ext=tar.gz&os=linux&arch=$ARCH&hw_bitness=64&release_status=ga&bundle_type=jdk" -O jdk-info.json
+RUN if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ; then echo "ARM"; ARCH="arm"; BUNDLE="jdk"; else echo "x86"; ARCH="x86"; BUNDLE="jdk"; fi \
+    && wget "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?jdk_version=$JAVA_VERSION&ext=tar.gz&os=linux&arch=$ARCH&hw_bitness=64&release_status=ga&bundle_type=$BUNDLE" -O jdk-info.json
 RUN wget --progress=bar:force:noscroll -O "jdk.tar.gz" $(cat jdk-info.json | jq --raw-output .url)
 RUN echo "$(cat jdk-info.json | jq --raw-output .sha256_hash) *jdk.tar.gz" | sha256sum --check --strict -
 
 RUN set -eux; \
-    JAVA_PATH="/usr/lib/jdk-$JAVA_VERSION"; \
+    if [ "$(uname -m)" = "x86_64" ] ; then JAVA_PATH="/usr/lib/jdk-$JAVA_VERSION"; \
     mkdir $JAVA_PATH && \
     tar --extract  --file jdk.tar.gz --directory "$JAVA_PATH" --strip-components 1; \
 	  $JAVA_PATH/bin/jlink --compress=2 --output /jre --add-modules java.base,java.naming,java.xml,jdk.unsupported,jdk.crypto.cryptoki; \
-	  /jre/bin/java -version
+	  /jre/bin/java -version; \
+	  fi
+
+RUN set -eux; \
+    if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ] ; then JAVA_PATH="/jre"; \
+    mkdir $JAVA_PATH && \
+    tar --extract  --file jdk.tar.gz --directory "$JAVA_PATH" --strip-components 1; \
+	  fi
 
 # pgpkeys.uk is quite reliable, but allow for substitutions locally
 ARG PGP_KEYSERVER=hkps://keys.openpgp.org
@@ -78,6 +85,8 @@ RUN ln -svT $JAVA_HOME/bin/java /usr/local/bin/java
 RUN mkdir -p /stream_perf_test
 WORKDIR /stream_perf_test
 COPY --from=builder /stream_perf_test ./
-RUN java -jar stream-perf-test.jar --help
+RUN set -eux; \
+    if [ "$(uname -m)" = "x86_64" ] ; then java -jar stream-perf-test.jar --help ; \
+	  fi
 
 ENTRYPOINT ["java", "-Dio.netty.processId=1", "-jar", "stream-perf-test.jar"]
