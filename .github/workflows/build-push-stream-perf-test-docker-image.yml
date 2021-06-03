@@ -43,12 +43,12 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           tags: pivotalrabbitmq/stream-perf-test:latest
-      - name: Push arm64 to Docker Hub
-        uses: docker/build-push-action@v2
-        with:
-          build-args: |
-            stream_perf_test_version=${{ github.event.client_payload.version }}
-          push: true
-          file: Dockerfile-arm
-          platforms: linux/arm64
-          tags: pivotalrabbitmq/stream-perf-test:latest
+#      - name: Push arm64 to Docker Hub
+#        uses: docker/build-push-action@v2
+#        with:
+#          build-args: |
+#            stream_perf_test_version=${{ github.event.client_payload.version }}
+#          push: true
+#          file: Dockerfile-arm
+#          platforms: linux/arm64
+#          tags: pivotalrabbitmq/stream-perf-test:latest
