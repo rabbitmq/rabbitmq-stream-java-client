@@ -40,7 +40,7 @@ jobs:
           build-args: |
             stream_perf_test_version=${{ github.event.client_payload.version }}
           push: true
-          file: ${{ context }}/Dockerfile
+          file: Dockerfile
           platforms: linux/amd64
           tags: pivotalrabbitmq/stream-perf-test:latest
       - name: Push arm64 to Docker Hub
@@ -49,6 +49,6 @@ jobs:
           build-args: |
             stream_perf_test_version=${{ github.event.client_payload.version }}
           push: true
-          file: ${{ context }}/Dockerfile-arm
+          file: Dockerfile-arm
           platforms: linux/arm64
           tags: pivotalrabbitmq/stream-perf-test:latest
