@@ -15,15 +15,22 @@ RUN set -eux; \
 ARG JAVA_VERSION="11"
 
 RUN if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ; then echo "ARM"; ARCH="arm"; else echo "x86"; ARCH="x86"; fi \
-    && wget "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?jdk_version=$JAVA_VERSION&ext=tar.gz&os=linux&arch=$ARCH&hw_bitness=64&release_status=ga" -O jdk-info.json
+    && wget "https://api.azul.com/zulu/download/community/v1.0/bundles/latest/?jdk_version=$JAVA_VERSION&ext=tar.gz&os=linux&arch=$ARCH&hw_bitness=64&release_status=ga&bundle_type=jre" -O jdk-info.json
 RUN wget --progress=bar:force:noscroll -O "jdk.tar.gz" $(cat jdk-info.json | jq --raw-output .url)
 RUN echo "$(cat jdk-info.json | jq --raw-output .sha256_hash) *jdk.tar.gz" | sha256sum --check --strict -
 
+#RUN set -eux; \
+#    JAVA_PATH="/usr/lib/jdk-$JAVA_VERSION"; \
+#    mkdir $JAVA_PATH && \
+#    tar --extract  --file jdk.tar.gz --directory "$JAVA_PATH" --strip-components 1; \
+#	  $JAVA_PATH/bin/jlink --compress=2 --output /jre --add-modules java.base,java.naming,java.xml,jdk.unsupported,jdk.crypto.cryptoki; \
+#	  /jre/bin/java -version
+
 RUN set -eux; \
-    JAVA_PATH="/usr/lib/jdk-$JAVA_VERSION"; \
+    JAVA_PATH="/jre"; \
     mkdir $JAVA_PATH && \
     tar --extract  --file jdk.tar.gz --directory "$JAVA_PATH" --strip-components 1; \
-	  $JAVA_PATH/bin/jlink --compress=2 --output /jre --add-modules java.base,java.naming,java.xml,jdk.unsupported,jdk.crypto.cryptoki; \
+#	  $JAVA_PATH/bin/jlink --compress=2 --output /jre --add-modules java.base,java.naming,java.xml,jdk.unsupported,jdk.crypto.cryptoki; \
 	  /jre/bin/java -version
 
 # pgpkeys.uk is quite reliable, but allow for substitutions locally
