@@ -23,8 +23,10 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.ByteCapacity;
+import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.TestUtils.CallableConsumer;
+import com.rabbitmq.stream.impl.TestUtils.RunnableWithException;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
@@ -61,6 +63,31 @@ public class RetentionClientTest {
                     .build());
           },
           firstMessageId -> firstMessageId > 0),
+      new RetentionTestConfig(
+          "retention defined in policy should take precedence",
+          context -> {
+            Client client = (Client) ((Object[]) context)[0];
+            String stream = (String) ((Object[]) context)[1];
+            long maxLengthBytes = messageCount * payloadSize / 10;
+            long maxSegmentSizeBytes = messageCount * payloadSize / 20;
+            // big retention in policy
+            client.create(
+                stream,
+                new Client.StreamParametersBuilder()
+                    .maxLengthBytes(ByteCapacity.GB(20))
+                    .maxSegmentSizeBytes(maxSegmentSizeBytes)
+                    .build());
+            // small retention in policy
+            String policyCommand =
+                String.format(
+                    "set_policy stream-retention-test \"%s\" "
+                        + "'{\"max-length-bytes\":%d,\"stream-max-segment-size-bytes\":%d }' "
+                        + "--priority 1 --apply-to queues",
+                    stream, maxLengthBytes, maxSegmentSizeBytes);
+            Host.rabbitmqctl(policyCommand);
+          },
+          firstMessageId -> firstMessageId > 0,
+          () -> Host.rabbitmqctl("clear_policy stream-retention-test")),
       new RetentionTestConfig(
           "with size helper to specify bytes",
           context -> {
@@ -142,6 +169,7 @@ public class RetentionClientTest {
     };
   }
 
+  @TestUtils.DisabledIfRabbitMqCtlNotSet
   @ParameterizedTest
   @MethodSource
   void retention(RetentionTestConfig configuration, TestInfo info) throws Exception {
@@ -206,6 +234,7 @@ public class RetentionClientTest {
       assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get())).isTrue();
     } finally {
       publisher.delete(testStream);
+      configuration.clean();
     }
   }
 
@@ -214,12 +243,13 @@ public class RetentionClientTest {
     final CallableConsumer<Object> streamCreator;
     final Predicate<Long> firstMessageIdAssertion;
     final Duration waitTime;
+    final RunnableWithException cleaning;
 
     RetentionTestConfig(
         String description,
         CallableConsumer<Object> streamCreator,
         Predicate<Long> firstMessageIdAssertion) {
-      this(description, streamCreator, firstMessageIdAssertion, Duration.ZERO);
+      this(description, streamCreator, firstMessageIdAssertion, Duration.ZERO, null);
     }
 
     RetentionTestConfig(
@@ -227,16 +257,38 @@ public class RetentionClientTest {
         CallableConsumer<Object> streamCreator,
         Predicate<Long> firstMessageIdAssertion,
         Duration waitTime) {
+      this(description, streamCreator, firstMessageIdAssertion, waitTime, null);
+    }
+
+    RetentionTestConfig(
+        String description,
+        CallableConsumer<Object> streamCreator,
+        Predicate<Long> firstMessageIdAssertion,
+        RunnableWithException cleaning) {
+      this(description, streamCreator, firstMessageIdAssertion, Duration.ZERO, cleaning);
+    }
+
+    RetentionTestConfig(
+        String description,
+        CallableConsumer<Object> streamCreator,
+        Predicate<Long> firstMessageIdAssertion,
+        Duration waitTime,
+        RunnableWithException cleaning) {
       this.description = description;
       this.streamCreator = streamCreator;
       this.firstMessageIdAssertion = firstMessageIdAssertion;
       this.waitTime = waitTime;
+      this.cleaning = cleaning == null ? () -> {} : cleaning;
     }
 
     void waiting() throws InterruptedException {
       if (this.waitTime.toMillis() > 0) {
         Thread.sleep(this.waitTime.toMillis());
       }
+    }
+
+    void clean() throws Exception {
+      this.cleaning.run();
     }
 
     @Override

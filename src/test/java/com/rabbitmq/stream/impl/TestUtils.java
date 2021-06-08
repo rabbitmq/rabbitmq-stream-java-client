@@ -376,6 +376,11 @@ public final class TestUtils {
     void accept(T t) throws Exception;
   }
 
+  interface RunnableWithException {
+
+    void run() throws Exception;
+  }
+
   public static class StreamTestInfrastructureExtension
       implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback {
 
