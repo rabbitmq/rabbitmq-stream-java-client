@@ -53,9 +53,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class OffsetTrackingTest {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(OffsetTrackingTest.class);
 
   String stream;
   TestUtils.ClientFactory cf;
@@ -116,6 +120,7 @@ public class OffsetTrackingTest {
       byte[] body = new byte[100];
       AtomicInteger messageIdSequence = new AtomicInteger();
 
+      // publishing a bunch of messages
       AtomicLong lastMessageId = new AtomicLong();
       publisher.declarePublisher(b(0), null, s);
       IntStream.range(0, batchCount)
@@ -181,6 +186,13 @@ public class OffsetTrackingTest {
                 Client consumer =
                     cf.get(
                         new ClientParameters()
+                            // the client can credit after the subscription has been cancelled
+                            .creditNotification(
+                                (subscriptionId, responseCode) ->
+                                    LOGGER.debug(
+                                        "Received notification for subscription {}: {}",
+                                        subscriptionId,
+                                        responseCode))
                             .chunkListener(
                                 (client, subscriptionId, offset, messageCount1, dataSize) ->
                                     client.credit(subscriptionId, 1))
