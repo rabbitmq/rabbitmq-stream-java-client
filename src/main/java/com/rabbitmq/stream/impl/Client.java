@@ -1026,12 +1026,11 @@ public class Client implements AutoCloseable {
     if (stream == null || stream.isEmpty()) {
       throw new IllegalArgumentException("Stream cannot be null or empty");
     }
-    int length = 2 + 2 + 4 + 2 + reference.length() + 2 + stream.length() + 8;
+    int length = 2 + 2 + 2 + reference.length() + 2 + stream.length() + 8;
     ByteBuf bb = allocate(length + 4);
     bb.writeInt(length);
     bb.writeShort(encodeRequestCode(COMMAND_COMMIT_OFFSET));
     bb.writeShort(VERSION_1);
-    bb.writeInt(0); // correlation ID not used yet, may be used if commit offset has a confirm
     bb.writeShort(reference.length());
     bb.writeBytes(reference.getBytes(StandardCharsets.UTF_8));
     bb.writeShort(stream.length());
