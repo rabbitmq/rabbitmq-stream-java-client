@@ -406,7 +406,7 @@ class ProducersCoordinator {
           (publisherId, publishingId) -> {
             ProducerTracker producerTracker = producers.get(publisherId);
             if (producerTracker == null) {
-              LOGGER.warn("Received publish confirm for unknown producer: {}", publisherId);
+              LOGGER.info("Received publish confirm for unknown producer: {}", publisherId);
             } else {
               producerTracker.producer.confirm(publishingId);
             }
@@ -415,7 +415,10 @@ class ProducersCoordinator {
           (publisherId, publishingId, errorCode) -> {
             ProducerTracker producerTracker = producers.get(publisherId);
             if (producerTracker == null) {
-              LOGGER.warn("Received publish error for unknown producer: {}", publisherId);
+              LOGGER.info(
+                  "Received publish error for unknown producer: {}, error code {}",
+                  publisherId,
+                  Utils.formatConstant(errorCode));
             } else {
               producerTracker.producer.error(publishingId, errorCode);
             }

@@ -337,6 +337,8 @@ public class StreamProducerTest {
     AtomicInteger errored = new AtomicInteger(0);
     Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
 
+    short lastExpectedErrorCode = Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
+    AtomicBoolean continuePublishing = new AtomicBoolean(true);
     Thread publishThread =
         new Thread(
             () -> {
@@ -347,9 +349,12 @@ public class StreamProducerTest {
                     } else {
                       errored.incrementAndGet();
                       errorCodes.add(confirmationStatus.getCode());
+                      if (confirmationStatus.getCode() == lastExpectedErrorCode) {
+                        continuePublishing.set(false);
+                      }
                     }
                   };
-              while (true) {
+              while (continuePublishing.get()) {
                 try {
                   producer.send(
                       producer
@@ -372,7 +377,7 @@ public class StreamProducerTest {
     environment.deleteStream(s);
 
     waitAtMost(10, () -> !producer.isOpen());
-    assertThat(errorCodes).isNotEmpty().contains(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    assertThat(errorCodes).isNotEmpty().contains(lastExpectedErrorCode);
   }
 
   @ParameterizedTest
