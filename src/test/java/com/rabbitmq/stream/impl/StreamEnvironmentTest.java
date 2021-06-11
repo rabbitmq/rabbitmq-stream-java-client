@@ -36,6 +36,7 @@ import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collection;
@@ -110,7 +111,9 @@ public class StreamEnvironmentTest {
                     .addressResolver(address -> new Address("localhost", 4242))
                     .build()
                     .close())
-        .hasMessageContaining("Connection refused");
+        .isInstanceOf(StreamException.class)
+        .hasCauseInstanceOf(ConnectException.class)
+        .hasRootCauseMessage("Connection refused");
   }
 
   @Test
