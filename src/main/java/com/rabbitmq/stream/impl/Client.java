@@ -278,7 +278,7 @@ public class Client implements AutoCloseable {
       f = b.connect(parameters.host, parameters.port).sync();
       this.host = parameters.host;
       this.port = parameters.port;
-    } catch (InterruptedException e) {
+    } catch (Exception e) {
       throw new StreamException(e);
     }
 

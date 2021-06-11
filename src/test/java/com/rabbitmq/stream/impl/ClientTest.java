@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -28,10 +29,12 @@ import com.rabbitmq.stream.Properties;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -66,6 +69,13 @@ public class ClientTest {
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  @Test
+  void connectionErrorShouldReturnStreamExceptionForStackTrace() {
+    assertThatThrownBy(() -> cf.get((new ClientParameters().host(UUID.randomUUID().toString()))))
+        .isInstanceOf(StreamException.class)
+        .hasCauseInstanceOf(UnknownHostException.class);
   }
 
   @Test
