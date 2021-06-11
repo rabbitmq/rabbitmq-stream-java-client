@@ -55,7 +55,7 @@ public interface EnvironmentBuilder {
   /**
    * An {@link AddressResolver} to potentially change resolved node address to connect to.
    *
-   * <p>Applications can use this abstraction to make sure connection attempts ignore metadata hings
+   * <p>Applications can use this abstraction to make sure connection attempts ignore metadata hints
    * and always go to a single point like a load balancer.
    *
    * @param addressResolver
