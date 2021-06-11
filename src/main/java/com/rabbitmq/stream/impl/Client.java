@@ -168,7 +168,7 @@ public class Client implements AutoCloseable {
   final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
       new ConcurrentHashMap<>();
   final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
-  final ExecutorService executorService = Executors.newSingleThreadExecutor();
+  final ExecutorService executorService;
   private final Runnable executorServiceClosing;
   private final SaslConfiguration saslConfiguration;
   private final CredentialsProvider credentialsProvider;
@@ -223,8 +223,6 @@ public class Client implements AutoCloseable {
                 shutdownListener.handle(new ShutdownContext(shutdownReason));
               }
             });
-
-    this.executorServiceClosing = Utils.makeIdempotent(this.executorService::shutdownNow);
 
     EventLoopGroup eventLoopGroup;
     if (parameters.eventLoopGroup == null) {
@@ -284,22 +282,29 @@ public class Client implements AutoCloseable {
 
     this.channel = f.channel();
     this.nettyClosing = Utils.makeIdempotent(this::closeNetty);
-    this.tuneState =
-        new TuneState(
-            parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
-    this.clientProperties = clientProperties(parameters.clientProperties);
-    this.serverProperties = peerProperties();
-    authenticate();
-    this.tuneState.await(Duration.ofSeconds(10));
-    this.maxFrameSize = this.tuneState.getMaxFrameSize();
-    this.frameSizeCopped = this.maxFrameSize() > 0;
-    LOGGER.debug(
-        "Connection tuned with max frame size {} and heartbeat {}",
-        this.maxFrameSize(),
-        tuneState.getHeartbeat());
-    this.connectionProperties = open(parameters.virtualHost);
-    started.set(true);
-    this.metricsCollector.openConnection();
+    this.executorService = Executors.newSingleThreadExecutor();
+    this.executorServiceClosing = Utils.makeIdempotent(this.executorService::shutdownNow);
+    try {
+      this.tuneState =
+          new TuneState(
+              parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
+      this.clientProperties = clientProperties(parameters.clientProperties);
+      this.serverProperties = peerProperties();
+      authenticate();
+      this.tuneState.await(Duration.ofSeconds(10));
+      this.maxFrameSize = this.tuneState.getMaxFrameSize();
+      this.frameSizeCopped = this.maxFrameSize() > 0;
+      LOGGER.debug(
+          "Connection tuned with max frame size {} and heartbeat {}",
+          this.maxFrameSize(),
+          tuneState.getHeartbeat());
+      this.connectionProperties = open(parameters.virtualHost);
+      started.set(true);
+      this.metricsCollector.openConnection();
+    } catch (RuntimeException e) {
+      this.closingSequence(null);
+      throw e;
+    }
   }
 
   private static Map<String, String> clientProperties(Map<String, String> fromParameters) {
@@ -1148,7 +1153,9 @@ public class Client implements AutoCloseable {
   }
 
   void closingSequence(ShutdownContext.ShutdownReason reason) {
-    this.shutdownListenerCallback.accept(reason);
+    if (reason != null) {
+      this.shutdownListenerCallback.accept(reason);
+    }
     this.nettyClosing.run();
     this.executorServiceClosing.run();
   }
@@ -1168,6 +1175,10 @@ public class Client implements AutoCloseable {
       LOGGER.info("Could not close channel in 10 seconds");
     }
 
+    maybeShutdownEventLoop();
+  }
+
+  private void maybeShutdownEventLoop() {
     try {
       if (this.eventLoopGroup != null
           && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
