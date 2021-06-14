@@ -31,4 +31,8 @@ public interface MetricsCollector {
   void chunk(int entriesCount);
 
   void consume(long count);
+
+  void writtenBytes(int writtenBytes);
+
+  void readBytes(int readBytes);
 }

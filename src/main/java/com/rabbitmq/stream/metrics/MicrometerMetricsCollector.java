@@ -26,6 +26,8 @@ public class MicrometerMetricsCollector implements MetricsCollector {
   private final Counter publishError;
   private final Counter chunk;
   private final Counter consume;
+  private final Counter writtenBytes;
+  private final Counter readBytes;
 
   private final AtomicLong outstandingPublishConfirm;
   private final DistributionSummary chunkSize;
@@ -52,6 +54,8 @@ public class MicrometerMetricsCollector implements MetricsCollector {
     this.chunk = registry.counter(prefix + ".chunk", tags);
     this.chunkSize = registry.summary(prefix + ".chunk_size", tags);
     this.consume = registry.counter(prefix + ".consumed", tags);
+    this.writtenBytes = registry.counter(prefix + ".written_bytes", tags);
+    this.readBytes = registry.counter(prefix + ".read_bytes", tags);
     this.outstandingPublishConfirm =
         registry.gauge(prefix + ".outstanding_publish_confirm", tags, new AtomicLong(0));
   }
@@ -93,5 +97,15 @@ public class MicrometerMetricsCollector implements MetricsCollector {
   @Override
   public void consume(long count) {
     consume.increment(count);
+  }
+
+  @Override
+  public void writtenBytes(int writtenBytes) {
+    this.writtenBytes.increment(writtenBytes);
+  }
+
+  @Override
+  public void readBytes(int readBytes) {
+    this.readBytes.increment(readBytes);
   }
 }

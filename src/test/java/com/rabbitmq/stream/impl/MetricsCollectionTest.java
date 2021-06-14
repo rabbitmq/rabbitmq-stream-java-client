@@ -65,6 +65,8 @@ public class MetricsCollectionTest {
   @Test
   void publishConfirmChunkConsumeShouldBeCollected() throws Exception {
     int messageCount = 1000;
+    assertThat(metricsCollector.writtenBytes.get()).isZero();
+    assertThat(metricsCollector.readBytes.get()).isZero();
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
     Client publisher =
         cf.get(
@@ -85,6 +87,9 @@ public class MetricsCollectionTest {
     assertThat(metricsCollector.publish.get()).isEqualTo(messageCount);
     assertThat(metricsCollector.confirm.get()).isEqualTo(messageCount);
     assertThat(metricsCollector.error.get()).isZero();
+
+    assertThat(metricsCollector.writtenBytes.get()).isPositive();
+    assertThat(metricsCollector.readBytes.get()).isPositive();
 
     CountDownLatch consumeLatch = new CountDownLatch(messageCount);
     Client consumer =
@@ -252,6 +257,8 @@ public class MetricsCollectionTest {
     private final AtomicLong chunk = new AtomicLong(0);
     private final AtomicLong entriesInChunk = new AtomicLong(0);
     private final AtomicLong consume = new AtomicLong(0);
+    private final AtomicLong writtenBytes = new AtomicLong(0);
+    private final AtomicLong readBytes = new AtomicLong(0);
 
     @Override
     public void openConnection() {
@@ -287,6 +294,16 @@ public class MetricsCollectionTest {
     @Override
     public void consume(long count) {
       consume.addAndGet(count);
+    }
+
+    @Override
+    public void writtenBytes(int writtenBytes) {
+      this.writtenBytes.addAndGet(writtenBytes);
+    }
+
+    @Override
+    public void readBytes(int readBytes) {
+      this.readBytes.addAndGet(readBytes);
     }
   }
 }

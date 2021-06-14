@@ -76,6 +76,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -255,6 +257,18 @@ public class Client implements AutoCloseable {
                     NETTY_HANDLER_FRAME_DECODER,
                     new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, 0, 4));
             ch.pipeline().addLast(NETTY_HANDLER_STREAM, new StreamHandler());
+            ch.pipeline()
+                .addLast(
+                    new ChannelOutboundHandlerAdapter() {
+
+                      @Override
+                      public void write(
+                          ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
+                          throws Exception {
+                        metricsCollector.writtenBytes(((ByteBuf) msg).capacity());
+                        super.write(ctx, msg, promise);
+                      }
+                    });
             if (parameters.sslContext != null) {
               SslHandler sslHandler =
                   parameters.sslContext.newHandler(ch.alloc(), parameters.host, parameters.port);
@@ -2025,6 +2039,7 @@ public class Client implements AutoCloseable {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
       ByteBuf m = (ByteBuf) msg;
+      metricsCollector.readBytes(m.capacity() + 4); // 32-bits integer for size not included
       int frameSize = m.readableBytes();
       short commandId = extractResponseCode(m.readShort());
       short version = m.readShort();

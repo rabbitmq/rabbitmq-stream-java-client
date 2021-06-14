@@ -40,4 +40,10 @@ public final class NoOpMetricsCollector implements MetricsCollector {
 
   @Override
   public void consume(long count) {}
+
+  @Override
+  public void writtenBytes(int writtenBytes) {}
+
+  @Override
+  public void readBytes(int readBytes) {}
 }

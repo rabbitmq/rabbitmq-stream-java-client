@@ -24,7 +24,9 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.CharacterIterator;
 import java.text.SimpleDateFormat;
+import java.text.StringCharacterIterator;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Executors;
@@ -44,14 +46,17 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   private final Timer latency;
   private final boolean summaryFile;
   private final PrintStream out;
+  private final boolean includeByteRates;
   private volatile Closeable closingSequence = () -> {};
 
   DefaultPerformanceMetrics(
       CompositeMeterRegistry meterRegistry,
       String metricsPrefix,
       boolean summaryFile,
+      boolean includeByteRates,
       PrintStream out) {
     this.summaryFile = summaryFile;
+    this.includeByteRates = includeByteRates;
     this.out = out;
     DropwizardConfig dropwizardConfig =
         new DropwizardConfig() {
@@ -105,6 +110,8 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     String metricConsumed = "rabbitmqStreamConsumed";
     String metricChunkSize = "rabbitmqStreamChunk_size";
     String metricLatency = "rabbitmqStreamLatency";
+    String metricWrittenBytes = "rabbitmqStreamWritten_bytes";
+    String metricReadBytes = "rabbitmqStreamRead_bytes";
 
     Set<String> allMetrics =
         new HashSet<>(
@@ -120,6 +127,13 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     metersNamesAndLabels.put(metricProducerConfirmed, "confirmed");
     metersNamesAndLabels.put(metricConsumed, "consumed");
 
+    if (this.includeByteRates) {
+      allMetrics.add(metricWrittenBytes);
+      allMetrics.add(metricReadBytes);
+      metersNamesAndLabels.put(metricWrittenBytes, "written bytes");
+      metersNamesAndLabels.put(metricReadBytes, "read bytes");
+    }
+
     ScheduledExecutorService scheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor();
 
@@ -132,8 +146,25 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     metersNamesAndLabels
         .entrySet()
         .forEach(entry -> meters.put(entry.getValue(), registryMeters.get(entry.getKey())));
-    Function<Map.Entry<String, Meter>, String> formatMeter =
-        entry -> String.format("%s %.0f msg/s, ", entry.getKey(), entry.getValue().getMeanRate());
+
+    Map<String, Function<Meter, String>> formatMeter = new HashMap<>();
+    metersNamesAndLabels.entrySet().stream()
+        .filter(entry -> !entry.getKey().contains("bytes"))
+        .forEach(
+            entry -> {
+              formatMeter.put(
+                  entry.getValue(),
+                  meter -> String.format("%s %.0f msg/s, ", entry.getValue(), meter.getMeanRate()));
+            });
+
+    metersNamesAndLabels.entrySet().stream()
+        .filter(entry -> entry.getKey().contains("bytes"))
+        .forEach(
+            entry -> {
+              formatMeter.put(
+                  entry.getValue(),
+                  meter -> formatByteRate(entry.getValue(), meter.getMeanRate()) + ", ");
+            });
 
     Histogram chunkSize = metricRegistry.getHistograms().get(metricChunkSize);
     Function<Histogram, String> formatChunkSize =
@@ -163,7 +194,14 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                 if (checkActivity()) {
                   StringBuilder builder = new StringBuilder();
                   builder.append(reportCount.get()).append(", ");
-                  meters.entrySet().forEach(entry -> builder.append(formatMeter.apply(entry)));
+                  meters
+                      .entrySet()
+                      .forEach(
+                          entry -> {
+                            String meterName = entry.getKey();
+                            Meter meter = entry.getValue();
+                            builder.append(formatMeter.get(meterName).apply(meter));
+                          });
                   builder.append(formatLatency.apply(latency)).append(", ");
                   builder.append(formatChunkSize.apply(chunkSize));
                   this.out.println(builder);
@@ -190,10 +228,17 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
           long duration = System.currentTimeMillis() - start;
 
           Function<Map.Entry<String, Meter>, String> formatMeterSummary =
-              entry ->
-                  String.format(
+              entry -> {
+                if (entry.getKey().contains("bytes")) {
+                  return formatByteRate(
+                          entry.getKey(), entry.getValue().getCount() * 1000 / duration)
+                      + ", ";
+                } else {
+                  return String.format(
                       "%s %d msg/s, ",
                       entry.getKey(), entry.getValue().getCount() * 1000 / duration);
+                }
+              };
 
           Function<com.codahale.metrics.Timer, String> formatLatencySummary =
               histogram ->
@@ -208,6 +253,20 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
           this.out.println();
           this.out.println(builder);
         };
+  }
+
+  static String formatByteRate(String label, double bytes) {
+    // based on
+    // https://stackoverflow.com/questions/3758606/how-can-i-convert-byte-size-into-a-human-readable-format-in-java
+    if (-1000 < bytes && bytes < 1000) {
+      return bytes + " B";
+    }
+    CharacterIterator ci = new StringCharacterIterator("kMGTPE");
+    while (bytes <= -999_950 || bytes >= 999_950) {
+      bytes /= 1000;
+      ci.next();
+    }
+    return String.format("%s %.1f %cB/s", label, bytes / 1000.0, ci.current());
   }
 
   private Closeable maybeSetSummaryFile(

@@ -28,6 +28,8 @@ public class DropwizardMetricsCollector implements MetricsCollector {
   private final Meter publishError;
   private final Meter chunk;
   private final Meter consume;
+  private final Meter writtenBytes;
+  private final Meter readBytes;
 
   private final Counter outstandingPublishConfirm;
   private final Histogram chunkSize;
@@ -40,6 +42,8 @@ public class DropwizardMetricsCollector implements MetricsCollector {
     this.chunk = registry.meter(metricsPrefix + ".chunk");
     this.chunkSize = registry.histogram(metricsPrefix + ".chunk_size");
     this.consume = registry.meter(metricsPrefix + ".consumed");
+    this.writtenBytes = registry.meter(metricsPrefix + ".written_bytes");
+    this.readBytes = registry.meter(metricsPrefix + ".read_bytes");
     this.outstandingPublishConfirm =
         registry.counter(metricsPrefix + ".outstanding_publish_confirm");
   }
@@ -89,5 +93,15 @@ public class DropwizardMetricsCollector implements MetricsCollector {
   @Override
   public void consume(long count) {
     consume.mark(count);
+  }
+
+  @Override
+  public void writtenBytes(int writtenBytes) {
+    this.writtenBytes.mark(writtenBytes);
+  }
+
+  @Override
+  public void readBytes(int readBytes) {
+    this.readBytes.mark(readBytes);
   }
 }

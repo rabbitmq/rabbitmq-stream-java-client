@@ -278,6 +278,12 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.ConsumerNameStrategyConverter.class)
   private BiFunction<String, Integer, String> consumerNameStrategy;
 
+  @CommandLine.Option(
+      names = {"--metrics-byte-rates", "-mbr"},
+      description = "include written and read byte rates in metrics",
+      defaultValue = "false")
+  private boolean includeByteRates;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
 
@@ -362,7 +368,8 @@ public class StreamPerfTest implements Callable<Integer> {
     }
 
     this.performanceMetrics =
-        new DefaultPerformanceMetrics(meterRegistry, metricsPrefix, this.summaryFile, this.out);
+        new DefaultPerformanceMetrics(
+            meterRegistry, metricsPrefix, this.summaryFile, this.includeByteRates, this.out);
 
     this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
 
