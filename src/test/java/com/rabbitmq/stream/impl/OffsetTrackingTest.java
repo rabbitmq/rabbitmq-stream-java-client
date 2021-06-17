@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.forEach;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,7 +29,9 @@ import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import io.vavr.Tuple;
 import io.vavr.Tuple3;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -48,6 +51,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -63,6 +67,12 @@ public class OffsetTrackingTest {
 
   String stream;
   TestUtils.ClientFactory cf;
+
+  static Stream<BiConsumer<String, Client>> consumeAndCommit() {
+    return Stream.of(
+        (s, c) -> c.create(s),
+        (s, c) -> c.create(s, new StreamParametersBuilder().maxSegmentSizeKb(100).build()));
+  }
 
   @ParameterizedTest
   @CsvSource({
@@ -90,12 +100,6 @@ public class OffsetTrackingTest {
     Thread.sleep(100L); // commit offset is fire-and-forget
     long offset = client.queryOffset(queryReference, s);
     assertThat(offset).as(message).isEqualTo(expectedOffset);
-  }
-
-  static Stream<BiConsumer<String, Client>> consumeAndCommit() {
-    return Stream.of(
-        (s, c) -> c.create(s),
-        (s, c) -> c.create(s, new StreamParametersBuilder().maxSegmentSizeKb(100).build()));
   }
 
   @ParameterizedTest
@@ -285,5 +289,59 @@ public class OffsetTrackingTest {
       publisher.delete(s);
       executorService.shutdownNow();
     }
+  }
+
+  @Test
+  void commitOffsetAndThenAttachByTimestampShouldWork() throws InterruptedException {
+    // this test performs a timestamp-based index search within a segment with
+    // a lot of non-user entries (chunks that contain tracking info, not messages)
+    int messageCount = 50_000;
+    AtomicReference<CountDownLatch> confirmLatch =
+        new AtomicReference<>(new CountDownLatch(messageCount));
+    AtomicInteger consumed = new AtomicInteger();
+    Client client =
+        cf.get(
+            new ClientParameters()
+                .publishConfirmListener(
+                    (publisherId, publishingId) -> confirmLatch.get().countDown())
+                .chunkListener(
+                    (client1, subscriptionId, offset, messageCount1, dataSize) ->
+                        client1.credit(subscriptionId, 1))
+                .messageListener((subscriptionId, offset, message) -> consumed.incrementAndGet()));
+
+    assertThat(client.declarePublisher((byte) 0, null, stream).isOk()).isTrue();
+    Runnable publishAction =
+        () -> {
+          IntStream.range(0, messageCount)
+              .forEach(
+                  i ->
+                      client.publish(
+                          (byte) 0,
+                          Collections.singletonList(
+                              client
+                                  .codec()
+                                  .messageBuilder()
+                                  .addData("hello world".getBytes(StandardCharsets.UTF_8))
+                                  .build())));
+        };
+    publishAction.run();
+
+    assertThat(latchAssert(confirmLatch)).completes();
+
+    IntStream.range(0, messageCount).forEach(i -> client.commitOffset("some reference", stream, i));
+
+    waitAtMost(() -> client.queryOffset("some reference", stream) == messageCount - 1);
+
+    confirmLatch.set(new CountDownLatch(messageCount));
+
+    long betweenTwoWaves = System.currentTimeMillis();
+
+    publishAction.run();
+    assertThat(latchAssert(confirmLatch)).completes();
+
+    assertThat(consumed.get()).isZero();
+    client.subscribe((byte) 0, stream, OffsetSpecification.timestamp(betweenTwoWaves), 10);
+
+    waitAtMost(() -> consumed.get() == messageCount);
   }
 }
