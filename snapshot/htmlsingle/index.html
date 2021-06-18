@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(3331388)</span>
+<br><span id="revremark">(390b06c)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -503,8 +503,8 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#specifying-an-offset">Specifying an Offset</a></li>
 <li><a href="#consumer-offset-tracking">Tracking the Offset for a Consumer</a>
 <ul class="sectlevel5">
-<li><a href="#consumer-automatic-offset-commit">Automatic Offset Commit</a></li>
-<li><a href="#consumer-manual-offset-commit">Manual Offset Commit</a></li>
+<li><a href="#consumer-automatic-offset-tracking">Automatic Offset Tracking</a></li>
+<li><a href="#consumer-manual-offset-tracking">Manual Offset Tracking</a></li>
 <li><a href="#considerations-on-offset-tracking">Considerations On Offset Tracking</a></li>
 </ul>
 </li>
@@ -1394,8 +1394,8 @@ a new connection is open. The value must be between 1 and 255.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">255</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxCommittingConsumersByConnection</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of <code>Consumer</code> instances that commit their offset a single connection
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxTrackingConsumersByConnection</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of <code>Consumer</code> instances that store their offset a single connection
 can maintain before a new connection is open. The value must be between 1 and 255.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">50</p></td>
 </tr>
@@ -2249,28 +2249,28 @@ a separate thread (e.g. with an asynchronous <code>ExecutorService</code>).</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>null</code> (no offset tracking)</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoCommitStrategy</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Enable and configure the <a href="#consumer-automatic-offset-commit">auto-commit strategy</a>.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">This is the default commit strategy if a consumer <code>name</code> is provided.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoTrackingStrategy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Enable and configure the <a href="#consumer-automatic-offset-tracking">auto-tracking strategy</a>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">This is the default tracking strategy if a consumer <code>name</code> is provided.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoCommitStrategy#messageCountBeforeCommit</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Number of messages before committing.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoTrackingStrategy#messageCountBeforeStorage</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Number of messages before storing.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">10,000</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoCommitStrategy#flushInterval</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Interval to check and commit the last received offset in case of inactivity.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>AutoTrackingStrategy#flushInterval</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Interval to check and store the last received offset in case of inactivity.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>Duration.ofSeconds(5)</code></p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ManualCommitStrategy</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Enable and configure the <a href="#consumer-manual-offset-commit">manual commit strategy</a>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ManualTrackingStrategy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Enable and configure the <a href="#consumer-manual-offset-tracking">manual tracking strategy</a>.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Disabled by default.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ManualCommitStrategy#checkInterval</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Interval to check if the last requested committed offset has been actually committed.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ManualTrackingStrategy#checkInterval</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Interval to check if the last requested stored offset has been actually stored.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>Duration.ofSeconds(5)</code></p></td>
 </tr>
 </tbody>
@@ -2377,27 +2377,27 @@ enforces uniqueness of the name: if 2 <code>Consumer</code> Java instances share
 offset tracking will likely be interleaved, which applications usually do not expect.</p>
 </li>
 <li>
-<p>the consumer must periodically <strong>commit the offset</strong> it has reached so far. The way
-offsets are committed depends on the commit strategy: automatic or manual.</p>
+<p>the consumer must periodically <strong>store the offset</strong> it has reached so far. The way
+offsets are stored depends on the tracking strategy: automatic or manual.</p>
 </li>
 </ul>
 </div>
 <div class="paragraph">
-<p>Whatever commit strategy you use, <strong>a consumer must have a name to be able to commit offsets</strong>.</p>
+<p>Whatever tracking strategy you use, <strong>a consumer must have a name to be able to store offsets</strong>.</p>
 </div>
 <div class="sect5">
-<h6 id="consumer-automatic-offset-commit"><a class="anchor" href="#consumer-automatic-offset-commit"></a>Automatic Offset Commit</h6>
+<h6 id="consumer-automatic-offset-tracking"><a class="anchor" href="#consumer-automatic-offset-tracking"></a>Automatic Offset Tracking</h6>
 <div class="paragraph">
-<p>The following snippet shows how to enable automatic commit with the defaults:</p>
+<p>The following snippet shows how to enable automatic tracking with the defaults:</p>
 </div>
 <div class="listingblock">
-<div class="title">Using automatic commit strategy with the defaults</div>
+<div class="title">Using automatic tracking strategy with the defaults</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
     environment.consumerBuilder()
         .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
         .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
-        .autoCommitStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
+        .autoTrackingStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
         .builder()
         .messageHandler((context, message) -&gt; {
           <span class="comment">// message handling code...</span>
@@ -2413,23 +2413,23 @@ offsets are committed depends on the commit strategy: automatic or manual.</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Use automatic commit strategy with defaults</td>
+<td>Use automatic tracking strategy with defaults</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>The automatic commit strategy has the following available settings:</p>
+<p>The automatic tracking strategy has the following available settings:</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p><strong>message count before commit</strong>: the client will commit the offset
+<p><strong>message count before storage</strong>: the client will store the offset
 after the specified number of messages, right after the execution
 of the message handler. <em>The default is every 10,000 messages</em>.</p>
 </li>
 <li>
-<p><strong>flush interval</strong>: the client will make sure to commit the last received offset
-at the specified interval. This avoids having pending, not committed offsets in
+<p><strong>flush interval</strong>: the client will make sure to store the last received offset
+at the specified interval. This avoids having pending, not stored offsets in
 case of inactivity. <em>The default is 5 seconds</em>.</p>
 </li>
 </ul>
@@ -2438,14 +2438,14 @@ case of inactivity. <em>The default is 5 seconds</em>.</p>
 <p>Those settings are configurable, as shown in the following snippet:</p>
 </div>
 <div class="listingblock">
-<div class="title">Configuring the automatic commit strategy</div>
+<div class="title">Configuring the automatic tracking strategy</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
     environment.consumerBuilder()
         .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
         .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
-        .autoCommitStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
-            .messageCountBeforeCommit(<span class="integer">50</span>_000)   <i class="conum" data-value="3"></i><b>(3)</b>
+        .autoTrackingStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
+            .messageCountBeforeStorage(<span class="integer">50</span>_000)   <i class="conum" data-value="3"></i><b>(3)</b>
             .flushInterval(<span class="predefined-type">Duration</span>.ofSeconds(<span class="integer">10</span>))   <i class="conum" data-value="4"></i><b>(4)</b>
         .builder()
         .messageHandler((context, message) -&gt; {
@@ -2462,25 +2462,25 @@ case of inactivity. <em>The default is 5 seconds</em>.</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Use automatic commit strategy</td>
+<td>Use automatic tracking strategy</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Commit every 50,000 messages</td>
+<td>Store every 50,000 messages</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Make sure to commit offset at least every 10 seconds</td>
+<td>Make sure to store offset at least every 10 seconds</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>Note the automatic commit is the default commit strategy, so if you are fine
+<p>Note the automatic tracking is the default tracking strategy, so if you are fine
 with its defaults, it is enabled as soon as you specify a name
 for the consumer:</p>
 </div>
 <div class="listingblock">
-<div class="title">Setting only the consumer name to enable automatic commit</div>
+<div class="title">Setting only the consumer name to enable automatic tracking</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
     environment.consumerBuilder()
@@ -2496,41 +2496,41 @@ for the consumer:</p>
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Set only the consumer name to enable automatic commit with defaults</td>
+<td>Set only the consumer name to enable automatic tracking with defaults</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>Automatic commit is simple and provides good guarantees. It is nevertheless
-possible to have more fine-grained control over offset commit by using
-manual commit.</p>
+<p>Automatic tracking is simple and provides good guarantees. It is nevertheless
+possible to have more fine-grained control over offset tracking by using
+manual tracking.</p>
 </div>
 </div>
 <div class="sect5">
-<h6 id="consumer-manual-offset-commit"><a class="anchor" href="#consumer-manual-offset-commit"></a>Manual Offset Commit</h6>
+<h6 id="consumer-manual-offset-tracking"><a class="anchor" href="#consumer-manual-offset-tracking"></a>Manual Offset Tracking</h6>
 <div class="paragraph">
-<p>The manual commit strategy lets the developer in charge of committing offsets
+<p>The manual tracking strategy lets the developer in charge of storing offsets
 whenever they want, not only after a given number of messages has been received
-and supposedly processed, like automatic commit does.</p>
+and supposedly processed, like automatic tracking does.</p>
 </div>
 <div class="paragraph">
-<p>The following snippet shows how to enable manual commit and how to commit
+<p>The following snippet shows how to enable manual tracking and how to store
 the offset at some point:</p>
 </div>
 <div class="listingblock">
-<div class="title">Using manual commit with defaults</div>
+<div class="title">Using manual tracking with defaults</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
     environment.consumerBuilder()
         .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
         .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
-        .manualCommitStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
+        .manualTrackingStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
         .builder()
         .messageHandler((context, message) -&gt; {
           <span class="comment">// message handling code...</span>
 
-          <span class="keyword">if</span> (conditionToCommit()) {
-            context.commit();   <i class="conum" data-value="3"></i><b>(3)</b>
+          <span class="keyword">if</span> (conditionToStore()) {
+            context.storeOffset();   <i class="conum" data-value="3"></i><b>(3)</b>
           }
         })
         .build();</code></pre>
@@ -2544,37 +2544,37 @@ the offset at some point:</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Use manual commit with defaults</td>
+<td>Use manual tracking with defaults</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Commit at the current offset on some condition</td>
+<td>Store at the current offset on some condition</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>Manual commit has only one setting: the <strong>check interval</strong>. The client checks
-that the last requested committed offset has been actually committed at the
+<p>Manual tracking has only one setting: the <strong>check interval</strong>. The client checks
+that the last requested stored offset has been actually stored at the
 specified interval. <em>The default check interval is 5 seconds</em>.</p>
 </div>
 <div class="paragraph">
-<p>The following snippet shows the configuration of manual commit:</p>
+<p>The following snippet shows the configuration of manual tracking:</p>
 </div>
 <div class="listingblock">
-<div class="title">Configuring manual commit strategy</div>
+<div class="title">Configuring manual tracking strategy</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
     environment.consumerBuilder()
         .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
         .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)   <i class="conum" data-value="1"></i><b>(1)</b>
-        .manualCommitStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
+        .manualTrackingStrategy()   <i class="conum" data-value="2"></i><b>(2)</b>
             .checkInterval(<span class="predefined-type">Duration</span>.ofSeconds(<span class="integer">10</span>))   <i class="conum" data-value="3"></i><b>(3)</b>
         .builder()
         .messageHandler((context, message) -&gt; {
           <span class="comment">// message handling code...</span>
 
-          <span class="keyword">if</span> (conditionToCommit()) {
-            context.commit();   <i class="conum" data-value="4"></i><b>(4)</b>
+          <span class="keyword">if</span> (conditionToStore()) {
+            context.storeOffset();   <i class="conum" data-value="4"></i><b>(4)</b>
           }
         })
         .build();</code></pre>
@@ -2588,7 +2588,7 @@ specified interval. <em>The default check interval is 5 seconds</em>.</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
-<td>Use manual commit with defaults</td>
+<td>Use manual tracking with defaults</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
@@ -2596,27 +2596,27 @@ specified interval. <em>The default check interval is 5 seconds</em>.</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Commit at the current offset on some condition</td>
+<td>Store the current offset on some condition</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>The snippet above uses <code>MessageHandler.Context#commit()</code> to commit at the
-offset of the current message, but it is possible to commit anywhere
-in the stream with <code>MessageHandler.Context#consumer()#commit(long)</code> or
-simply <code>Consumer#commit(long)</code>.</p>
+<p>The snippet above uses <code>MessageHandler.Context#storeOffset()</code> to store at the
+offset of the current message, but it is possible to store anywhere
+in the stream with <code>MessageHandler.Context#consumer()#store(long)</code> or
+simply <code>Consumer#store(long)</code>.</p>
 </div>
 </div>
 <div class="sect5">
 <h6 id="considerations-on-offset-tracking"><a class="anchor" href="#considerations-on-offset-tracking"></a>Considerations On Offset Tracking</h6>
 <div class="paragraph">
-<p><em>When to commit offsets?</em> Avoid committing offsets too often or, worse, for each message.
+<p><em>When to store offsets?</em> Avoid storing offsets too often or, worse, for each message.
 Even though offset tracking is a small and fast operation, it will
 make the stream grow unnecessarily, as the broker persists offset
 tracking entries in the stream itself.</p>
 </div>
 <div class="paragraph">
-<p>A good rule of thumb is to commit every few thousands
+<p>A good rule of thumb is to store the offset every few thousands
 of messages. Of course, when the consumer will restart consuming in a new incarnation, the
 last tracked offset may be a little behind the very last message the previous incarnation
 actually processed, so the consumer may see some messages that have been already processed.</p>
@@ -2631,7 +2631,7 @@ last duplicated messages.</p>
 This implies that the message at offset 500 in a stream may
 not be the 501 message in the stream (offsets start at 0).
 There can be different types of entries in a stream storage, a message is
-just one of them. For example, committing an offset creates an offset tracking
+just one of them. For example, storing an offset creates an offset tracking
 entry, which has its own offset.</p>
 </div>
 <div class="paragraph">
@@ -3179,23 +3179,23 @@ an unsigned long for a given offset, and an ISO 8601 formatted timestamp
 <div class="paragraph">
 <p>A consumer can <a href="#consumer-offset-tracking">track the point</a> it has reached
 in a stream to be able to restart where it left off in a new incarnation.
-The performance tool has the <code>--commit-every</code> option to tell consumers to commit
+The performance tool has the <code>--store-every</code> option to tell consumers to store
 the offset every <code>x</code> messages to be able to measure the impact of offset tracking
 in terms of throughput and storage. This feature is disabled by default.
-The following command shows how to commit the offset every 100,000 messages:</p>
+The following command shows how to store the offset every 100,000 messages:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre>java -jar stream-perf-test.jar --commit-every 100000</pre>
+<pre>java -jar stream-perf-test.jar --store-every 100000</pre>
 </div>
 </div>
 </div>
 <div class="sect4">
 <h5 id="consumer-names"><a class="anchor" href="#consumer-names"></a>Consumer Names</h5>
 <div class="paragraph">
-<p>When using <code>--commit-every</code> (see above) for <a href="#consumer-offset-tracking">offset tracking</a>,
+<p>When using <code>--store-every</code> (see above) for <a href="#consumer-offset-tracking">offset tracking</a>,
 the performance tool uses a default name using the pattern <code>{stream-name}-{consumer-number}</code>.
-So the default name of a single committing consumer consuming from <code>stream</code> will be <code>stream-1</code>.</p>
+So the default name of a single tracking consumer consuming from <code>stream</code> will be <code>stream-1</code>.</p>
 </div>
 <div class="paragraph">
 <p>The consumer names pattern can be set with the <code>--consumer-names</code> option, which uses
@@ -3246,10 +3246,10 @@ changes for every run.</p></td>
 </table>
 <div class="paragraph">
 <p>Note you can use <code>--consumer-names uuid</code> to change the consumer names for every run. This
-can be useful when you want to use committing consumers in different runs but you want to
+can be useful when you want to use tracking consumers in different runs but you want to
 force the offset they start consuming from. With consumer names that do not change between runs,
-committing consumers would ignore the specified offset and would start where they left off
-(this is the purpose of offset committing).</p>
+tracking consumers would ignore the specified offset and would start where they left off
+(this is the purpose of offset tracking).</p>
 </div>
 </div>
 </div>
@@ -3279,7 +3279,7 @@ committing consumers would ignore the specified offset and would start where the
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-06-17 07:16:59 UTC
+Last updated 2021-06-18 14:52:56 UTC
 </div>
 </div>
 <style>
