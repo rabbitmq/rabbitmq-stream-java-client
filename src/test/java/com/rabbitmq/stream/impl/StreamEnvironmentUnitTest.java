@@ -77,7 +77,7 @@ public class StreamEnvironmentUnitTest {
             topologyUpdateBackOffDelayPolicy,
             host -> host,
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
-            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
             cf);
@@ -135,7 +135,7 @@ public class StreamEnvironmentUnitTest {
             topologyUpdateBackOffDelayPolicy,
             host -> host,
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
-            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
             cf);

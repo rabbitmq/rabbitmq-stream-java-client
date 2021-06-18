@@ -41,17 +41,17 @@ public interface MessageHandler {
     long offset();
 
     /**
-     * Shortcut to send a commit for the message offset.
+     * Shortcut to send a store order for the message offset.
      *
-     * @see Consumer#commit(long)
+     * @see Consumer#store(long)
      */
-    void commit();
+    void storeOffset();
 
     /**
      * The consumer that receives the message.
      *
      * @return
-     * @see Consumer#commit(long)
+     * @see Consumer#store(long)
      */
     Consumer consumer();
   }

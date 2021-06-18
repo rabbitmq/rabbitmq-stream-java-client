@@ -56,20 +56,20 @@ public interface ConsumerBuilder {
   ConsumerBuilder name(String name);
 
   /**
-   * Enable {@link ManualCommitStrategy}.
+   * Enable {@link ManualTrackingStrategy}.
    *
-   * @return the manual commit strategy
+   * @return the manual tracking strategy
    */
-  ManualCommitStrategy manualCommitStrategy();
+  ManualTrackingStrategy manualTrackingStrategy();
 
   /**
-   * Enable {@link AutoCommitStrategy}.
+   * Enable {@link AutoTrackingStrategy}.
    *
-   * <p>This is the default commit strategy.
+   * <p>This is the default tracking strategy.
    *
-   * @return the auto-commit strategy
+   * @return the auto-tracking strategy
    */
-  AutoCommitStrategy autoCommitStrategy();
+  AutoTrackingStrategy autoTrackingStrategy();
 
   /**
    * Create the configured {@link Consumer}
@@ -78,18 +78,18 @@ public interface ConsumerBuilder {
    */
   Consumer build();
 
-  /** Manual commit strategy. */
-  interface ManualCommitStrategy {
+  /** Manual tracking strategy. */
+  interface ManualTrackingStrategy {
 
     /**
-     * Interval to check if the last requested committed offset has been actually committed.
+     * Interval to check if the last requested stored offset has been actually stored.
      *
      * <p>Default is 5 seconds.
      *
      * @param checkInterval
-     * @return the manual commit strategy
+     * @return the manual tracking strategy
      */
-    ManualCommitStrategy checkInterval(Duration checkInterval);
+    ManualTrackingStrategy checkInterval(Duration checkInterval);
 
     /**
      * Go back to the builder.
@@ -99,28 +99,28 @@ public interface ConsumerBuilder {
     ConsumerBuilder builder();
   }
 
-  /** Auto-commit strategy. */
-  interface AutoCommitStrategy {
+  /** Auto-tracking strategy. */
+  interface AutoTrackingStrategy {
 
     /**
-     * Number of messages before committing.
+     * Number of messages before storing.
      *
      * <p>Default is 10,000.
      *
-     * @param messageCountBeforeCommit
-     * @return the auto-commit strategy
+     * @param messageCountBeforeStorage
+     * @return the auto-tracking strategy
      */
-    AutoCommitStrategy messageCountBeforeCommit(int messageCountBeforeCommit);
+    AutoTrackingStrategy messageCountBeforeStorage(int messageCountBeforeStorage);
 
     /**
-     * Interval to check and commit the last received offset in case of inactivity.
+     * Interval to check and stored the last received offset in case of inactivity.
      *
      * <p>Default is 5 seconds.
      *
      * @param flushInterval
-     * @return the auto-commit strategy
+     * @return the auto-tracking strategy
      */
-    AutoCommitStrategy flushInterval(Duration flushInterval);
+    AutoTrackingStrategy flushInterval(Duration flushInterval);
 
     /**
      * Go back to the builder.

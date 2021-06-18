@@ -29,8 +29,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private OffsetSpecification offsetSpecification = null;
   private MessageHandler messageHandler;
   private String name;
-  private DefaultAutoCommitStrategy autoCommitStrategy;
-  private DefaultManualCommitStrategy manualCommitStrategy;
+  private DefaultAutoTrackingStrategy autoTrackingStrategy;
+  private DefaultManualTrackingStrategy manualTrackingStrategy;
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -65,17 +65,17 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
-  public ManualCommitStrategy manualCommitStrategy() {
-    this.manualCommitStrategy = new DefaultManualCommitStrategy(this);
-    this.autoCommitStrategy = null;
-    return this.manualCommitStrategy;
+  public ManualTrackingStrategy manualTrackingStrategy() {
+    this.manualTrackingStrategy = new DefaultManualTrackingStrategy(this);
+    this.autoTrackingStrategy = null;
+    return this.manualTrackingStrategy;
   }
 
   @Override
-  public AutoCommitStrategy autoCommitStrategy() {
-    this.autoCommitStrategy = new DefaultAutoCommitStrategy(this);
-    this.manualCommitStrategy = null;
-    return this.autoCommitStrategy;
+  public AutoTrackingStrategy autoTrackingStrategy() {
+    this.autoTrackingStrategy = new DefaultAutoTrackingStrategy(this);
+    this.manualTrackingStrategy = null;
+    return this.autoTrackingStrategy;
   }
 
   @Override
@@ -84,29 +84,30 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       throw new IllegalArgumentException("stream cannot be null");
     }
     if (this.name == null
-        && (this.autoCommitStrategy != null || this.manualCommitStrategy != null)) {
-      throw new IllegalArgumentException("A name must be set if a commit strategy is specified");
+        && (this.autoTrackingStrategy != null || this.manualTrackingStrategy != null)) {
+      throw new IllegalArgumentException("A name must be set if a tracking strategy is specified");
     }
 
-    CommitConfiguration commitConfiguration;
-    if (this.autoCommitStrategy != null) {
-      commitConfiguration =
-          new CommitConfiguration(
+    TrackingConfiguration trackingConfiguration;
+    if (this.autoTrackingStrategy != null) {
+      trackingConfiguration =
+          new TrackingConfiguration(
               true,
               true,
-              this.autoCommitStrategy.messageCountBeforeCommit,
-              this.autoCommitStrategy.flushInterval,
+              this.autoTrackingStrategy.messageCountBeforeStorage,
+              this.autoTrackingStrategy.flushInterval,
               Duration.ZERO);
-    } else if (this.manualCommitStrategy != null) {
-      commitConfiguration =
-          new CommitConfiguration(
-              true, false, -1, Duration.ZERO, this.manualCommitStrategy.checkInterval);
+    } else if (this.manualTrackingStrategy != null) {
+      trackingConfiguration =
+          new TrackingConfiguration(
+              true, false, -1, Duration.ZERO, this.manualTrackingStrategy.checkInterval);
     } else if (this.name != null) {
-      // the default commit strategy
-      commitConfiguration =
-          new CommitConfiguration(true, true, 10_000, Duration.ofSeconds(5), Duration.ZERO);
+      // the default tracking strategy
+      trackingConfiguration =
+          new TrackingConfiguration(true, true, 10_000, Duration.ofSeconds(5), Duration.ZERO);
     } else {
-      commitConfiguration = new CommitConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
+      trackingConfiguration =
+          new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
     }
 
     StreamConsumer consumer =
@@ -116,29 +117,29 @@ class StreamConsumerBuilder implements ConsumerBuilder {
             this.messageHandler,
             this.name,
             this.environment,
-            commitConfiguration);
+            trackingConfiguration);
     environment.addConsumer(consumer);
     return consumer;
   }
 
-  static class CommitConfiguration {
+  static class TrackingConfiguration {
 
     private final boolean enabled;
     private final boolean auto;
 
-    private final int autoMessageCountBeforeCommit;
+    private final int autoMessageCountBeforeStorage;
     private final Duration autoFlushInterval;
     private final Duration manualCheckInterval;
 
-    CommitConfiguration(
+    TrackingConfiguration(
         boolean enabled,
         boolean auto,
-        int autoMessageCountBeforeCommit,
+        int autoMessageCountBeforeStorage,
         Duration autoFlushInterval,
         Duration manualCheckInterval) {
       this.enabled = enabled;
       this.auto = auto;
-      this.autoMessageCountBeforeCommit = autoMessageCountBeforeCommit;
+      this.autoMessageCountBeforeStorage = autoMessageCountBeforeStorage;
       this.autoFlushInterval = autoFlushInterval;
       this.manualCheckInterval = manualCheckInterval;
     }
@@ -155,8 +156,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       return this.enabled;
     }
 
-    public int autoMessageCountBeforeCommit() {
-      return autoMessageCountBeforeCommit;
+    public int autoMessageCountBeforeStorage() {
+      return autoMessageCountBeforeStorage;
     }
 
     public Duration autoFlushInterval() {
@@ -168,28 +169,28 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     }
   }
 
-  private static final class DefaultAutoCommitStrategy implements AutoCommitStrategy {
+  private static final class DefaultAutoTrackingStrategy implements AutoTrackingStrategy {
 
     private final StreamConsumerBuilder builder;
-    private int messageCountBeforeCommit = 10_000;
+    private int messageCountBeforeStorage = 10_000;
     private Duration flushInterval = Duration.ofSeconds(5);
 
-    private DefaultAutoCommitStrategy(StreamConsumerBuilder builder) {
+    private DefaultAutoTrackingStrategy(StreamConsumerBuilder builder) {
       this.builder = builder;
     }
 
     @Override
-    public AutoCommitStrategy messageCountBeforeCommit(int messageCountBeforeCommit) {
-      if (messageCountBeforeCommit <= 0) {
+    public AutoTrackingStrategy messageCountBeforeStorage(int messageCountBeforeStorage) {
+      if (messageCountBeforeStorage <= 0) {
         throw new IllegalArgumentException(
-            "the number of messages before committing must be positive");
+            "the number of messages before storing must be positive");
       }
-      this.messageCountBeforeCommit = messageCountBeforeCommit;
+      this.messageCountBeforeStorage = messageCountBeforeStorage;
       return this;
     }
 
     @Override
-    public AutoCommitStrategy flushInterval(Duration flushInterval) {
+    public AutoTrackingStrategy flushInterval(Duration flushInterval) {
       if (flushInterval.toMillis() <= 1000) {
         throw new IllegalArgumentException("the flush interval cannot be shorter than 1 second");
       }
@@ -203,17 +204,17 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     }
   }
 
-  private static final class DefaultManualCommitStrategy implements ManualCommitStrategy {
+  private static final class DefaultManualTrackingStrategy implements ManualTrackingStrategy {
 
     private final StreamConsumerBuilder builder;
     private Duration checkInterval = Duration.ofSeconds(5);
 
-    private DefaultManualCommitStrategy(StreamConsumerBuilder builder) {
+    private DefaultManualTrackingStrategy(StreamConsumerBuilder builder) {
       this.builder = builder;
     }
 
     @Override
-    public ManualCommitStrategy checkInterval(Duration checkInterval) {
+    public ManualTrackingStrategy checkInterval(Duration checkInterval) {
       if (checkInterval.toMillis() <= 1000 && !checkInterval.isZero()) {
         throw new IllegalArgumentException("the check interval cannot be shorter than 1 second");
       }

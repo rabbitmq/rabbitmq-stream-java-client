@@ -43,22 +43,22 @@ import org.slf4j.LoggerFactory;
 class ProducersCoordinator {
 
   static final int MAX_PRODUCERS_PER_CLIENT = 256;
-  static final int MAX_COMMITTING_CONSUMERS_PER_CLIENT = 50;
+  static final int MAX_TRACKING_CONSUMERS_PER_CLIENT = 50;
   private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
   private final StreamEnvironment environment;
   private final ClientFactory clientFactory;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
-  private final int maxProducersByClient, maxCommittingConsumersByClient;
+  private final int maxProducersByClient, maxTrackingConsumersByClient;
 
   ProducersCoordinator(
       StreamEnvironment environment,
       int maxProducersByClient,
-      int maxCommittingConsumersByClient,
+      int maxTrackingConsumersByClient,
       ClientFactory clientFactory) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxProducersByClient = maxProducersByClient;
-    this.maxCommittingConsumersByClient = maxCommittingConsumersByClient;
+    this.maxTrackingConsumersByClient = maxTrackingConsumersByClient;
   }
 
   private static String keyForManagerPool(Client.Broker broker) {
@@ -70,9 +70,9 @@ class ProducersCoordinator {
     return registerAgentTracker(new ProducerTracker(reference, stream, producer), stream);
   }
 
-  Runnable registerCommittingConsumer(StreamConsumer consumer) {
+  Runnable registerTrackingConsumer(StreamConsumer consumer) {
     return registerAgentTracker(
-        new CommittingConsumerTracker(consumer.stream(), consumer), consumer.stream());
+        new TrackingConsumerTracker(consumer.stream(), consumer), consumer.stream());
   }
 
   private Runnable registerAgentTracker(AgentTracker tracker, String stream) {
@@ -151,8 +151,8 @@ class ProducersCoordinator {
                                         "{ 'producer_count' : "
                                             + manager.producers.size()
                                             + ", "
-                                            + "  'committing_consumer_count' : "
-                                            + manager.committingConsumerTrackers.size()
+                                            + "  'tracking_consumer_count' : "
+                                            + manager.trackingConsumerTrackers.size()
                                             + " }")
                                 .collect(Collectors.joining(", "))
                             + " ] }")
@@ -259,20 +259,20 @@ class ProducersCoordinator {
     }
   }
 
-  private static class CommittingConsumerTracker implements AgentTracker {
+  private static class TrackingConsumerTracker implements AgentTracker {
 
     private final String stream;
     private final StreamConsumer consumer;
     private volatile ClientProducersManager clientProducersManager;
 
-    private CommittingConsumerTracker(String stream, StreamConsumer consumer) {
+    private TrackingConsumerTracker(String stream, StreamConsumer consumer) {
       this.stream = stream;
       this.consumer = consumer;
     }
 
     @Override
     public void assign(byte producerId, Client client, ClientProducersManager manager) {
-      synchronized (CommittingConsumerTracker.this) {
+      synchronized (TrackingConsumerTracker.this) {
         this.clientProducersManager = manager;
       }
       this.consumer.setClient(client);
@@ -300,7 +300,7 @@ class ProducersCoordinator {
 
     @Override
     public void unavailable() {
-      synchronized (CommittingConsumerTracker.this) {
+      synchronized (TrackingConsumerTracker.this) {
         this.clientProducersManager = null;
       }
       this.consumer.unavailable();
@@ -391,8 +391,8 @@ class ProducersCoordinator {
 
     private final ConcurrentMap<Byte, ProducerTracker> producers =
         new ConcurrentHashMap<>(maxProducersByClient);
-    private final Set<AgentTracker> committingConsumerTrackers =
-        ConcurrentHashMap.newKeySet(maxCommittingConsumersByClient);
+    private final Set<AgentTracker> trackingConsumerTrackers =
+        ConcurrentHashMap.newKeySet(maxTrackingConsumersByClient);
     private final Map<String, Set<AgentTracker>> streamToTrackers = new ConcurrentHashMap<>();
     private final Client client;
     private final ManagerPool owner;
@@ -435,7 +435,7 @@ class ProducersCoordinator {
                   "Recovering {} producers after unexpected connection termination",
                   producers.size());
               producers.forEach((publishingId, tracker) -> tracker.unavailable());
-              committingConsumerTrackers.forEach(AgentTracker::unavailable);
+              trackingConsumerTrackers.forEach(AgentTracker::unavailable);
               // execute in thread pool to free the IO thread
               environment
                   .scheduledExecutorService()
@@ -465,7 +465,7 @@ class ProducersCoordinator {
                       if (tracker.identifiable()) {
                         producers.remove(tracker.id());
                       } else {
-                        committingConsumerTrackers.remove(tracker);
+                        trackingConsumerTrackers.remove(tracker);
                       }
                     });
                 environment
@@ -536,7 +536,7 @@ class ProducersCoordinator {
                       } catch (Exception e) {
                         LOGGER.info(
                             "Error while re-assigning producer {} to {}: {}. Moving on.",
-                            tracker.identifiable() ? tracker.id() : "(committing consumer)",
+                            tracker.identifiable() ? tracker.id() : "(tracking consumer)",
                             key,
                             e.getMessage());
                       }
@@ -546,11 +546,11 @@ class ProducersCoordinator {
               ex -> {
                 LOGGER.info("Error while re-assigning producers: {}", ex.getMessage());
                 for (AgentTracker tracker : trackers) {
-                  // FIXME what to do with committing consumers after a timeout?
+                  // FIXME what to do with tracking consumers after a timeout?
                   // here they are left as "unavailable" and not, meaning they will not be
-                  // able to commit. Yet recovery mechanism could try to reconnect them, but
+                  // able to store. Yet recovery mechanism could try to reconnect them, but
                   // that seems far-fetched (the first recovery already failed). They could
-                  // be put in a state whereby they refuse all new commit commands and inform
+                  // be put in a state whereby they refuse all new store commands and inform
                   // with an exception they should be restarted.
                   try {
                     short code;
@@ -594,7 +594,7 @@ class ProducersCoordinator {
         producers.put(tracker.id(), producerTracker);
       } else {
         tracker.assign((byte) 0, this.client, this);
-        committingConsumerTrackers.add(tracker);
+        trackingConsumerTrackers.add(tracker);
       }
 
       streamToTrackers
@@ -606,7 +606,7 @@ class ProducersCoordinator {
       if (tracker.identifiable()) {
         producers.remove(tracker.id());
       } else {
-        committingConsumerTrackers.remove(tracker);
+        trackingConsumerTrackers.remove(tracker);
       }
       streamToTrackers.compute(
           tracker.stream(),
@@ -626,12 +626,12 @@ class ProducersCoordinator {
       if (tracker.identifiable()) {
         return producers.size() == maxProducersByClient;
       } else {
-        return committingConsumerTrackers.size() == maxCommittingConsumersByClient;
+        return trackingConsumerTrackers.size() == maxTrackingConsumersByClient;
       }
     }
 
     synchronized boolean isEmpty() {
-      return producers.isEmpty() && committingConsumerTrackers.isEmpty();
+      return producers.isEmpty() && trackingConsumerTrackers.isEmpty();
     }
 
     private void close() {

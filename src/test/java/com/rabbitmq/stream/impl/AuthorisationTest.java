@@ -280,24 +280,24 @@ public class AuthorisationTest {
   }
 
   @Test
-  void commitQueryOffsetShouldSucceedOnAuthorisedStreamShouldFailOnUnauthorisedStream()
+  void storeQueryOffsetShouldSucceedOnAuthorisedStreamShouldFailOnUnauthorisedStream()
       throws Exception {
     Client configurationClient = configurationClient();
-    String s = "commit-not-always-authorized";
+    String s = "store-not-always-authorized";
     try {
       assertThat(configurationClient.create(s).isOk()).isTrue();
 
-      configurationClient.commitOffset("configuration", s, 10);
+      configurationClient.storeOffset("configuration", s, 10);
 
-      Duration timeToCheckOffsetCommit =
+      Duration timeToCheckOffsetTracking =
           waitAtMost(5, () -> configurationClient.queryOffset("configuration", s) == 10);
 
       Client client = client();
 
-      client.commitOffset("default-client", s, 10);
+      client.storeOffset("default-client", s, 10);
 
-      // commit offset is fire-and-forget, let's wait a bit to make sure nothing is written
-      Thread.sleep(timeToCheckOffsetCommit.toMillis() * 2);
+      // store offset is fire-and-forget, let's wait a bit to make sure nothing is written
+      Thread.sleep(timeToCheckOffsetTracking.toMillis() * 2);
       assertThat(configurationClient.queryOffset("default-client", s)).isNotEqualTo(10);
 
       // querying is not even authorised for the default client, it should return 0

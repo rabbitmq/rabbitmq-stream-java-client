@@ -56,7 +56,7 @@ public class ProducersCoordinatorTest {
   @Mock StreamEnvironment environment;
   @Mock Client locator;
   @Mock StreamProducer producer;
-  @Mock StreamConsumer committingConsumer;
+  @Mock StreamConsumer trackingConsumer;
   @Mock ClientFactory clientFactory;
   @Mock Client client;
   AutoCloseable mocks;
@@ -108,14 +108,14 @@ public class ProducersCoordinatorTest {
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.addressResolver()).thenReturn(address -> address);
-    when(committingConsumer.stream()).thenReturn("stream");
+    when(trackingConsumer.stream()).thenReturn("stream");
     when(client.declarePublisher(anyByte(), isNull(), anyString()))
         .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
     coordinator =
         new ProducersCoordinator(
             environment,
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
-            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             clientFactory);
   }
 
@@ -181,7 +181,7 @@ public class ProducersCoordinatorTest {
         new ProducersCoordinator(
             environment,
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
-            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             cf);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -208,7 +208,7 @@ public class ProducersCoordinatorTest {
         new ProducersCoordinator(
             environment,
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
-            ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT,
+            ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             cf);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -225,7 +225,7 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
-  void shouldRedistributeProducerAndCommittingConsumerIfConnectionIsLost() throws Exception {
+  void shouldRedistributeProducerAndTrackingConsumerIfConnectionIsLost() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
@@ -241,31 +241,31 @@ public class ProducersCoordinatorTest {
     when(clientFactory.client(any())).thenReturn(client);
 
     when(producer.isOpen()).thenReturn(true);
-    when(committingConsumer.isOpen()).thenReturn(true);
+    when(trackingConsumer.isOpen()).thenReturn(true);
 
     StreamProducer producerClosedAfterDisconnection = mock(StreamProducer.class);
     when(producerClosedAfterDisconnection.isOpen()).thenReturn(false);
 
     CountDownLatch setClientLatch = new CountDownLatch(2 + 2 + 1);
     doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
-    doAnswer(answer(() -> setClientLatch.countDown())).when(committingConsumer).setClient(client);
+    doAnswer(answer(() -> setClientLatch.countDown())).when(trackingConsumer).setClient(client);
     doAnswer(answer(() -> setClientLatch.countDown()))
         .when(producerClosedAfterDisconnection)
         .setClient(client);
 
     CountDownLatch runningLatch = new CountDownLatch(1 + 1);
     doAnswer(answer(() -> runningLatch.countDown())).when(producer).running();
-    doAnswer(answer(() -> runningLatch.countDown())).when(committingConsumer).running();
+    doAnswer(answer(() -> runningLatch.countDown())).when(trackingConsumer).running();
     doAnswer(answer(() -> runningLatch.countDown()))
         .when(producerClosedAfterDisconnection)
         .running();
 
     coordinator.registerProducer(producer, null, "stream");
-    coordinator.registerCommittingConsumer(committingConsumer);
+    coordinator.registerTrackingConsumer(trackingConsumer);
     coordinator.registerProducer(producerClosedAfterDisconnection, null, "stream");
 
     verify(producer, times(1)).setClient(client);
-    verify(committingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setClient(client);
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
@@ -278,9 +278,9 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(2)).setClient(client);
     verify(producer, times(1)).running();
-    verify(committingConsumer, times(1)).unavailable();
-    verify(committingConsumer, times(2)).setClient(client);
-    verify(committingConsumer, times(1)).running();
+    verify(trackingConsumer, times(1)).unavailable();
+    verify(trackingConsumer, times(2)).setClient(client);
+    verify(trackingConsumer, times(1)).running();
     verify(producerClosedAfterDisconnection, times(1)).unavailable();
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
     verify(producerClosedAfterDisconnection, never()).running();
@@ -289,7 +289,7 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
-  void shouldDisposeProducerAndNotCommittingConsumerIfRecoveryTimesOut() throws Exception {
+  void shouldDisposeProducerAndNotTrackingConsumerIfRecoveryTimesOut() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.recoveryBackOffDelayPolicy())
@@ -307,10 +307,10 @@ public class ProducersCoordinatorTest {
         .closeAfterStreamDeletion(any(Short.class));
 
     coordinator.registerProducer(producer, null, "stream");
-    coordinator.registerCommittingConsumer(committingConsumer);
+    coordinator.registerTrackingConsumer(trackingConsumer);
 
     verify(producer, times(1)).setClient(client);
-    verify(committingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -321,16 +321,16 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
-    verify(committingConsumer, times(1)).unavailable();
-    verify(committingConsumer, times(1)).setClient(client);
-    verify(committingConsumer, never()).running();
-    verify(committingConsumer, never()).closeAfterStreamDeletion();
+    verify(trackingConsumer, times(1)).unavailable();
+    verify(trackingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, never()).running();
+    verify(trackingConsumer, never()).closeAfterStreamDeletion();
     assertThat(coordinator.poolSize()).isEqualTo(0);
     assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
-  void shouldRedistributeProducersAndCommittingConsumersOnMetadataUpdate() throws Exception {
+  void shouldRedistributeProducersAndTrackingConsumersOnMetadataUpdate() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
@@ -351,10 +351,10 @@ public class ProducersCoordinatorTest {
 
     StreamProducer movingProducer = mock(StreamProducer.class);
     StreamProducer fixedProducer = mock(StreamProducer.class);
-    StreamConsumer movingCommittingConsumer = mock(StreamConsumer.class);
-    StreamConsumer fixedCommittingConsumer = mock(StreamConsumer.class);
-    when(movingCommittingConsumer.stream()).thenReturn(movingStream);
-    when(fixedCommittingConsumer.stream()).thenReturn(fixedStream);
+    StreamConsumer movingTrackingConsumer = mock(StreamConsumer.class);
+    StreamConsumer fixedTrackingConsumer = mock(StreamConsumer.class);
+    when(movingTrackingConsumer.stream()).thenReturn(movingStream);
+    when(fixedTrackingConsumer.stream()).thenReturn(fixedStream);
 
     StreamProducer producerClosedAfterDisconnection = mock(StreamProducer.class);
     when(producerClosedAfterDisconnection.isOpen()).thenReturn(false);
@@ -363,13 +363,13 @@ public class ProducersCoordinatorTest {
 
     when(fixedProducer.isOpen()).thenReturn(true);
     when(movingProducer.isOpen()).thenReturn(true);
-    when(movingCommittingConsumer.isOpen()).thenReturn(true);
-    when(fixedCommittingConsumer.isOpen()).thenReturn(true);
+    when(movingTrackingConsumer.isOpen()).thenReturn(true);
+    when(fixedTrackingConsumer.isOpen()).thenReturn(true);
 
     doAnswer(answer(() -> setClientLatch.countDown())).when(movingProducer).setClient(client);
 
     doAnswer(answer(() -> setClientLatch.countDown()))
-        .when(movingCommittingConsumer)
+        .when(movingTrackingConsumer)
         .setClient(client);
 
     doAnswer(answer(() -> setClientLatch.countDown()))
@@ -378,19 +378,19 @@ public class ProducersCoordinatorTest {
 
     CountDownLatch runningLatch = new CountDownLatch(1 + 1);
     doAnswer(answer(() -> runningLatch.countDown())).when(movingProducer).running();
-    doAnswer(answer(() -> runningLatch.countDown())).when(movingCommittingConsumer).running();
+    doAnswer(answer(() -> runningLatch.countDown())).when(movingTrackingConsumer).running();
 
     coordinator.registerProducer(movingProducer, null, movingStream);
     coordinator.registerProducer(fixedProducer, null, fixedStream);
     coordinator.registerProducer(producerClosedAfterDisconnection, null, movingStream);
-    coordinator.registerCommittingConsumer(movingCommittingConsumer);
-    coordinator.registerCommittingConsumer(fixedCommittingConsumer);
+    coordinator.registerTrackingConsumer(movingTrackingConsumer);
+    coordinator.registerTrackingConsumer(fixedTrackingConsumer);
 
     verify(movingProducer, times(1)).setClient(client);
     verify(fixedProducer, times(1)).setClient(client);
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
-    verify(movingCommittingConsumer, times(1)).setClient(client);
-    verify(fixedCommittingConsumer, times(1)).setClient(client);
+    verify(movingTrackingConsumer, times(1)).setClient(client);
+    verify(fixedTrackingConsumer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -401,9 +401,9 @@ public class ProducersCoordinatorTest {
     verify(movingProducer, times(1)).unavailable();
     verify(movingProducer, times(2)).setClient(client);
     verify(movingProducer, times(1)).running();
-    verify(movingCommittingConsumer, times(1)).unavailable();
-    verify(movingCommittingConsumer, times(2)).setClient(client);
-    verify(movingCommittingConsumer, times(1)).running();
+    verify(movingTrackingConsumer, times(1)).unavailable();
+    verify(movingTrackingConsumer, times(2)).setClient(client);
+    verify(movingTrackingConsumer, times(1)).running();
 
     verify(producerClosedAfterDisconnection, times(1)).unavailable();
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
@@ -412,9 +412,9 @@ public class ProducersCoordinatorTest {
     verify(fixedProducer, never()).unavailable();
     verify(fixedProducer, times(1)).setClient(client);
     verify(fixedProducer, never()).running();
-    verify(fixedCommittingConsumer, never()).unavailable();
-    verify(fixedCommittingConsumer, times(1)).setClient(client);
-    verify(fixedCommittingConsumer, never()).running();
+    verify(fixedTrackingConsumer, never()).unavailable();
+    verify(fixedTrackingConsumer, times(1)).setClient(client);
+    verify(fixedTrackingConsumer, never()).running();
     assertThat(coordinator.poolSize()).isEqualTo(2);
     assertThat(coordinator.clientCount()).isEqualTo(2);
   }
@@ -454,7 +454,7 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
-  void shouldDisposeProducerAndNotCommittingConsumerIfMetadataUpdateTimesOut() throws Exception {
+  void shouldDisposeProducerAndNotTrackingConsumerIfMetadataUpdateTimesOut() throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())
@@ -472,10 +472,10 @@ public class ProducersCoordinatorTest {
         .closeAfterStreamDeletion(any(Short.class));
 
     coordinator.registerProducer(producer, null, "stream");
-    coordinator.registerCommittingConsumer(committingConsumer);
+    coordinator.registerTrackingConsumer(trackingConsumer);
 
     verify(producer, times(1)).setClient(client);
-    verify(committingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -485,16 +485,16 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).unavailable();
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
-    verify(committingConsumer, times(1)).unavailable();
-    verify(committingConsumer, times(1)).setClient(client);
-    verify(committingConsumer, never()).running();
-    verify(committingConsumer, never()).closeAfterStreamDeletion();
+    verify(trackingConsumer, times(1)).unavailable();
+    verify(trackingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, never()).running();
+    verify(trackingConsumer, never()).closeAfterStreamDeletion();
     assertThat(coordinator.poolSize()).isEqualTo(0);
     assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
-  void growShrinkResourcesBasedOnProducersAndCommittingConsumersCount() {
+  void growShrinkResourcesBasedOnProducersAndTrackingConsumersCount() {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
@@ -527,46 +527,46 @@ public class ProducersCoordinatorTest {
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(2);
 
-    // let's add some committing consumers
-    int extraCommittingConsumerCount = ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT / 5;
-    int committingConsumerCount =
-        ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT * 2 + extraCommittingConsumerCount;
+    // let's add some tracking consumers
+    int extraTrackingConsumerCount = ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT / 5;
+    int trackingConsumerCount =
+        ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT * 2 + extraTrackingConsumerCount;
 
-    class CommittingConsumerInfo {
+    class TrackingConsumerInfo {
       StreamConsumer consumer;
       Runnable cleaningCallback;
     }
-    List<CommittingConsumerInfo> committingConsumerInfos = new ArrayList<>(committingConsumerCount);
-    IntStream.range(0, committingConsumerCount)
+    List<TrackingConsumerInfo> trackingConsumerInfos = new ArrayList<>(trackingConsumerCount);
+    IntStream.range(0, trackingConsumerCount)
         .forEach(
             i -> {
               StreamConsumer c = mock(StreamConsumer.class);
               when(c.stream()).thenReturn("stream");
-              CommittingConsumerInfo info = new CommittingConsumerInfo();
+              TrackingConsumerInfo info = new TrackingConsumerInfo();
               info.consumer = c;
-              Runnable cleaningCallback = coordinator.registerCommittingConsumer(c);
+              Runnable cleaningCallback = coordinator.registerTrackingConsumer(c);
               info.cleaningCallback = cleaningCallback;
-              committingConsumerInfos.add(info);
+              trackingConsumerInfos.add(info);
             });
 
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount())
-        .as("new committing consumers needs yet another client")
+        .as("new tracking consumers needs yet another client")
         .isEqualTo(3);
 
-    Collections.reverse(committingConsumerInfos);
-    // let's remove some committing consumers to free 1 client
-    IntStream.range(0, extraCommittingConsumerCount)
+    Collections.reverse(trackingConsumerInfos);
+    // let's remove some tracking consumers to free 1 client
+    IntStream.range(0, extraTrackingConsumerCount)
         .forEach(
             i -> {
-              committingConsumerInfos.get(0).cleaningCallback.run();
-              committingConsumerInfos.remove(0);
+              trackingConsumerInfos.get(0).cleaningCallback.run();
+              trackingConsumerInfos.remove(0);
             });
 
     assertThat(coordinator.clientCount()).isEqualTo(2);
 
-    // let's free the rest of committing consumers
-    committingConsumerInfos.forEach(info -> info.cleaningCallback.run());
+    // let's free the rest of tracking consumers
+    trackingConsumerInfos.forEach(info -> info.cleaningCallback.run());
 
     assertThat(coordinator.clientCount()).isEqualTo(2);
 

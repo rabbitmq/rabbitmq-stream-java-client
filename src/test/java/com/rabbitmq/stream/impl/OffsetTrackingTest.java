@@ -68,7 +68,7 @@ public class OffsetTrackingTest {
   String stream;
   TestUtils.ClientFactory cf;
 
-  static Stream<BiConsumer<String, Client>> consumeAndCommit() {
+  static Stream<BiConsumer<String, Client>> consumeAndStore() {
     return Stream.of(
         (s, c) -> c.create(s),
         (s, c) -> c.create(s, new StreamParametersBuilder().maxSegmentSizeKb(100).build()));
@@ -76,16 +76,16 @@ public class OffsetTrackingTest {
 
   @ParameterizedTest
   @CsvSource({
-    "ref,ref,true,10,10,committed offset should be read",
+    "ref,ref,true,10,10,stored offset should be read",
     "ref,ref,true,-1,0,query offset should return 0 if not tracked offset for the reference",
     "ref,ref,false,-1,0,query offset should return 0 if stream does not exist",
     "ref,foo,false,-1,0,query offset should return 0 if stream does not exist",
   })
-  void commitAndQuery(
-      String commitReference,
+  void trackAndQuery(
+      String trackingReference,
       String queryReference,
       boolean streamExists,
-      long committedOffset,
+      long storedOffset,
       long expectedOffset,
       String message)
       throws Exception {
@@ -94,17 +94,17 @@ public class OffsetTrackingTest {
     Client client = cf.get();
 
     String s = streamExists ? this.stream : UUID.randomUUID().toString();
-    if (committedOffset >= 0) {
-      client.commitOffset(commitReference, s, committedOffset);
+    if (storedOffset >= 0) {
+      client.storeOffset(trackingReference, s, storedOffset);
     }
-    Thread.sleep(100L); // commit offset is fire-and-forget
+    Thread.sleep(100L); // store offset is fire-and-forget
     long offset = client.queryOffset(queryReference, s);
     assertThat(offset).as(message).isEqualTo(expectedOffset);
   }
 
   @ParameterizedTest
   @MethodSource
-  void consumeAndCommit(BiConsumer<String, Client> streamCreator, TestInfo info) throws Exception {
+  void consumeAndStore(BiConsumer<String, Client> streamCreator, TestInfo info) throws Exception {
     String s = streamName(info);
 
     int batchSize = 100;
@@ -152,7 +152,7 @@ public class OffsetTrackingTest {
 
       Stream<Tuple3<Integer, Integer, String>> testConfigurations =
           Stream.of(
-              // { commitEvery, consumeCountFirst, reference }
+              // { storeEvery, consumeCountFirst, reference }
               Tuple.of(100, messageCount / 10, "ref-1"),
               Tuple.of(50, messageCount / 20, "ref-2"),
               Tuple.of(10, messageCount / 100, "ref-3"));
@@ -160,12 +160,12 @@ public class OffsetTrackingTest {
       Function<Tuple3<Integer, Integer, String>, Callable<Void>> testConfigurationToTask =
           testConfiguration ->
               () -> {
-                int commitEvery = testConfiguration._1;
+                int storeEvery = testConfiguration._1;
                 int consumeCountFirst = testConfiguration._2;
                 String reference = testConfiguration._3;
 
                 AtomicInteger consumeCount = new AtomicInteger();
-                AtomicLong lastCommittedOffset = new AtomicLong();
+                AtomicLong lastStoredOffset = new AtomicLong();
                 AtomicLong lastConsumedMessageId = new AtomicLong();
                 AtomicReference<Client> consumerReference = new AtomicReference<>();
                 Set<Long> messageIdsSet = ConcurrentHashMap.newKeySet(messageCount);
@@ -179,9 +179,9 @@ public class OffsetTrackingTest {
                         messageIdsSet.add(messageId);
                         messageIdsCollection.add(messageId);
                         lastConsumedMessageId.set(messageId);
-                        if (consumeCount.get() % commitEvery == 0) {
-                          consumerReference.get().commitOffset(reference, s, offset);
-                          lastCommittedOffset.set(offset);
+                        if (consumeCount.get() % storeEvery == 0) {
+                          consumerReference.get().storeOffset(reference, s, offset);
+                          lastStoredOffset.set(offset);
                         }
                       } else {
                         consumeLatch.countDown();
@@ -209,16 +209,15 @@ public class OffsetTrackingTest {
                 Response response = consumer.unsubscribe(b(0));
                 assertThat(response.isOk()).isTrue();
 
-                assertThat(lastCommittedOffset.get()).isPositive();
+                assertThat(lastStoredOffset.get()).isPositive();
 
                 waitAtMost(
                     5,
                     () ->
-                        lastCommittedOffset.get()
-                            == consumerReference.get().queryOffset(reference, s),
+                        lastStoredOffset.get() == consumerReference.get().queryOffset(reference, s),
                     () ->
-                        "expecting last committed offset to be "
-                            + lastCommittedOffset
+                        "expecting last stored offset to be "
+                            + lastStoredOffset
                             + ", but got "
                             + consumerReference.get().queryOffset(reference, s));
 
@@ -292,7 +291,7 @@ public class OffsetTrackingTest {
   }
 
   @Test
-  void commitOffsetAndThenAttachByTimestampShouldWork() throws InterruptedException {
+  void storeOffsetAndThenAttachByTimestampShouldWork() throws InterruptedException {
     // this test performs a timestamp-based index search within a segment with
     // a lot of non-user entries (chunks that contain tracking info, not messages)
     int messageCount = 50_000;
@@ -328,7 +327,7 @@ public class OffsetTrackingTest {
 
     assertThat(latchAssert(confirmLatch)).completes();
 
-    IntStream.range(0, messageCount).forEach(i -> client.commitOffset("some reference", stream, i));
+    IntStream.range(0, messageCount).forEach(i -> client.storeOffset("some reference", stream, i));
 
     waitAtMost(() -> client.queryOffset("some reference", stream) == messageCount - 1);
 

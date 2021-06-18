@@ -18,8 +18,8 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
-import com.rabbitmq.stream.impl.StreamEnvironment.CommittingConsumerRegistration;
+import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
+import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongConsumer;
 import org.slf4j.Logger;
@@ -31,7 +31,7 @@ class StreamConsumer implements Consumer {
 
   private final Runnable closingCallback;
 
-  private final Runnable closingCommitCallback;
+  private final Runnable closingTrackingCallback;
 
   private final AtomicBoolean closed = new AtomicBoolean(false);
 
@@ -41,11 +41,11 @@ class StreamConsumer implements Consumer {
 
   private final StreamEnvironment environment;
 
-  private volatile Client commitClient;
+  private volatile Client trackingClient;
 
   private volatile Status status;
 
-  private final LongConsumer commitCallback;
+  private final LongConsumer trackingCallback;
 
   StreamConsumer(
       String stream,
@@ -53,44 +53,44 @@ class StreamConsumer implements Consumer {
       MessageHandler messageHandler,
       String name,
       StreamEnvironment environment,
-      CommitConfiguration commitConfiguration) {
+      TrackingConfiguration trackingConfiguration) {
 
     try {
       this.name = name;
       this.stream = stream;
       this.environment = environment;
 
-      MessageHandler messageHandlerWithOrWithoutCommit;
-      if (commitConfiguration.enabled()) {
-        CommittingConsumerRegistration committingConsumerRegistration =
-            environment.registerCommittingConsumer(this, commitConfiguration);
+      MessageHandler messageHandlerWithOrWithoutTracking;
+      if (trackingConfiguration.enabled()) {
+        TrackingConsumerRegistration trackingConsumerRegistration =
+            environment.registerTrackingConsumer(this, trackingConfiguration);
 
-        this.closingCommitCallback = committingConsumerRegistration.closingCallback();
+        this.closingTrackingCallback = trackingConsumerRegistration.closingCallback();
 
         java.util.function.Consumer<Context> postMessageProcessingCallback =
-            committingConsumerRegistration.postMessageProcessingCallback();
+            trackingConsumerRegistration.postMessageProcessingCallback();
         if (postMessageProcessingCallback == null) {
           // no callback, no need to decorate
-          messageHandlerWithOrWithoutCommit = messageHandler;
+          messageHandlerWithOrWithoutTracking = messageHandler;
         } else {
-          messageHandlerWithOrWithoutCommit =
+          messageHandlerWithOrWithoutTracking =
               (context, message) -> {
                 messageHandler.handle(context, message);
                 postMessageProcessingCallback.accept(context);
               };
         }
 
-        this.commitCallback = committingConsumerRegistration.commitCallback();
+        this.trackingCallback = trackingConsumerRegistration.trackingCallback();
 
       } else {
-        this.closingCommitCallback = () -> {};
-        this.commitCallback = Utils.NO_OP_LONG_CONSUMER;
-        messageHandlerWithOrWithoutCommit = messageHandler;
+        this.closingTrackingCallback = () -> {};
+        this.trackingCallback = Utils.NO_OP_LONG_CONSUMER;
+        messageHandlerWithOrWithoutTracking = messageHandler;
       }
 
       this.closingCallback =
           environment.registerConsumer(
-              this, stream, offsetSpecification, this.name, messageHandlerWithOrWithoutCommit);
+              this, stream, offsetSpecification, this.name, messageHandlerWithOrWithoutTracking);
 
       this.status = Status.RUNNING;
     } catch (RuntimeException e) {
@@ -100,20 +100,21 @@ class StreamConsumer implements Consumer {
   }
 
   @Override
-  public void commit(long offset) {
-    commitCallback.accept(offset);
-    if (canCommit()) {
+  public void store(long offset) {
+    trackingCallback.accept(offset);
+    if (canTrack()) {
       try {
-        this.commitClient.commitOffset(this.name, this.stream, offset);
+        this.trackingClient.storeOffset(this.name, this.stream, offset);
       } catch (Exception e) {
-        LOGGER.debug("Error while trying to commit offset: {}", e.getMessage());
+        LOGGER.debug("Error while trying to store offset: {}", e.getMessage());
       }
     }
-    // nothing special to do if commit is not possible or errors, e.g. because of a network failure
-    // the commit strategy will stack the commit request and apply it as soon as it can
+    // nothing special to do if tracking is not possible or errors, e.g. because of a network
+    // failure
+    // the tracking strategy will stack the storage request and apply it as soon as it can
   }
 
-  private boolean canCommit() {
+  private boolean canTrack() {
     return this.status == Status.RUNNING;
   }
 
@@ -129,8 +130,8 @@ class StreamConsumer implements Consumer {
   void closeFromEnvironment() {
     LOGGER.debug("Calling consumer closing callback");
     this.closingCallback.run();
-    LOGGER.debug("Calling committing consumer closing callback (may be no-op)");
-    this.closingCommitCallback.run();
+    LOGGER.debug("Calling tracking consumer closing callback (may be no-op)");
+    this.closingTrackingCallback.run();
     closed.set(true);
     this.status = Status.CLOSED;
     LOGGER.debug("Closed consumer successfully");
@@ -148,24 +149,24 @@ class StreamConsumer implements Consumer {
   }
 
   synchronized void setClient(Client client) {
-    this.commitClient = client;
+    this.trackingClient = client;
   }
 
   synchronized void unavailable() {
     this.status = Status.NOT_AVAILABLE;
-    this.commitClient = null;
+    this.trackingClient = null;
   }
 
   void running() {
     this.status = Status.RUNNING;
   }
 
-  long lastCommittedOffset() {
-    if (canCommit()) {
+  long lastStoredOffset() {
+    if (canTrack()) {
       try {
         // the client can be null by now, but we catch the exception and return 0
-        // callers should know how to deal with a committed offset of 0
-        return this.commitClient.queryOffset(this.name, this.stream);
+        // callers should know how to deal with a stored offset of 0
+        return this.trackingClient.queryOffset(this.name, this.stream);
       } catch (Exception e) {
         return 0;
       }

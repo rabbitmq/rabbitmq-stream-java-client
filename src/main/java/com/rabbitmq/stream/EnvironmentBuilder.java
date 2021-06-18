@@ -214,14 +214,14 @@ public interface EnvironmentBuilder {
   EnvironmentBuilder maxProducersByConnection(int maxProducersByConnection);
 
   /**
-   * The maximum number of committing consumers allocated to a single connection.
+   * The maximum number of tracking consumers allocated to a single connection.
    *
    * <p>Default is 50, which is the maximum value.
    *
-   * @param maxCommittingConsumersByConnection
+   * @param maxTrackingConsumersByConnection
    * @return this builder instance
    */
-  EnvironmentBuilder maxCommittingConsumersByConnection(int maxCommittingConsumersByConnection);
+  EnvironmentBuilder maxTrackingConsumersByConnection(int maxTrackingConsumersByConnection);
 
   /**
    * The maximum number of consumers allocated to a single connection.

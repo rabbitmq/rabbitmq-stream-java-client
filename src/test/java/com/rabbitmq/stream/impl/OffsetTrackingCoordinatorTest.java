@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
+import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -36,7 +36,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-public class OffsetCommittingCoordinatorTest {
+public class OffsetTrackingCoordinatorTest {
 
   @Mock StreamEnvironment env;
   @Mock StreamConsumer consumer;
@@ -45,7 +45,7 @@ public class OffsetCommittingCoordinatorTest {
 
   AutoCloseable mocks;
 
-  OffsetCommittingCoordinator coordinator;
+  OffsetTrackingCoordinator coordinator;
 
   @BeforeEach
   void init() {
@@ -67,55 +67,56 @@ public class OffsetCommittingCoordinatorTest {
   }
 
   @Test
-  void needCommitRegistration() {
-    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env);
+  void needStoreRegistration() {
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env);
     assertThat(
-            coordinator.needCommitRegistration(
-                new CommitConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO)))
-        .as("commit is disabled, no registration needed")
+            coordinator.needTrackingRegistration(
+                new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO)))
+        .as("tracking is disabled, no registration needed")
         .isFalse();
     assertThat(
-            coordinator.needCommitRegistration(
-                new CommitConfiguration(true, true, 100, Duration.ofSeconds(5), Duration.ZERO)))
-        .as("auto commit enabled, registration needed")
+            coordinator.needTrackingRegistration(
+                new TrackingConfiguration(true, true, 100, Duration.ofSeconds(5), Duration.ZERO)))
+        .as("auto tracking enabled, registration needed")
         .isTrue();
     assertThat(
-            coordinator.needCommitRegistration(
-                new CommitConfiguration(true, false, -1, Duration.ZERO, Duration.ofSeconds(5))))
-        .as("manual commit with check interval, registration needed")
+            coordinator.needTrackingRegistration(
+                new TrackingConfiguration(true, false, -1, Duration.ZERO, Duration.ofSeconds(5))))
+        .as("manual tracking with check interval, registration needed")
         .isTrue();
     assertThat(
-            coordinator.needCommitRegistration(
-                new CommitConfiguration(true, false, -1, Duration.ZERO, Duration.ZERO)))
-        .as("manual commit without check interval, no registration needed")
+            coordinator.needTrackingRegistration(
+                new TrackingConfiguration(true, false, -1, Duration.ZERO, Duration.ZERO)))
+        .as("manual tracking without check interval, no registration needed")
         .isFalse();
   }
 
   @Test
-  void autoShouldNotCommitIfNoMessagesArrive() throws Exception {
+  void autoShouldNotStoreIfNoMessagesArrive() throws Exception {
     Duration checkInterval = Duration.ofMillis(10);
-    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
-    coordinator.registerCommittingConsumer(
-        consumer, new CommitConfiguration(true, true, 100, Duration.ofMillis(200), Duration.ZERO));
+    coordinator.registerTrackingConsumer(
+        consumer,
+        new TrackingConfiguration(true, true, 100, Duration.ofMillis(200), Duration.ZERO));
 
     Thread.sleep(3 * checkInterval.toMillis());
-    verify(consumer, never()).commit(anyLong());
+    verify(consumer, never()).store(anyLong());
   }
 
   @Test
-  void autoShouldCommitAfterSomeInactivity() {
+  void autoShouldStoreAfterSomeInactivity() {
     Duration checkInterval = Duration.ofMillis(100);
-    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
     CountDownLatch flushLatch = new CountDownLatch(1);
-    doAnswer(answer(inv -> flushLatch.countDown())).when(consumer).commit(anyLong());
+    doAnswer(answer(inv -> flushLatch.countDown())).when(consumer).store(anyLong());
 
     Consumer<Context> postProcessedMessageCallback =
         coordinator
-            .registerCommittingConsumer(
+            .registerTrackingConsumer(
                 consumer,
-                new CommitConfiguration(true, true, 1, Duration.ofMillis(200), Duration.ZERO))
+                new TrackingConfiguration(true, true, 1, Duration.ofMillis(200), Duration.ZERO))
             .postMessageProcessingCallback();
 
     postProcessedMessageCallback.accept(context(1, () -> {}));
@@ -124,172 +125,173 @@ public class OffsetCommittingCoordinatorTest {
   }
 
   @Test
-  void autoShouldCommitFixedMessageCountAndAutoCommitAfterInactivity() {
+  void autoShouldStoreFixedMessageCountAndAutoTrackingAfterInactivity() {
     Duration checkInterval = Duration.ofMillis(100);
-    coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+    coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
     CountDownLatch flushLatch = new CountDownLatch(1);
-    doAnswer(answer(inv -> flushLatch.countDown())).when(consumer).commit(anyLong());
+    doAnswer(answer(inv -> flushLatch.countDown())).when(consumer).store(anyLong());
 
     int messageInterval = 100;
     int messageCount = 5 * messageInterval + messageInterval / 5;
 
     Consumer<Context> postProcessedMessageCallback =
         coordinator
-            .registerCommittingConsumer(
+            .registerTrackingConsumer(
                 consumer,
-                new CommitConfiguration(
+                new TrackingConfiguration(
                     true, true, messageInterval, Duration.ofMillis(200), Duration.ZERO))
             .postMessageProcessingCallback();
 
-    AtomicInteger committedCountAfterProcessing = new AtomicInteger(0);
+    AtomicInteger storedCountAfterProcessing = new AtomicInteger(0);
     IntStream.range(0, messageCount)
         .forEach(
             i -> {
               postProcessedMessageCallback.accept(
-                  context(i, () -> committedCountAfterProcessing.incrementAndGet()));
+                  context(i, () -> storedCountAfterProcessing.incrementAndGet()));
             });
 
     assertThat(latchAssert(flushLatch)).completes(5);
-    assertThat(committedCountAfterProcessing.get()).isEqualTo(messageCount / messageInterval);
+    assertThat(storedCountAfterProcessing.get()).isEqualTo(messageCount / messageInterval);
   }
 
   @Test
-  void autoShouldNotCommitIfOffsetAlreadyCommitted() throws Exception {
+  void autoShouldNotStoreIfOffsetAlreadyStored() throws Exception {
     Duration checkInterval = Duration.ofMillis(100);
-    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
-    long committedOffset = 10;
+    long storedOffset = 10;
 
-    when(consumer.lastCommittedOffset()).thenReturn(committedOffset);
+    when(consumer.lastStoredOffset()).thenReturn(storedOffset);
 
     Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
         coordinator
-            .registerCommittingConsumer(
-                consumer, new CommitConfiguration(true, true, 1, autoFlushInterval, Duration.ZERO))
+            .registerTrackingConsumer(
+                consumer,
+                new TrackingConfiguration(true, true, 1, autoFlushInterval, Duration.ZERO))
             .postMessageProcessingCallback();
 
     postProcessedMessageCallback.accept(context(10, () -> {}));
 
     Thread.sleep(autoFlushInterval.multipliedBy(4).toMillis());
-    verify(consumer, never()).commit(anyLong());
+    verify(consumer, never()).store(anyLong());
   }
 
   @Test
-  void autoShouldNotFlushAfterInactivityIfLastCommitIsOnModulo() throws Exception {
+  void autoShouldNotFlushAfterInactivityIfLastStoreIsOnModulo() throws Exception {
     Duration checkInterval = Duration.ofMillis(100);
-    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
-    int commitEvery = 10;
+    int storeEvery = 10;
 
-    when(consumer.lastCommittedOffset()).thenReturn((long) commitEvery - 1);
+    when(consumer.lastStoredOffset()).thenReturn((long) storeEvery - 1);
 
     Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
         coordinator
-            .registerCommittingConsumer(
+            .registerTrackingConsumer(
                 consumer,
-                new CommitConfiguration(true, true, commitEvery, autoFlushInterval, Duration.ZERO))
+                new TrackingConfiguration(true, true, storeEvery, autoFlushInterval, Duration.ZERO))
             .postMessageProcessingCallback();
 
-    IntStream.range(0, commitEvery)
+    IntStream.range(0, storeEvery)
         .forEach(
             offset -> {
               postProcessedMessageCallback.accept(context(offset, () -> {}));
             });
 
     Thread.sleep(autoFlushInterval.multipliedBy(4).toMillis());
-    verify(consumer, never()).commit(anyLong());
+    verify(consumer, never()).store(anyLong());
   }
 
   @Test
-  void autoShouldCommitLastProcessedAfterInactivity() {
+  void autoShouldStoreLastProcessedAfterInactivity() {
     Duration checkInterval = Duration.ofMillis(100);
-    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
-    int commitEvery = 10;
+    int storeEvery = 10;
     int extraMessages = 3;
 
-    long expectedLastCommittedOffset = commitEvery + extraMessages - 1;
-    when(consumer.lastCommittedOffset()).thenReturn((long) (commitEvery - 1));
+    long expectedLastStoredOffset = storeEvery + extraMessages - 1;
+    when(consumer.lastStoredOffset()).thenReturn((long) (storeEvery - 1));
 
-    ArgumentCaptor<Long> lastCommittedOffsetCaptor = ArgumentCaptor.forClass(Long.class);
+    ArgumentCaptor<Long> lastStoredOffsetCaptor = ArgumentCaptor.forClass(Long.class);
     CountDownLatch flushLatch = new CountDownLatch(1);
     doAnswer(answer(inv -> flushLatch.countDown()))
         .when(consumer)
-        .commit(lastCommittedOffsetCaptor.capture());
+        .store(lastStoredOffsetCaptor.capture());
 
     Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
         coordinator
-            .registerCommittingConsumer(
+            .registerTrackingConsumer(
                 consumer,
-                new CommitConfiguration(true, true, commitEvery, autoFlushInterval, Duration.ZERO))
+                new TrackingConfiguration(true, true, storeEvery, autoFlushInterval, Duration.ZERO))
             .postMessageProcessingCallback();
 
-    IntStream.range(0, commitEvery + extraMessages)
+    IntStream.range(0, storeEvery + extraMessages)
         .forEach(
             offset -> {
               postProcessedMessageCallback.accept(context(offset, () -> {}));
             });
 
     assertThat(latchAssert(flushLatch)).completes(5);
-    verify(consumer, times(1)).commit(anyLong());
-    assertThat(lastCommittedOffsetCaptor.getValue()).isEqualTo(expectedLastCommittedOffset);
+    verify(consumer, times(1)).store(anyLong());
+    assertThat(lastStoredOffsetCaptor.getValue()).isEqualTo(expectedLastStoredOffset);
   }
 
   @Test
-  void manualShouldNotCommitIfAlreadyUpToDate() throws Exception {
+  void manualShouldNotStoreIfAlreadyUpToDate() throws Exception {
     Duration checkInterval = Duration.ofMillis(100);
-    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
-    long lastCommittedOffset = 50;
-    when(consumer.lastCommittedOffset()).thenReturn(lastCommittedOffset);
+    long lastStoredOffset = 50;
+    when(consumer.lastStoredOffset()).thenReturn(lastStoredOffset);
 
-    LongConsumer commitCallback =
+    LongConsumer storeCallback =
         coordinator
-            .registerCommittingConsumer(
+            .registerTrackingConsumer(
                 consumer,
-                new CommitConfiguration(
+                new TrackingConfiguration(
                     true, false, -1, Duration.ZERO, checkInterval.multipliedBy(2)))
-            .commitCallback();
+            .trackingCallback();
 
-    commitCallback.accept(lastCommittedOffset);
+    storeCallback.accept(lastStoredOffset);
 
     Thread.sleep(3 * checkInterval.toMillis());
 
-    verify(consumer, never()).commit(anyLong());
+    verify(consumer, never()).store(anyLong());
   }
 
   @Test
-  void manualShouldCommitIfRequestedCommittedOffsetIsBehind() {
+  void manualShouldStoreIfRequestedStoredOffsetIsBehind() {
     Duration checkInterval = Duration.ofMillis(100);
-    OffsetCommittingCoordinator coordinator = new OffsetCommittingCoordinator(env, checkInterval);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
     long lastRequestedOffset = 50;
-    long lastCommittedOffset = 40;
-    when(consumer.lastCommittedOffset()).thenReturn(lastCommittedOffset);
+    long lastStoredOffset = 40;
+    when(consumer.lastStoredOffset()).thenReturn(lastStoredOffset);
 
-    ArgumentCaptor<Long> lastCommittedOffsetCaptor = ArgumentCaptor.forClass(Long.class);
-    CountDownLatch commitLatch = new CountDownLatch(1);
-    doAnswer(answer(inv -> commitLatch.countDown()))
+    ArgumentCaptor<Long> lastStoredOffsetCaptor = ArgumentCaptor.forClass(Long.class);
+    CountDownLatch storeLatch = new CountDownLatch(1);
+    doAnswer(answer(inv -> storeLatch.countDown()))
         .when(consumer)
-        .commit(lastCommittedOffsetCaptor.capture());
+        .store(lastStoredOffsetCaptor.capture());
 
-    LongConsumer commitCallback =
+    LongConsumer storeCallback =
         coordinator
-            .registerCommittingConsumer(
+            .registerTrackingConsumer(
                 consumer,
-                new CommitConfiguration(
+                new TrackingConfiguration(
                     true, false, -1, Duration.ZERO, checkInterval.multipliedBy(2)))
-            .commitCallback();
+            .trackingCallback();
 
-    commitCallback.accept(lastRequestedOffset);
+    storeCallback.accept(lastRequestedOffset);
 
-    assertThat(latchAssert(commitLatch)).completes(5);
+    assertThat(latchAssert(storeLatch)).completes(5);
 
-    verify(consumer, times(1)).commit(anyLong());
+    verify(consumer, times(1)).store(anyLong());
   }
 
   Context context(long offset, Runnable action) {
@@ -300,7 +302,7 @@ public class OffsetCommittingCoordinatorTest {
       }
 
       @Override
-      public void commit() {
+      public void storeOffset() {
         action.run();
       }
 

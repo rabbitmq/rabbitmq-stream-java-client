@@ -97,11 +97,11 @@ public class StreamConsumerTest {
   }
 
   @Test
-  void nameShouldBeSetIfCommitStrategyIsSet() {
+  void nameShouldBeSetIfTrackingStrategyIsSet() {
     List<UnaryOperator<ConsumerBuilder>> configurers =
         Arrays.asList(
-            consumerBuilder -> consumerBuilder.autoCommitStrategy().builder(),
-            consumerBuilder -> consumerBuilder.manualCommitStrategy().builder());
+            consumerBuilder -> consumerBuilder.autoTrackingStrategy().builder(),
+            consumerBuilder -> consumerBuilder.manualTrackingStrategy().builder());
     configurers.forEach(
         configurer -> {
           assertThatThrownBy(
@@ -195,7 +195,7 @@ public class StreamConsumerTest {
   }
 
   @Test
-  void manualCommittingConsumerShouldRestartWhereItLeftOff() throws Exception {
+  void manualTrackingConsumerShouldRestartWhereItLeftOff() throws Exception {
     Producer producer = environment.producerBuilder().stream(stream).build();
 
     int messageCountFirstWave = 10_000;
@@ -233,28 +233,28 @@ public class StreamConsumerTest {
 
     assertThat(latchAssert(latchConfirmFirstWave)).completes();
 
-    int commitEvery = 100;
+    int storeEvery = 100;
     AtomicInteger consumedMessageCount = new AtomicInteger();
     AtomicReference<Consumer> consumerReference = new AtomicReference<>();
-    AtomicLong lastCommittedOffset = new AtomicLong(0);
+    AtomicLong lastStoredOffset = new AtomicLong(0);
     AtomicLong lastProcessedMessage = new AtomicLong(0);
 
-    AtomicInteger commitCount = new AtomicInteger(0);
+    AtomicInteger storeCount = new AtomicInteger(0);
     Consumer consumer =
         environment.consumerBuilder().stream(stream)
             .offset(OffsetSpecification.first())
             .name("application-1")
-            .manualCommitStrategy()
+            .manualTrackingStrategy()
             .checkInterval(Duration.ZERO)
             .builder()
             .messageHandler(
                 (context, message) -> {
                   consumedMessageCount.incrementAndGet();
                   lastProcessedMessage.set(message.getProperties().getMessageIdAsLong());
-                  if (consumedMessageCount.get() % commitEvery == 0) {
-                    context.commit();
-                    lastCommittedOffset.set(context.offset());
-                    commitCount.incrementAndGet();
+                  if (consumedMessageCount.get() % storeEvery == 0) {
+                    context.storeOffset();
+                    lastStoredOffset.set(context.offset());
+                    storeCount.incrementAndGet();
                   }
                 })
             .build();
@@ -263,7 +263,7 @@ public class StreamConsumerTest {
 
     waitAtMost(10, () -> consumedMessageCount.get() == messageCountFirstWave);
 
-    assertThat(lastCommittedOffset.get()).isPositive();
+    assertThat(lastStoredOffset.get()).isPositive();
 
     consumer.close();
 
@@ -275,7 +275,7 @@ public class StreamConsumerTest {
     consumer =
         environment.consumerBuilder().stream(stream)
             .name("application-1")
-            .manualCommitStrategy()
+            .manualTrackingStrategy()
             .checkInterval(Duration.ZERO)
             .builder()
             .messageHandler(
@@ -294,7 +294,7 @@ public class StreamConsumerTest {
 
     // there will be the tracking records after the first wave of messages,
     // messages offset won't be contiguous, so it's not an exact match
-    assertThat(firstOffset.get()).isGreaterThanOrEqualTo(lastCommittedOffset.get());
+    assertThat(firstOffset.get()).isGreaterThanOrEqualTo(lastStoredOffset.get());
 
     consumer.close();
   }
@@ -396,9 +396,9 @@ public class StreamConsumerTest {
   }
 
   @Test
-  void autoCommitShouldCommitPeriodicallyAndAfterInactivity() throws Exception {
+  void autoTrackingShouldStorePeriodicallyAndAfterInactivity() throws Exception {
     AtomicInteger messageCount = new AtomicInteger(0);
-    int commitEvery = 10_000;
+    int storeEvery = 10_000;
     String reference = "ref-1";
     AtomicLong lastReceivedOffset = new AtomicLong(0);
     environment.consumerBuilder().name(reference).stream(stream)
@@ -408,26 +408,26 @@ public class StreamConsumerTest {
               lastReceivedOffset.set(context.offset());
               messageCount.incrementAndGet();
             })
-        .autoCommitStrategy()
+        .autoTrackingStrategy()
         .flushInterval(Duration.ofSeconds(1).plusMillis(100))
-        .messageCountBeforeCommit(commitEvery)
+        .messageCountBeforeStorage(storeEvery)
         .builder()
         .build();
 
     Producer producer = environment.producerBuilder().stream(stream).build();
-    IntStream.range(0, commitEvery * 2)
+    IntStream.range(0, storeEvery * 2)
         .forEach(
             i ->
                 producer.send(
                     producer.messageBuilder().addData("".getBytes()).build(),
                     confirmationStatus -> {}));
 
-    waitAtMost(5, () -> messageCount.get() == commitEvery * 2);
+    waitAtMost(5, () -> messageCount.get() == storeEvery * 2);
 
     Client client = cf.get();
     waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
 
-    int extraMessages = commitEvery / 10;
+    int extraMessages = storeEvery / 10;
     IntStream.range(0, extraMessages)
         .forEach(
             i ->
@@ -435,7 +435,7 @@ public class StreamConsumerTest {
                     producer.messageBuilder().addData("".getBytes()).build(),
                     confirmationStatus -> {}));
 
-    waitAtMost(5, () -> messageCount.get() == commitEvery * 2 + extraMessages);
+    waitAtMost(5, () -> messageCount.get() == storeEvery * 2 + extraMessages);
 
     waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
   }

@@ -174,19 +174,19 @@ public class MonitoringTestUtils {
   public static class ProducerManager {
 
     private final int producer_count;
-    private final int committing_consumer_count;
+    private final int tracking_consumer_count;
 
-    public ProducerManager(int producerCount, int committing_consumer_count) {
+    public ProducerManager(int producerCount, int tracking_consumer_count) {
       this.producer_count = producerCount;
-      this.committing_consumer_count = committing_consumer_count;
+      this.tracking_consumer_count = tracking_consumer_count;
     }
 
     public int getProducerCount() {
       return producer_count;
     }
 
-    public int getCommittingConsumerCount() {
-      return this.committing_consumer_count;
+    public int getTrackingConsumerCount() {
+      return this.tracking_consumer_count;
     }
 
     @Override
@@ -194,8 +194,8 @@ public class MonitoringTestUtils {
       return "ProducerManager{"
           + "producerCount="
           + producer_count
-          + ", committingConsumerCount= "
-          + committing_consumer_count
+          + ", trackingConsumerCount= "
+          + tracking_consumer_count
           + '}';
     }
   }

@@ -15,7 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
-import static com.rabbitmq.stream.Constants.COMMAND_COMMIT_OFFSET;
+import static com.rabbitmq.stream.Constants.COMMAND_STORE_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
 import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
 import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
@@ -1037,7 +1037,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  public void commitOffset(String reference, String stream, long offset) {
+  public void storeOffset(String reference, String stream, long offset) {
     if (reference == null || reference.isEmpty() || reference.length() > 256) {
       throw new IllegalArgumentException(
           "Reference must a non-empty string of less than 256 characters");
@@ -1048,7 +1048,7 @@ public class Client implements AutoCloseable {
     int length = 2 + 2 + 2 + reference.length() + 2 + stream.length() + 8;
     ByteBuf bb = allocate(length + 4);
     bb.writeInt(length);
-    bb.writeShort(encodeRequestCode(COMMAND_COMMIT_OFFSET));
+    bb.writeShort(encodeRequestCode(COMMAND_STORE_OFFSET));
     bb.writeShort(VERSION_1);
     bb.writeShort(reference.length());
     bb.writeBytes(reference.getBytes(StandardCharsets.UTF_8));

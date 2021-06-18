@@ -50,7 +50,7 @@ public final class Constants {
   public static final short COMMAND_SUBSCRIBE = 7;
   public static final short COMMAND_DELIVER = 8;
   public static final short COMMAND_CREDIT = 9;
-  public static final short COMMAND_COMMIT_OFFSET = 10;
+  public static final short COMMAND_STORE_OFFSET = 10;
   public static final short COMMAND_QUERY_OFFSET = 11;
   public static final short COMMAND_UNSUBSCRIBE = 12;
   public static final short COMMAND_CREATE_STREAM = 13;
