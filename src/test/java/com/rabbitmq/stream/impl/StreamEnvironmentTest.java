@@ -160,8 +160,7 @@ public class StreamEnvironmentTest {
         .hasSize(1);
     assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getProducerCount())
         .isEqualTo(2);
-    assertThat(
-            environmentInfo.getProducers().get(0).getClients().get(0).getCommittingConsumerCount())
+    assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getTrackingConsumerCount())
         .isEqualTo(2);
     assertThat(environmentInfo.getConsumers())
         .hasSize(1)

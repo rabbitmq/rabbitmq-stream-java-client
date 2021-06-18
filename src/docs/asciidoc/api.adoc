@@ -172,8 +172,8 @@ Executors
 a new connection is open. The value must be between 1 and 255.
 |255
 
-|`maxCommittingConsumersByConnection`
-|The maximum number of `Consumer` instances that commit their offset a single connection
+|`maxTrackingConsumersByConnection`
+|The maximum number of `Consumer` instances that store their offset a single connection
 can maintain before a new connection is open. The value must be between 1 and 255.
 |50
 
@@ -644,24 +644,24 @@ The following table sums up the main settings to create a `Consumer`:
 |The consumer name (for <<consumer-offset-tracking,offset tracking>>.)
 |`null` (no offset tracking)
 
-|`AutoCommitStrategy`
-|Enable and configure the <<consumer-automatic-offset-commit,auto-commit strategy>>.
-|This is the default commit strategy if a consumer `name` is provided.
+|`AutoTrackingStrategy`
+|Enable and configure the <<consumer-automatic-offset-tracking,auto-tracking strategy>>.
+|This is the default tracking strategy if a consumer `name` is provided.
 
-|`AutoCommitStrategy#messageCountBeforeCommit`
-|Number of messages before committing.
+|`AutoTrackingStrategy#messageCountBeforeStorage`
+|Number of messages before storing.
 |10,000
 
-|`AutoCommitStrategy#flushInterval`
-|Interval to check and commit the last received offset in case of inactivity.
+|`AutoTrackingStrategy#flushInterval`
+|Interval to check and store the last received offset in case of inactivity.
 |`Duration.ofSeconds(5)`
 
-|`ManualCommitStrategy`
-|Enable and configure the <<consumer-manual-offset-commit,manual commit strategy>>.
+|`ManualTrackingStrategy`
+|Enable and configure the <<consumer-manual-offset-tracking,manual tracking strategy>>.
 |Disabled by default.
 
-|`ManualCommitStrategy#checkInterval`
-|Interval to check if the last requested committed offset has been actually committed.
+|`ManualTrackingStrategy#checkInterval`
+|Interval to check if the last requested stored offset has been actually stored.
 |`Duration.ofSeconds(5)`
 |===
 
@@ -736,108 +736,108 @@ can be any value (under 256 characters) and is expected to be unique (from the a
 point of view). Note neither the client library, nor the broker
 enforces uniqueness of the name: if 2 `Consumer` Java instances share the same name, their
 offset tracking will likely be interleaved, which applications usually do not expect.
-* the consumer must periodically *commit the offset* it has reached so far. The way
-offsets are committed depends on the commit strategy: automatic or manual.
+* the consumer must periodically *store the offset* it has reached so far. The way
+offsets are stored depends on the tracking strategy: automatic or manual.
 
-Whatever commit strategy you use, *a consumer must have a name to be able to commit offsets*.
+Whatever tracking strategy you use, *a consumer must have a name to be able to store offsets*.
 
-[[consumer-automatic-offset-commit]]
-====== Automatic Offset Commit
+[[consumer-automatic-offset-tracking]]
+====== Automatic Offset Tracking
 
-The following snippet shows how to enable automatic commit with the defaults:
+The following snippet shows how to enable automatic tracking with the defaults:
 
-.Using automatic commit strategy with the defaults
+.Using automatic tracking strategy with the defaults
 [source,java,indent=0]
 --------
-include::{test-examples}/ConsumerUsage.java[tag=auto-commit-defaults]
+include::{test-examples}/ConsumerUsage.java[tag=auto-tracking-defaults]
 --------
 <1> Set the consumer name (mandatory for offset tracking)
-<2> Use automatic commit strategy with defaults
+<2> Use automatic tracking strategy with defaults
 
-The automatic commit strategy has the following available settings:
+The automatic tracking strategy has the following available settings:
 
-* *message count before commit*: the client will commit the offset
+* *message count before storage*: the client will store the offset
 after the specified number of messages, right after the execution
 of the message handler. _The default is every 10,000 messages_.
-* *flush interval*: the client will make sure to commit the last received offset
-at the specified interval. This avoids having pending, not committed offsets in
+* *flush interval*: the client will make sure to store the last received offset
+at the specified interval. This avoids having pending, not stored offsets in
 case of inactivity. _The default is 5 seconds_.
 
 Those settings are configurable, as shown in the following snippet:
 
-.Configuring the automatic commit strategy
+.Configuring the automatic tracking strategy
 [source,java,indent=0]
 --------
-include::{test-examples}/ConsumerUsage.java[tag=auto-commit-with-settings]
+include::{test-examples}/ConsumerUsage.java[tag=auto-tracking-with-settings]
 --------
 <1> Set the consumer name (mandatory for offset tracking)
-<2> Use automatic commit strategy
-<3> Commit every 50,000 messages
-<4> Make sure to commit offset at least every 10 seconds
+<2> Use automatic tracking strategy
+<3> Store every 50,000 messages
+<4> Make sure to store offset at least every 10 seconds
 
-Note the automatic commit is the default commit strategy, so if you are fine
+Note the automatic tracking is the default tracking strategy, so if you are fine
 with its defaults, it is enabled as soon as you specify a name
 for the consumer:
 
-.Setting only the consumer name to enable automatic commit
+.Setting only the consumer name to enable automatic tracking
 [source,java,indent=0]
 --------
-include::{test-examples}/ConsumerUsage.java[tag=auto-commit-only-with-name]
+include::{test-examples}/ConsumerUsage.java[tag=auto-tracking-only-with-name]
 --------
-<1> Set only the consumer name to enable automatic commit with defaults
+<1> Set only the consumer name to enable automatic tracking with defaults
 
-Automatic commit is simple and provides good guarantees. It is nevertheless
-possible to have more fine-grained control over offset commit by using
-manual commit.
+Automatic tracking is simple and provides good guarantees. It is nevertheless
+possible to have more fine-grained control over offset tracking by using
+manual tracking.
 
-[[consumer-manual-offset-commit]]
-====== Manual Offset Commit
+[[consumer-manual-offset-tracking]]
+====== Manual Offset Tracking
 
-The manual commit strategy lets the developer in charge of committing offsets
+The manual tracking strategy lets the developer in charge of storing offsets
 whenever they want, not only after a given number of messages has been received
-and supposedly processed, like automatic commit does.
+and supposedly processed, like automatic tracking does.
 
-The following snippet shows how to enable manual commit and how to commit
+The following snippet shows how to enable manual tracking and how to store
 the offset at some point:
 
-.Using manual commit with defaults
+.Using manual tracking with defaults
 [source,java,indent=0]
 --------
-include::{test-examples}/ConsumerUsage.java[tag=manual-commit-defaults]
+include::{test-examples}/ConsumerUsage.java[tag=manual-tracking-defaults]
 --------
 <1> Set the consumer name (mandatory for offset tracking)
-<2> Use manual commit with defaults
-<3> Commit at the current offset on some condition
+<2> Use manual tracking with defaults
+<3> Store at the current offset on some condition
 
-Manual commit has only one setting: the *check interval*. The client checks
-that the last requested committed offset has been actually committed at the
+Manual tracking has only one setting: the *check interval*. The client checks
+that the last requested stored offset has been actually stored at the
 specified interval. _The default check interval is 5 seconds_.
 
-The following snippet shows the configuration of manual commit:
+The following snippet shows the configuration of manual tracking:
 
-.Configuring manual commit strategy
+.Configuring manual tracking strategy
 [source,java,indent=0]
 --------
-include::{test-examples}/ConsumerUsage.java[tag=manual-commit-with-settings]
+include::{test-examples}/ConsumerUsage.java[tag=manual-tracking-with-settings]
 --------
 <1> Set the consumer name (mandatory for offset tracking)
-<2> Use manual commit with defaults
+<2> Use manual tracking with defaults
 <3> Check last requested offset every 10 seconds
-<4> Commit at the current offset on some condition
+<4> Store the current offset on some condition
 
-The snippet above uses `MessageHandler.Context#commit()` to commit at the
-offset of the current message, but it is possible to commit anywhere
-in the stream with `MessageHandler.Context#consumer()#commit(long)` or
-simply `Consumer#commit(long)`.
+The snippet above uses `MessageHandler.Context#storeOffset()` to store at the
+offset of the current message, but it is possible to store anywhere
+in the stream with `MessageHandler.Context#consumer()#store(long)` or
+simply `Consumer#store(long)`.
 
 ====== Considerations On Offset Tracking
 
-_When to commit offsets?_ Avoid committing offsets too often or, worse, for each message.
+_When to store offsets?_ Avoid storing offsets too often or, worse, for each message.
 Even though offset tracking is a small and fast operation, it will
 make the stream grow unnecessarily, as the broker persists offset
 tracking entries in the stream itself.
 
-A good rule of thumb is to commit every few thousands
+A good rule of thumb is to store the offset every few thousands
 of messages. Of course, when the consumer will restart consuming in a new incarnation, the
 last tracked offset may be a little behind the very last message the previous incarnation
 actually processed, so the consumer may see some messages that have been already processed.
@@ -851,7 +851,7 @@ _Is the offset a reliable absolute value?_ Message offsets may not be contiguous
 This implies that the message at offset 500 in a stream may
 not be the 501 message in the stream (offsets start at 0).
 There can be different types of entries in a stream storage, a message is
-just one of them. For example, committing an offset creates an offset tracking
+just one of them. For example, storing an offset creates an offset tracking
 entry, which has its own offset.
 
 This means one must be careful when basing some decision on offset values, like

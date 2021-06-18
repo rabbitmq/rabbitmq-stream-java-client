@@ -386,20 +386,20 @@ an unsigned long for a given offset, and an ISO 8601 formatted timestamp
 
 A consumer can <<api.adoc#consumer-offset-tracking,track the point>> it has reached
 in a stream to be able to restart where it left off in a new incarnation.
-The performance tool has the `--commit-every` option to tell consumers to commit
+The performance tool has the `--store-every` option to tell consumers to store
 the offset every `x` messages to be able to measure the impact of offset tracking
 in terms of throughput and storage. This feature is disabled by default.
-The following command shows how to commit the offset every 100,000 messages:
+The following command shows how to store the offset every 100,000 messages:
 
 ----
-java -jar stream-perf-test.jar --commit-every 100000
+java -jar stream-perf-test.jar --store-every 100000
 ----
 
 ===== Consumer Names
 
-When using `--commit-every` (see above) for <<api.adoc#consumer-offset-tracking, offset tracking>>,
+When using `--store-every` (see above) for <<api.adoc#consumer-offset-tracking, offset tracking>>,
 the performance tool uses a default name using the pattern `{stream-name}-{consumer-number}`.
-So the default name of a single committing consumer consuming from `stream` will be `stream-1`.
+So the default name of a single tracking consumer consuming from `stream` will be `stream-1`.
 
 The consumer names pattern can be set with the `--consumer-names` option, which uses
 the https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html[Java printf-style format string].
@@ -434,10 +434,10 @@ changes for every run.
 |===
 
 Note you can use `--consumer-names uuid` to change the consumer names for every run. This
-can be useful when you want to use committing consumers in different runs but you want to
+can be useful when you want to use tracking consumers in different runs but you want to
 force the offset they start consuming from. With consumer names that do not change between runs,
-committing consumers would ignore the specified offset and would start where they left off
-(this is the purpose of offset committing).
+tracking consumers would ignore the specified offset and would start where they left off
+(this is the purpose of offset tracking).
 
 === Building the Performance Tool
 

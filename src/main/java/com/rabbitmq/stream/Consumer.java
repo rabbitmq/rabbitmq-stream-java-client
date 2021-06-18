@@ -25,11 +25,11 @@ package com.rabbitmq.stream;
 public interface Consumer extends AutoCloseable {
 
   /**
-   * Commit the offset.
+   * Store the offset.
    *
    * @param offset
    */
-  void commit(long offset);
+  void store(long offset);
 
   /** Close the consumer. */
   @Override

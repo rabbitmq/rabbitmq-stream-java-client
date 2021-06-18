@@ -217,10 +217,10 @@ public class StreamPerfTest implements Callable<Integer> {
   private LeaderLocator leaderLocator;
 
   @CommandLine.Option(
-      names = {"--commit-every", "-ce"},
-      description = "the frequency of offset commit",
+      names = {"--store-every", "-se"},
+      description = "the frequency of offset storage",
       defaultValue = "0")
-  private int commitEvery;
+  private int storeEvery;
 
   @CommandLine.Option(
       names = {"--version", "-v"},
@@ -242,12 +242,11 @@ public class StreamPerfTest implements Callable<Integer> {
   private int producersByConnection;
 
   @CommandLine.Option(
-      names = {"--committing-consumers-by-connection", "-ccbc"},
-      description =
-          "number of committing consumers by connection. Value must be between 1 and 255.",
+      names = {"--tracking-consumers-by-connection", "-ccbc"},
+      description = "number of tracking consumers by connection. Value must be between 1 and 255.",
       defaultValue = "50",
       converter = Utils.OneTo255RangeIntegerTypeConverter.class)
-  private int committingConsumersByConnection;
+  private int trackingConsumersByConnection;
 
   @CommandLine.Option(
       names = {"--consumers-by-connection", "-cbc"},
@@ -422,7 +421,7 @@ public class StreamPerfTest implements Callable<Integer> {
             .scheduledExecutorService(envExecutor)
             .metricsCollector(metricsCollector)
             .maxProducersByConnection(this.producersByConnection)
-            .maxCommittingConsumersByConnection(this.committingConsumersByConnection)
+            .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
             .maxConsumersByConnection(this.consumersByConnection);
 
     if (tls) {
@@ -555,13 +554,13 @@ public class StreamPerfTest implements Callable<Integer> {
                       ConsumerBuilder consumerBuilder = environment.consumerBuilder();
                       consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
 
-                      if (this.commitEvery > 0) {
+                      if (this.storeEvery > 0) {
                         String consumerName = this.consumerNameStrategy.apply(stream, i + 1);
                         consumerBuilder =
                             consumerBuilder
                                 .name(consumerName)
-                                .autoCommitStrategy()
-                                .messageCountBeforeCommit(this.commitEvery)
+                                .autoTrackingStrategy()
+                                .messageCountBeforeStorage(this.storeEvery)
                                 .builder();
                       }
 

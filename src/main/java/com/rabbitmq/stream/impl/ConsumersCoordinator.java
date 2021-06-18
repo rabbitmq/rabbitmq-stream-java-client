@@ -264,8 +264,8 @@ class ConsumersCoordinator {
     }
 
     @Override
-    public void commit() {
-      this.consumer.commit(this.offset);
+    public void storeOffset() {
+      this.consumer.store(this.offset);
     }
 
     @Override
@@ -615,7 +615,7 @@ class ConsumersCoordinator {
               // subscription call (not recovery), so telling the user their offset specification is
               // ignored
               LOGGER.info(
-                  "Requested offset specification {} not used in favor of committed offset found for reference {}",
+                  "Requested offset specification {} not used in favor of stored offset found for reference {}",
                   offsetSpecification,
                   offsetTrackingReference);
             }

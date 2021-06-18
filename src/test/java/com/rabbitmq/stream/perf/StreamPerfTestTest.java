@@ -135,8 +135,8 @@ public class StreamPerfTestTest {
   }
 
   @Test
-  void offsetShouldBeCommittedWhenOptionIsEnabled() throws Exception {
-    Future<?> run = run(builder().commitEvery(10).consumerNames("consumer-%2$d-on-stream-%1$s"));
+  void offsetShouldBeStoredWhenOptionIsEnabled() throws Exception {
+    Future<?> run = run(builder().storeEvery(10).consumerNames("consumer-%2$d-on-stream-%1$s"));
     waitUntilStreamExists(s);
     String consumerName = "consumer-1-on-stream-" + s;
     long offset = client.queryOffset(consumerName, s);
@@ -147,7 +147,7 @@ public class StreamPerfTestTest {
   }
 
   @Test
-  void offsetShouldNotBeCommittedWhenOptionIsNotEnabled() throws Exception {
+  void offsetShouldNotBeStoredWhenOptionIsNotEnabled() throws Exception {
     Future<?> run = run(builder());
     waitUntilStreamExists(s);
     String consumerName = s + "-0"; // convention
@@ -209,8 +209,8 @@ public class StreamPerfTestTest {
       return this;
     }
 
-    ArgumentsBuilder commitEvery(int commitEvery) {
-      arguments.put("commit-every", String.valueOf(commitEvery));
+    ArgumentsBuilder storeEvery(int storeEvery) {
+      arguments.put("store-every", String.valueOf(storeEvery));
       return this;
     }
 

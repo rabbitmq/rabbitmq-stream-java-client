@@ -29,8 +29,8 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.impl.OffsetCommittingCoordinator.Registration;
-import com.rabbitmq.stream.impl.StreamConsumerBuilder.CommitConfiguration;
+import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
+import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -76,7 +76,7 @@ class StreamEnvironment implements Environment {
   private final BackOffDelayPolicy topologyUpdateBackOffDelayPolicy;
   private final ConsumersCoordinator consumersCoordinator;
   private final ProducersCoordinator producersCoordinator;
-  private final OffsetCommittingCoordinator offsetCommittingCoordinator;
+  private final OffsetTrackingCoordinator offsetTrackingCoordinator;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final AddressResolver addressResolver;
   private final Clock clock = new Clock();
@@ -91,7 +91,7 @@ class StreamEnvironment implements Environment {
       BackOffDelayPolicy topologyBackOffDelayPolicy,
       AddressResolver addressResolver,
       int maxProducersByConnection,
-      int maxCommittingConsumersByConnection,
+      int maxTrackingConsumersByConnection,
       int maxConsumersByConnection,
       DefaultTlsConfiguration tlsConfiguration) {
     this(
@@ -102,7 +102,7 @@ class StreamEnvironment implements Environment {
         topologyBackOffDelayPolicy,
         addressResolver,
         maxProducersByConnection,
-        maxCommittingConsumersByConnection,
+        maxTrackingConsumersByConnection,
         maxConsumersByConnection,
         tlsConfiguration,
         cp -> new Client(cp));
@@ -116,7 +116,7 @@ class StreamEnvironment implements Environment {
       BackOffDelayPolicy topologyBackOffDelayPolicy,
       AddressResolver addressResolver,
       int maxProducersByConnection,
-      int maxCommittingConsumersByConnection,
+      int maxTrackingConsumersByConnection,
       int maxConsumersByConnection,
       DefaultTlsConfiguration tlsConfiguration,
       Function<Client.ClientParameters, Client> clientFactory) {
@@ -186,12 +186,12 @@ class StreamEnvironment implements Environment {
         new ProducersCoordinator(
             this,
             maxProducersByConnection,
-            maxCommittingConsumersByConnection,
+            maxTrackingConsumersByConnection,
             Utils.coordinatorClientFactory(this));
     this.consumersCoordinator =
         new ConsumersCoordinator(
             this, maxConsumersByConnection, Utils.coordinatorClientFactory(this));
-    this.offsetCommittingCoordinator = new OffsetCommittingCoordinator(this);
+    this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
 
     AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
     Client.ShutdownListener shutdownListener =
@@ -373,7 +373,7 @@ class StreamEnvironment implements Environment {
 
       this.producersCoordinator.close();
       this.consumersCoordinator.close();
-      this.offsetCommittingCoordinator.close();
+      this.offsetTrackingCoordinator.close();
 
       try {
         if (this.locator != null && this.locator.isOpen()) {
@@ -457,24 +457,23 @@ class StreamEnvironment implements Environment {
     return this.clientParametersPrototype.duplicate();
   }
 
-  CommittingConsumerRegistration registerCommittingConsumer(
-      StreamConsumer streamConsumer, CommitConfiguration configuration) {
-    Runnable closingCallable = this.producersCoordinator.registerCommittingConsumer(streamConsumer);
-    Registration offsetCommittingRegistration = null;
-    if (this.offsetCommittingCoordinator.needCommitRegistration(configuration)) {
-      offsetCommittingRegistration =
-          this.offsetCommittingCoordinator.registerCommittingConsumer(
-              streamConsumer, configuration);
+  TrackingConsumerRegistration registerTrackingConsumer(
+      StreamConsumer streamConsumer, TrackingConfiguration configuration) {
+    Runnable closingCallable = this.producersCoordinator.registerTrackingConsumer(streamConsumer);
+    Registration offsetTrackingRegistration = null;
+    if (this.offsetTrackingCoordinator.needTrackingRegistration(configuration)) {
+      offsetTrackingRegistration =
+          this.offsetTrackingCoordinator.registerTrackingConsumer(streamConsumer, configuration);
     }
 
-    return new CommittingConsumerRegistration(
+    return new TrackingConsumerRegistration(
         closingCallable,
-        offsetCommittingRegistration == null
+        offsetTrackingRegistration == null
             ? null
-            : offsetCommittingRegistration.postMessageProcessingCallback(),
-        offsetCommittingRegistration == null
+            : offsetTrackingRegistration.postMessageProcessingCallback(),
+        offsetTrackingRegistration == null
             ? Utils.NO_OP_LONG_CONSUMER
-            : offsetCommittingRegistration.commitCallback());
+            : offsetTrackingRegistration.trackingCallback());
   }
 
   @Override
@@ -490,27 +489,27 @@ class StreamEnvironment implements Environment {
         + "}";
   }
 
-  static class CommittingConsumerRegistration {
+  static class TrackingConsumerRegistration {
 
     private final Runnable closingCallback;
     private final Consumer<Context> postMessageProcessingCallback;
-    private final LongConsumer commitCallback;
+    private final LongConsumer trackingCallback;
 
-    CommittingConsumerRegistration(
+    TrackingConsumerRegistration(
         Runnable closingCallback,
         Consumer<Context> postMessageProcessingCallback,
-        LongConsumer commitCallback) {
+        LongConsumer trackingCallback) {
       this.closingCallback = closingCallback;
       this.postMessageProcessingCallback = postMessageProcessingCallback;
-      this.commitCallback = commitCallback;
+      this.trackingCallback = trackingCallback;
     }
 
     public Runnable closingCallback() {
       return closingCallback;
     }
 
-    public LongConsumer commitCallback() {
-      return commitCallback;
+    public LongConsumer trackingCallback() {
+      return trackingCallback;
     }
 
     public Consumer<Context> postMessageProcessingCallback() {

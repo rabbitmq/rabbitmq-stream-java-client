@@ -54,8 +54,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       BackOffDelayPolicy.fixedWithInitialDelay(Duration.ofSeconds(5), Duration.ofSeconds(1));
   private AddressResolver addressResolver = address -> address;
   private int maxProducersByConnection = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT;
-  private int maxCommittingConsumersByConnection =
-      ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT;
+  private int maxTrackingConsumersByConnection =
+      ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT;
   private int maxConsumersByConnection = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
 
   public StreamEnvironmentBuilder() {}
@@ -219,16 +219,16 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
-  public EnvironmentBuilder maxCommittingConsumersByConnection(
-      int maxCommittingConsumersByConnection) {
-    if (maxCommittingConsumersByConnection < 1
-        || maxCommittingConsumersByConnection
-            > ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT) {
+  public EnvironmentBuilder maxTrackingConsumersByConnection(
+      int maxTrackingConsumersByConnection) {
+    if (maxTrackingConsumersByConnection < 1
+        || maxTrackingConsumersByConnection
+            > ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT) {
       throw new IllegalArgumentException(
-          "maxCommittingConsumersByConnection must be between 1 and "
-              + ProducersCoordinator.MAX_COMMITTING_CONSUMERS_PER_CLIENT);
+          "maxTrackingConsumersByConnection must be between 1 and "
+              + ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT);
     }
-    this.maxCommittingConsumersByConnection = maxCommittingConsumersByConnection;
+    this.maxTrackingConsumersByConnection = maxTrackingConsumersByConnection;
     return this;
   }
 
@@ -260,7 +260,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         topologyBackOffDelayPolicy,
         addressResolver,
         maxProducersByConnection,
-        maxCommittingConsumersByConnection,
+        maxTrackingConsumersByConnection,
         maxConsumersByConnection,
         tls);
   }

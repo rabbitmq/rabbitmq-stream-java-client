@@ -926,7 +926,7 @@ public class ConsumersCoordinatorTest {
   @ParameterizedTest
   @MethodSource("disruptionArguments")
   @SuppressWarnings("unchecked")
-  void shouldUseCommittedOffsetOnRecovery(Consumer<ConsumersCoordinatorTest> configurator)
+  void shouldUseStoredOffsetOnRecovery(Consumer<ConsumersCoordinatorTest> configurator)
       throws Exception {
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
@@ -943,11 +943,11 @@ public class ConsumersCoordinatorTest {
     when(clientFactory.client(any())).thenReturn(client);
 
     String consumerName = "consumer-name";
-    long lastCommittedOffset = 5;
+    long lastStoredOffset = 5;
     long lastReceivedOffset = 10;
     when(client.queryOffset(consumerName, "stream"))
         .thenReturn((long) 0)
-        .thenReturn(lastCommittedOffset);
+        .thenReturn(lastStoredOffset);
 
     ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
         ArgumentCaptor.forClass(OffsetSpecification.class);
@@ -985,7 +985,7 @@ public class ConsumersCoordinatorTest {
 
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
         .element(1)
-        .isEqualTo(OffsetSpecification.offset(lastCommittedOffset + 1))
+        .isEqualTo(OffsetSpecification.offset(lastStoredOffset + 1))
         .isNotEqualTo(OffsetSpecification.offset(lastReceivedOffset));
     assertThat(subscriptionPropertiesArgumentCaptor.getAllValues())
         .element(1)

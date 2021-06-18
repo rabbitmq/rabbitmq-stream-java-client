@@ -16,9 +16,6 @@ package com.rabbitmq.stream.docs;
 
 import com.rabbitmq.stream.*;
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class ConsumerUsage {
 
@@ -37,43 +34,43 @@ public class ConsumerUsage {
         // end::producer-creation[]
     }
 
-    void defaultAutoCommit() {
+    void defaultAutoTracking() {
       Environment environment = Environment.builder().build();
-      // tag::auto-commit-defaults[]
+      // tag::auto-tracking-defaults[]
       Consumer consumer =
           environment.consumerBuilder()
               .stream("my-stream")
               .name("application-1")   // <1>
-              .autoCommitStrategy()   // <2>
+              .autoTrackingStrategy()   // <2>
               .builder()
               .messageHandler((context, message) -> {
                 // message handling code...
               })
               .build();
-      // end::auto-commit-defaults[]
+      // end::auto-tracking-defaults[]
     }
 
-  void autoCommitWithSettings() {
+  void autoTrackingWithSettings() {
     Environment environment = Environment.builder().build();
-    // tag::auto-commit-with-settings[]
+    // tag::auto-tracking-with-settings[]
     Consumer consumer =
         environment.consumerBuilder()
             .stream("my-stream")
             .name("application-1")   // <1>
-            .autoCommitStrategy()   // <2>
-                .messageCountBeforeCommit(50_000)   // <3>
+            .autoTrackingStrategy()   // <2>
+                .messageCountBeforeStorage(50_000)   // <3>
                 .flushInterval(Duration.ofSeconds(10))   // <4>
             .builder()
             .messageHandler((context, message) -> {
               // message handling code...
             })
             .build();
-    // end::auto-commit-with-settings[]
+    // end::auto-tracking-with-settings[]
   }
 
-  void autoCommitOnlyWithName() {
+  void autoTrackingOnlyWithName() {
     Environment environment = Environment.builder().build();
-    // tag::auto-commit-only-with-name[]
+    // tag::auto-tracking-only-with-name[]
     Consumer consumer =
         environment.consumerBuilder()
             .stream("my-stream")
@@ -82,52 +79,52 @@ public class ConsumerUsage {
               // message handling code...
             })
             .build();
-    // end::auto-commit-only-with-name[]
+    // end::auto-tracking-only-with-name[]
   }
 
-  void manualCommitDefaults() {
+  void manualTrackingDefaults() {
     Environment environment = Environment.builder().build();
-    // tag::manual-commit-defaults[]
+    // tag::manual-tracking-defaults[]
     Consumer consumer =
         environment.consumerBuilder()
             .stream("my-stream")
             .name("application-1")   // <1>
-            .manualCommitStrategy()   // <2>
+            .manualTrackingStrategy()   // <2>
             .builder()
             .messageHandler((context, message) -> {
               // message handling code...
 
-              if (conditionToCommit()) {
-                context.commit();   // <3>
+              if (conditionToStore()) {
+                context.storeOffset();   // <3>
               }
             })
             .build();
-    // end::manual-commit-defaults[]
+    // end::manual-tracking-defaults[]
   }
 
-  boolean conditionToCommit() {
+  boolean conditionToStore() {
       return true;
   }
 
-  void manualCommitWithSettings() {
+  void manualTrackingWithSettings() {
     Environment environment = Environment.builder().build();
-    // tag::manual-commit-with-settings[]
+    // tag::manual-tracking-with-settings[]
     Consumer consumer =
         environment.consumerBuilder()
             .stream("my-stream")
             .name("application-1")   // <1>
-            .manualCommitStrategy()   // <2>
+            .manualTrackingStrategy()   // <2>
                 .checkInterval(Duration.ofSeconds(10))   // <3>
             .builder()
             .messageHandler((context, message) -> {
               // message handling code...
 
-              if (conditionToCommit()) {
-                context.commit();   // <4>
+              if (conditionToStore()) {
+                context.storeOffset();   // <4>
               }
             })
             .build();
-    // end::manual-commit-with-settings[]
+    // end::manual-tracking-with-settings[]
   }
 
 }
