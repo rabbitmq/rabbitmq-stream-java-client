@@ -18,4 +18,4 @@ cp -r target/site/apidocs/* snapshot/api/
 git add snapshot/
 git commit -m "$MESSAGE"
 git push origin gh-pages
-git checkout master
+git checkout main 
