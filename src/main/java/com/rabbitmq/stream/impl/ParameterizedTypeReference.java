@@ -7,7 +7,7 @@ import java.lang.reflect.Type;
  * To capture and pass a generic {@link Type}.
  *
  * <p>From the <a
- * href="https://github.com/spring-projects/spring-framework/blob/master/spring-core/src/main/java/org/springframework/core/ParameterizedTypeReference.java">Spring
+ * href="https://github.com/spring-projects/spring-framework/blob/main/spring-core/src/main/java/org/springframework/core/ParameterizedTypeReference.java">Spring
  * Framework.</a>
  *
  * @param <T>

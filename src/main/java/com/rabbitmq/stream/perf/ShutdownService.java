@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
  * of them (in LIFO order) with the {@link #close()} method.
  *
  * <p>From
- * https://github.com/rabbitmq/rabbitmq-perf-test/blob/master/src/main/java/com/rabbitmq/perf/ShutdownService.java.
+ * https://github.com/rabbitmq/rabbitmq-perf-test/blob/main/src/main/java/com/rabbitmq/perf/ShutdownService.java.
  */
 public class ShutdownService implements AutoCloseable {
 
