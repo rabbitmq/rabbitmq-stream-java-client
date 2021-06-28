@@ -3,6 +3,8 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.impl.Client.EncodedMessageBatch;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.ToLongFunction;
@@ -24,7 +26,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
 
   private Batch createBatch() {
     return new Batch(
-        new Client.EncodedMessageBatch(MessageBatch.Compression.NONE, new ArrayList<>()),
+        EncodedMessageBatch.create(Compression.NONE, new ArrayList<>()),
         new CompositeConfirmationCallback(new ArrayList<>()));
   }
 
@@ -50,19 +52,20 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     } else {
       batch.time = lastMessageInBatch.time();
       batch.publishingId = lastMessageInBatch.publishindId();
+      batch.encodedMessageBatch.close();
       return batch;
     }
   }
 
   private static class Batch implements AccumulatedEntity {
 
-    private final Client.EncodedMessageBatch encodedMessageBatch;
+    private final EncodedMessageBatch encodedMessageBatch;
     private final CompositeConfirmationCallback confirmationCallback;
     private volatile long publishingId;
     private volatile long time;
 
     private Batch(
-        Client.EncodedMessageBatch encodedMessageBatch,
+        EncodedMessageBatch encodedMessageBatch,
         CompositeConfirmationCallback confirmationCallback) {
       this.encodedMessageBatch = encodedMessageBatch;
       this.confirmationCallback = confirmationCallback;

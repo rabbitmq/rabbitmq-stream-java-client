@@ -20,6 +20,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import io.netty.channel.EventLoopGroup;
@@ -150,7 +151,7 @@ public class MetricsCollectionTest {
     IntStream.range(0, batchCount)
         .forEach(
             batchIndex -> {
-              MessageBatch messageBatch = new MessageBatch(MessageBatch.Compression.NONE);
+              MessageBatch messageBatch = new MessageBatch(Compression.NONE);
               IntStream.range(0, messagesInBatch)
                   .forEach(
                       messageIndex -> {

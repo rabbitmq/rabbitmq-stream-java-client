@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -15,44 +15,50 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.compression.CommonsCompressCompressionCodecFactory;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.CompressionCodecFactory;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.Response;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
-public class BatchEntryTest {
-
+public class CompressionTest {
   static final Charset UTF8 = StandardCharsets.UTF_8;
 
   String stream;
   TestUtils.ClientFactory cf;
 
   @Test
-  void batchPublish() throws Exception {
+  void publishConsumeCompressedMessages() {
+    CompressionCodecFactory compressionCodecFactory = new CommonsCompressCompressionCodecFactory();
     int batchCount = 100;
     int messagesInBatch = 30;
     CountDownLatch publishLatch = new CountDownLatch(batchCount);
     Client publisher =
         cf.get(
-            new Client.ClientParameters()
+            new ClientParameters()
+                .compressionCodecFactory(compressionCodecFactory)
                 .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
 
-    publisher.declarePublisher(b(1), null, stream);
+    Response response = publisher.declarePublisher(b(0), null, stream);
+    assertThat(response.isOk()).isTrue();
     IntStream.range(0, batchCount)
         .forEach(
             batchIndex -> {
-              MessageBatch messageBatch = new MessageBatch(Compression.NONE);
+              MessageBatch messageBatch = new MessageBatch(Compression.GZIP);
               IntStream.range(0, messagesInBatch)
                   .forEach(
                       messageIndex -> {
@@ -64,16 +70,17 @@ public class BatchEntryTest {
                                         .getBytes(UTF8))
                                 .build());
                       });
-              publisher.publishBatches(b(1), Collections.singletonList(messageBatch));
+              publisher.publishBatches(b(0), Collections.singletonList(messageBatch));
             });
 
-    assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(latchAssert(publishLatch)).completes();
 
     Set<String> bodies = ConcurrentHashMap.newKeySet(batchCount * messagesInBatch);
     CountDownLatch consumeLatch = new CountDownLatch(batchCount * messagesInBatch);
     Client consumer =
         cf.get(
             new Client.ClientParameters()
+                .compressionCodecFactory(compressionCodecFactory)
                 .chunkListener(
                     (client, subscriptionId, offset, messageCount, dataSize) ->
                         client.credit(subscriptionId, 1))
@@ -83,10 +90,10 @@ public class BatchEntryTest {
                       consumeLatch.countDown();
                     }));
 
-    Client.Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
+    response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
 
-    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(latchAssert(consumeLatch)).completes();
     assertThat(bodies).hasSize(batchCount * messagesInBatch);
     IntStream.range(0, batchCount)
         .forEach(

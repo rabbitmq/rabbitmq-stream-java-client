@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.TestUtils.b;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.compression.Compression;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -96,8 +97,7 @@ public class OutboundMappingCallbackTest {
                                 .mapToObj(messageIndex -> String.valueOf(messageIndex).getBytes())
                                 .map(body -> client.messageBuilder().addData(body).build())
                                 .collect(Collectors.toList());
-                        MessageBatch batch =
-                            new MessageBatch(MessageBatch.Compression.NONE, messages);
+                        MessageBatch batch = new MessageBatch(Compression.NONE, messages);
                         batches.add(batch);
                       });
 

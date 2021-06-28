@@ -48,6 +48,8 @@ import com.rabbitmq.stream.ChunkChecksumValidationException;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ChunkListener;
 import com.rabbitmq.stream.impl.Client.MessageListener;
@@ -64,6 +66,8 @@ import com.rabbitmq.stream.metrics.MetricsCollector;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.timeout.IdleStateHandler;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -371,19 +375,39 @@ class ServerFrameHandler {
            */
           byte compression = (byte) ((entryType & 0x70) >> 4);
           read++;
-          // compression not used yet, just making sure we get something
-          MessageBatch.Compression.get(compression);
+          Compression comp = Compression.get(compression);
           int numRecordsInBatch = message.readUnsignedShort();
           read += 2;
-          message.readInt(); // batch size, does not need it
+          int dataSize = message.readInt(); // batch size, does not need it
           read += 4;
+
+          int readBeforeSubEntries = read;
+          ByteBuf bbToReadFrom = message;
+          if (comp.code() != Compression.NONE.code()) {
+            CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
+            int uncompressedSizeHint = compressionCodec.uncompressedLength(dataSize, message);
+            // FIXME release the BB
+            ByteBuf outBb = client.channel.alloc().buffer(uncompressedSizeHint);
+            InputStream inputStream = compressionCodec.decompress(message);
+            // FIXME transfer into byte buf more efficiently
+            byte[] inBuffer = new byte[uncompressedSizeHint];
+            int n = 0;
+            try {
+              while (-1 != (n = inputStream.read(inBuffer))) {
+                outBb.writeBytes(inBuffer, 0, n);
+              }
+            } catch (IOException e) {
+              throw new StreamException("Error while uncompressing sub-entry", e);
+            }
+            bbToReadFrom = outBb;
+          }
 
           numRecords -= numRecordsInBatch;
 
           while (numRecordsInBatch != 0) {
             read =
                 handleMessage(
-                    message,
+                    bbToReadFrom,
                     read,
                     filter,
                     messageFiltered,
@@ -399,6 +423,12 @@ class ServerFrameHandler {
             }
             numRecordsInBatch--;
             offset++; // works even for unsigned long
+          }
+
+          if (comp.code() != Compression.NONE.code()) {
+            bbToReadFrom.release();
+            // to avoid a warning, we read more from what it's inside the frame with compression
+            read = readBeforeSubEntries + dataSize;
           }
         }
       }

@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.compression.Compression;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,18 +50,15 @@ public final class MessageBatch {
     return messages;
   }
 
-  public enum Compression {
-    NONE((byte) 0);
+  /*
+      0 = no compression
+  1 = gzip
+  2 = snappy
+  3 = lz4
+  4 = zstd
+  5 = reserved
+  6 = reserved
+  7 = user
+       */
 
-    private static final Compression[] COMPRESSIONS = new Compression[] {NONE};
-    byte code;
-
-    Compression(byte code) {
-      this.code = code;
-    }
-
-    public static Compression get(byte code) {
-      return COMPRESSIONS[code];
-    }
-  }
 }
