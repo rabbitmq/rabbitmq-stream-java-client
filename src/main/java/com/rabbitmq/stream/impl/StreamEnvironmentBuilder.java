@@ -219,8 +219,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
-  public EnvironmentBuilder maxTrackingConsumersByConnection(
-      int maxTrackingConsumersByConnection) {
+  public EnvironmentBuilder maxTrackingConsumersByConnection(int maxTrackingConsumersByConnection) {
     if (maxTrackingConsumersByConnection < 1
         || maxTrackingConsumersByConnection
             > ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT) {

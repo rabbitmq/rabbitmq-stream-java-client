@@ -553,9 +553,7 @@ class ConsumersCoordinator {
                       }
                     } catch (Exception e) {
                       LOGGER.warn(
-                          "Error while re-assigning subscription from stream {}: {}",
-                          stream,
-                          e.getMessage());
+                          "Error while re-assigning subscription from stream {}", stream, e);
                     }
                   }
                   if (closeClient) {

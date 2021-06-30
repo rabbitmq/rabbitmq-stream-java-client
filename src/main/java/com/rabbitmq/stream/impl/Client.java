@@ -15,7 +15,6 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
-import static com.rabbitmq.stream.Constants.COMMAND_STORE_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
 import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
 import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
@@ -32,6 +31,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
 import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
+import static com.rabbitmq.stream.Constants.COMMAND_STORE_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
 import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE;
