@@ -715,7 +715,7 @@ class ConsumersCoordinator {
     }
 
     synchronized void close() {
-      if (this.client.isOpen()) {
+      if (this.client != null && this.client.isOpen()) {
         subscriptionTrackers.stream()
             .filter(Objects::nonNull)
             .forEach(
