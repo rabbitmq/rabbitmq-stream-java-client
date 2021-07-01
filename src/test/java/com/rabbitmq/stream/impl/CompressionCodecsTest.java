@@ -68,8 +68,8 @@ public class CompressionCodecsTest {
   @ParameterizedTest
   @MethodSource
   void compressedEncodedMessageBatch(
-      CompressionCodec compressionCodec, CompressionCodec uncompressionCodec) throws IOException {
-    assertThat(compressionCodec.code()).isEqualTo(uncompressionCodec.code());
+      CompressionCodec compressionCodec, CompressionCodec decompressionCodec) throws IOException {
+    assertThat(compressionCodec.code()).isEqualTo(decompressionCodec.code());
     ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
     EncodedMessageBatch encodedMessageBatch =
         new CompressedEncodedMessageBatch(allocator, compressionCodec);
@@ -96,14 +96,14 @@ public class CompressionCodecsTest {
     assertThat(compressedSize).isLessThan(plainSize);
     assertThat(destinationBb.writerIndex()).isEqualTo(compressedSize);
 
-    int uncompressedSizeHint = uncompressionCodec.uncompressedLength(compressedSize, destinationBb);
+    int uncompressedSizeHint = decompressionCodec.uncompressedLength(compressedSize, destinationBb);
     assertThat(uncompressedSizeHint == plainSize || uncompressedSizeHint >= compressedSize)
         .isTrue();
     ByteBuf outBb = allocator.buffer(plainSize);
     destinationBb.readerIndex(0);
-    InputStream inputStream = uncompressionCodec.decompress(destinationBb);
+    InputStream inputStream = decompressionCodec.decompress(destinationBb);
     byte[] inBuffer = new byte[uncompressedSizeHint];
-    int n = 0;
+    int n;
     while (-1 != (n = inputStream.read(inBuffer))) {
       outBb.writeBytes(inBuffer, 0, n);
     }

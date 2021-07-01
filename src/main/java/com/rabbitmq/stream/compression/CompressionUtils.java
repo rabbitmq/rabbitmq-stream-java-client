@@ -3,7 +3,6 @@ package com.rabbitmq.stream.compression;
 import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdInputStream;
 import com.github.luben.zstd.ZstdOutputStream;
-import com.rabbitmq.stream.StreamException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
@@ -67,7 +66,7 @@ public final class CompressionUtils {
       try {
         return new GZIPOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating GZIP compression output stream", e);
+        throw new CompressionException("Error while creating GZIP compression output stream", e);
       }
     }
 
@@ -76,7 +75,7 @@ public final class CompressionUtils {
       try {
         return new GZIPInputStream(new ByteBufInputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating GZIP compression input stream", e);
+        throw new CompressionException("Error while creating GZIP compression input stream", e);
       }
     }
 
@@ -108,7 +107,7 @@ public final class CompressionUtils {
       try {
         return new ZstdOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating Zstd compression output stream", e);
+        throw new CompressionException("Error while creating Zstd compression output stream", e);
       }
     }
 
@@ -117,7 +116,7 @@ public final class CompressionUtils {
       try {
         return new ZstdInputStream(new ByteBufInputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating Zstd compression input stream", e);
+        throw new CompressionException("Error while creating Zstd compression input stream", e);
       }
     }
 
@@ -159,7 +158,7 @@ public final class CompressionUtils {
             uncompressedSize,
             DEFAULT_FEATURES);
       } catch (IOException e) {
-        throw new StreamException("Error while creating LZ4 compression output stream", e);
+        throw new CompressionException("Error while creating LZ4 compression output stream", e);
       }
     }
 
@@ -168,7 +167,7 @@ public final class CompressionUtils {
       try {
         return new LZ4FrameInputStream(new ByteBufInputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating LZ4 compression input stream", e);
+        throw new CompressionException("Error while creating LZ4 compression input stream", e);
       }
     }
 
@@ -200,7 +199,7 @@ public final class CompressionUtils {
       try {
         return new SnappyFramedOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating snappy compression output stream", e);
+        throw new CompressionException("Error while creating snappy compression output stream", e);
       }
     }
 
@@ -209,7 +208,7 @@ public final class CompressionUtils {
       try {
         return new SnappyFramedInputStream(new ByteBufInputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating snappy compression input stream", e);
+        throw new CompressionException("Error while creating snappy compression input stream", e);
       }
     }
 
@@ -241,7 +240,7 @@ public final class CompressionUtils {
       try {
         return new GzipCompressorOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating GZIP compression output stream", e);
+        throw new CompressionException("Error while creating GZIP compression output stream", e);
       }
     }
 
@@ -250,7 +249,7 @@ public final class CompressionUtils {
       try {
         return new GzipCompressorInputStream(new ByteBufInputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating GZIP compression input stream", e);
+        throw new CompressionException("Error while creating GZIP compression input stream", e);
       }
     }
 
@@ -283,7 +282,7 @@ public final class CompressionUtils {
       try {
         return new FramedSnappyCompressorOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating Snappy compression output stream", e);
+        throw new CompressionException("Error while creating Snappy compression output stream", e);
       }
     }
 
@@ -295,7 +294,7 @@ public final class CompressionUtils {
             SnappyFramedOutputStream.DEFAULT_BLOCK_SIZE,
             FramedSnappyDialect.STANDARD);
       } catch (IOException e) {
-        throw new StreamException("Error while creating Snappy compression input stream", e);
+        throw new CompressionException("Error while creating Snappy compression input stream", e);
       }
     }
 
@@ -330,7 +329,7 @@ public final class CompressionUtils {
       try {
         return new FramedLZ4CompressorOutputStream(new ByteBufOutputStream(byteBuf), DEFAULT);
       } catch (IOException e) {
-        throw new StreamException("Error while creating LZ4 compression output stream", e);
+        throw new CompressionException("Error while creating LZ4 compression output stream", e);
       }
     }
 
@@ -339,7 +338,7 @@ public final class CompressionUtils {
       try {
         return new FramedLZ4CompressorInputStream(new ByteBufInputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating LZ4 compression input stream", e);
+        throw new CompressionException("Error while creating LZ4 compression input stream", e);
       }
     }
 
@@ -371,7 +370,7 @@ public final class CompressionUtils {
       try {
         return new ZstdCompressorOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating Zstd compression output stream", e);
+        throw new CompressionException("Error while creating Zstd compression output stream", e);
       }
     }
 
@@ -380,7 +379,7 @@ public final class CompressionUtils {
       try {
         return new ZstdCompressorInputStream(new ByteBufInputStream(byteBuf));
       } catch (IOException e) {
-        throw new StreamException("Error while creating Zstd compression input stream", e);
+        throw new CompressionException("Error while creating Zstd compression input stream", e);
       }
     }
 
