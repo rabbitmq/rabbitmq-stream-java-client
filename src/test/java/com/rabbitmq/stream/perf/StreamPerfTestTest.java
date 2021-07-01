@@ -114,6 +114,12 @@ public class StreamPerfTestTest {
   }
 
   @Test
+  void versionShouldReturnAppropriateInformation() throws Exception {
+    StreamPerfTest.versionInformation(testOut);
+    assertThat(consoleOutput()).contains("RabbitMQ Stream Perf Test");
+  }
+
+  @Test
   void streamsShouldNotBeDeletedByDefault() throws Exception {
     Future<?> run = run(builder());
     waitUntilStreamExists(s);

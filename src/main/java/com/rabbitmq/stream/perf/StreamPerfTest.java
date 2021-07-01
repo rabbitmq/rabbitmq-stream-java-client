@@ -299,7 +299,7 @@ public class StreamPerfTest implements Callable<Integer> {
     return new CommandLine(new StreamPerfTest(args)).execute(args);
   }
 
-  private static void versionInformation() {
+  static void versionInformation(PrintStream out) {
     String lineSeparator = System.getProperty("line.separator");
     String version =
         format(
@@ -322,8 +322,8 @@ public class StreamPerfTest implements Callable<Integer> {
             System.getProperty("os.name"),
             System.getProperty("os.version"),
             System.getProperty("os.arch"));
-    System.out.println("\u001B[1m" + version);
-    System.out.println("\u001B[0m" + info);
+    out.println("\u001B[1m" + version);
+    out.println("\u001B[0m" + info);
   }
 
   private static Codec createCodec(String className) {
@@ -342,7 +342,7 @@ public class StreamPerfTest implements Callable<Integer> {
   @Override
   public Integer call() throws Exception {
     if (this.version) {
-      versionInformation();
+      versionInformation(System.out);
       System.exit(0);
     }
     this.codec = createCodec(this.codecClass);
