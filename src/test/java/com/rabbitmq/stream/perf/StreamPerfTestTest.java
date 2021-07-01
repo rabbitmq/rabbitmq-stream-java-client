@@ -21,6 +21,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.TestUtils;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -56,12 +57,12 @@ public class StreamPerfTestTest {
     executor.shutdownNow();
   }
 
-  ArgumentsBuilder builder() {
-    return new ArgumentsBuilder().stream(s).rate(100).output("none");
-  }
-
   static void waitOneSecond() throws InterruptedException {
     Thread.sleep(1000L);
+  }
+
+  ArgumentsBuilder builder() {
+    return new ArgumentsBuilder().stream(s).rate(100).output("none");
   }
 
   @BeforeEach
@@ -158,6 +159,17 @@ public class StreamPerfTestTest {
     waitRunEnds();
   }
 
+  @Test
+  @DisabledIfTlsNotEnabled
+  void shouldConnectWithTls() throws Exception {
+    Future<?> run = run(builder().url("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f"));
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(streamExists(s)).isTrue();
+  }
+
   boolean streamExists(String stream) {
     return client.metadata(stream).get(stream).isResponseOk();
   }
@@ -178,6 +190,11 @@ public class StreamPerfTestTest {
   static class ArgumentsBuilder {
 
     private final Map<String, String> arguments = new HashMap<>();
+
+    ArgumentsBuilder url(String url) {
+      arguments.put("uris", url);
+      return this;
+    }
 
     ArgumentsBuilder rate(int rate) {
       arguments.put("rate", String.valueOf(rate));

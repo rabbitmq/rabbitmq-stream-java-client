@@ -277,7 +277,7 @@ public final class TestUtils {
   static boolean tlsAvailable() {
     if (Host.rabbitmqctlCommand() == null) {
       throw new IllegalStateException(
-          "rabbitmqctl.bin system property not set, cannot check if MQTT plugin is enabled");
+          "rabbitmqctl.bin system property not set, cannot check if TLS is enabled");
     } else {
       try {
         Process process = Host.rabbitmqctl("status");
@@ -359,7 +359,7 @@ public final class TestUtils {
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
   @ExtendWith(DisabledIfTlsNotEnabledCondition.class)
-  @interface DisabledIfTlsNotEnabled {}
+  public @interface DisabledIfTlsNotEnabled {}
 
   interface TaskWithException {
 
