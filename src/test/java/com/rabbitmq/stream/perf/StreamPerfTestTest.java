@@ -27,7 +27,6 @@ import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.TestUtils;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import java.io.ByteArrayOutputStream;
-import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.HashMap;
 import java.util.Locale;
@@ -54,9 +53,7 @@ public class StreamPerfTestTest {
   Client client;
   AtomicInteger exitCode;
   String s;
-  PrintStream originalOut;
-  PrintStream testOut;
-  OutputStream testOutputStream;
+  ByteArrayOutputStream out, err;
 
   @BeforeAll
   static void init() {
@@ -81,21 +78,18 @@ public class StreamPerfTestTest {
     exitCode = new AtomicInteger(-1);
     client = cf.get();
     s = TestUtils.streamName(info);
-    originalOut = System.out;
-    testOutputStream = new ByteArrayOutputStream();
-    testOut = new PrintStream(testOutputStream);
-    System.setOut(testOut);
+    out = new ByteArrayOutputStream();
+    err = new ByteArrayOutputStream();
   }
 
   @AfterEach
   void tearDownTest() {
-    System.setOut(originalOut);
+    assertThat(consoleErrorOutput()).isEmpty();
     client.delete(s);
   }
 
   private void waitRunEnds(int expectedExitCode) throws Exception {
     TestUtils.waitAtMost(20, () -> exitCode.get() == expectedExitCode);
-    testOut.flush();
   }
 
   private void waitRunEnds() throws Exception {
@@ -103,7 +97,11 @@ public class StreamPerfTestTest {
   }
 
   String consoleOutput() {
-    return testOutputStream.toString();
+    return out.toString();
+  }
+
+  String consoleErrorOutput() {
+    return err.toString();
   }
 
   @Test
@@ -114,8 +112,8 @@ public class StreamPerfTestTest {
   }
 
   @Test
-  void versionShouldReturnAppropriateInformation() throws Exception {
-    StreamPerfTest.versionInformation(testOut);
+  void versionShouldReturnAppropriateInformation() {
+    StreamPerfTest.versionInformation(new PrintStream(out, true));
     assertThat(consoleOutput()).contains("RabbitMQ Stream Perf Test");
   }
 
@@ -261,7 +259,13 @@ public class StreamPerfTestTest {
   }
 
   Future<?> run(ArgumentsBuilder builder) {
-    return executor.submit(() -> exitCode.set(StreamPerfTest.run(builder.build().split(" "))));
+    return executor.submit(
+        () ->
+            exitCode.set(
+                StreamPerfTest.run(
+                    builder.build().split(" "),
+                    new PrintStream(out, true),
+                    new PrintStream(err, true))));
   }
 
   static class ArgumentsBuilder {

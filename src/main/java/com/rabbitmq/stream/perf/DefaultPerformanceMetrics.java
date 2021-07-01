@@ -45,7 +45,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   private final MetricRegistry metricRegistry;
   private final Timer latency;
   private final boolean summaryFile;
-  private final PrintStream out;
+  private final PrintWriter out;
   private final boolean includeByteRates;
   private volatile Closeable closingSequence = () -> {};
 
@@ -54,7 +54,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
       String metricsPrefix,
       boolean summaryFile,
       boolean includeByteRates,
-      PrintStream out) {
+      PrintWriter out) {
     this.summaryFile = summaryFile;
     this.includeByteRates = includeByteRates;
     this.out = out;

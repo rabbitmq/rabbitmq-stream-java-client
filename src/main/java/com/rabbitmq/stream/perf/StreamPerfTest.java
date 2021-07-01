@@ -43,6 +43,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.handler.ssl.SslContextBuilder;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
@@ -279,24 +280,36 @@ public class StreamPerfTest implements Callable<Integer> {
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
 
-  private PrintStream out;
+  private final PrintWriter err, out;
 
   // constructor for completion script generation
   public StreamPerfTest() {
-    this(null);
+    this(null, null, null);
   }
 
-  public StreamPerfTest(String[] arguments) {
+  public StreamPerfTest(String[] arguments, PrintStream consoleOut, PrintStream consoleErr) {
     this.arguments = arguments;
+    if (consoleOut == null) {
+      consoleOut = System.out;
+    }
+    if (consoleErr == null) {
+      consoleErr = System.err;
+    }
+    this.out = new PrintWriter(consoleOut, true);
+    this.err = new PrintWriter(consoleErr, true);
   }
 
   public static void main(String[] args) {
-    int exitCode = run(args);
+    int exitCode = run(args, System.out, System.err);
     System.exit(exitCode);
   }
 
-  static int run(String[] args) {
-    return new CommandLine(new StreamPerfTest(args)).execute(args);
+  static int run(String[] args, PrintStream consoleOut, PrintStream consoleErr) {
+    StreamPerfTest streamPerfTest = new StreamPerfTest(args, consoleOut, consoleErr);
+    return new CommandLine(streamPerfTest)
+        .setOut(streamPerfTest.out)
+        .setErr(streamPerfTest.err)
+        .execute(args);
   }
 
   static void versionInformation(PrintStream out) {
@@ -345,6 +358,7 @@ public class StreamPerfTest implements Callable<Integer> {
       versionInformation(System.out);
       System.exit(0);
     }
+    // FIXME assign codec
     this.codec = createCodec(this.codecClass);
 
     CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
@@ -352,8 +366,6 @@ public class StreamPerfTest implements Callable<Integer> {
     this.metricsCollector = new MicrometerMetricsCollector(meterRegistry, metricsPrefix);
 
     Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
-
-    this.out = System.out;
 
     this.performanceMetrics =
         new DefaultPerformanceMetrics(
