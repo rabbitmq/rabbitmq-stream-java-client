@@ -237,6 +237,16 @@ public class StreamPerfTestTest {
     assertThat(consoleOutput()).contains("Warning: stream '" + s + "'");
   }
 
+  @Test
+  void byteRatesShouldBeIncludedWhenOptionIsEnabled() throws Exception {
+    Future<?> run = run(builder().byteRates());
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(consoleOutput()).contains("written bytes").contains("read bytes");
+  }
+
   boolean streamExists(String stream) {
     return client.metadata(stream).get(stream).isResponseOk();
   }
@@ -260,6 +270,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder uris(String url) {
       arguments.put("uris", url);
+      return this;
+    }
+
+    ArgumentsBuilder byteRates() {
+      arguments.put("metrics-byte-rates", "");
       return this;
     }
 
