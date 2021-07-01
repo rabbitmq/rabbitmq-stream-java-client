@@ -262,13 +262,6 @@ public class StreamPerfTest implements Callable<Integer> {
   private boolean loadBalancer;
 
   @CommandLine.Option(
-      names = {"--output"},
-      description = "where to output messages",
-      defaultValue = "console",
-      hidden = true)
-  private String output;
-
-  @CommandLine.Option(
       names = {"--consumer-names", "-cn"},
       description =
           "naming strategy for consumer names. Valid are values are 'uuid' or a pattern with "
@@ -360,11 +353,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
     Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
 
-    if ("console".equals(this.output)) {
-      this.out = System.out;
-    } else {
-      this.out = new PrintStream(Utils.nullOutputStream());
-    }
+    this.out = System.out;
 
     this.performanceMetrics =
         new DefaultPerformanceMetrics(

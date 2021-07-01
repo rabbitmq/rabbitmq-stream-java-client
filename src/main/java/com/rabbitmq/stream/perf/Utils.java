@@ -16,8 +16,6 @@ package com.rabbitmq.stream.perf;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
-import java.io.IOException;
-import java.io.OutputStream;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
@@ -360,33 +358,6 @@ class Utils {
     public X509Certificate[] getAcceptedIssuers() {
       return new X509Certificate[0];
     }
-  }
-
-  public static OutputStream nullOutputStream() {
-    return new OutputStream() {
-      private volatile boolean closed;
-
-      private void ensureOpen() throws IOException {
-        if (closed) {
-          throw new IOException("Stream closed");
-        }
-      }
-
-      @Override
-      public void write(int b) throws IOException {
-        ensureOpen();
-      }
-
-      @Override
-      public void write(byte b[], int off, int len) throws IOException {
-        ensureOpen();
-      }
-
-      @Override
-      public void close() {
-        closed = true;
-      }
-    };
   }
 
   static final class PatternConsumerNameStrategy implements BiFunction<String, Integer, String> {
