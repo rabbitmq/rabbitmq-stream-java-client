@@ -553,9 +553,7 @@ class ConsumersCoordinator {
                       }
                     } catch (Exception e) {
                       LOGGER.warn(
-                          "Error while re-assigning subscription from stream {}: {}",
-                          stream,
-                          e.getMessage());
+                          "Error while re-assigning subscription from stream {}", stream, e);
                     }
                   }
                   if (closeClient) {
@@ -715,7 +713,7 @@ class ConsumersCoordinator {
     }
 
     synchronized void close() {
-      if (this.client.isOpen()) {
+      if (this.client != null && this.client.isOpen()) {
         subscriptionTrackers.stream()
             .filter(Objects::nonNull)
             .forEach(

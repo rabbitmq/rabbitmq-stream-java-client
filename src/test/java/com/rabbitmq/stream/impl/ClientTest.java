@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -42,6 +43,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -721,5 +723,60 @@ public class ClientTest {
     Client client = cf.get();
     assertThat(client.serverAdvertisedHost()).isNotNull();
     assertThat(client.serverAdvertisedPort()).isEqualTo(Client.DEFAULT_PORT);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "some-publisher-reference"})
+  void closingPublisherWhilePublishingShouldNotCloseConnection(String publisherReference)
+      throws Exception {
+    AtomicReference<CountDownLatch> confirmLatch =
+        new AtomicReference<>(new CountDownLatch(500_000));
+    CountDownLatch closedLatch = new CountDownLatch(1);
+    Semaphore semaphore = new Semaphore(10000);
+    Client client =
+        cf.get(
+            new ClientParameters()
+                .shutdownListener(shutdownContext -> closedLatch.countDown())
+                .publishConfirmListener(
+                    (publisherId, publishingId) -> {
+                      semaphore.release();
+                      confirmLatch.get().countDown();
+                    }));
+
+    Response response = client.declarePublisher(TestUtils.b(0), publisherReference, stream);
+    assertThat(response.isOk()).isTrue();
+    List<Thread> threads =
+        IntStream.range(0, 10)
+            .mapToObj(
+                i -> {
+                  Thread thread =
+                      new Thread(
+                          () -> {
+                            while (!Thread.currentThread().isInterrupted()) {
+                              List<Message> messages =
+                                  IntStream.range(0, 100)
+                                      .mapToObj(
+                                          j ->
+                                              client
+                                                  .messageBuilder()
+                                                  .addData("hello".getBytes(StandardCharsets.UTF_8))
+                                                  .build())
+                                      .collect(Collectors.toList());
+                              semaphore.acquireUninterruptibly(100);
+                              client.publish(b(0), messages);
+                            }
+                          });
+                  thread.start();
+                  return thread;
+                })
+            .collect(Collectors.toList());
+    try {
+      assertThat(latchAssert(confirmLatch)).completes();
+      response = client.deletePublisher(b(0));
+      assertThat(response.isOk()).isTrue();
+      assertThat(latchAssert(closedLatch)).doesNotComplete(1);
+    } finally {
+      threads.forEach(Thread::interrupt);
+    }
   }
 }

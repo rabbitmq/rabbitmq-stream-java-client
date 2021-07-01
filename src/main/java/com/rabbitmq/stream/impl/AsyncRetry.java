@@ -45,7 +45,7 @@ class AsyncRetry<V> {
     Runnable retryableTask =
         () -> {
           if (Thread.currentThread().isInterrupted()) {
-            LOGGER.debug("Task '{}' interrupted, failing future");
+            LOGGER.debug("Task '{}' interrupted, failing future", Thread.currentThread());
             this.completableFuture.completeExceptionally(new CancellationException());
             return;
           }

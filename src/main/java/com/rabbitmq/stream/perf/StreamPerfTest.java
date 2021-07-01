@@ -43,6 +43,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.handler.ssl.SslContextBuilder;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
@@ -262,13 +263,6 @@ public class StreamPerfTest implements Callable<Integer> {
   private boolean loadBalancer;
 
   @CommandLine.Option(
-      names = {"--output"},
-      description = "where to output messages",
-      defaultValue = "console",
-      hidden = true)
-  private String output;
-
-  @CommandLine.Option(
       names = {"--consumer-names", "-cn"},
       description =
           "naming strategy for consumer names. Valid are values are 'uuid' or a pattern with "
@@ -286,27 +280,39 @@ public class StreamPerfTest implements Callable<Integer> {
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
 
-  private PrintStream out;
+  private final PrintWriter err, out;
 
   // constructor for completion script generation
   public StreamPerfTest() {
-    this(null);
+    this(null, null, null);
   }
 
-  public StreamPerfTest(String[] arguments) {
+  public StreamPerfTest(String[] arguments, PrintStream consoleOut, PrintStream consoleErr) {
     this.arguments = arguments;
+    if (consoleOut == null) {
+      consoleOut = System.out;
+    }
+    if (consoleErr == null) {
+      consoleErr = System.err;
+    }
+    this.out = new PrintWriter(consoleOut, true);
+    this.err = new PrintWriter(consoleErr, true);
   }
 
   public static void main(String[] args) {
-    int exitCode = run(args);
+    int exitCode = run(args, System.out, System.err);
     System.exit(exitCode);
   }
 
-  static int run(String[] args) {
-    return new CommandLine(new StreamPerfTest(args)).execute(args);
+  static int run(String[] args, PrintStream consoleOut, PrintStream consoleErr) {
+    StreamPerfTest streamPerfTest = new StreamPerfTest(args, consoleOut, consoleErr);
+    return new CommandLine(streamPerfTest)
+        .setOut(streamPerfTest.out)
+        .setErr(streamPerfTest.err)
+        .execute(args);
   }
 
-  private static void versionInformation() {
+  static void versionInformation(PrintStream out) {
     String lineSeparator = System.getProperty("line.separator");
     String version =
         format(
@@ -329,8 +335,8 @@ public class StreamPerfTest implements Callable<Integer> {
             System.getProperty("os.name"),
             System.getProperty("os.version"),
             System.getProperty("os.arch"));
-    System.out.println("\u001B[1m" + version);
-    System.out.println("\u001B[0m" + info);
+    out.println("\u001B[1m" + version);
+    out.println("\u001B[0m" + info);
   }
 
   private static Codec createCodec(String className) {
@@ -349,9 +355,10 @@ public class StreamPerfTest implements Callable<Integer> {
   @Override
   public Integer call() throws Exception {
     if (this.version) {
-      versionInformation();
+      versionInformation(System.out);
       System.exit(0);
     }
+    // FIXME assign codec
     this.codec = createCodec(this.codecClass);
 
     CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
@@ -359,12 +366,6 @@ public class StreamPerfTest implements Callable<Integer> {
     this.metricsCollector = new MicrometerMetricsCollector(meterRegistry, metricsPrefix);
 
     Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
-
-    if ("console".equals(this.output)) {
-      this.out = System.out;
-    } else {
-      this.out = new PrintStream(Utils.nullOutputStream());
-    }
 
     this.performanceMetrics =
         new DefaultPerformanceMetrics(

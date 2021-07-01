@@ -17,11 +17,19 @@ package com.rabbitmq.stream.perf;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.impl.Client;
+import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
+import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.TestUtils;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -45,6 +53,7 @@ public class StreamPerfTestTest {
   Client client;
   AtomicInteger exitCode;
   String s;
+  ByteArrayOutputStream out, err;
 
   @BeforeAll
   static void init() {
@@ -56,12 +65,12 @@ public class StreamPerfTestTest {
     executor.shutdownNow();
   }
 
-  ArgumentsBuilder builder() {
-    return new ArgumentsBuilder().stream(s).rate(100).output("none");
-  }
-
   static void waitOneSecond() throws InterruptedException {
     Thread.sleep(1000L);
+  }
+
+  ArgumentsBuilder builder() {
+    return new ArgumentsBuilder().stream(s).rate(100);
   }
 
   @BeforeEach
@@ -69,10 +78,13 @@ public class StreamPerfTestTest {
     exitCode = new AtomicInteger(-1);
     client = cf.get();
     s = TestUtils.streamName(info);
+    out = new ByteArrayOutputStream();
+    err = new ByteArrayOutputStream();
   }
 
   @AfterEach
   void tearDownTest() {
+    assertThat(consoleErrorOutput()).isEmpty();
     client.delete(s);
   }
 
@@ -82,6 +94,27 @@ public class StreamPerfTestTest {
 
   private void waitRunEnds() throws Exception {
     waitRunEnds(0);
+  }
+
+  String consoleOutput() {
+    return out.toString();
+  }
+
+  String consoleErrorOutput() {
+    return err.toString();
+  }
+
+  @Test
+  void helpShouldReturnImmediately() throws Exception {
+    run(builder().help());
+    waitRunEnds();
+    assertThat(consoleOutput()).contains("Usage: stream-perf-test");
+  }
+
+  @Test
+  void versionShouldReturnAppropriateInformation() {
+    StreamPerfTest.versionInformation(new PrintStream(out, true));
+    assertThat(consoleOutput()).contains("RabbitMQ Stream Perf Test");
   }
 
   @Test
@@ -158,6 +191,60 @@ public class StreamPerfTestTest {
     waitRunEnds();
   }
 
+  @Test
+  @DisabledIfTlsNotEnabled
+  void shouldConnectWithTls() throws Exception {
+    Future<?> run = run(builder().uris("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f"));
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(streamExists(s)).isTrue();
+  }
+
+  @Test
+  void shouldConnectWithLoadBalancer() throws Exception {
+    Future<?> run = run(builder().loadBalancer(true));
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(streamExists(s)).isTrue();
+  }
+
+  @Test
+  void streamCreationIsIdempotentWhateverTheDifferencesInStreamProperties() throws Exception {
+    Response response =
+        client.create(
+            s,
+            new StreamParametersBuilder()
+                .maxLengthBytes(ByteCapacity.GB(1))
+                .maxSegmentSizeBytes(ByteCapacity.MB(500))
+                .leaderLocator(LeaderLocator.LEAST_LEADERS)
+                .build());
+    assertThat(response.isOk()).isTrue();
+    Future<?> run =
+        run(
+            builder()
+                .maxLengthBytes(ByteCapacity.GB(42)) // different than already existing stream
+                .streamMaxSegmentSizeBytes(ByteCapacity.MB(500))
+                .leaderLocator(LeaderLocator.LEAST_LEADERS));
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(consoleOutput()).contains("Warning: stream '" + s + "'");
+  }
+
+  @Test
+  void byteRatesShouldBeIncludedWhenOptionIsEnabled() throws Exception {
+    Future<?> run = run(builder().byteRates());
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(consoleOutput()).contains("written bytes").contains("read bytes");
+  }
+
   boolean streamExists(String stream) {
     return client.metadata(stream).get(stream).isResponseOk();
   }
@@ -172,12 +259,54 @@ public class StreamPerfTestTest {
   }
 
   Future<?> run(ArgumentsBuilder builder) {
-    return executor.submit(() -> exitCode.set(StreamPerfTest.run(builder.build().split(" "))));
+    return executor.submit(
+        () ->
+            exitCode.set(
+                StreamPerfTest.run(
+                    builder.build().split(" "),
+                    new PrintStream(out, true),
+                    new PrintStream(err, true))));
   }
 
   static class ArgumentsBuilder {
 
     private final Map<String, String> arguments = new HashMap<>();
+
+    ArgumentsBuilder uris(String url) {
+      arguments.put("uris", url);
+      return this;
+    }
+
+    ArgumentsBuilder byteRates() {
+      arguments.put("metrics-byte-rates", "");
+      return this;
+    }
+
+    ArgumentsBuilder help() {
+      arguments.put("help", "");
+      return this;
+    }
+
+    ArgumentsBuilder maxLengthBytes(ByteCapacity capacity) {
+      arguments.put("max-length-bytes", capacity.toString());
+      return this;
+    }
+
+    ArgumentsBuilder streamMaxSegmentSizeBytes(ByteCapacity capacity) {
+      arguments.put("stream-max-segment-size-bytes", capacity.toString());
+      return this;
+    }
+
+    ArgumentsBuilder leaderLocator(LeaderLocator leaderLocator) {
+      arguments.put(
+          "leader-locator", leaderLocator.toString().toLowerCase(Locale.ENGLISH).replace("_", "-"));
+      return this;
+    }
+
+    ArgumentsBuilder loadBalancer(boolean loadBalancer) {
+      arguments.put("load-balancer", String.valueOf(loadBalancer));
+      return this;
+    }
 
     ArgumentsBuilder rate(int rate) {
       arguments.put("rate", String.valueOf(rate));
@@ -211,11 +340,6 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder storeEvery(int storeEvery) {
       arguments.put("store-every", String.valueOf(storeEvery));
-      return this;
-    }
-
-    ArgumentsBuilder output(String output) {
-      arguments.put("output", output);
       return this;
     }
 
