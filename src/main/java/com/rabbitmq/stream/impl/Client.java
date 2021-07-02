@@ -73,7 +73,6 @@ import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -248,8 +247,11 @@ public class Client implements AutoCloseable {
     b.group(eventLoopGroup);
     b.channel(NioSocketChannel.class);
     b.option(ChannelOption.SO_KEEPALIVE, true);
-    // is that the default?
-    b.option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
+    b.option(
+        ChannelOption.ALLOCATOR,
+        parameters.byteBufAllocator == null
+            ? ByteBufAllocator.DEFAULT
+            : parameters.byteBufAllocator);
     ChannelCustomizer channelCustomizer =
         parameters.channelCustomizer == null ? ch -> {} : parameters.channelCustomizer;
     b.handler(
@@ -772,7 +774,8 @@ public class Client implements AutoCloseable {
       ToLongFunction<Object> publishSequenceFunction) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
-      EncodedMessageBatch encodedMessageBatch = createEncodedMessageBatch(batch.compression);
+      EncodedMessageBatch encodedMessageBatch =
+          createEncodedMessageBatch(batch.compression, batch.messages.size());
       for (Message message : batch.messages) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
         checkMessageFitsInFrame(encodedMessage);
@@ -805,7 +808,8 @@ public class Client implements AutoCloseable {
       ToLongFunction<Object> publishSequenceFunction) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
-      EncodedMessageBatch encodedMessageBatch = createEncodedMessageBatch(batch.compression);
+      EncodedMessageBatch encodedMessageBatch =
+          createEncodedMessageBatch(batch.compression, batch.messages.size());
       for (Message message : batch.messages) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
         checkMessageFitsInFrame(encodedMessage);
@@ -1385,24 +1389,22 @@ public class Client implements AutoCloseable {
     void handle(ShutdownContext shutdownContext);
   }
 
-  private EncodedMessageBatch createEncodedMessageBatch(Compression compression) {
+  private EncodedMessageBatch createEncodedMessageBatch(Compression compression, int batchSize) {
     return EncodedMessageBatch.create(
-        channel.alloc(), compression, compressionCodecFactory.get(compression));
+        channel.alloc(), compression.code(), compressionCodecFactory.get(compression), batchSize);
   }
 
   interface EncodedMessageBatch {
 
     static EncodedMessageBatch create(
-        Compression compression, List<Codec.EncodedMessage> messages) {
-      return new PlainEncodedMessageBatch(compression, messages);
-    }
-
-    static EncodedMessageBatch create(
-        ByteBufAllocator allocator, Compression compression, CompressionCodec compressionCodec) {
-      if (compression.code() == Compression.NONE.code()) {
-        return new PlainEncodedMessageBatch(compression);
+        ByteBufAllocator allocator,
+        byte compression,
+        CompressionCodec compressionCodec,
+        int batchSize) {
+      if (compression == Compression.NONE.code()) {
+        return new PlainEncodedMessageBatch(new ArrayList<>(batchSize));
       } else {
-        return new CompressedEncodedMessageBatch(allocator, compressionCodec);
+        return new CompressedEncodedMessageBatch(allocator, compressionCodec, batchSize);
       }
     }
 
@@ -1457,17 +1459,11 @@ public class Client implements AutoCloseable {
 
   private static class PlainEncodedMessageBatch implements EncodedMessageBatch {
 
-    private final Compression compression;
     private final List<Codec.EncodedMessage> messages;
     private int size;
 
-    PlainEncodedMessageBatch(Compression compression, List<Codec.EncodedMessage> messages) {
-      this.compression = compression;
+    PlainEncodedMessageBatch(List<Codec.EncodedMessage> messages) {
       this.messages = messages;
-    }
-
-    PlainEncodedMessageBatch(Compression compression) {
-      this(compression, new ArrayList<>());
     }
 
     @Override
@@ -1511,17 +1507,21 @@ public class Client implements AutoCloseable {
     private ByteBuf buffer;
 
     CompressedEncodedMessageBatch(
-        ByteBufAllocator allocator, CompressionCodec codec, List<EncodedMessage> messages) {
+        ByteBufAllocator allocator,
+        CompressionCodec codec,
+        List<EncodedMessage> messages,
+        int batchSize) {
       this.allocator = allocator;
       this.codec = codec;
-      this.messages = new ArrayList<>(messages.size());
+      this.messages = new ArrayList<>(batchSize);
       for (int i = 0; i < messages.size(); i++) {
         this.add(messages.get(i));
       }
     }
 
-    CompressedEncodedMessageBatch(ByteBufAllocator allocator, CompressionCodec codec) {
-      this(allocator, codec, Collections.emptyList());
+    CompressedEncodedMessageBatch(
+        ByteBufAllocator allocator, CompressionCodec codec, int batchSize) {
+      this(allocator, codec, Collections.emptyList(), batchSize);
     }
 
     @Override
@@ -1534,6 +1534,7 @@ public class Client implements AutoCloseable {
     public void close() {
       int maxCompressedLength = codec.maxCompressedLength(this.uncompressedByteSize);
       this.buffer = allocator.buffer(maxCompressedLength);
+      //      System.out.println("before compression " + this.uncompressedByteSize);
       OutputStream outputStream = this.codec.compress(this.uncompressedByteSize, buffer);
       try {
         for (int i = 0; i < messages.size(); i++) {
@@ -1544,7 +1545,9 @@ public class Client implements AutoCloseable {
           outputStream.write((size >>> 0) & 0xFF);
           outputStream.write(messages.get(i).getData(), 0, size);
         }
+        outputStream.flush();
         outputStream.close();
+        //        System.out.println("written compressed " + buffer.readableBytes());
       } catch (IOException e) {
         throw new StreamException("Error while closing compressing output stream", e);
       }
@@ -1873,8 +1876,6 @@ public class Client implements AutoCloseable {
   public static class ClientParameters {
 
     private final Map<String, String> clientProperties = new HashMap<>();
-    // TODO eventloopgroup should be shared between clients, this could justify the introduction of
-    // client factory
     EventLoopGroup eventLoopGroup;
     Codec codec;
     String host = "localhost";
@@ -1894,7 +1895,9 @@ public class Client implements AutoCloseable {
     private CreditNotification creditNotification =
         (subscriptionId, responseCode) ->
             LOGGER.warn(
-                "Received notification for subscription {}: {}", subscriptionId, responseCode);
+                "Received notification for subscription {}: {}",
+                subscriptionId,
+                Utils.formatConstant(responseCode));
     private ShutdownListener shutdownListener = shutdownContext -> {};
 
     private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
@@ -1905,7 +1908,8 @@ public class Client implements AutoCloseable {
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
     private boolean tlsHostnameVerification = true;
-    private CompressionCodecFactory compressionCodecFactory;
+    CompressionCodecFactory compressionCodecFactory;
+    private ByteBufAllocator byteBufAllocator;
 
     public ClientParameters host(String host) {
       this.host = host;
@@ -1949,6 +1953,11 @@ public class Client implements AutoCloseable {
 
     public ClientParameters eventLoopGroup(EventLoopGroup eventLoopGroup) {
       this.eventLoopGroup = eventLoopGroup;
+      return this;
+    }
+
+    public ClientParameters byteBufAllocator(ByteBufAllocator byteBufAllocator) {
+      this.byteBufAllocator = byteBufAllocator;
       return this;
     }
 

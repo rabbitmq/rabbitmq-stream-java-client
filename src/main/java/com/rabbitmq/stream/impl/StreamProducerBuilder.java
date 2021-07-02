@@ -18,6 +18,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.compression.Compression;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.function.Function;
@@ -32,6 +33,8 @@ class StreamProducerBuilder implements ProducerBuilder {
   private String stream;
 
   private int subEntrySize = 1;
+
+  private Compression compression;
 
   private int batchSize = 100;
 
@@ -78,6 +81,12 @@ class StreamProducerBuilder implements ProducerBuilder {
       throw new IllegalArgumentException("the sub-entry size must be greater than 0");
     }
     this.subEntrySize = subEntrySize;
+    return this;
+  }
+
+  @Override
+  public ProducerBuilder compression(Compression compression) {
+    this.compression = compression;
     return this;
   }
 
@@ -140,6 +149,13 @@ class StreamProducerBuilder implements ProducerBuilder {
   }
 
   public Producer build() {
+    if (subEntrySize == 1 && compression != null) {
+      throw new IllegalArgumentException(
+          "Sub-entry batching must be enabled to enable compression");
+    }
+    if (subEntrySize > 1 && compression == null) {
+      compression = Compression.NONE;
+    }
     Producer producer;
     if (this.routingKeyExtractor == null) {
       producer =
@@ -148,6 +164,7 @@ class StreamProducerBuilder implements ProducerBuilder {
               stream,
               subEntrySize,
               batchSize,
+              compression,
               batchPublishingDelay,
               maxUnconfirmedMessages,
               confirmTimeout,
@@ -155,6 +172,7 @@ class StreamProducerBuilder implements ProducerBuilder {
               environment);
       this.environment.addProducer((StreamProducer) producer);
     } else {
+      // FIXME propagate compression to super stream producer
       ToIntFunction<String> hashFunction = this.hash == null ? HashUtils.MURMUR3 : this.hash;
       RoutingStrategy routingStrategy =
           this.routingType == RoutingType.HASH

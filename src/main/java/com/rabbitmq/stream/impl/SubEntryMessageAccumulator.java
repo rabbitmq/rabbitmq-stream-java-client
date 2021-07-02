@@ -4,7 +4,9 @@ import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.EncodedMessageBatch;
+import io.netty.buffer.ByteBufAllocator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.ToLongFunction;
@@ -12,22 +14,32 @@ import java.util.function.ToLongFunction;
 class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
 
   private final int subEntrySize;
+  private final CompressionCodec compressionCodec;
+  private final ByteBufAllocator byteBufAllocator;
+  private final byte compression;
 
   public SubEntryMessageAccumulator(
       int subEntrySize,
       int batchSize,
+      CompressionCodec compressionCodec,
       Codec codec,
+      ByteBufAllocator byteBufAllocator,
       int maxFrameSize,
       ToLongFunction<Message> publishSequenceFunction,
       Clock clock) {
     super(subEntrySize * batchSize, codec, maxFrameSize, publishSequenceFunction, clock);
     this.subEntrySize = subEntrySize;
+    this.compressionCodec = compressionCodec;
+    this.compression = compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
+    this.byteBufAllocator = byteBufAllocator;
   }
 
   private Batch createBatch() {
+    // FIXME create list with appropriate initial size (sub-entry size)
     return new Batch(
-        EncodedMessageBatch.create(Compression.NONE, new ArrayList<>()),
-        new CompositeConfirmationCallback(new ArrayList<>()));
+        EncodedMessageBatch.create(
+            byteBufAllocator, compression, compressionCodec, this.subEntrySize),
+        new CompositeConfirmationCallback(new ArrayList<>(this.subEntrySize)));
   }
 
   @Override

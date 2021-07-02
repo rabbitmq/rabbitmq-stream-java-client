@@ -29,9 +29,11 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslContext;
@@ -81,6 +83,7 @@ class StreamEnvironment implements Environment {
   private final AddressResolver addressResolver;
   private final Clock clock = new Clock();
   private final ScheduledFuture<?> clockRefreshFuture;
+  private final ByteBufAllocator byteBufAllocator;
   private volatile Client locator;
 
   StreamEnvironment(
@@ -93,7 +96,8 @@ class StreamEnvironment implements Environment {
       int maxProducersByConnection,
       int maxTrackingConsumersByConnection,
       int maxConsumersByConnection,
-      DefaultTlsConfiguration tlsConfiguration) {
+      DefaultTlsConfiguration tlsConfiguration,
+      ByteBufAllocator byteBufAllocator) {
     this(
         scheduledExecutorService,
         clientParametersPrototype,
@@ -105,6 +109,7 @@ class StreamEnvironment implements Environment {
         maxTrackingConsumersByConnection,
         maxConsumersByConnection,
         tlsConfiguration,
+        byteBufAllocator,
         cp -> new Client(cp));
   }
 
@@ -119,9 +124,12 @@ class StreamEnvironment implements Environment {
       int maxTrackingConsumersByConnection,
       int maxConsumersByConnection,
       DefaultTlsConfiguration tlsConfiguration,
+      ByteBufAllocator byteBufAllocator,
       Function<Client.ClientParameters, Client> clientFactory) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
+    this.byteBufAllocator = byteBufAllocator;
+    clientParametersPrototype.byteBufAllocator(byteBufAllocator);
     clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
     this.addressResolver = addressResolver;
@@ -307,6 +315,10 @@ class StreamEnvironment implements Environment {
     }
   }
 
+  public ByteBufAllocator byteBufAllocator() {
+    return byteBufAllocator;
+  }
+
   @Override
   public StreamCreator streamCreator() {
     return new StreamStreamCreator(this);
@@ -414,6 +426,10 @@ class StreamEnvironment implements Environment {
 
   BackOffDelayPolicy topologyUpdateBackOffDelayPolicy() {
     return this.topologyUpdateBackOffDelayPolicy;
+  }
+
+  CompressionCodecFactory compressionCodecFactory() {
+    return this.clientParametersPrototype.compressionCodecFactory;
   }
 
   Runnable registerConsumer(

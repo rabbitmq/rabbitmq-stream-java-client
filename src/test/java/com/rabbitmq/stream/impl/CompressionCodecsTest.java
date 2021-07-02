@@ -71,9 +71,9 @@ public class CompressionCodecsTest {
       CompressionCodec compressionCodec, CompressionCodec decompressionCodec) throws IOException {
     assertThat(compressionCodec.code()).isEqualTo(decompressionCodec.code());
     ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
-    EncodedMessageBatch encodedMessageBatch =
-        new CompressedEncodedMessageBatch(allocator, compressionCodec);
     int messageCount = 100;
+    EncodedMessageBatch encodedMessageBatch =
+        new CompressedEncodedMessageBatch(allocator, compressionCodec, messageCount);
     List<EncodedMessage> encodedMessages = new ArrayList<>(messageCount);
     IntStream.range(0, messageCount)
         .forEach(

@@ -366,13 +366,17 @@ class ServerFrameHandler {
           offset++; // works even for unsigned long
         } else {
           /*
-          %%   <<1=SubBatchEntryType:1,
-          %%     CompressionType:3,
-          %%     Reserved:4,
-          %%     NumRecords:16/unsigned,
-          %%     Size:32/unsigned,
-          %%     Data:Size/binary>>
-           */
+          %%   |0              |1              |2              |3              | Bytes
+          %%   |0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7| Bits
+          %%   +-+-----+-------+---------------+---------------+---------------+
+          %%   |1| Cmp | Rsvd  | Number of records             | Length  (...) |
+          %%   +-+-----+-------+-------------------------------+---------------+
+          %%   | Length                                        | Body          |
+          %%   +-+---------------------------------------------+               +
+          %%   | Body                                                          |
+          %%   :                                                               :
+          %%   +---------------------------------------------------------------+
+                     */
           byte compression = (byte) ((entryType & 0x70) >> 4);
           read++;
           Compression comp = Compression.get(compression);
@@ -386,9 +390,9 @@ class ServerFrameHandler {
           if (comp.code() != Compression.NONE.code()) {
             CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
             int uncompressedSizeHint = compressionCodec.uncompressedLength(dataSize, message);
-            // FIXME release the BB
             ByteBuf outBb = client.channel.alloc().buffer(uncompressedSizeHint);
-            InputStream inputStream = compressionCodec.decompress(message);
+            ByteBuf slice = message.slice(message.readerIndex(), dataSize);
+            InputStream inputStream = compressionCodec.decompress(slice);
             // FIXME transfer into byte buf more efficiently
             byte[] inBuffer = new byte[uncompressedSizeHint];
             int n = 0;
@@ -399,6 +403,7 @@ class ServerFrameHandler {
             } catch (IOException e) {
               throw new StreamException("Error while uncompressing sub-entry", e);
             }
+            message.readerIndex(message.readerIndex() + dataSize);
             bbToReadFrom = outBb;
           }
 

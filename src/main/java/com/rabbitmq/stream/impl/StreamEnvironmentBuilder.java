@@ -22,9 +22,11 @@ import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -57,6 +59,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private int maxTrackingConsumersByConnection =
       ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT;
   private int maxConsumersByConnection = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
+  private CompressionCodecFactory compressionCodecFactory;
+  private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
 
   public StreamEnvironmentBuilder() {}
 
@@ -115,8 +119,22 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
+  @Override
+  public EnvironmentBuilder compressionCodecFactory(
+      CompressionCodecFactory compressionCodecFactory) {
+    this.compressionCodecFactory = compressionCodecFactory;
+    return this;
+  }
+
   public EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup) {
     this.clientParameters.eventLoopGroup(eventLoopGroup);
+    return this;
+  }
+
+  @Override
+  public EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator) {
+    this.byteBufAllocator = byteBufAllocator;
+    this.clientParameters.byteBufAllocator(byteBufAllocator);
     return this;
   }
 
@@ -251,6 +269,11 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
   @Override
   public Environment build() {
+    if (this.compressionCodecFactory == null) {
+      this.clientParameters.compressionCodecFactory(CompressionCodecs.DEFAULT);
+    } else {
+      this.clientParameters.compressionCodecFactory(this.compressionCodecFactory);
+    }
     return new StreamEnvironment(
         scheduledExecutorService,
         clientParameters,
@@ -261,7 +284,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         maxProducersByConnection,
         maxTrackingConsumersByConnection,
         maxConsumersByConnection,
-        tls);
+        tls,
+        byteBufAllocator);
   }
 
   static final class DefaultTlsConfiguration implements TlsConfiguration {

@@ -27,6 +27,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.MessageAccumulator.AccumulatedEntity;
 import io.netty.buffer.ByteBuf;
@@ -81,6 +82,7 @@ class StreamProducer implements Producer {
       String stream,
       int subEntrySize,
       int batchSize,
+      Compression compression,
       Duration batchPublishingDelay,
       int maxUnconfirmedMessages,
       Duration confirmTimeout,
@@ -116,7 +118,11 @@ class StreamProducer implements Producer {
           new SubEntryMessageAccumulator(
               subEntrySize,
               batchSize,
+              compression == Compression.NONE
+                  ? null
+                  : environment.compressionCodecFactory().get(compression),
               environment.codec(),
+              this.environment.byteBufAllocator(),
               client.maxFrameSize(),
               accumulatorPublishSequenceFunction,
               this.environment.clock());

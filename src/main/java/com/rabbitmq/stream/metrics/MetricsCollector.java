@@ -16,8 +16,6 @@ package com.rabbitmq.stream.metrics;
 
 public interface MetricsCollector {
 
-  // FIXME track also client instances (connections) once a shutdown notification system is in place
-
   void openConnection();
 
   void closeConnection();
