@@ -16,6 +16,7 @@ package com.rabbitmq.stream.perf;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
+import com.rabbitmq.stream.compression.Compression;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,6 +27,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -270,6 +272,26 @@ class Utils {
         return value;
       } catch (Exception e) {
         throw new CommandLine.TypeConversionException(input + " is not a positive integer");
+      }
+    }
+  }
+
+  static class CompressionTypeConverter implements CommandLine.ITypeConverter<Compression> {
+
+    @Override
+    public Compression convert(String input) {
+      try {
+        return Compression.valueOf(input.toUpperCase(Locale.ENGLISH));
+      } catch (Exception e) {
+        throw new CommandLine.TypeConversionException(
+            input
+                + " is not a valid compression value. "
+                + "Accepted values are "
+                + Arrays.stream(Compression.values())
+                    .map(Compression::name)
+                    .map(String::toLowerCase)
+                    .collect(Collectors.joining(", "))
+                + ".");
       }
     }
   }
