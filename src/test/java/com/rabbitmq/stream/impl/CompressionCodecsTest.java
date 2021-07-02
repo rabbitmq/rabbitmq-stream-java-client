@@ -30,13 +30,18 @@ import com.rabbitmq.stream.impl.Client.CompressedEncodedMessageBatch;
 import com.rabbitmq.stream.impl.Client.EncodedMessageBatch;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -128,5 +133,46 @@ public class CompressionCodecsTest {
 
     destinationBb.release();
     outBb.release();
+  }
+
+  @Test
+  void uncompressedLengthFromLz4HeaderShouldReturnUncompressedSizeWhenItHasBeenStored()
+      throws Exception {
+    // this codec writes the uncompressed size in the header
+    CompressionCodec codecWithSizeInHeader = new Lz4JavaCompressionCodec();
+    // this codec does not writes the uncompressed size in the header
+    CompressionCodec codecWithoutSizeInHeader = new CommonsCompressLz4CompressionCodec();
+    byte[] toCompress =
+        IntStream.range(0, 100)
+            .mapToObj(i -> UUID.randomUUID().toString())
+            .flatMap(data -> Stream.of(data, data))
+            .collect(Collectors.joining())
+            .getBytes(StandardCharsets.UTF_8);
+    int maxCompressedLength = codecWithSizeInHeader.maxCompressedLength(toCompress.length);
+
+    // let's compress with the size in the header, the hint should be the exact size
+    ByteBuf buffer = Unpooled.buffer(maxCompressedLength);
+    OutputStream outputStream = codecWithSizeInHeader.compress(toCompress.length, buffer);
+    outputStream.write(toCompress);
+    outputStream.close();
+    int estimatedUncompressedLength =
+        codecWithSizeInHeader.uncompressedLength(buffer.writerIndex(), buffer);
+    assertThat(estimatedUncompressedLength).isEqualTo(toCompress.length);
+    estimatedUncompressedLength =
+        codecWithoutSizeInHeader.uncompressedLength(buffer.writerIndex(), buffer);
+    assertThat(estimatedUncompressedLength).isEqualTo(toCompress.length);
+
+    // let's compress without the size in the header, the hint should be size * 2
+    buffer = Unpooled.buffer(maxCompressedLength);
+    outputStream = codecWithoutSizeInHeader.compress(toCompress.length, buffer);
+    outputStream.write(toCompress);
+    outputStream.close();
+    int compressedSize = buffer.writerIndex();
+    estimatedUncompressedLength =
+        codecWithSizeInHeader.uncompressedLength(buffer.writerIndex(), buffer);
+    assertThat(estimatedUncompressedLength).isEqualTo(compressedSize * 2);
+    estimatedUncompressedLength =
+        codecWithoutSizeInHeader.uncompressedLength(buffer.writerIndex(), buffer);
+    assertThat(estimatedUncompressedLength).isEqualTo(compressedSize * 2);
   }
 }

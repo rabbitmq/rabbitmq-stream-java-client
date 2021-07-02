@@ -38,17 +38,22 @@ public final class CompressionUtils {
   private CompressionUtils() {}
 
   private static int uncompressedLengthFromLz4Header(int compressedLength, ByteBuf byteBuf) {
-    ByteBuf magicAndFlags = byteBuf.slice(byteBuf.readerIndex(), 5); // 4 (magic) + 1 (flags)
-    int magic = magicAndFlags.readIntLE();
+    int initialReaderIndex = byteBuf.readerIndex();
+    int magic = byteBuf.readIntLE();
     if (magic == LZ4_MAGIC) {
-      byte flags = magicAndFlags.readByte();
+      byte flags = byteBuf.readByte();
       int contentSize = (flags >>> 3) & 1;
       if (contentSize == 1) {
-        return (int) byteBuf.slice(6, 8).readLongLE(); // 4 (magic) + 1 (flags) + 1 (bloc max size)
+        byteBuf.readByte(); // block size
+        long size = byteBuf.readLongLE();
+        byteBuf.readerIndex(initialReaderIndex);
+        return (int) size;
       } else {
-        return compressedLength;
+        byteBuf.readerIndex(initialReaderIndex);
+        return compressedLength * 2;
       }
     } else {
+      byteBuf.readerIndex(initialReaderIndex);
       throw new IllegalArgumentException(
           "Unsupported LZ4 frame, magic is not 0x184D2204: " + Integer.toHexString(magic));
     }
@@ -173,6 +178,7 @@ public final class CompressionUtils {
 
     @Override
     public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
+      //      return compressedLength * 2;
       return uncompressedLengthFromLz4Header(compressedLength, byteBuf);
     }
 
