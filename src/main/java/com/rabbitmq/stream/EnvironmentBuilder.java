@@ -99,6 +99,16 @@ public interface EnvironmentBuilder {
   EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
 
   /**
+   * Timeout for RPC calls.
+   *
+   * <p>Default is 10 seconds.
+   *
+   * @param timeout
+   * @return this builder instance
+   */
+  EnvironmentBuilder rpcTimeout(Duration timeout);
+
+  /**
    * The SASL configuration to use.
    *
    * @param saslConfiguration

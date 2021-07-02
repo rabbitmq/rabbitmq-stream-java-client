@@ -120,6 +120,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
+  @Override
+  public EnvironmentBuilder rpcTimeout(Duration timeout) {
+    this.clientParameters.rpcTimeout(timeout);
+    return this;
+  }
+
   public StreamEnvironmentBuilder saslConfiguration(SaslConfiguration saslConfiguration) {
     this.clientParameters.saslConfiguration(saslConfiguration);
     return this;

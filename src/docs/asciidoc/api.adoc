@@ -143,6 +143,10 @@ The following table sums up the main settings to create an `Environment`:
 |Virtual host to connect to.
 |`/`
 
+|`rpcTimeout`
+|Timeout for RPC calls.
+|`Duration.ofSeconds(10)`
+
 |`recoveryBackOffDelayPolicy`
 |Delay policy to use for backoff on connection recovery.
 |Fixed delay of 5 seconds
