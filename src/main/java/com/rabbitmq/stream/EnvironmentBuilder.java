@@ -105,6 +105,16 @@ public interface EnvironmentBuilder {
   EnvironmentBuilder compressionCodecFactory(CompressionCodecFactory compressionCodecFactory);
 
   /**
+   * Timeout for RPC calls.
+   *
+   * <p>Default is 10 seconds.
+   *
+   * @param timeout
+   * @return this builder instance
+   */
+  EnvironmentBuilder rpcTimeout(Duration timeout);
+
+  /**
    * The SASL configuration to use.
    *
    * @param saslConfiguration

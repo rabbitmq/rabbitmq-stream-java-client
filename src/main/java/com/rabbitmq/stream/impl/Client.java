@@ -148,7 +148,7 @@ public class Client implements AutoCloseable {
   static final String NETTY_HANDLER_FRAME_DECODER =
       LengthFieldBasedFrameDecoder.class.getSimpleName();
   static final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
-  private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(10);
+  static final Duration DEFAULT_RPC_TIMEOUT = Duration.ofSeconds(10);
   private static final PublishConfirmListener NO_OP_PUBLISH_CONFIRM_LISTENER =
       (publisherId, publishingId) -> {};
   private static final PublishErrorListener NO_OP_PUBLISH_ERROR_LISTENER =
@@ -170,6 +170,7 @@ public class Client implements AutoCloseable {
   final AtomicBoolean closing = new AtomicBoolean(false);
   final ChunkChecksum chunkChecksum;
   final MetricsCollector metricsCollector;
+  final CompressionCodecFactory compressionCodecFactory;
   private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
   private final ToLongFunction<Object> publishSequenceFunction =
       new ToLongFunction<Object>() {
@@ -196,8 +197,8 @@ public class Client implements AutoCloseable {
   private final int port;
   private final Map<String, String> serverProperties;
   private final Map<String, String> connectionProperties;
+  private final Duration rpcTimeout;
   private volatile ShutdownReason shutdownReason = null;
-  final CompressionCodecFactory compressionCodecFactory;
 
   public Client() {
     this(new ClientParameters());
@@ -219,6 +220,7 @@ public class Client implements AutoCloseable {
         parameters.compressionCodecFactory == null
             ? compression -> null
             : parameters.compressionCodecFactory;
+    this.rpcTimeout = parameters.rpcTimeout == null ? DEFAULT_RPC_TIMEOUT : parameters.rpcTimeout;
     final ShutdownListener shutdownListener = parameters.shutdownListener;
     final AtomicBoolean started = new AtomicBoolean(false);
     this.shutdownListenerCallback =
@@ -377,7 +379,7 @@ public class Client implements AutoCloseable {
             .writeShort(entry.getValue().length())
             .writeBytes(entry.getValue().getBytes(StandardCharsets.UTF_8));
       }
-      OutstandingRequest<Map<String, String>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<Map<String, String>> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -445,7 +447,7 @@ public class Client implements AutoCloseable {
         bb.writeInt(challengeResponse.length).writeBytes(challengeResponse);
       }
       OutstandingRequest<SaslAuthenticateResponse> request =
-          new OutstandingRequest<>(RESPONSE_TIMEOUT);
+          new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -467,7 +469,7 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(virtualHost.length());
       bb.writeBytes(virtualHost.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<OpenResponse> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<OpenResponse> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -509,7 +511,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(code);
       bb.writeShort(reason.length());
       bb.writeBytes(reason.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -536,7 +538,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_SASL_HANDSHAKE));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      OutstandingRequest<List<String>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<List<String>> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -572,7 +574,7 @@ public class Client implements AutoCloseable {
         bb.writeShort(argument.getValue().length());
         bb.writeBytes(argument.getValue().getBytes(StandardCharsets.UTF_8));
       }
-      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -617,7 +619,7 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -650,7 +652,7 @@ public class Client implements AutoCloseable {
         bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
       }
       OutstandingRequest<Map<String, StreamMetadata>> request =
-          new OutstandingRequest<>(RESPONSE_TIMEOUT);
+          new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -685,7 +687,7 @@ public class Client implements AutoCloseable {
       }
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -706,7 +708,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(publisherId);
-      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -1037,7 +1039,7 @@ public class Client implements AutoCloseable {
               .writeBytes(entry.getValue().getBytes(StandardCharsets.UTF_8));
         }
       }
-      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       if (offsetSpecification.isOffset()) {
         subscriptionOffsets.add(
@@ -1094,7 +1096,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(reference.getBytes(StandardCharsets.UTF_8));
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<QueryOffsetResponse> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<QueryOffsetResponse> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -1133,7 +1135,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
       OutstandingRequest<QueryPublisherSequenceResponse> request =
-          new OutstandingRequest<>(RESPONSE_TIMEOUT);
+          new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -1158,7 +1160,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(subscriptionId);
-      OutstandingRequest<Response> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -1259,7 +1261,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(routingKey.getBytes(StandardCharsets.UTF_8));
       bb.writeShort(superStream.length());
       bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<String> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<String> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -1285,7 +1287,7 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(superStream.length());
       bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<List<String>> request = new OutstandingRequest<>(RESPONSE_TIMEOUT);
+      OutstandingRequest<List<String>> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -1327,6 +1329,11 @@ public class Client implements AutoCloseable {
               + this.connectionProperties
               + ".");
     }
+  }
+
+  private EncodedMessageBatch createEncodedMessageBatch(Compression compression, int batchSize) {
+    return EncodedMessageBatch.create(
+        channel.alloc(), compression.code(), compressionCodecFactory.get(compression), batchSize);
   }
 
   public interface OutboundEntityMappingCallback {
@@ -1387,11 +1394,6 @@ public class Client implements AutoCloseable {
   public interface ShutdownListener {
 
     void handle(ShutdownContext shutdownContext);
-  }
-
-  private EncodedMessageBatch createEncodedMessageBatch(Compression compression, int batchSize) {
-    return EncodedMessageBatch.create(
-        channel.alloc(), compression.code(), compressionCodecFactory.get(compression), batchSize);
   }
 
   interface EncodedMessageBatch {
@@ -1880,6 +1882,7 @@ public class Client implements AutoCloseable {
     Codec codec;
     String host = "localhost";
     int port = DEFAULT_PORT;
+    CompressionCodecFactory compressionCodecFactory;
     private String virtualHost = "/";
     private Duration requestedHeartbeat = Duration.ofSeconds(60);
     private int requestedMaxFrameSize = 1048576;
@@ -1887,11 +1890,8 @@ public class Client implements AutoCloseable {
     private PublishErrorListener publishErrorListener = NO_OP_PUBLISH_ERROR_LISTENER;
     private ChunkListener chunkListener =
         (client, correlationId, offset, messageCount, dataSize) -> {};
-
     private MessageListener messageListener = (correlationId, offset, message) -> {};
-
     private MetadataListener metadataListener = (stream, code) -> {};
-
     private CreditNotification creditNotification =
         (subscriptionId, responseCode) ->
             LOGGER.warn(
@@ -1899,7 +1899,6 @@ public class Client implements AutoCloseable {
                 subscriptionId,
                 Utils.formatConstant(responseCode));
     private ShutdownListener shutdownListener = shutdownContext -> {};
-
     private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
     private CredentialsProvider credentialsProvider =
         new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
@@ -1908,8 +1907,8 @@ public class Client implements AutoCloseable {
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
     private boolean tlsHostnameVerification = true;
-    CompressionCodecFactory compressionCodecFactory;
     private ByteBufAllocator byteBufAllocator;
+    private Duration rpcTimeout;
 
     public ClientParameters host(String host) {
       this.host = host;
@@ -2061,6 +2060,11 @@ public class Client implements AutoCloseable {
     public ClientParameters compressionCodecFactory(
         CompressionCodecFactory compressionCodecFactory) {
       this.compressionCodecFactory = compressionCodecFactory;
+      return this;
+    }
+
+    public ClientParameters rpcTimeout(Duration rpcTimeout) {
+      this.rpcTimeout = rpcTimeout;
       return this;
     }
 
