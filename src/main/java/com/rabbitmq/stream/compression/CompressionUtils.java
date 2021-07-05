@@ -15,7 +15,6 @@ import net.jpountz.lz4.LZ4FrameInputStream;
 import net.jpountz.lz4.LZ4FrameOutputStream;
 import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE;
 import net.jpountz.lz4.LZ4FrameOutputStream.FLG;
-import net.jpountz.lz4.LZ4FrameOutputStream.FLG.Bits;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.apache.commons.compress.compressors.lz4.FramedLZ4CompressorInputStream;
@@ -33,31 +32,7 @@ import org.xerial.snappy.SnappyFramedOutputStream;
 
 public final class CompressionUtils {
 
-  private static final int LZ4_MAGIC = 0x184D2204;
-
   private CompressionUtils() {}
-
-  private static int uncompressedLengthFromLz4Header(int compressedLength, ByteBuf byteBuf) {
-    int initialReaderIndex = byteBuf.readerIndex();
-    int magic = byteBuf.readIntLE();
-    if (magic == LZ4_MAGIC) {
-      byte flags = byteBuf.readByte();
-      int contentSize = (flags >>> 3) & 1;
-      if (contentSize == 1) {
-        byteBuf.readByte(); // block size
-        long size = byteBuf.readLongLE();
-        byteBuf.readerIndex(initialReaderIndex);
-        return (int) size;
-      } else {
-        byteBuf.readerIndex(initialReaderIndex);
-        return compressedLength * 2;
-      }
-    } else {
-      byteBuf.readerIndex(initialReaderIndex);
-      throw new IllegalArgumentException(
-          "Unsupported LZ4 frame, magic is not 0x184D2204: " + Integer.toHexString(magic));
-    }
-  }
 
   public static class GzipCompressionCodec implements CompressionCodec {
 
@@ -67,7 +42,7 @@ public final class CompressionUtils {
     }
 
     @Override
-    public OutputStream compress(int uncompressedSize, ByteBuf byteBuf) {
+    public OutputStream compress(ByteBuf byteBuf) {
       try {
         return new GZIPOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
@@ -82,11 +57,6 @@ public final class CompressionUtils {
       } catch (IOException e) {
         throw new CompressionException("Error while creating GZIP compression input stream", e);
       }
-    }
-
-    @Override
-    public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
-      return compressedLength * 2;
     }
 
     @Override
@@ -108,7 +78,7 @@ public final class CompressionUtils {
     }
 
     @Override
-    public OutputStream compress(int uncompressedSize, ByteBuf byteBuf) {
+    public OutputStream compress(ByteBuf byteBuf) {
       try {
         return new ZstdOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
@@ -126,13 +96,6 @@ public final class CompressionUtils {
     }
 
     @Override
-    public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
-      // FIXME peek into the header and extract the uncompressed content length if available.
-      // the Zstd JNI library does not allow to set the content length in the header currently
-      return compressedLength * 2;
-    }
-
-    @Override
     public byte code() {
       return Compression.ZSTD.code;
     }
@@ -145,8 +108,7 @@ public final class CompressionUtils {
 
   public static class Lz4JavaCompressionCodec implements CompressionCodec {
 
-    private static final FLG.Bits[] DEFAULT_FEATURES =
-        new FLG.Bits[] {FLG.Bits.BLOCK_INDEPENDENCE, Bits.CONTENT_SIZE};
+    private static final FLG.Bits[] DEFAULT_FEATURES = new FLG.Bits[] {FLG.Bits.BLOCK_INDEPENDENCE};
 
     @Override
     public int maxCompressedLength(int sourceLength) {
@@ -155,13 +117,10 @@ public final class CompressionUtils {
     }
 
     @Override
-    public OutputStream compress(int uncompressedSize, ByteBuf byteBuf) {
+    public OutputStream compress(ByteBuf byteBuf) {
       try {
         return new LZ4FrameOutputStream(
-            new ByteBufOutputStream(byteBuf),
-            BLOCKSIZE.SIZE_64KB,
-            uncompressedSize,
-            DEFAULT_FEATURES);
+            new ByteBufOutputStream(byteBuf), BLOCKSIZE.SIZE_64KB, DEFAULT_FEATURES);
       } catch (IOException e) {
         throw new CompressionException("Error while creating LZ4 compression output stream", e);
       }
@@ -174,12 +133,6 @@ public final class CompressionUtils {
       } catch (IOException e) {
         throw new CompressionException("Error while creating LZ4 compression input stream", e);
       }
-    }
-
-    @Override
-    public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
-      //      return compressedLength * 2;
-      return uncompressedLengthFromLz4Header(compressedLength, byteBuf);
     }
 
     @Override
@@ -201,7 +154,7 @@ public final class CompressionUtils {
     }
 
     @Override
-    public OutputStream compress(int uncompressedSize, ByteBuf byteBuf) {
+    public OutputStream compress(ByteBuf byteBuf) {
       try {
         return new SnappyFramedOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
@@ -216,11 +169,6 @@ public final class CompressionUtils {
       } catch (IOException e) {
         throw new CompressionException("Error while creating snappy compression input stream", e);
       }
-    }
-
-    @Override
-    public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
-      return compressedLength * 2;
     }
 
     @Override
@@ -242,7 +190,7 @@ public final class CompressionUtils {
     }
 
     @Override
-    public OutputStream compress(int uncompressedLength, ByteBuf byteBuf) {
+    public OutputStream compress(ByteBuf byteBuf) {
       try {
         return new GzipCompressorOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
@@ -257,11 +205,6 @@ public final class CompressionUtils {
       } catch (IOException e) {
         throw new CompressionException("Error while creating GZIP compression input stream", e);
       }
-    }
-
-    @Override
-    public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
-      return compressedLength * 2;
     }
 
     @Override
@@ -284,7 +227,7 @@ public final class CompressionUtils {
     }
 
     @Override
-    public OutputStream compress(int uncompressedLength, ByteBuf byteBuf) {
+    public OutputStream compress(ByteBuf byteBuf) {
       try {
         return new FramedSnappyCompressorOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
@@ -302,11 +245,6 @@ public final class CompressionUtils {
       } catch (IOException e) {
         throw new CompressionException("Error while creating Snappy compression input stream", e);
       }
-    }
-
-    @Override
-    public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
-      return compressedLength * 2;
     }
 
     @Override
@@ -331,7 +269,7 @@ public final class CompressionUtils {
     }
 
     @Override
-    public OutputStream compress(int uncompressedLength, ByteBuf byteBuf) {
+    public OutputStream compress(ByteBuf byteBuf) {
       try {
         return new FramedLZ4CompressorOutputStream(new ByteBufOutputStream(byteBuf), DEFAULT);
       } catch (IOException e) {
@@ -346,11 +284,6 @@ public final class CompressionUtils {
       } catch (IOException e) {
         throw new CompressionException("Error while creating LZ4 compression input stream", e);
       }
-    }
-
-    @Override
-    public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
-      return uncompressedLengthFromLz4Header(compressedLength, byteBuf);
     }
 
     @Override
@@ -372,7 +305,7 @@ public final class CompressionUtils {
     }
 
     @Override
-    public OutputStream compress(int uncompressedLength, ByteBuf byteBuf) {
+    public OutputStream compress(ByteBuf byteBuf) {
       try {
         return new ZstdCompressorOutputStream(new ByteBufOutputStream(byteBuf));
       } catch (IOException e) {
@@ -387,13 +320,6 @@ public final class CompressionUtils {
       } catch (IOException e) {
         throw new CompressionException("Error while creating Zstd compression input stream", e);
       }
-    }
-
-    @Override
-    public int uncompressedLength(int compressedLength, ByteBuf byteBuf) {
-      // FIXME peek into the header and extract the uncompressed content length if available.
-      // the Zstd JNI library does not allow to set the content length in the header currently
-      return compressedLength * 2;
     }
 
     @Override

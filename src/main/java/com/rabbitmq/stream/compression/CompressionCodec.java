@@ -22,11 +22,9 @@ public interface CompressionCodec {
 
   int maxCompressedLength(int sourceLength);
 
-  OutputStream compress(int uncompressedLength, ByteBuf byteBuf);
+  OutputStream compress(ByteBuf byteBuf);
 
   InputStream decompress(ByteBuf byteBuf);
-
-  int uncompressedLength(int compressedLength, ByteBuf byteBuf);
 
   byte code();
 }

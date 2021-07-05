@@ -117,7 +117,7 @@ public class SubEntryBatchingTest {
                         })
                     .metricsCollector(metricsCollector));
 
-        response = consumer.subscribe(b(1), s, OffsetSpecification.first(), 10);
+        response = consumer.subscribe(b(1), s, OffsetSpecification.first(), 2);
         assertThat(response.isOk()).isTrue();
 
         assertThat(latchAssert(consumeLatch)).completes();
@@ -195,7 +195,7 @@ public class SubEntryBatchingTest {
                             consumeLatch.countDown();
                           }));
 
-          Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
+          Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 2);
           assertThat(response.isOk()).isTrue();
           assertThat(latchAssert(consumeLatch)).completes();
           assertThat(consumedBodies).hasSize(messageCount).hasSameSizeAs(publishedBodies);

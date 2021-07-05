@@ -1420,6 +1420,8 @@ public class Client implements AutoCloseable {
 
     int sizeInBytes();
 
+    int uncompressedSizeInBytes();
+
     byte compression();
   }
 
@@ -1495,6 +1497,11 @@ public class Client implements AutoCloseable {
     }
 
     @Override
+    public int uncompressedSizeInBytes() {
+      return this.size;
+    }
+
+    @Override
     public byte compression() {
       return Compression.NONE.code();
     }
@@ -1536,8 +1543,7 @@ public class Client implements AutoCloseable {
     public void close() {
       int maxCompressedLength = codec.maxCompressedLength(this.uncompressedByteSize);
       this.buffer = allocator.buffer(maxCompressedLength);
-      //      System.out.println("before compression " + this.uncompressedByteSize);
-      OutputStream outputStream = this.codec.compress(this.uncompressedByteSize, buffer);
+      OutputStream outputStream = this.codec.compress(buffer);
       try {
         for (int i = 0; i < messages.size(); i++) {
           final int size = messages.get(i).getSize();
@@ -1549,7 +1555,6 @@ public class Client implements AutoCloseable {
         }
         outputStream.flush();
         outputStream.close();
-        //        System.out.println("written compressed " + buffer.readableBytes());
       } catch (IOException e) {
         throw new StreamException("Error while closing compressing output stream", e);
       }
@@ -1569,6 +1574,11 @@ public class Client implements AutoCloseable {
     @Override
     public int sizeInBytes() {
       return this.buffer.writerIndex();
+    }
+
+    @Override
+    public int uncompressedSizeInBytes() {
+      return this.uncompressedByteSize;
     }
 
     @Override
@@ -1603,6 +1613,7 @@ public class Client implements AutoCloseable {
               | batchToPublish.compression()
                   << 4); // 1=SubBatchEntryType:1,CompressionType:3,Reserved:4,
       bb.writeShort(batchToPublish.batchSize());
+      bb.writeInt(batchToPublish.uncompressedSizeInBytes());
       bb.writeInt(batchToPublish.sizeInBytes());
       batchToPublish.write(bb);
       return batchToPublish.batchSize();
@@ -1614,8 +1625,10 @@ public class Client implements AutoCloseable {
           + 1
           + 2
           + 4
+          + 4
           + ((EncodedMessageBatch) entity)
-              .sizeInBytes()); // publish ID + info byte + message count + data size
+              .sizeInBytes()); // publish ID + info byte + message count + uncompressed data size +
+      // data size
     }
   }
 

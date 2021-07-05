@@ -382,20 +382,20 @@ class ServerFrameHandler {
           Compression comp = Compression.get(compression);
           int numRecordsInBatch = message.readUnsignedShort();
           read += 2;
-          int dataSize = message.readInt(); // batch size, does not need it
+          int uncompressedDataSize = message.readInt();
+          read += 4;
+          int dataSize = message.readInt();
           read += 4;
 
           int readBeforeSubEntries = read;
           ByteBuf bbToReadFrom = message;
           if (comp.code() != Compression.NONE.code()) {
             CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
-            int uncompressedSizeHint = compressionCodec.uncompressedLength(dataSize, message);
-            ByteBuf outBb = client.channel.alloc().buffer(uncompressedSizeHint);
+            ByteBuf outBb = client.channel.alloc().heapBuffer(uncompressedDataSize);
             ByteBuf slice = message.slice(message.readerIndex(), dataSize);
             InputStream inputStream = compressionCodec.decompress(slice);
-            // FIXME transfer into byte buf more efficiently
-            byte[] inBuffer = new byte[uncompressedSizeHint];
-            int n = 0;
+            byte[] inBuffer = new byte[uncompressedDataSize < 1024 ? uncompressedDataSize : 1024];
+            int n;
             try {
               while (-1 != (n = inputStream.read(inBuffer))) {
                 outBb.writeBytes(inBuffer, 0, n);
