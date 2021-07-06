@@ -14,7 +14,15 @@
 
 package com.rabbitmq.stream.compression;
 
+/**
+ * Factory to create {@link CompressionCodec} instances.
+ */
 public interface CompressionCodecFactory {
 
+  /**
+   * Get a compression codec for a given type of compression.
+   * @param compression the type of compression codec
+   * @return the appropriate compression codec
+   */
   CompressionCodec get(Compression compression);
 }

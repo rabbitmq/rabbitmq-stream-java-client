@@ -30,6 +30,9 @@ import org.xerial.snappy.Snappy;
 import org.xerial.snappy.SnappyFramedInputStream;
 import org.xerial.snappy.SnappyFramedOutputStream;
 
+/**
+ * Implementation of {@link CompressionCodec}s.
+ */
 public final class CompressionUtils {
 
   private CompressionUtils() {}

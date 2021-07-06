@@ -18,13 +18,37 @@ import io.netty.buffer.ByteBuf;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+/** Codec to compress and decompress sub-entries. */
 public interface CompressionCodec {
 
+  /**
+   * Provides the maximum compressed size from the source length.
+   *
+   * @param sourceLength size of plain, uncompressed data
+   * @return maximum compressed size
+   */
   int maxCompressedLength(int sourceLength);
 
-  OutputStream compress(ByteBuf byteBuf);
+  /**
+   * Creates an {@link OutputStream} to compress data.
+   *
+   * @param target {@link ByteBuf} to write compressed data to
+   * @return output stream to write plain data to
+   */
+  OutputStream compress(ByteBuf target);
 
-  InputStream decompress(ByteBuf byteBuf);
+  /**
+   * Creates an {@link InputStream} to read decompressed data from.
+   *
+   * @param source the {@link ByteBuf} to read compressed from
+   * @return input stream to read decompressed from
+   */
+  InputStream decompress(ByteBuf source);
 
+  /**
+   * Return the code for this type of codec.
+   *
+   * @return compression code
+   */
   byte code();
 }

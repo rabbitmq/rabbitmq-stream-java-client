@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.compression;
 
+/** Enum to define types of compression codecs. */
 public enum Compression {
   NONE((byte) 0),
   GZIP((byte) 1),
@@ -29,11 +30,11 @@ public enum Compression {
     this.code = code;
   }
 
-  public byte code() {
-    return this.code;
-  }
-
   public static Compression get(byte code) {
     return COMPRESSIONS[code];
+  }
+
+  public byte code() {
+    return this.code;
   }
 }
