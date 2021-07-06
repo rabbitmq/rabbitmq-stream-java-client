@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(d00b0fb)</span>
+<br><span id="revremark">(ca9884f)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -452,6 +452,8 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#other-way-to-use-streams-in-rabbitmq">Other Way to Use Streams in RabbitMQ</a></li>
 <li><a href="#guarantees">Guarantees</a></li>
 <li><a href="#stream-client-overview">Stream Client Overview</a></li>
+<li><a href="#versioning">Versioning</a></li>
+<li><a href="#stability-of-programming-interfaces">Stability of Programming Interfaces</a></li>
 <li><a href="#the-stream-java-client">The Stream Java Client</a>
 <ul class="sectlevel2">
 <li><a href="#setting-up-rabbitmq">Setting up RabbitMQ</a>
@@ -687,6 +689,57 @@ connections depending on the number of publishers and consumers.</p>
 <li>
 <p><em>let the client handle network failure</em> thanks to automatic connection
 recovery and automatic re-subscription for consumers.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="versioning"><a class="anchor" href="#versioning"></a>Versioning</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The RabbitMQ Stream Java Client is in development and stabilization phase.
+When the stabilization phase ends, a 1.0.0 version will be cut, and
+<a href="https://semver.org/">semantic versioning</a> is likely to be enforced.</p>
+</div>
+<div class="paragraph">
+<p>Before reaching the stable phase, the client will use a versioning scheme of <code>[0.MINOR.PATCH]</code> where:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>0</code> indicates the project is still in a stabilization phase.</p>
+</li>
+<li>
+<p><code>MINOR</code> is a 0-based number incrementing with each new release cycle. It generally reflects significant changes like new features and potentially some programming interfaces changes.</p>
+</li>
+<li>
+<p><code>PATCH</code> is a 0-based number incrementing with each service release, that is bux fixes.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Breaking changes between releases can happen but will be kept to a minimum.
+The next section provides more details about the evolution of programming interfaces.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="stability-of-programming-interfaces"><a class="anchor" href="#stability-of-programming-interfaces"></a>Stability of Programming Interfaces</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The RabbitMQ Stream Java Client is in active development but its programming interfaces will remain as stable as possible. There is no guarantee though that they will remain completely stable, at least until it reaches version 1.0.0.</p>
+</div>
+<div class="paragraph">
+<p>The client contains 2 sets of programming interfaces whose stability are of interest for application developers:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Application Programming Interfaces (API): those are the ones used to write application logic. They include the interfaces and classes in the <code>com.rabbitmq.stream</code> package (e.g. <code>Producer</code>, <code>Consumer</code>, <code>Message</code>). These API constitute the main programming model of the client and will be kept as stable as possible.</p>
+</li>
+<li>
+<p>Service Provider Interfaces (SPI): those are interfaces to implement mainly technical behavior in the client. They are not meant to be used to implement application logic. Application developers may have to refer to them in the configuration phase and if they want to custom some internal behavior in the client. SPI include interfaces and classes in the <code>com.rabbitmq.stream.codec</code>, <code>com.rabbitmq.stream.compression</code>, <code>com.rabbitmq.stream.metrics</code> packages, among others. <em>These SPI are susceptible to change, but this should not impact the majority of applications</em>, as the changes would typically stay intern to the client.</p>
 </li>
 </ul>
 </div>
@@ -3284,7 +3337,7 @@ tracking consumers would ignore the specified offset and would start where they 
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-07-06 12:44:04 UTC
+Last updated 2021-07-06 14:22:39 UTC
 </div>
 </div>
 <style>
