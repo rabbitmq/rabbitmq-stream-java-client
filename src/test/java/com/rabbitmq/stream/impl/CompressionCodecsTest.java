@@ -30,6 +30,7 @@ import com.rabbitmq.stream.impl.Client.CompressedEncodedMessageBatch;
 import com.rabbitmq.stream.impl.Client.EncodedMessageBatch;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.ByteBufInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -98,7 +99,7 @@ public class CompressionCodecsTest {
 
     ByteBuf outBb = allocator.buffer(plainSize);
     destinationBb.readerIndex(0);
-    InputStream inputStream = decompressionCodec.decompress(destinationBb);
+    InputStream inputStream = decompressionCodec.decompress(new ByteBufInputStream(destinationBb));
     int n;
     while (-1 != (n = inputStream.read())) {
       outBb.writeByte(n);

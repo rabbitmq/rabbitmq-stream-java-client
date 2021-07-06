@@ -64,6 +64,7 @@ import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.timeout.IdleStateHandler;
 import java.io.IOException;
@@ -393,7 +394,7 @@ class ServerFrameHandler {
             CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
             ByteBuf outBb = client.channel.alloc().heapBuffer(uncompressedDataSize);
             ByteBuf slice = message.slice(message.readerIndex(), dataSize);
-            InputStream inputStream = compressionCodec.decompress(slice);
+            InputStream inputStream = compressionCodec.decompress(new ByteBufInputStream(slice));
             byte[] inBuffer = new byte[uncompressedDataSize < 1024 ? uncompressedDataSize : 1024];
             int n;
             try {

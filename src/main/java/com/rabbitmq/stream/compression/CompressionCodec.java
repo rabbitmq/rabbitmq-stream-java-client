@@ -14,7 +14,6 @@
 
 package com.rabbitmq.stream.compression;
 
-import io.netty.buffer.ByteBuf;
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -32,18 +31,18 @@ public interface CompressionCodec {
   /**
    * Creates an {@link OutputStream} to compress data.
    *
-   * @param target {@link ByteBuf} to write compressed data to
+   * @param target the stream where compressed data will end up
    * @return output stream to write plain data to
    */
-  OutputStream compress(ByteBuf target);
+  OutputStream compress(OutputStream target);
 
   /**
    * Creates an {@link InputStream} to read decompressed data from.
    *
-   * @param source the {@link ByteBuf} to read compressed from
-   * @return input stream to read decompressed from
+   * @param source the stream to read compressed data from
+   * @return input stream to read decompressed data from
    */
-  InputStream decompress(ByteBuf source);
+  InputStream decompress(InputStream source);
 
   /**
    * Return the code for this type of codec.

@@ -73,6 +73,7 @@ import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.ByteBufOutputStream;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -1543,7 +1544,7 @@ public class Client implements AutoCloseable {
     public void close() {
       int maxCompressedLength = codec.maxCompressedLength(this.uncompressedByteSize);
       this.buffer = allocator.buffer(maxCompressedLength);
-      OutputStream outputStream = this.codec.compress(buffer);
+      OutputStream outputStream = this.codec.compress(new ByteBufOutputStream(buffer));
       try {
         for (int i = 0; i < messages.size(); i++) {
           final int size = messages.get(i).getSize();

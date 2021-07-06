@@ -17,6 +17,8 @@ package com.rabbitmq.stream.benchmark;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.ByteBufOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -87,7 +89,7 @@ public class CompressDecompressBenchmark {
 
     int maxCompressedLength = codec.maxCompressedLength(plainData.length);
     ByteBuf bb = allocator.heapBuffer(maxCompressedLength);
-    OutputStream compress = codec.compress(bb);
+    OutputStream compress = codec.compress(new ByteBufOutputStream(bb));
     compress.write(plainData);
     compress.flush();
     compress.close();
@@ -102,7 +104,7 @@ public class CompressDecompressBenchmark {
   public void compress() throws Exception {
     int maxCompressedLength = codec.maxCompressedLength(plainData.length);
     ByteBuf bb = allocator.buffer(maxCompressedLength);
-    OutputStream compress = codec.compress(bb);
+    OutputStream compress = codec.compress(new ByteBufOutputStream(bb));
     compress.write(plainData);
     compress.flush();
     compress.close();
@@ -113,7 +115,7 @@ public class CompressDecompressBenchmark {
   public void decodeReadBytePerByte() throws Exception {
     compressedDataBb.readerIndex(0);
     ByteBuf outBb = allocator.buffer(compressedData.length);
-    InputStream inputStream = codec.decompress(compressedDataBb);
+    InputStream inputStream = codec.decompress(new ByteBufInputStream(compressedDataBb));
     int n;
     while (-1 != (n = inputStream.read())) {
       outBb.writeByte(n);
@@ -134,7 +136,7 @@ public class CompressDecompressBenchmark {
   @Benchmark
   public void decodePreAllocatedArray() throws Exception {
     compressedDataBb.readerIndex(0);
-    InputStream inputStream = codec.decompress(compressedDataBb);
+    InputStream inputStream = codec.decompress(new ByteBufInputStream(compressedDataBb));
     ByteBuf outBb = allocator.buffer(plainData.length);
     byte[] inBuffer = new byte[compressedData.length];
     int n;
@@ -157,7 +159,7 @@ public class CompressDecompressBenchmark {
   @Benchmark
   public void decodeWriteInPreAllocatedHeapByteBuf() throws Exception {
     compressedDataBb.readerIndex(0);
-    InputStream inputStream = codec.decompress(compressedDataBb);
+    InputStream inputStream = codec.decompress(new ByteBufInputStream(compressedDataBb));
     ByteBuf outBb = allocator.heapBuffer(plainData.length);
     inputStream.read(outBb.array(), 0, plainData.length);
 
