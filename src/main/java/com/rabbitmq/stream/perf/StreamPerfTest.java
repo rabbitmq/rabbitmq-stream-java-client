@@ -34,6 +34,7 @@ import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
+import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
@@ -179,6 +180,14 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "1",
       converter = Utils.PositiveIntegerTypeConverter.class)
   private int subEntrySize;
+
+  @CommandLine.Option(
+      names = {"--compression", "-co"},
+      description =
+          "compression codec to use for sub-entries. Values: none, gzip, snappy, lz4, zstd.",
+      defaultValue = "none",
+      converter = Utils.CompressionTypeConverter.class)
+  private Compression compression;
 
   @CommandLine.Option(
       names = {"--codec", "-cc"},
@@ -513,6 +522,8 @@ public class StreamPerfTest implements Callable<Integer> {
                           .producerBuilder()
                           .subEntrySize(this.subEntrySize)
                           .batchSize(this.batchSize)
+                          .compression(
+                              this.compression == Compression.NONE ? null : this.compression)
                           .maxUnconfirmedMessages(this.confirms)
                           .stream(stream)
                           .build();
@@ -523,7 +534,6 @@ public class StreamPerfTest implements Callable<Integer> {
                       () -> {
                         final int msgSize = this.messageSize;
 
-                        // FIXME do not increment producer confirm in case of publish error
                         ConfirmationHandler confirmationHandler =
                             confirmationStatus -> {
                               if (confirmationStatus.isConfirmed()) {

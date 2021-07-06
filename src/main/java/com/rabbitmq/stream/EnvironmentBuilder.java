@@ -14,9 +14,11 @@
 
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -97,6 +99,10 @@ public interface EnvironmentBuilder {
    * @return this builder instance
    */
   EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
+
+  EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator);
+
+  EnvironmentBuilder compressionCodecFactory(CompressionCodecFactory compressionCodecFactory);
 
   /**
    * Timeout for RPC calls.

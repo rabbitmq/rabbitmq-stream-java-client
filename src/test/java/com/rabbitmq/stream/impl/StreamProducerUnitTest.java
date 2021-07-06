@@ -28,6 +28,7 @@ import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.SimpleCodec;
+import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client.OutboundEntityWriteCallback;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -167,6 +168,7 @@ public class StreamProducerUnitTest {
             "stream",
             subEntrySize,
             10,
+            Compression.NONE,
             Duration.ofMillis(100),
             messageCount * 10,
             confirmTimeout,
@@ -206,6 +208,7 @@ public class StreamProducerUnitTest {
             "stream",
             subEntrySize,
             10,
+            Compression.NONE,
             Duration.ZERO,
             2,
             Duration.ofMinutes(1),
@@ -243,6 +246,7 @@ public class StreamProducerUnitTest {
             "stream",
             subEntrySize,
             10,
+            Compression.NONE,
             Duration.ZERO,
             2,
             Duration.ofMinutes(1),

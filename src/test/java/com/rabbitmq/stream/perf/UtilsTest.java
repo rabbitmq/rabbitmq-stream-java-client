@@ -21,11 +21,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.params.provider.Arguments.of;
 
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.perf.Utils.CompressionTypeConverter;
 import com.rabbitmq.stream.perf.Utils.PatternConsumerNameStrategy;
 import com.rabbitmq.stream.perf.Utils.RangeTypeConverter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
 import java.util.function.BiFunction;
 import java.util.stream.IntStream;
@@ -38,11 +41,14 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import picocli.CommandLine;
+import picocli.CommandLine.TypeConversionException;
 
 public class UtilsTest {
 
   CommandLine.ITypeConverter<OffsetSpecification> offsetSpecificationConverter =
       new Utils.OffsetSpecificationTypeConverter();
+
+  CompressionTypeConverter compressionTypeConverter = new CompressionTypeConverter();
 
   static Stream<Arguments> offsetSpecificationTypeConverterOkArguments() {
     return Stream.of(
@@ -108,6 +114,25 @@ public class UtilsTest {
   void offsetSpecificationTypeConverterKo(String value) {
     assertThatThrownBy(() -> offsetSpecificationConverter.convert(value))
         .isInstanceOf(CommandLine.TypeConversionException.class);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "none", "gzip", "snappy", "lz4", "zstd",
+        "NONE", "GZIP", "SNAPPY", "LZ4", "ZSTD"
+      })
+  void compressionTypeConverterOk(String value) {
+    assertThat(compressionTypeConverter.convert(value))
+        .isEqualTo(Compression.valueOf(value.toUpperCase(Locale.ENGLISH)));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "foo", "bar"})
+  void compressionTypeConverterKo(String value) {
+    assertThatThrownBy(() -> compressionTypeConverter.convert(value))
+        .isInstanceOf(TypeConversionException.class)
+        .hasMessageContaining("Accepted values are none, gzip, snappy, lz4, zstd");
   }
 
   @ParameterizedTest

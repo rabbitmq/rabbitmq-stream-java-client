@@ -49,6 +49,7 @@ import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Codec.EncodedMessage;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
@@ -56,6 +57,9 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.CompressionCodec;
+import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.metrics.MetricsCollector;
@@ -69,7 +73,6 @@ import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -90,6 +93,8 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -140,13 +145,14 @@ public class Client implements AutoCloseable {
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
       new OutboundMessageBatchWriteCallback();
+  static final String NETTY_HANDLER_FRAME_DECODER =
+      LengthFieldBasedFrameDecoder.class.getSimpleName();
+  static final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
   static final Duration DEFAULT_RPC_TIMEOUT = Duration.ofSeconds(10);
   private static final PublishConfirmListener NO_OP_PUBLISH_CONFIRM_LISTENER =
       (publisherId, publishingId) -> {};
-
   private static final PublishErrorListener NO_OP_PUBLISH_ERROR_LISTENER =
       (publisherId, publishingId, errorCode) -> {};
-
   private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
   final PublishConfirmListener publishConfirmListener;
   final PublishErrorListener publishErrorListener;
@@ -154,9 +160,18 @@ public class Client implements AutoCloseable {
   final MessageListener messageListener;
   final CreditNotification creditNotification;
   final MetadataListener metadataListener;
-  private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
   final Codec codec;
   final Channel channel;
+  final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
+      new ConcurrentHashMap<>();
+  final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
+  final ExecutorService executorService;
+  final TuneState tuneState;
+  final AtomicBoolean closing = new AtomicBoolean(false);
+  final ChunkChecksum chunkChecksum;
+  final MetricsCollector metricsCollector;
+  final CompressionCodecFactory compressionCodecFactory;
+  private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
   private final ToLongFunction<Object> publishSequenceFunction =
       new ToLongFunction<Object>() {
         private final AtomicLong publishSequence = new AtomicLong(0);
@@ -167,34 +182,23 @@ public class Client implements AutoCloseable {
         }
       };
   private final AtomicInteger correlationSequence = new AtomicInteger(0);
-  final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
-      new ConcurrentHashMap<>();
-  final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
-  final ExecutorService executorService;
   private final Runnable executorServiceClosing;
   private final SaslConfiguration saslConfiguration;
   private final CredentialsProvider credentialsProvider;
-  final TuneState tuneState;
-  final AtomicBoolean closing = new AtomicBoolean(false);
   private final Runnable nettyClosing;
   private final int maxFrameSize;
   private final boolean frameSizeCopped;
   private final EventLoopGroup eventLoopGroup;
-  final ChunkChecksum chunkChecksum;
   private final Map<String, String> clientProperties;
-  final MetricsCollector metricsCollector;
   private final String NETTY_HANDLER_FLUSH_CONSOLIDATION =
       FlushConsolidationHandler.class.getSimpleName();
-  static final String NETTY_HANDLER_FRAME_DECODER =
-      LengthFieldBasedFrameDecoder.class.getSimpleName();
   private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
-  static final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
   private final String host;
   private final int port;
-  private volatile ShutdownReason shutdownReason = null;
   private final Map<String, String> serverProperties;
   private final Map<String, String> connectionProperties;
   private final Duration rpcTimeout;
+  private volatile ShutdownReason shutdownReason = null;
 
   public Client() {
     this(new ClientParameters());
@@ -212,6 +216,10 @@ public class Client implements AutoCloseable {
     this.chunkChecksum = parameters.chunkChecksum;
     this.metricsCollector = parameters.metricsCollector;
     this.metadataListener = parameters.metadataListener;
+    this.compressionCodecFactory =
+        parameters.compressionCodecFactory == null
+            ? compression -> null
+            : parameters.compressionCodecFactory;
     this.rpcTimeout = parameters.rpcTimeout == null ? DEFAULT_RPC_TIMEOUT : parameters.rpcTimeout;
     final ShutdownListener shutdownListener = parameters.shutdownListener;
     final AtomicBoolean started = new AtomicBoolean(false);
@@ -241,8 +249,11 @@ public class Client implements AutoCloseable {
     b.group(eventLoopGroup);
     b.channel(NioSocketChannel.class);
     b.option(ChannelOption.SO_KEEPALIVE, true);
-    // is that the default?
-    b.option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
+    b.option(
+        ChannelOption.ALLOCATOR,
+        parameters.byteBufAllocator == null
+            ? ByteBufAllocator.DEFAULT
+            : parameters.byteBufAllocator);
     ChannelCustomizer channelCustomizer =
         parameters.channelCustomizer == null ? ch -> {} : parameters.channelCustomizer;
     b.handler(
@@ -765,12 +776,14 @@ public class Client implements AutoCloseable {
       ToLongFunction<Object> publishSequenceFunction) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
-      EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
+      EncodedMessageBatch encodedMessageBatch =
+          createEncodedMessageBatch(batch.compression, batch.messages.size());
       for (Message message : batch.messages) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
         checkMessageFitsInFrame(encodedMessage);
         encodedMessageBatch.add(encodedMessage);
       }
+      encodedMessageBatch.close();
       checkMessageBatchFitsInFrame(encodedMessageBatch);
       encodedMessageBatches.add(encodedMessageBatch);
     }
@@ -797,12 +810,14 @@ public class Client implements AutoCloseable {
       ToLongFunction<Object> publishSequenceFunction) {
     List<Object> encodedMessageBatches = new ArrayList<>(messageBatches.size());
     for (MessageBatch batch : messageBatches) {
-      EncodedMessageBatch encodedMessageBatch = new EncodedMessageBatch(batch.compression);
+      EncodedMessageBatch encodedMessageBatch =
+          createEncodedMessageBatch(batch.compression, batch.messages.size());
       for (Message message : batch.messages) {
         Codec.EncodedMessage encodedMessage = codec.encode(message);
         checkMessageFitsInFrame(encodedMessage);
         encodedMessageBatch.add(encodedMessage);
       }
+      encodedMessageBatch.close();
       checkMessageBatchFitsInFrame(encodedMessageBatch);
       OriginalAndEncodedOutboundEntity wrapper =
           new OriginalAndEncodedOutboundEntity(batch, encodedMessageBatch);
@@ -831,10 +846,10 @@ public class Client implements AutoCloseable {
             + 1
             + 2 // byte with entry type and compression, short with number of messages in batch
             + 4
-            + encodedMessageBatch.size;
+            + encodedMessageBatch.sizeInBytes();
     if (frameBeginning > this.maxFrameSize()) {
       throw new IllegalArgumentException(
-          "Message batch too big to fit in one frame: " + encodedMessageBatch.size);
+          "Message batch too big to fit in one frame: " + encodedMessageBatch.sizeInBytes());
     }
   }
 
@@ -1283,6 +1298,44 @@ public class Client implements AutoCloseable {
     }
   }
 
+  void shutdownReason(ShutdownReason reason) {
+    this.shutdownReason = reason;
+  }
+
+  public SocketAddress localAddress() {
+    return this.channel.localAddress();
+  }
+
+  public SocketAddress remoteAddress() {
+    return this.channel.remoteAddress();
+  }
+
+  String serverAdvertisedHost() {
+    return this.connectionProperties("advertised_host");
+  }
+
+  int serverAdvertisedPort() {
+    return Integer.valueOf(this.connectionProperties("advertised_port"));
+  }
+
+  private String connectionProperties(String key) {
+    if (this.connectionProperties != null && this.connectionProperties.containsKey(key)) {
+      return this.connectionProperties.get(key);
+    } else {
+      throw new IllegalArgumentException(
+          "Connection property '"
+              + key
+              + "' missing. Available properties: "
+              + this.connectionProperties
+              + ".");
+    }
+  }
+
+  private EncodedMessageBatch createEncodedMessageBatch(Compression compression, int batchSize) {
+    return EncodedMessageBatch.create(
+        channel.alloc(), compression.code(), compressionCodecFactory.get(compression), batchSize);
+  }
+
   public interface OutboundEntityMappingCallback {
 
     void handle(long publishingId, Object originalMessageOrBatch);
@@ -1343,6 +1396,35 @@ public class Client implements AutoCloseable {
     void handle(ShutdownContext shutdownContext);
   }
 
+  interface EncodedMessageBatch {
+
+    static EncodedMessageBatch create(
+        ByteBufAllocator allocator,
+        byte compression,
+        CompressionCodec compressionCodec,
+        int batchSize) {
+      if (compression == Compression.NONE.code()) {
+        return new PlainEncodedMessageBatch(new ArrayList<>(batchSize));
+      } else {
+        return new CompressedEncodedMessageBatch(allocator, compressionCodec, batchSize);
+      }
+    }
+
+    void add(Codec.EncodedMessage encodedMessage);
+
+    void close();
+
+    void write(ByteBuf bb);
+
+    int batchSize();
+
+    int sizeInBytes();
+
+    int uncompressedSizeInBytes();
+
+    byte compression();
+  }
+
   private static final class OriginalAndEncodedOutboundEntity {
 
     private final Object original, encoded;
@@ -1379,24 +1461,129 @@ public class Client implements AutoCloseable {
     }
   }
 
-  static class EncodedMessageBatch {
+  private static class PlainEncodedMessageBatch implements EncodedMessageBatch {
 
-    private final MessageBatch.Compression compression;
     private final List<Codec.EncodedMessage> messages;
     private int size;
 
-    EncodedMessageBatch(MessageBatch.Compression compression, List<Codec.EncodedMessage> messages) {
-      this.compression = compression;
+    PlainEncodedMessageBatch(List<Codec.EncodedMessage> messages) {
       this.messages = messages;
     }
 
-    EncodedMessageBatch(MessageBatch.Compression compression) {
-      this(compression, new ArrayList<>());
-    }
-
-    void add(Codec.EncodedMessage encodedMessage) {
+    @Override
+    public void add(Codec.EncodedMessage encodedMessage) {
       this.messages.add(encodedMessage);
       size += (4 + encodedMessage.getSize());
+    }
+
+    @Override
+    public void close() {}
+
+    @Override
+    public void write(ByteBuf bb) {
+      for (Codec.EncodedMessage message : messages) {
+        bb.writeInt(message.getSize()).writeBytes(message.getData(), 0, message.getSize());
+      }
+    }
+
+    @Override
+    public int batchSize() {
+      return this.messages.size();
+    }
+
+    @Override
+    public int sizeInBytes() {
+      return this.size;
+    }
+
+    @Override
+    public int uncompressedSizeInBytes() {
+      return this.size;
+    }
+
+    @Override
+    public byte compression() {
+      return Compression.NONE.code();
+    }
+  }
+
+  static class CompressedEncodedMessageBatch implements EncodedMessageBatch {
+
+    private final ByteBufAllocator allocator;
+    private final CompressionCodec codec;
+    private final List<EncodedMessage> messages;
+    private int uncompressedByteSize = 0;
+    private ByteBuf buffer;
+
+    CompressedEncodedMessageBatch(
+        ByteBufAllocator allocator,
+        CompressionCodec codec,
+        List<EncodedMessage> messages,
+        int batchSize) {
+      this.allocator = allocator;
+      this.codec = codec;
+      this.messages = new ArrayList<>(batchSize);
+      for (int i = 0; i < messages.size(); i++) {
+        this.add(messages.get(i));
+      }
+    }
+
+    CompressedEncodedMessageBatch(
+        ByteBufAllocator allocator, CompressionCodec codec, int batchSize) {
+      this(allocator, codec, Collections.emptyList(), batchSize);
+    }
+
+    @Override
+    public void add(Codec.EncodedMessage encodedMessage) {
+      this.messages.add(encodedMessage);
+      this.uncompressedByteSize += (4 + encodedMessage.getSize());
+    }
+
+    @Override
+    public void close() {
+      int maxCompressedLength = codec.maxCompressedLength(this.uncompressedByteSize);
+      this.buffer = allocator.buffer(maxCompressedLength);
+      OutputStream outputStream = this.codec.compress(buffer);
+      try {
+        for (int i = 0; i < messages.size(); i++) {
+          final int size = messages.get(i).getSize();
+          outputStream.write((size >>> 24) & 0xFF);
+          outputStream.write((size >>> 16) & 0xFF);
+          outputStream.write((size >>> 8) & 0xFF);
+          outputStream.write((size >>> 0) & 0xFF);
+          outputStream.write(messages.get(i).getData(), 0, size);
+        }
+        outputStream.flush();
+        outputStream.close();
+      } catch (IOException e) {
+        throw new StreamException("Error while closing compressing output stream", e);
+      }
+    }
+
+    @Override
+    public void write(ByteBuf bb) {
+      bb.writeBytes(this.buffer, 0, this.buffer.writerIndex());
+      this.buffer.release();
+    }
+
+    @Override
+    public int batchSize() {
+      return this.messages.size();
+    }
+
+    @Override
+    public int sizeInBytes() {
+      return this.buffer.writerIndex();
+    }
+
+    @Override
+    public int uncompressedSizeInBytes() {
+      return this.uncompressedByteSize;
+    }
+
+    @Override
+    public byte compression() {
+      return this.codec.code();
     }
   }
 
@@ -1423,14 +1610,13 @@ public class Client implements AutoCloseable {
       EncodedMessageBatch batchToPublish = (EncodedMessageBatch) entity;
       bb.writeByte(
           0x80
-              | batchToPublish.compression.code
+              | batchToPublish.compression()
                   << 4); // 1=SubBatchEntryType:1,CompressionType:3,Reserved:4,
-      bb.writeShort(batchToPublish.messages.size());
-      bb.writeInt(batchToPublish.size);
-      for (Codec.EncodedMessage message : batchToPublish.messages) {
-        bb.writeInt(message.getSize()).writeBytes(message.getData(), 0, message.getSize());
-      }
-      return batchToPublish.messages.size();
+      bb.writeShort(batchToPublish.batchSize());
+      bb.writeInt(batchToPublish.uncompressedSizeInBytes());
+      bb.writeInt(batchToPublish.sizeInBytes());
+      batchToPublish.write(bb);
+      return batchToPublish.batchSize();
     }
 
     @Override
@@ -1439,8 +1625,10 @@ public class Client implements AutoCloseable {
           + 1
           + 2
           + 4
+          + 4
           + ((EncodedMessageBatch) entity)
-              .size); // publish ID + info byte + message count + data size
+              .sizeInBytes()); // publish ID + info byte + message count + uncompressed data size +
+      // data size
     }
   }
 
@@ -1703,12 +1891,11 @@ public class Client implements AutoCloseable {
   public static class ClientParameters {
 
     private final Map<String, String> clientProperties = new HashMap<>();
-    // TODO eventloopgroup should be shared between clients, this could justify the introduction of
-    // client factory
     EventLoopGroup eventLoopGroup;
     Codec codec;
     String host = "localhost";
     int port = DEFAULT_PORT;
+    CompressionCodecFactory compressionCodecFactory;
     private String virtualHost = "/";
     private Duration requestedHeartbeat = Duration.ofSeconds(60);
     private int requestedMaxFrameSize = 1048576;
@@ -1716,17 +1903,15 @@ public class Client implements AutoCloseable {
     private PublishErrorListener publishErrorListener = NO_OP_PUBLISH_ERROR_LISTENER;
     private ChunkListener chunkListener =
         (client, correlationId, offset, messageCount, dataSize) -> {};
-
     private MessageListener messageListener = (correlationId, offset, message) -> {};
-
     private MetadataListener metadataListener = (stream, code) -> {};
-
     private CreditNotification creditNotification =
         (subscriptionId, responseCode) ->
             LOGGER.warn(
-                "Received notification for subscription {}: {}", subscriptionId, responseCode);
+                "Received notification for subscription {}: {}",
+                subscriptionId,
+                Utils.formatConstant(responseCode));
     private ShutdownListener shutdownListener = shutdownContext -> {};
-
     private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
     private CredentialsProvider credentialsProvider =
         new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
@@ -1735,6 +1920,7 @@ public class Client implements AutoCloseable {
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
     private boolean tlsHostnameVerification = true;
+    private ByteBufAllocator byteBufAllocator;
     private Duration rpcTimeout;
 
     public ClientParameters host(String host) {
@@ -1779,6 +1965,11 @@ public class Client implements AutoCloseable {
 
     public ClientParameters eventLoopGroup(EventLoopGroup eventLoopGroup) {
       this.eventLoopGroup = eventLoopGroup;
+      return this;
+    }
+
+    public ClientParameters byteBufAllocator(ByteBufAllocator byteBufAllocator) {
+      this.byteBufAllocator = byteBufAllocator;
       return this;
     }
 
@@ -1876,6 +2067,12 @@ public class Client implements AutoCloseable {
 
     public ClientParameters tlsHostnameVerification(boolean tlsHostnameVerification) {
       this.tlsHostnameVerification = tlsHostnameVerification;
+      return this;
+    }
+
+    public ClientParameters compressionCodecFactory(
+        CompressionCodecFactory compressionCodecFactory) {
+      this.compressionCodecFactory = compressionCodecFactory;
       return this;
     }
 
@@ -2126,39 +2323,6 @@ public class Client implements AutoCloseable {
       }
       LOGGER.warn("Error in stream handler", cause);
       ctx.close();
-    }
-  }
-
-  void shutdownReason(ShutdownReason reason) {
-    this.shutdownReason = reason;
-  }
-
-  public SocketAddress localAddress() {
-    return this.channel.localAddress();
-  }
-
-  public SocketAddress remoteAddress() {
-    return this.channel.remoteAddress();
-  }
-
-  String serverAdvertisedHost() {
-    return this.connectionProperties("advertised_host");
-  }
-
-  int serverAdvertisedPort() {
-    return Integer.valueOf(this.connectionProperties("advertised_port"));
-  }
-
-  private String connectionProperties(String key) {
-    if (this.connectionProperties != null && this.connectionProperties.containsKey(key)) {
-      return this.connectionProperties.get(key);
-    } else {
-      throw new IllegalArgumentException(
-          "Connection property '"
-              + key
-              + "' missing. Available properties: "
-              + this.connectionProperties
-              + ".");
     }
   }
 }

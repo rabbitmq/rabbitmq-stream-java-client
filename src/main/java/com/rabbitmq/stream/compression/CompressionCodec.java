@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -12,25 +12,19 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream.metrics;
+package com.rabbitmq.stream.compression;
 
-public interface MetricsCollector {
+import io.netty.buffer.ByteBuf;
+import java.io.InputStream;
+import java.io.OutputStream;
 
-  void openConnection();
+public interface CompressionCodec {
 
-  void closeConnection();
+  int maxCompressedLength(int sourceLength);
 
-  void publish(int count);
+  OutputStream compress(ByteBuf byteBuf);
 
-  void publishConfirm(int count);
+  InputStream decompress(ByteBuf byteBuf);
 
-  void publishError(int count);
-
-  void chunk(int entriesCount);
-
-  void consume(long count);
-
-  void writtenBytes(int writtenBytes);
-
-  void readBytes(int readBytes);
+  byte code();
 }

@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.compression.Compression;
 import java.time.Duration;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
@@ -48,6 +49,8 @@ public interface ProducerBuilder {
    * @return this builder instance
    */
   ProducerBuilder subEntrySize(int subEntrySize);
+
+  ProducerBuilder compression(Compression compression);
 
   /**
    * The maximum number of messages to accumulate before sending them to the broker.

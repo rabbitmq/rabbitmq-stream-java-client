@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
+import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
@@ -54,6 +55,7 @@ public class StreamPerfTestTest {
   AtomicInteger exitCode;
   String s;
   ByteArrayOutputStream out, err;
+  boolean checkErrIsEmpty;
 
   @BeforeAll
   static void init() {
@@ -80,11 +82,14 @@ public class StreamPerfTestTest {
     s = TestUtils.streamName(info);
     out = new ByteArrayOutputStream();
     err = new ByteArrayOutputStream();
+    checkErrIsEmpty = true;
   }
 
   @AfterEach
   void tearDownTest() {
-    assertThat(consoleErrorOutput()).isEmpty();
+    if (checkErrIsEmpty) {
+      assertThat(consoleErrorOutput()).isEmpty();
+    }
     client.delete(s);
   }
 
@@ -245,6 +250,25 @@ public class StreamPerfTestTest {
     assertThat(consoleOutput()).contains("written bytes").contains("read bytes");
   }
 
+  @Test
+  void subEntriesWithCompressionShouldRun() throws Exception {
+    Future<?> run = run(builder().subEntrySize(10).compression(Compression.GZIP));
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+  }
+
+  @Test
+  void compressionWithoutSubEntriesShouldNotStart() throws Exception {
+    run(builder().compression(Compression.GZIP));
+    waitRunEnds(1);
+    assertThat(consoleErrorOutput())
+        .isNotEmpty()
+        .contains("Sub-entry batching must be enabled to enable compression");
+    checkErrIsEmpty = false;
+  }
+
   boolean streamExists(String stream) {
     return client.metadata(stream).get(stream).isResponseOk();
   }
@@ -340,6 +364,16 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder storeEvery(int storeEvery) {
       arguments.put("store-every", String.valueOf(storeEvery));
+      return this;
+    }
+
+    ArgumentsBuilder subEntrySize(int subEntrySize) {
+      arguments.put("sub-entry-size", String.valueOf(subEntrySize));
+      return this;
+    }
+
+    ArgumentsBuilder compression(Compression compression) {
+      arguments.put("compression", compression.name().toLowerCase(Locale.ENGLISH));
       return this;
     }
 

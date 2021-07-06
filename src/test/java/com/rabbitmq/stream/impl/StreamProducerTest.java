@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
@@ -29,6 +30,7 @@ import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.StreamProducer.Status;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
@@ -554,5 +556,56 @@ public class StreamProducerTest {
         .messageHandler((ctx, msg) -> consumeLatch.countDown())
         .build();
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+  }
+
+  @Test
+  void subEntryBatchesSentCompressedShouldBeConsumedProperly() {
+    int messagePerProducer = 10000;
+    int messageCount = Compression.values().length * messagePerProducer;
+    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    ConfirmationHandler confirmationHandler = confirmationStatus -> publishLatch.countDown();
+    AtomicInteger messageIndex = new AtomicInteger(0);
+    Set<String> publishedBodies = ConcurrentHashMap.newKeySet(messageCount);
+    for (Compression compression : Compression.values()) {
+      Producer producer =
+          environment.producerBuilder().stream(stream)
+              .subEntrySize(100)
+              .compression(compression)
+              .build();
+      IntStream.range(0, messagePerProducer)
+          .forEach(
+              i -> {
+                String body =
+                    "compression "
+                        + compression.name()
+                        + " message "
+                        + messageIndex.getAndIncrement();
+                producer.send(
+                    producer
+                        .messageBuilder()
+                        .addData(body.getBytes(StandardCharsets.UTF_8))
+                        .build(),
+                    confirmationHandler);
+                publishedBodies.add(body);
+              });
+    }
+
+    assertThat(latchAssert(publishLatch)).completes();
+
+    Set<String> consumedBodies = ConcurrentHashMap.newKeySet(messageCount);
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    environment.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
+        .messageHandler(
+            (context, message) -> {
+              consumedBodies.add(new String(message.getBodyAsBinary(), StandardCharsets.UTF_8));
+              consumeLatch.countDown();
+            })
+        .build();
+
+    assertThat(latchAssert(consumeLatch)).completes();
+    assertThat(consumedBodies).isNotEmpty().hasSameSizeAs(publishedBodies);
+    publishedBodies.forEach(
+        publishBody -> assertThat(consumedBodies.contains(publishBody)).isTrue());
   }
 }

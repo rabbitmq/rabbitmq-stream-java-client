@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -12,25 +12,28 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-package com.rabbitmq.stream.metrics;
+package com.rabbitmq.stream.compression;
 
-public interface MetricsCollector {
+public enum Compression {
+  NONE((byte) 0),
+  GZIP((byte) 1),
+  SNAPPY((byte) 2),
+  LZ4((byte) 3),
+  ZSTD((byte) 4);
 
-  void openConnection();
+  private static final Compression[] COMPRESSIONS =
+      new Compression[] {NONE, GZIP, SNAPPY, LZ4, ZSTD};
+  byte code;
 
-  void closeConnection();
+  Compression(byte code) {
+    this.code = code;
+  }
 
-  void publish(int count);
+  public byte code() {
+    return this.code;
+  }
 
-  void publishConfirm(int count);
-
-  void publishError(int count);
-
-  void chunk(int entriesCount);
-
-  void consume(long count);
-
-  void writtenBytes(int writtenBytes);
-
-  void readBytes(int readBytes);
+  public static Compression get(byte code) {
+    return COMPRESSIONS[code];
+  }
 }

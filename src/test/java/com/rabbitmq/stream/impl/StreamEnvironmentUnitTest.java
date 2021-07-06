@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import io.netty.buffer.ByteBufAllocator;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
@@ -80,6 +81,7 @@ public class StreamEnvironmentUnitTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
+            ByteBufAllocator.DEFAULT,
             cf);
   }
 
@@ -138,6 +140,7 @@ public class StreamEnvironmentUnitTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
+            ByteBufAllocator.DEFAULT,
             cf);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }
