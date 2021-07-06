@@ -17,17 +17,13 @@ to find out more.
 
 == Project Maturity
 
-The project is in early stages of development and is considered experimental.
-It is not ready for production use. Features and API are subject to change.
+The project is in development and stabilization phase.
+Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/#stability-of-programming-interfaces[breaking changes] will be kept to a minimum.
 
 == Support
 
 * For questions: https://groups.google.com/forum/#!forum/rabbitmq-users[RabbitMQ Users]
 * For bugs and feature requests: https://github.com/rabbitmq/rabbitmq-stream-java-client/issues[GitHub Issues]
-
-The project is currently under development, there is no guarantee yet that it will be maintained and supported
-in the future (read: you are welcome to experiment with it and give feedback, but please do not base
-your whole business on it).
 
 == How to Use
 
@@ -39,6 +35,20 @@ The library requires Java 8 or more.
 
 * https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[Reference documentation]
 * https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/api/com/rabbitmq/stream/package-summary.html[API documentation]
+
+== Versioning
+
+The RabbitMQ Stream Java Client is in development and stabilization phase.
+When the stabilization phase ends, a 1.0.0 version will be cut, and
+https://semver.org/[semantic versioning] is likely to be enforced.
+
+Before reaching the stable phase, the client will use a versioning scheme of `[0.MINOR.PATCH]` where:
+
+* `0` indicates the project is still in a stabilization phase.
+* `MINOR` is a 0-based number incrementing with each new release cycle. It generally reflects significant changes like new features and potentially some programming interfaces changes.
+* `PATCH` is a 0-based number incrementing with each service release, that is bux fixes.
+
+Breaking changes between releases can happen but will be kept to a minimum.
 
 == Build Instructions
 

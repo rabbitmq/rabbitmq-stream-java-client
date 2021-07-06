@@ -74,3 +74,30 @@ connections depending on the number of publishers and consumers.
 * _let the client handle network failure_ thanks to automatic connection
 recovery and automatic re-subscription for consumers.
 
+== Versioning
+
+The RabbitMQ Stream Java Client is in development and stabilization phase.
+When the stabilization phase ends, a 1.0.0 version will be cut, and
+https://semver.org/[semantic versioning] is likely to be enforced.
+
+Before reaching the stable phase, the client will use a versioning scheme of `[0.MINOR.PATCH]` where:
+
+* `0` indicates the project is still in a stabilization phase.
+* `MINOR` is a 0-based number incrementing with each new release cycle. It generally reflects significant changes like new features and potentially some programming interfaces changes.
+* `PATCH` is a 0-based number incrementing with each service release, that is bux fixes.
+
+Breaking changes between releases can happen but will be kept to a minimum.
+The next section provides more details about the evolution of programming interfaces.
+
+[[stability-of-programming-interfaces]]
+== Stability of Programming Interfaces
+
+The RabbitMQ Stream Java Client is in active development but its programming interfaces will remain as stable as possible. There is no guarantee though that they will remain completely stable, at least until it reaches version 1.0.0.
+
+The client contains 2 sets of programming interfaces whose stability are of interest for application developers:
+
+* Application Programming Interfaces (API): those are the ones used to write application logic. They include the interfaces and classes in the `com.rabbitmq.stream` package (e.g. `Producer`, `Consumer`, `Message`). These API constitute the main programming model of the client and will be kept as stable as possible.
+* Service Provider Interfaces (SPI): those are interfaces to implement mainly technical behavior in the client. They are not meant to be used to implement application logic. Application developers may have to refer to them in the configuration phase and if they want to custom some internal behavior in the client. SPI include interfaces and classes in the `com.rabbitmq.stream.codec`, `com.rabbitmq.stream.compression`, `com.rabbitmq.stream.metrics` packages, among others. _These SPI are susceptible to change, but this should not impact the majority of applications_, as the changes would typically stay intern to the client.
+
+
+
