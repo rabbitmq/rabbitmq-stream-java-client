@@ -217,6 +217,7 @@ class ConsumersCoordinator {
     private volatile long offset;
     private volatile byte subscriptionIdInClient;
     private volatile ClientSubscriptionsManager manager;
+    private volatile boolean closing = false;
 
     private SubscriptionTracker(
         StreamConsumer consumer,
@@ -230,12 +231,17 @@ class ConsumersCoordinator {
     }
 
     synchronized void cancel() {
+      this.closing = true;
       if (this.manager != null) {
         LOGGER.debug("Removing consumer from manager");
         this.manager.remove(this);
       } else {
         LOGGER.debug("No manager to remove consumer from");
       }
+    }
+
+    boolean isClosing() {
+      return this.closing;
     }
 
     synchronized void assign(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
@@ -367,14 +373,24 @@ class ConsumersCoordinator {
       IntStream.range(0, maxConsumersByConnection).forEach(i -> subscriptionTrackers.add(null));
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       ChunkListener chunkListener =
-          (client, subscriptionId, offset, messageCount, dataSize) ->
+          (client, subscriptionId, offset, messageCount, dataSize) -> {
+            SubscriptionTracker subscriptionTracker =
+                subscriptionTrackers.get(subscriptionId & 0xFF);
+            if (subscriptionTracker != null && !subscriptionTracker.isClosing()) {
               client.credit(subscriptionId, 1);
+            } else {
+              LOGGER.debug(
+                  "Could not find stream subscription {} or subscription closing, not providing credits",
+                  subscriptionId & 0xFF);
+            }
+          };
+
       CreditNotification creditNotification =
           (subscriptionId, responseCode) ->
               LOGGER.debug(
                   "Received credit notification for subscription {}: {}",
-                  subscriptionId,
-                  responseCode);
+                  subscriptionId & 0xFF,
+                  Utils.formatConstant(responseCode));
       MessageListener messageListener =
           (subscriptionId, offset, message) -> {
             SubscriptionTracker subscriptionTracker =
