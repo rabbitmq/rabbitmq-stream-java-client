@@ -20,14 +20,14 @@ public interface UsernamePasswordCredentialsProvider extends CredentialsProvider
   /**
    * The username
    *
-   * @return
+   * @return the username
    */
   String getUsername();
 
   /**
    * The password
    *
-   * @return
+   * @return the password
    */
   String getPassword();
 }

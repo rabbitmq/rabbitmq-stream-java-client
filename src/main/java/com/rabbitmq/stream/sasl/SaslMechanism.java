@@ -20,7 +20,7 @@ public interface SaslMechanism {
   /**
    * The name of the SASL mechanism.
    *
-   * @return
+   * @return the name of the SASL mechanism
    */
   String getName();
 

@@ -32,7 +32,7 @@ public interface BackOffDelayPolicy {
    * A policy with a constant delay.
    *
    * @param delay
-   * @return
+   * @return the constant delay policy
    */
   static BackOffDelayPolicy fixed(Duration delay) {
     return new FixedWithInitialDelayBackOffPolicy(delay, delay);
@@ -43,7 +43,7 @@ public interface BackOffDelayPolicy {
    *
    * @param initialDelay
    * @param delay
-   * @return
+   * @return the policy with an initial delay
    */
   static BackOffDelayPolicy fixedWithInitialDelay(Duration initialDelay, Duration delay) {
     return new FixedWithInitialDelayBackOffPolicy(initialDelay, delay);
@@ -55,7 +55,7 @@ public interface BackOffDelayPolicy {
    * @param initialDelay
    * @param delay
    * @param timeout
-   * @return
+   * @return the policy with an initial delay
    */
   static BackOffDelayPolicy fixedWithInitialDelay(
       Duration initialDelay, Duration delay, Duration timeout) {

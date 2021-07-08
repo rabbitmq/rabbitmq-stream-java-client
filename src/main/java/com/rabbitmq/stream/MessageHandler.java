@@ -36,7 +36,7 @@ public interface MessageHandler {
     /**
      * The offset of the message in the stream.
      *
-     * @return
+     * @return the offset of the current message
      */
     long offset();
 
@@ -50,7 +50,7 @@ public interface MessageHandler {
     /**
      * The consumer that receives the message.
      *
-     * @return
+     * @return the consumer instance
      * @see Consumer#store(long)
      */
     Consumer consumer();

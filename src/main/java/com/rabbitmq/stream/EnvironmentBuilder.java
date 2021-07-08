@@ -329,7 +329,7 @@ public interface EnvironmentBuilder {
      * <p>Use {@link SslContextBuilder#forClient()} to configure and create an instance.
      *
      * @param sslContext
-     * @return
+     * @return the TLS configuration helper
      */
     TlsConfiguration sslContext(SslContext sslContext);
 
