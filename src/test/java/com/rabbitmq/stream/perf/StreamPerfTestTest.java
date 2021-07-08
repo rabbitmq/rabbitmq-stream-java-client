@@ -251,6 +251,16 @@ public class StreamPerfTestTest {
   }
 
   @Test
+  void memoryReportShouldBeIncludedWhenOptionIsEnabled() throws Exception {
+    Future<?> run = run(builder().memoryReport());
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(consoleOutput()).contains("Max memory").contains("max direct memory");
+  }
+
+  @Test
   void subEntriesWithCompressionShouldRun() throws Exception {
     Future<?> run = run(builder().subEntrySize(10).compression(Compression.GZIP));
     waitUntilStreamExists(s);
@@ -308,6 +318,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder help() {
       arguments.put("help", "");
+      return this;
+    }
+
+    ArgumentsBuilder memoryReport() {
+      arguments.put("memory-report", "");
       return this;
     }
 

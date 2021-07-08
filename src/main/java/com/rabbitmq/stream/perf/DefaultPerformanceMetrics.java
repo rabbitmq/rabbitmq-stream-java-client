@@ -35,6 +35,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +48,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   private final boolean summaryFile;
   private final PrintWriter out;
   private final boolean includeByteRates;
+  private final Supplier<String> memoryReportSupplier;
   private volatile Closeable closingSequence = () -> {};
 
   DefaultPerformanceMetrics(
@@ -54,9 +56,11 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
       String metricsPrefix,
       boolean summaryFile,
       boolean includeByteRates,
+      Supplier<String> memoryReportSupplier,
       PrintWriter out) {
     this.summaryFile = summaryFile;
     this.includeByteRates = includeByteRates;
+    this.memoryReportSupplier = memoryReportSupplier;
     this.out = out;
     DropwizardConfig dropwizardConfig =
         new DropwizardConfig() {
@@ -205,6 +209,10 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                   builder.append(formatLatency.apply(latency)).append(", ");
                   builder.append(formatChunkSize.apply(chunkSize));
                   this.out.println(builder);
+                  String memoryReport = this.memoryReportSupplier.get();
+                  if (!memoryReport.isEmpty()) {
+                    this.out.println(memoryReport);
+                  }
                 }
                 reportCount.incrementAndGet();
               } catch (Exception e) {
@@ -259,7 +267,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     // based on
     // https://stackoverflow.com/questions/3758606/how-can-i-convert-byte-size-into-a-human-readable-format-in-java
     if (-1000 < bytes && bytes < 1000) {
-      return bytes + " B";
+      return bytes + " B/s";
     }
     CharacterIterator ci = new StringCharacterIterator("kMGTPE");
     while (bytes <= -999_950 || bytes >= 999_950) {

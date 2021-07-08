@@ -18,6 +18,8 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.compression.Compression;
 import java.security.cert.X509Certificate;
+import java.text.CharacterIterator;
+import java.text.StringCharacterIterator;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
@@ -99,6 +101,33 @@ class Utils {
       return IntStream.range(from, to)
           .mapToObj(i -> String.format(streamFormat, i))
           .collect(Collectors.toList());
+    }
+  }
+
+  static String formatByte(double bytes) {
+    // based on
+    // https://stackoverflow.com/questions/3758606/how-can-i-convert-byte-size-into-a-human-readable-format-in-java
+    if (-1000 < bytes && bytes < 1000) {
+      return String.valueOf(bytes);
+    }
+    CharacterIterator ci = new StringCharacterIterator("kMGTPE");
+    while (bytes <= -999_950 || bytes >= 999_950) {
+      bytes /= 1000;
+      ci.next();
+    }
+    return String.format("%.1f %cB", bytes / 1000.0, ci.current());
+  }
+
+  static long physicalMemory() {
+    try {
+      com.sun.management.OperatingSystemMXBean os =
+          (com.sun.management.OperatingSystemMXBean)
+              java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+      return os.getTotalPhysicalMemorySize();
+    } catch (Throwable e) {
+      // we can get NoClassDefFoundError, so we catch from Throwable and below
+      LOGGER.warn("Could not get physical memory", e);
+      return 0;
     }
   }
 

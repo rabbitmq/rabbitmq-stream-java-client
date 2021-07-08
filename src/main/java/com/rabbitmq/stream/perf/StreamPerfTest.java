@@ -42,7 +42,11 @@ import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.ByteBufAllocatorMetric;
+import io.netty.buffer.ByteBufAllocatorMetricProvider;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.util.internal.PlatformDependent;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.net.URI;
@@ -65,6 +69,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -286,6 +291,12 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "false")
   private boolean includeByteRates;
 
+  @CommandLine.Option(
+      names = {"--memory-report", "-mr"},
+      description = "report information on memory settings and usage",
+      defaultValue = "false")
+  private boolean memoryReport;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
 
@@ -370,15 +381,61 @@ public class StreamPerfTest implements Callable<Integer> {
     // FIXME assign codec
     this.codec = createCodec(this.codecClass);
 
+    ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
+
     CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
     String metricsPrefix = "rabbitmq.stream";
     this.metricsCollector = new MicrometerMetricsCollector(meterRegistry, metricsPrefix);
 
     Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
 
+    Supplier<String> memoryReportSupplier;
+    if (this.memoryReport) {
+      long physicalMemory = Utils.physicalMemory();
+      String physicalMemoryReport =
+          physicalMemory == 0
+              ? ""
+              : format(
+                  ", physical memory %s (%d bytes)",
+                  Utils.formatByte(physicalMemory), physicalMemory);
+      this.out.println(
+          format(
+              "Max memory %s (%d bytes), max direct memory %s (%d bytes)%s",
+              Utils.formatByte(Runtime.getRuntime().maxMemory()),
+              Runtime.getRuntime().maxMemory(),
+              Utils.formatByte(PlatformDependent.maxDirectMemory()),
+              PlatformDependent.maxDirectMemory(),
+              physicalMemoryReport));
+
+      if (byteBufAllocator instanceof ByteBufAllocatorMetricProvider) {
+        ByteBufAllocatorMetric allocatorMetric =
+            ((ByteBufAllocatorMetricProvider) byteBufAllocator).metric();
+        memoryReportSupplier =
+            () -> {
+              long usedHeapMemory = allocatorMetric.usedHeapMemory();
+              long usedDirectMemory = allocatorMetric.usedDirectMemory();
+              return format(
+                  "Used heap memory %s (%d bytes), used direct memory %s (%d bytes)",
+                  Utils.formatByte(usedHeapMemory),
+                  usedHeapMemory,
+                  Utils.formatByte(usedDirectMemory),
+                  usedDirectMemory);
+            };
+      } else {
+        memoryReportSupplier = () -> "";
+      }
+    } else {
+      memoryReportSupplier = () -> "";
+    }
+
     this.performanceMetrics =
         new DefaultPerformanceMetrics(
-            meterRegistry, metricsPrefix, this.summaryFile, this.includeByteRates, this.out);
+            meterRegistry,
+            metricsPrefix,
+            this.summaryFile,
+            this.includeByteRates,
+            memoryReportSupplier,
+            this.out);
 
     this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
 
@@ -430,6 +487,7 @@ public class StreamPerfTest implements Callable<Integer> {
             .addressResolver(addressResolver)
             .scheduledExecutorService(envExecutor)
             .metricsCollector(metricsCollector)
+            .byteBufAllocator(byteBufAllocator)
             .maxProducersByConnection(this.producersByConnection)
             .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
             .maxConsumersByConnection(this.consumersByConnection);
