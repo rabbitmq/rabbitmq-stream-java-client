@@ -11,7 +11,6 @@
 //
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
-
 package com.rabbitmq.stream;
 
 /** Various constants (response codes, errors, etc) */

@@ -11,7 +11,6 @@
 //
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
-
 package com.rabbitmq.stream.amqp;
 
 /** This code is based on QPid Proton's {@link org.apache.qpid.proton.amqp.UnsignedByte} class. */
