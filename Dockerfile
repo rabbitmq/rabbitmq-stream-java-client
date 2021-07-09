@@ -1,7 +1,6 @@
 FROM ubuntu:20.04 as builder
 
-# from https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/
-ARG stream_perf_test_version="set-version-here"
+ARG stream_perf_test_url="set-url-here"
 
 RUN set -eux; \
 	\
@@ -45,22 +44,19 @@ ENV STREAM_PERF_TEST_HOME="/stream_perf_test"
 
 RUN set -eux; \
     \
-    STREAM_PERF_TEST_URL=https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/download/v-stream-perf-test-$stream_perf_test_version/stream-perf-test-$stream_perf_test_version.jar; \
-    STREAM_PERF_TEST_PATH="/usr/local/src/stream-perf-test-$stream_perf_test_version"; \
-    \
-    wget --progress dot:giga --output-document "$STREAM_PERF_TEST_PATH.jar.asc" "$STREAM_PERF_TEST_URL.asc"; \
-    wget --progress dot:giga --output-document "$STREAM_PERF_TEST_PATH.jar" "$STREAM_PERF_TEST_URL"; \
-    STREAM_PERF_TEST_SHA256="$(wget -qO- $STREAM_PERF_TEST_URL.sha256)"; \
-    echo "$STREAM_PERF_TEST_SHA256 *$STREAM_PERF_TEST_PATH.jar" | sha256sum --check --strict -; \
+    wget --progress dot:giga --output-document "/usr/local/src/stream-perf-test.jar.asc" "$stream_perf_test_url.asc"; \
+    wget --progress dot:giga --output-document "/usr/local/src/stream-perf-test.jar" "$stream_perf_test_url"; \
+    STREAM_PERF_TEST_SHA256="$(wget -qO- $stream_perf_test_url.sha256)"; \
+    echo "$STREAM_PERF_TEST_SHA256 /usr/local/src/stream-perf-test.jar" | sha256sum --check --strict -; \
     \
     export GNUPGHOME="$(mktemp -d)"; \
     gpg --batch --keyserver "$PGP_KEYSERVER" --recv-keys "$RABBITMQ_PGP_KEY_ID"; \
-    gpg --batch --verify "$STREAM_PERF_TEST_PATH.jar.asc" "$STREAM_PERF_TEST_PATH.jar"; \
+    gpg --batch --verify "/usr/local/src/stream-perf-test.jar.asc" "/usr/local/src/stream-perf-test.jar"; \
     gpgconf --kill all; \
     rm -rf "$GNUPGHOME"; \
     \
     mkdir -p "$STREAM_PERF_TEST_HOME"; \
-    cp $STREAM_PERF_TEST_PATH.jar $STREAM_PERF_TEST_HOME/stream-perf-test.jar
+    cp /usr/local/src/stream-perf-test.jar $STREAM_PERF_TEST_HOME/stream-perf-test.jar
 
 FROM ubuntu:20.04
 
