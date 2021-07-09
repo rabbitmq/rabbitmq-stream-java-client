@@ -179,21 +179,18 @@
       <groupId>com.github.luben</groupId>
       <artifactId>zstd-jni</artifactId>
       <version>${zstd-jni.version}</version>
-      <optional>true</optional>
     </dependency>
 
     <dependency>
       <groupId>org.lz4</groupId>
       <artifactId>lz4-java</artifactId>
       <version>${lz4-java.version}</version>
-      <optional>true</optional>
     </dependency>
 
     <dependency>
       <groupId>org.xerial.snappy</groupId>
       <artifactId>snappy-java</artifactId>
       <version>${snappy-java.version}</version>
-      <optional>true</optional>
     </dependency>
 
     <dependency>
@@ -547,7 +544,7 @@
               </execution>
             </executions>
             <configuration>
-              <excludeGroupIds>com.swiftmq</excludeGroupIds>
+              <excludeGroupIds>com.swiftmq,org.apache.commons</excludeGroupIds>
             </configuration>
           </plugin>
           <plugin>
