@@ -2,9 +2,10 @@
 
 The library contains also a performance tool to test the RabbitMQ Stream plugin.
 It is usable as an uber JAR
-https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases[downloadable from GitHub Release]
-or as a https://hub.docker.com/r/pivotalrabbitmq/stream-perf-test[Docker image].
+https://github.com/rabbitmq/rabbitmq-stream-java-client/releases[downloadable from GitHub Release] or as a https://hub.docker.com/r/pivotalrabbitmq/stream-perf-test[Docker image].
 It can be built separately as well.
+
+Snapshots are on https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases[GitHub release] as well. Use the `pivotalrabbitmq/stream-perf-test:dev` image to use the latest snapshot in Docker.
 
 === Using the Performance Tool
 
