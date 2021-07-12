@@ -115,7 +115,61 @@ library for <<api.adoc#working-with-complex-messages,AMQP 1.0 message encoding a
   </dependency>
 
 </dependencies>
+----
 
+Milestones and snapshots require to declare the <<milestones-and-snapshots,appropriate repository>>.
+
+==== Gradle
+
+.build.gradle
+[source,groovy,subs="attributes,specialcharacters"]
+----
+dependencies {
+  compile "com.rabbitmq:stream-client:{project-version}"
+  compile "org.apache.qpid:proton-j:{protonj-version}"
+}
+----
+
+Milestones and snapshots require to declare the <<milestones-and-snapshots,appropriate repository>>.
+
+[[milestones-and-snapshots]]
+=== Milestones and Snapshots
+
+Releases are available from Maven Central, which does not require specific declaration. Milestones and snapshots are available from repositories which must be declared in the dependency management configuration.
+
+For milestones, with Maven:
+
+.Milestone repository declaration for Maven
+[source,xml,subs="attributes,specialcharacters"]
+----
+<repositories>
+
+  <repository>
+    <id>packagecloud-rabbitmq-maven-milestones</id>
+    <url>https://packagecloud.io/rabbitmq/maven-milestones/maven2</url>
+    <releases><enabled>true</enabled></releases>
+    <snapshots><enabled>false</enabled></snapshots>
+  </repository>
+
+</repositories>
+----
+
+For milestones, with Gradle:
+
+.Milestone repository declaration for Gradle:
+[source,groovy,subs="attributes,specialcharacters"]
+----
+repositories {
+  maven { url "https://packagecloud.io/rabbitmq/maven-milestones/maven2" }
+  mavenCentral()
+}
+----
+
+For snapshots, with Maven:
+
+.Snaphost repository declaration for Maven
+[source,xml,subs="attributes,specialcharacters"]
+----
 <repositories>
 
   <repository>
@@ -128,18 +182,14 @@ library for <<api.adoc#working-with-complex-messages,AMQP 1.0 message encoding a
 </repositories>
 ----
 
-==== Gradle
+For snapshots, with Gradle:
 
-.build.gradle
+.Snaphost repository declaration for Gradle:
 [source,groovy,subs="attributes,specialcharacters"]
 ----
-dependencies {
-  compile "com.rabbitmq:stream-client:{project-version}"
-  compile "org.apache.qpid:proton-j:{protonj-version}"
-}
-
 repositories {
   maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
   mavenCentral()
 }
 ----
+

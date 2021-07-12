@@ -33,6 +33,16 @@ The library requires Java 8 or more.
 
 === Documentation
 
+==== Release
+
+TBD
+
+==== Milestone
+
+TDB
+
+==== Snapshot
+
 * https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[Reference documentation]
 * https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/api/com/rabbitmq/stream/package-summary.html[API documentation]
 
