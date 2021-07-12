@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(1310c5c)</span>
+<br><span id="revremark">(d7ad0cd)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -473,6 +473,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#gradle">Gradle</a></li>
 </ul>
 </li>
+<li><a href="#milestones-and-snapshots">Milestones and Snapshots</a></li>
 <li><a href="#sample-application">Sample Application</a></li>
 <li><a href="#rabbitmq-stream-java-api">RabbitMQ Stream Java API</a>
 <ul class="sectlevel3">
@@ -920,9 +921,71 @@ library for <a href="#working-with-complex-messages">AMQP 1.0 message encoding a
     <span class="tag">&lt;version&gt;</span>0.33.8<span class="tag">&lt;/version&gt;</span>
   <span class="tag">&lt;/dependency&gt;</span>
 
-<span class="tag">&lt;/dependencies&gt;</span>
+<span class="tag">&lt;/dependencies&gt;</span></code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Milestones and snapshots require to declare the <a href="#milestones-and-snapshots">appropriate repository</a>.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="gradle"><a class="anchor" href="#gradle"></a>Gradle</h4>
+<div class="listingblock">
+<div class="title">build.gradle</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
+  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">com.rabbitmq:stream-client:0.1.0-SNAPSHOT</span><span class="delimiter">&quot;</span></span>
+  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">org.apache.qpid:proton-j:0.33.8</span><span class="delimiter">&quot;</span></span>
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Milestones and snapshots require to declare the <a href="#milestones-and-snapshots">appropriate repository</a>.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="milestones-and-snapshots"><a class="anchor" href="#milestones-and-snapshots"></a>Milestones and Snapshots</h3>
+<div class="paragraph">
+<p>Releases are available from Maven Central, which does not require specific declaration. Milestones and snapshots are available from repositories which must be declared in the dependency management configuration.</p>
+</div>
+<div class="paragraph">
+<p>For milestones, with Maven:</p>
+</div>
+<div class="listingblock">
+<div class="title">Milestone repository declaration for Maven</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="xml"><span class="tag">&lt;repositories&gt;</span>
 
-<span class="tag">&lt;repositories&gt;</span>
+  <span class="tag">&lt;repository&gt;</span>
+    <span class="tag">&lt;id&gt;</span>packagecloud-rabbitmq-maven-milestones<span class="tag">&lt;/id&gt;</span>
+    <span class="tag">&lt;url&gt;</span>https://packagecloud.io/rabbitmq/maven-milestones/maven2<span class="tag">&lt;/url&gt;</span>
+    <span class="tag">&lt;releases&gt;</span><span class="tag">&lt;enabled&gt;</span>true<span class="tag">&lt;/enabled&gt;</span><span class="tag">&lt;/releases&gt;</span>
+    <span class="tag">&lt;snapshots&gt;</span><span class="tag">&lt;enabled&gt;</span>false<span class="tag">&lt;/enabled&gt;</span><span class="tag">&lt;/snapshots&gt;</span>
+  <span class="tag">&lt;/repository&gt;</span>
+
+<span class="tag">&lt;/repositories&gt;</span></code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>For milestones, with Gradle:</p>
+</div>
+<div class="listingblock">
+<div class="title">Milestone repository declaration for Gradle:</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="groovy">repositories {
+  maven { url <span class="string"><span class="delimiter">&quot;</span><span class="content">https://packagecloud.io/rabbitmq/maven-milestones/maven2</span><span class="delimiter">&quot;</span></span> }
+  mavenCentral()
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>For snapshots, with Maven:</p>
+</div>
+<div class="listingblock">
+<div class="title">Snaphost repository declaration for Maven</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="xml"><span class="tag">&lt;repositories&gt;</span>
 
   <span class="tag">&lt;repository&gt;</span>
     <span class="tag">&lt;id&gt;</span>ossrh<span class="tag">&lt;/id&gt;</span>
@@ -934,22 +997,16 @@ library for <a href="#working-with-complex-messages">AMQP 1.0 message encoding a
 <span class="tag">&lt;/repositories&gt;</span></code></pre>
 </div>
 </div>
+<div class="paragraph">
+<p>For snapshots, with Gradle:</p>
 </div>
-<div class="sect3">
-<h4 id="gradle"><a class="anchor" href="#gradle"></a>Gradle</h4>
 <div class="listingblock">
-<div class="title">build.gradle</div>
+<div class="title">Snaphost repository declaration for Gradle:</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">com.rabbitmq:stream-client:0.1.0-SNAPSHOT</span><span class="delimiter">&quot;</span></span>
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">org.apache.qpid:proton-j:0.33.8</span><span class="delimiter">&quot;</span></span>
-}
-
-repositories {
+<pre class="CodeRay highlight"><code data-lang="groovy">repositories {
   maven { url <span class="string"><span class="delimiter">'</span><span class="content">https://oss.sonatype.org/content/repositories/snapshots</span><span class="delimiter">'</span></span> }
   mavenCentral()
 }</code></pre>
-</div>
 </div>
 </div>
 </div>
@@ -3359,7 +3416,7 @@ tracking consumers would ignore the specified offset and would start where they 
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-07-12 08:53:45 UTC
+Last updated 2021-07-12 10:07:50 UTC
 </div>
 </div>
 <style>
