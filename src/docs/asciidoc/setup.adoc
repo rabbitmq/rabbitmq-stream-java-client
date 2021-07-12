@@ -1,8 +1,7 @@
 === Setting up RabbitMQ
 
-A RabbitMQ node with the stream plugin enabled is required. The easiest way
-to get up and running is to use Docker. It is also possible to use the
-generic Unix package.
+A RabbitMQ 3.9+ node with the stream plugin enabled is required. The easiest way
+to get up and running is to use Docker.
 
 ==== With Docker
 
@@ -22,14 +21,13 @@ This section shows how to start a broker instance for local development
 (the broker Docker container and the client application are assumed to run on the
 same host).
 
-The following command creates a one-time Docker container to run RabbitMQ
-with the stream plugin enabled:
+The following command creates a one-time Docker container to run RabbitMQ:
 
 .Running the stream plugin with Docker
 ----
 docker run -it --rm --name rabbitmq -p 5552:5552 \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
-    pivotalrabbitmq/rabbitmq-stream
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
+    rabbitmq:3.9-rc
 ----
 
 The previous command exposes only the stream port (5552), you can expose
@@ -38,16 +36,19 @@ ports for other protocols:
 .Exposing the AMQP 0.9.1 and management ports:
 ----
 docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
-    pivotalrabbitmq/rabbitmq-stream
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
+    rabbitmq:3.9-rc-management
 ----
 
 Refer to the official https://hub.docker.com/_/rabbitmq[RabbitMQ Docker image web page]
-to find out more about its usage. Make sure to use the `pivotalrabbitmq/rabbitmq-stream`
-image in the command line.
+to find out more about its usage.
 
-The `pivotalrabbitmq/rabbitmq-stream` Docker image is meant for development usage only. It does not
-support all the features of the official Docker image, like TLS.
+Once the container is started, **the stream plugin must be enabled**:
+
+.Enabling the stream plugin:
+----
+docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
+----
 
 ===== With Docker Host Network Driver
 
@@ -57,11 +58,17 @@ this is perfect for experimenting locally.
 
 .Running RabbitMQ Stream with the host network driver
 ----
-docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
+docker run -it --rm --name rabbitmq --network host rabbitmq:3.9-rc
 ----
 
-The command above will use the following ports: 5552 (for stream), 5672 (for AMQP),
-15672 (for management plugin).
+Once the container is started, **the stream plugin must be enabled**:
+
+.Enabling the stream plugin:
+----
+docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
+----
+
+The container will use the following ports: 5552 (for stream) and 5672 (for AMQP.)
 
 [NOTE]
 .Docker Host Network Driver Support
@@ -69,14 +76,17 @@ The command above will use the following ports: 5552 (for stream), 5672 (for AMQ
 The host networking driver *only works on Linux hosts*.
 ====
 
-==== With the Generic Unix Package
+==== With a RabbitMQ Package Running on the Host
 
-The generic Unix package requires https://www.rabbitmq.com/which-erlang.html[Erlang] to be installed.
+Using a package implies installing Erlang.
 
-* Download the https://github.com/rabbitmq/rabbitmq-server-binaries-dev/releases[latest generic Unix `alpha-stream` archive].
-* Follow the https://www.rabbitmq.com/install-generic-unix.html[instructions to install the generic Unix package].
-* Enable the plugin `./rabbitmq-plugins enable rabbitmq_stream`.
-* Start the broker `./rabbitmq-server -detached`. This starts the stream listener on port 5552.
+* Make sure to use https://github.com/rabbitmq/rabbitmq-server/releases[RabbitMQ 3.9 or more].
+* Follow the steps to
+https://rabbitmq.com/download.html[install Erlang and the appropriate package]
+* Enable the plugin `rabbitmq-plugins enable rabbitmq_stream`.
+* The stream plugin listens on port 5552.
+
+Refer to the https://rabbitmq.com/stream.html[stream plugin documentation] for more information on configuration.
 
 === Dependencies
 

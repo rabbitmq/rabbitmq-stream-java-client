@@ -47,8 +47,10 @@ this is perfect for experimenting locally.
 .Running the broker and performance tool with the host network driver
 ----
 # run the broker
-docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
-# open another terminal and run the performance tool
+docker run -it --rm --name rabbitmq --network host rabbitmq:3.9-rc
+# open another terminal and enable the stream plugin
+docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
+# run the performance tool
 docker run -it --rm --network host pivotalrabbitmq/stream-perf-test
 ----
 
@@ -70,15 +72,21 @@ can be done by defining a network and running the containers in this network.
 # create a network
 docker network create stream-perf-test
 # run the broker
-docker run -it --rm --network stream-perf-test --name rabbitmq pivotalrabbitmq/rabbitmq-stream
-# open another terminal and run the performance tool
+docker run -it --rm --network stream-perf-test --name rabbitmq \
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbit loopback_users "none"' \
+    rabbitmq:3.9-rc
+# open another terminal and enable the stream plugin
+docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
+# run the performance tool
 docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test \
     --uris rabbitmq-stream://rabbitmq:5552
 ----
 
 ==== With the Java Binary
 
-The Java binary is https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases[on GitHub Release]:
+The Java binary is available on
+https://github.com/rabbitmq/rabbitmq-stream-java-client/releases[GitHub Release].
+https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases[Snaphots] are available as well. To use the latest snapshot:
 
 ----
 wget https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/download/v-stream-perf-test-latest/stream-perf-test-latest.jar

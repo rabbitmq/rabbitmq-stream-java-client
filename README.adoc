@@ -65,7 +65,15 @@ To build the JAR file:
 Launch the broker:
 
 ----
-docker run -it --rm --name rabbitmq --network host pivotalrabbitmq/rabbitmq-stream
+docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 \
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
+    rabbitmq:3.9-rc
+----
+
+Enable the stream plugin:
+
+----
+docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 ----
 
 Launch the tests:
@@ -74,7 +82,7 @@ Launch the tests:
 ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq
 ----
 
-=== Running Tests
+=== Running Tests with a Local Broker
 
 To launch the test suite (requires a local RabbitMQ node with stream plugin enabled):
 
