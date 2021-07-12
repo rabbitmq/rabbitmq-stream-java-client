@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.1.0-SNAPSHOT</span>
-<br><span id="revremark">(1113e42)</span>
+<br><span id="revremark">(1310c5c)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -464,7 +464,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#with-docker-host-network-driver">With Docker Host Network Driver</a></li>
 </ul>
 </li>
-<li><a href="#with-the-generic-unix-package">With the Generic Unix Package</a></li>
+<li><a href="#with-a-rabbitmq-package-running-on-the-host">With a RabbitMQ Package Running on the Host</a></li>
 </ul>
 </li>
 <li><a href="#dependencies">Dependencies</a>
@@ -560,7 +560,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="sectionbody">
 <div class="paragraph">
 <p>The RabbitMQ Stream Java Client is a Java library to communicate with
-the <a href="https://github.com/rabbitmq/rabbitmq-stream">RabbitMQ Stream Plugin</a>.
+the <a href="https://rabbitmq.com/stream.html">RabbitMQ Stream Plugin</a>.
 It allows creating and deleting streams, as well as publishing to and consuming from
 these streams. Learn more in the <a href="#stream-client-overview">the client overview</a>.</p>
 </div>
@@ -754,9 +754,8 @@ The next section provides more details about the evolution of programming interf
 <div class="sect2">
 <h3 id="setting-up-rabbitmq"><a class="anchor" href="#setting-up-rabbitmq"></a>Setting up RabbitMQ</h3>
 <div class="paragraph">
-<p>A RabbitMQ node with the stream plugin enabled is required. The easiest way
-to get up and running is to use Docker. It is also possible to use the
-generic Unix package.</p>
+<p>A RabbitMQ 3.9+ node with the stream plugin enabled is required. The easiest way
+to get up and running is to use Docker.</p>
 </div>
 <div class="sect3">
 <h4 id="with-docker"><a class="anchor" href="#with-docker"></a>With Docker</h4>
@@ -788,15 +787,14 @@ when using RabbitMQ Stream inside Docker on a Mac.</p>
 same host).</p>
 </div>
 <div class="paragraph">
-<p>The following command creates a one-time Docker container to run RabbitMQ
-with the stream plugin enabled:</p>
+<p>The following command creates a one-time Docker container to run RabbitMQ:</p>
 </div>
 <div class="listingblock">
 <div class="title">Running the stream plugin with Docker</div>
 <div class="content">
 <pre>docker run -it --rm --name rabbitmq -p 5552:5552 \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
-    pivotalrabbitmq/rabbitmq-stream</pre>
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
+    rabbitmq:3.9-rc</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -807,18 +805,22 @@ ports for other protocols:</p>
 <div class="title">Exposing the AMQP 0.9.1 and management ports:</div>
 <div class="content">
 <pre>docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbitmq_stream advertised_host localhost" \
-    pivotalrabbitmq/rabbitmq-stream</pre>
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
+    rabbitmq:3.9-rc-management</pre>
 </div>
 </div>
 <div class="paragraph">
 <p>Refer to the official <a href="https://hub.docker.com/_/rabbitmq">RabbitMQ Docker image web page</a>
-to find out more about its usage. Make sure to use the <code>pivotalrabbitmq/rabbitmq-stream</code>
-image in the command line.</p>
+to find out more about its usage.</p>
 </div>
 <div class="paragraph">
-<p>The <code>pivotalrabbitmq/rabbitmq-stream</code> Docker image is meant for development usage only. It does not
-support all the features of the official Docker image, like TLS.</p>
+<p>Once the container is started, <strong>the stream plugin must be enabled</strong>:</p>
+</div>
+<div class="listingblock">
+<div class="title">Enabling the stream plugin:</div>
+<div class="content">
+<pre>docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream</pre>
+</div>
 </div>
 </div>
 <div class="sect4">
@@ -831,12 +833,20 @@ this is perfect for experimenting locally.</p>
 <div class="listingblock">
 <div class="title">Running RabbitMQ Stream with the host network driver</div>
 <div class="content">
-<pre>docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream</pre>
+<pre>docker run -it --rm --name rabbitmq --network host rabbitmq:3.9-rc</pre>
 </div>
 </div>
 <div class="paragraph">
-<p>The command above will use the following ports: 5552 (for stream), 5672 (for AMQP),
-15672 (for management plugin).</p>
+<p>Once the container is started, <strong>the stream plugin must be enabled</strong>:</p>
+</div>
+<div class="listingblock">
+<div class="title">Enabling the stream plugin:</div>
+<div class="content">
+<pre>docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The container will use the following ports: 5552 (for stream) and 5672 (for AMQP.)</p>
 </div>
 <div class="admonitionblock note">
 <table>
@@ -856,25 +866,29 @@ this is perfect for experimenting locally.</p>
 </div>
 </div>
 <div class="sect3">
-<h4 id="with-the-generic-unix-package"><a class="anchor" href="#with-the-generic-unix-package"></a>With the Generic Unix Package</h4>
+<h4 id="with-a-rabbitmq-package-running-on-the-host"><a class="anchor" href="#with-a-rabbitmq-package-running-on-the-host"></a>With a RabbitMQ Package Running on the Host</h4>
 <div class="paragraph">
-<p>The generic Unix package requires <a href="https://www.rabbitmq.com/which-erlang.html">Erlang</a> to be installed.</p>
+<p>Using a package implies installing Erlang.</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p>Download the <a href="https://github.com/rabbitmq/rabbitmq-server-binaries-dev/releases">latest generic Unix <code>alpha-stream</code> archive</a>.</p>
+<p>Make sure to use <a href="https://github.com/rabbitmq/rabbitmq-server/releases">RabbitMQ 3.9 or more</a>.</p>
 </li>
 <li>
-<p>Follow the <a href="https://www.rabbitmq.com/install-generic-unix.html">instructions to install the generic Unix package</a>.</p>
+<p>Follow the steps to
+<a href="https://rabbitmq.com/download.html">install Erlang and the appropriate package</a></p>
 </li>
 <li>
-<p>Enable the plugin <code>./rabbitmq-plugins enable rabbitmq_stream</code>.</p>
+<p>Enable the plugin <code>rabbitmq-plugins enable rabbitmq_stream</code>.</p>
 </li>
 <li>
-<p>Start the broker <code>./rabbitmq-server -detached</code>. This starts the stream listener on port 5552.</p>
+<p>The stream plugin listens on port 5552.</p>
 </li>
 </ul>
+</div>
+<div class="paragraph">
+<p>Refer to the <a href="https://rabbitmq.com/stream.html">stream plugin documentation</a> for more information on configuration.</p>
 </div>
 </div>
 </div>
@@ -2792,8 +2806,10 @@ this is perfect for experimenting locally.</p>
 <div class="title">Running the broker and performance tool with the host network driver</div>
 <div class="content">
 <pre># run the broker
-docker run -it --rm --network host pivotalrabbitmq/rabbitmq-stream
-# open another terminal and run the performance tool
+docker run -it --rm --name rabbitmq --network host rabbitmq:3.9-rc
+# open another terminal and enable the stream plugin
+docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
+# run the performance tool
 docker run -it --rm --network host pivotalrabbitmq/stream-perf-test</pre>
 </div>
 </div>
@@ -2827,8 +2843,12 @@ can be done by defining a network and running the containers in this network.</p
 <pre># create a network
 docker network create stream-perf-test
 # run the broker
-docker run -it --rm --network stream-perf-test --name rabbitmq pivotalrabbitmq/rabbitmq-stream
-# open another terminal and run the performance tool
+docker run -it --rm --network stream-perf-test --name rabbitmq \
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbit loopback_users "none"' \
+    rabbitmq:3.9-rc
+# open another terminal and enable the stream plugin
+docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
+# run the performance tool
 docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test \
     --uris rabbitmq-stream://rabbitmq:5552</pre>
 </div>
@@ -2838,7 +2858,9 @@ docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test 
 <div class="sect3">
 <h4 id="with-the-java-binary"><a class="anchor" href="#with-the-java-binary"></a>With the Java Binary</h4>
 <div class="paragraph">
-<p>The Java binary is <a href="https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases">on GitHub Release</a>:</p>
+<p>The Java binary is available on
+<a href="https://github.com/rabbitmq/rabbitmq-stream-java-client/releases">GitHub Release</a>.
+<a href="https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases">Snaphots</a> are available as well. To use the latest snapshot:</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -3337,7 +3359,7 @@ tracking consumers would ignore the specified offset and would start where they 
 <div id="footer">
 <div id="footer-text">
 Version 0.1.0-SNAPSHOT<br>
-Last updated 2021-07-09 15:51:38 UTC
+Last updated 2021-07-12 08:53:45 UTC
 </div>
 </div>
 <style>
