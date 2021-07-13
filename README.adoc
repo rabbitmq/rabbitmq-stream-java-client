@@ -4,21 +4,21 @@ image:https://github.com/rabbitmq/rabbitmq-stream-java-client/workflows/Build%20
 image:https://codecov.io/gh/rabbitmq/rabbitmq-stream-java-client/branch/main/graph/badge.svg?token=CFZ6EHW47J["Code Coverage", link="https://codecov.io/gh/rabbitmq/rabbitmq-stream-java-client"]
 
 The RabbitMQ Stream Java Client is a Java library to communicate with
-the https://github.com/rabbitmq/rabbitmq-server/tree/v3.9.x/deps/rabbitmq_stream[RabbitMQ Stream Plugin].
+the https://rabbitmq.com/stream.html[RabbitMQ Stream Plugin].
 It allows to create and delete streams, as well as to publish to and consume from
 these streams.
 
 The client ships also with a
-https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/#the-performance-tool[performance tool].
+https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#the-performance-tool[performance tool].
 
-Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[documentation]
-(https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/pdf/index.pdf[PDF])
+Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/[documentation]
+(https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/pdf/index.pdf[PDF])
 to find out more.
 
 == Project Maturity
 
 The project is in development and stabilization phase.
-Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/#stability-of-programming-interfaces[breaking changes] will be kept to a minimum.
+Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#stability-of-programming-interfaces[breaking changes] will be kept to a minimum.
 
 == Support
 
@@ -35,7 +35,8 @@ The library requires Java 8 or more.
 
 ==== Release
 
-TBD
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/[Reference documentation]
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/api/com/rabbitmq/stream/package-summary.html[API documentation]
 
 ==== Milestone
 
