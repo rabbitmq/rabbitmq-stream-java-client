@@ -201,6 +201,10 @@ The server certificate chain and the client private key are the typical
 elements that need to be configured.
 |The JDK trust manager and no client private key.
 
+|`tls#sslParameters`
+|Set the `SSLParameters` for the `SSLEngine`. The provided parameters will be merged into the parameters returned by `SSLEngine#getSSLParameters()`. Can be used to set SNI information with `SSLParameters#setServerNames(List)`.
+|`null`
+
 |`tls#trustEverything`
 |Helper to configure a `SslContext` that trusts all server certificates
 and does not use a client private key. **Only for development**.

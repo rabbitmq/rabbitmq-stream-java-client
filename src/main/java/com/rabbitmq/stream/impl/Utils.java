@@ -26,6 +26,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -212,5 +214,93 @@ final class Utils {
     public X509Certificate[] getAcceptedIssuers() {
       return new X509Certificate[0];
     }
+  }
+
+  static void mergeSslParameters(SSLParameters original, SSLParameters provided) {
+    if (notEmptyArray(provided.getCipherSuites())) {
+      LOGGER.debug(
+          "Setting SSLParameters cipherSuites from {} to {}",
+          arrayToString(original.getCipherSuites()),
+          arrayToString(provided.getCipherSuites()));
+      original.setCipherSuites(provided.getCipherSuites());
+    }
+    if (notEmptyArray(provided.getProtocols())) {
+      LOGGER.debug(
+          "Setting SSLParameters protocols from {} to {}",
+          arrayToString(original.getProtocols()),
+          arrayToString(provided.getProtocols()));
+      original.setProtocols(provided.getProtocols());
+    }
+    if (original.getWantClientAuth() != provided.getWantClientAuth()) {
+      LOGGER.debug(
+          "Setting SSLParameters wantClientAuth from {} to {}",
+          original.getWantClientAuth(),
+          provided.getWantClientAuth());
+      original.setWantClientAuth(provided.getWantClientAuth());
+    }
+    if (original.getNeedClientAuth() != provided.getNeedClientAuth()) {
+      LOGGER.debug(
+          "Setting SSLParameters needClientAuth from {} to {}",
+          original.getNeedClientAuth(),
+          provided.getNeedClientAuth());
+      original.setNeedClientAuth(provided.getNeedClientAuth());
+    }
+    if (notNullOrBlank(provided.getEndpointIdentificationAlgorithm())) {
+      LOGGER.debug(
+          "Setting SSLParameters endpointIdentificationAlgorithm from {} to {}",
+          original.getEndpointIdentificationAlgorithm(),
+          provided.getEndpointIdentificationAlgorithm());
+      original.setEndpointIdentificationAlgorithm(provided.getEndpointIdentificationAlgorithm());
+    }
+    if (provided.getAlgorithmConstraints() != null) {
+      LOGGER.debug(
+          "Setting SSLParameters algorithmConstraints from {} to {}",
+          original.getAlgorithmConstraints(),
+          provided.getAlgorithmConstraints());
+      original.setAlgorithmConstraints(provided.getAlgorithmConstraints());
+    }
+    if (provided.getServerNames() != null) {
+      LOGGER.debug(
+          "Setting SSLParameters serverNames from {} to {}",
+          original.getServerNames(),
+          provided.getServerNames());
+      original.setServerNames(provided.getServerNames());
+    }
+    if (provided.getSNIMatchers() != null) {
+      LOGGER.debug(
+          "Setting SSLParameters SNIMatchers from {} to {}",
+          original.getSNIMatchers(),
+          provided.getSNIMatchers());
+      original.setSNIMatchers(provided.getSNIMatchers());
+    }
+    if (original.getUseCipherSuitesOrder() != provided.getUseCipherSuitesOrder()) {
+      LOGGER.debug(
+          "Setting SSLParameters useCipherSuitesOrder from {} to {}",
+          original.getUseCipherSuitesOrder(),
+          provided.getUseCipherSuitesOrder());
+      original.setUseCipherSuitesOrder(provided.getUseCipherSuitesOrder());
+    }
+  }
+
+  private static boolean notNullOrBlank(String str) {
+    return str != null && !str.trim().isEmpty();
+  }
+
+  private static String arrayToString(Object[] array) {
+    if (emptyArray(array)) {
+      return "";
+    } else {
+      return Arrays.stream(array)
+          .map(o -> o == null ? "null" : o.toString())
+          .collect(Collectors.joining());
+    }
+  }
+
+  private static boolean emptyArray(Object[] array) {
+    return array == null || array.length == 0;
+  }
+
+  private static boolean notEmptyArray(Object[] array) {
+    return !emptyArray(array);
   }
 }

@@ -285,12 +285,16 @@ public class Client implements AutoCloseable {
             if (parameters.sslContext != null) {
               SslHandler sslHandler =
                   parameters.sslContext.newHandler(ch.alloc(), parameters.host, parameters.port);
+              SSLEngine sslEngine = sslHandler.engine();
+              SSLParameters sslParameters = sslEngine.getSSLParameters();
               if (parameters.tlsHostnameVerification) {
-                SSLEngine sslEngine = sslHandler.engine();
-                SSLParameters sslParameters = sslEngine.getSSLParameters();
                 sslParameters.setEndpointIdentificationAlgorithm("HTTPS");
-                sslEngine.setSSLParameters(sslParameters);
               }
+              if (parameters.sslParameters != null) {
+                Utils.mergeSslParameters(sslParameters, parameters.sslParameters);
+              }
+              sslEngine.setSSLParameters(sslParameters);
+
               ch.pipeline().addFirst("ssl", sslHandler);
             }
             channelCustomizer.customize(ch);
@@ -1919,6 +1923,7 @@ public class Client implements AutoCloseable {
     private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
+    private SSLParameters sslParameters;
     private boolean tlsHostnameVerification = true;
     private ByteBufAllocator byteBufAllocator;
     private Duration rpcTimeout;
@@ -2062,6 +2067,11 @@ public class Client implements AutoCloseable {
       if (this.port == DEFAULT_PORT && sslContext != null) {
         this.port = DEFAULT_TLS_PORT;
       }
+      return this;
+    }
+
+    public ClientParameters sslParameters(SSLParameters sslParameters) {
+      this.sslParameters = sslParameters;
       return this;
     }
 

@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -300,6 +301,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     private boolean enabled = false;
     private boolean hostnameVerification = true;
     private SslContext sslContext;
+    private SSLParameters sslParameters;
 
     private DefaultTlsConfiguration(EnvironmentBuilder environmentBuilder) {
       this.environmentBuilder = environmentBuilder;
@@ -320,6 +322,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     @Override
     public TlsConfiguration sslContext(SslContext sslContext) {
       this.sslContext = sslContext;
+      return this;
+    }
+
+    @Override
+    public TlsConfiguration sslParameters(SSLParameters sslParameters) {
+      this.sslParameters = sslParameters;
       return this;
     }
 
@@ -359,6 +367,10 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
     public SslContext sslContext() {
       return sslContext;
+    }
+
+    public SSLParameters sslParameters() {
+      return sslParameters;
     }
   }
 }

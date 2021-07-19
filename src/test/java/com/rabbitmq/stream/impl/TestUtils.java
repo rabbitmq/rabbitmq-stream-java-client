@@ -114,6 +114,10 @@ public final class TestUtils {
     return new Address("localhost", Client.DEFAULT_PORT);
   }
 
+  static Address localhostTls() {
+    return new Address("localhost", Client.DEFAULT_TLS_PORT);
+  }
+
   static byte b(int value) {
     return (byte) value;
   }

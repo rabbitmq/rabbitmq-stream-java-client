@@ -15,6 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
+import static com.rabbitmq.stream.impl.TestUtils.localhostTls;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -33,6 +34,7 @@ import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.net.ConnectException;
@@ -48,6 +50,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SSLParameters;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,7 +82,8 @@ public class StreamEnvironmentTest {
   @BeforeEach
   void init() {
     environmentBuilder = Environment.builder();
-    environmentBuilder.addressResolver(add -> localhost());
+    environmentBuilder.addressResolver(
+        add -> add.port() == Client.DEFAULT_PORT ? localhost() : localhostTls());
     environmentBuilder.eventLoopGroup(eventLoopGroup);
   }
 
@@ -127,6 +132,21 @@ public class StreamEnvironmentTest {
   @Test
   void environmentCreationShouldSucceedWithUrlContainingAllCorrectInformation() {
     environmentBuilder.uri("rabbitmq-stream://guest:guest@localhost:5552/%2f").build().close();
+  }
+
+  @DisabledIfTlsNotEnabled
+  @Test
+  void environmentCreationShouldSucceedWhenUsingTls() {
+    SSLParameters sslParameters = new SSLParameters();
+    sslParameters.setServerNames(Collections.singletonList(new SNIHostName("localhost")));
+    environmentBuilder
+        .uri("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f")
+        .tls()
+        .trustEverything()
+        .sslParameters(sslParameters)
+        .environmentBuilder()
+        .build()
+        .close();
   }
 
   @Test

@@ -43,8 +43,10 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.IntStream;
+import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.SSLParameters;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -170,6 +172,13 @@ public class TlsTest {
   @Test
   void unverifiedConnection() {
     cf.get(new ClientParameters().sslContext(alwaysTrustSslContext()));
+  }
+
+  @Test
+  void unverifiedConnectionWithSslParameters() {
+    SSLParameters sslParameters = new SSLParameters();
+    sslParameters.setServerNames(Collections.singletonList(new SNIHostName("localhost")));
+    cf.get(new ClientParameters().sslContext(alwaysTrustSslContext()).sslParameters(sslParameters));
   }
 
   @Test
