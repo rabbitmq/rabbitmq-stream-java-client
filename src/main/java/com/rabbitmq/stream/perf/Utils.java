@@ -38,10 +38,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SNIServerName;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
+import picocli.CommandLine.ITypeConverter;
 
 class Utils {
 
@@ -157,6 +160,21 @@ class Utils {
         return (stream, index) -> UUID.randomUUID().toString();
       } else {
         return new PatternConsumerNameStrategy(input);
+      }
+    }
+  }
+
+  static class SniServerNamesConverter implements ITypeConverter<List<SNIServerName>> {
+
+    @Override
+    public List<SNIServerName> convert(String value) throws Exception {
+      if (value == null || value.trim().isEmpty()) {
+        return Collections.emptyList();
+      } else {
+        return Arrays.stream(value.split(","))
+            .map(s -> s.trim())
+            .map(s -> new SNIHostName(s))
+            .collect(Collectors.toList());
       }
     }
   }

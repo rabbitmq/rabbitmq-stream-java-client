@@ -24,6 +24,7 @@ import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.perf.Utils.CompressionTypeConverter;
 import com.rabbitmq.stream.perf.Utils.PatternConsumerNameStrategy;
 import com.rabbitmq.stream.perf.Utils.RangeTypeConverter;
+import com.rabbitmq.stream.perf.Utils.SniServerNamesConverter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -33,6 +34,7 @@ import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
+import javax.net.ssl.SNIHostName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -143,6 +145,16 @@ public class UtilsTest {
   void consumerNameStrategy(String pattern, String expected) {
     BiFunction<String, Integer, String> strategy = new PatternConsumerNameStrategy(pattern);
     assertThat(strategy.apply("s1", 2)).isEqualTo(expected);
+  }
+
+  @Test
+  void sniServerNamesConverter() throws Exception {
+    SniServerNamesConverter converter = new SniServerNamesConverter();
+    assertThat(converter.convert("")).isEmpty();
+    assertThat(converter.convert("localhost,dummy"))
+        .hasSize(2)
+        .contains(new SNIHostName("localhost"))
+        .contains(new SNIHostName("dummy"));
   }
 
   @Test

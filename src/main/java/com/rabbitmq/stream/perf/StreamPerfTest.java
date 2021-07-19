@@ -26,6 +26,7 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.EnvironmentBuilder.TlsConfiguration;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamCreator;
@@ -71,6 +72,8 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.net.ssl.SNIServerName;
+import javax.net.ssl.SSLParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -296,6 +299,13 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "false")
   private boolean memoryReport;
 
+  @CommandLine.Option(
+      names = {"--server-name-indication", "-sni"},
+      description = "server names for Server Name Indication TLS parameter, separated by commas",
+      defaultValue = "",
+      converter = Utils.SniServerNamesConverter.class)
+  private List<SNIServerName> sniServerNames;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
 
@@ -492,14 +502,18 @@ public class StreamPerfTest implements Callable<Integer> {
             .maxConsumersByConnection(this.consumersByConnection);
 
     if (tls) {
-      environmentBuilder =
-          environmentBuilder
-              .tls()
-              .sslContext(
-                  SslContextBuilder.forClient()
-                      .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
-                      .build())
-              .environmentBuilder();
+      TlsConfiguration tlsConfiguration = environmentBuilder.tls();
+      tlsConfiguration =
+          tlsConfiguration.sslContext(
+              SslContextBuilder.forClient()
+                  .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
+                  .build());
+      if (!this.sniServerNames.isEmpty()) {
+        SSLParameters sslParameters = new SSLParameters();
+        sslParameters.setServerNames(this.sniServerNames);
+        tlsConfiguration = tlsConfiguration.sslParameters(sslParameters);
+      }
+      environmentBuilder = tlsConfiguration.environmentBuilder();
     }
 
     Environment environment = environmentBuilder.build();

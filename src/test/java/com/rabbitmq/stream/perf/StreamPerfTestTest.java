@@ -198,7 +198,11 @@ public class StreamPerfTestTest {
   @Test
   @DisabledIfTlsNotEnabled
   void shouldConnectWithTls() throws Exception {
-    Future<?> run = run(builder().uris("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f"));
+    Future<?> run =
+        run(
+            builder()
+                .uris("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f")
+                .serverNameIndication("localhost"));
     waitUntilStreamExists(s);
     waitOneSecond();
     run.cancel(true);
@@ -307,6 +311,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder uris(String url) {
       arguments.put("uris", url);
+      return this;
+    }
+
+    ArgumentsBuilder serverNameIndication(String sni) {
+      arguments.put("server-name-indication", sni);
       return this;
     }
 
