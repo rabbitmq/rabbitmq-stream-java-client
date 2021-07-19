@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.2.0-SNAPSHOT</span>
-<br><span id="revremark">(f56e250)</span>
+<br><span id="revremark">(9052770)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1551,6 +1551,11 @@ Use <code>io.netty.handler.ssl.SslContextBuilder#forClient</code> to configure i
 The server certificate chain and the client private key are the typical
 elements that need to be configured.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The JDK trust manager and no client private key.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls#sslParameters</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set the <code>SSLParameters</code> for the <code>SSLEngine</code>. The provided parameters will be merged into the parameters returned by <code>SSLEngine#getSSLParameters()</code>. Can be used to set SNI information with <code>SSLParameters#setServerNames(List)</code>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>null</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls#trustEverything</code></p></td>
@@ -3418,7 +3423,7 @@ tracking consumers would ignore the specified offset and would start where they 
 <div id="footer">
 <div id="footer-text">
 Version 0.2.0-SNAPSHOT<br>
-Last updated 2021-07-13 08:00:52 UTC
+Last updated 2021-07-19 10:12:41 UTC
 </div>
 </div>
 <style>
