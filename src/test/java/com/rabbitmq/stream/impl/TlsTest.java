@@ -20,6 +20,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -29,6 +30,7 @@ import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslHandler;
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.charset.Charset;
@@ -175,10 +177,20 @@ public class TlsTest {
   }
 
   @Test
-  void unverifiedConnectionWithSslParameters() {
-    SSLParameters sslParameters = new SSLParameters();
-    sslParameters.setServerNames(Collections.singletonList(new SNIHostName("localhost")));
-    cf.get(new ClientParameters().sslContext(alwaysTrustSslContext()).sslParameters(sslParameters));
+  void unverifiedConnectionWithSni() {
+    ChannelCustomizer channelCustomizer =
+        ch -> {
+          SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
+          if (sslHandler != null) {
+            SSLParameters sslParameters = sslHandler.engine().getSSLParameters();
+            sslParameters.setServerNames(Collections.singletonList(new SNIHostName("localhost")));
+            sslHandler.engine().setSSLParameters(sslParameters);
+          }
+        };
+    cf.get(
+        new ClientParameters()
+            .sslContext(alwaysTrustSslContext())
+            .channelCustomizer(channelCustomizer));
   }
 
   @Test

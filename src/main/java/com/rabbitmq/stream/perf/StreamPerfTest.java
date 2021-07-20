@@ -19,6 +19,7 @@ import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.ByteCapacity;
+import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
@@ -46,6 +47,7 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufAllocatorMetric;
 import io.netty.buffer.ByteBufAllocatorMetricProvider;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.util.internal.PlatformDependent;
 import java.io.PrintStream;
 import java.io.PrintWriter;
@@ -501,6 +503,8 @@ public class StreamPerfTest implements Callable<Integer> {
             .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
             .maxConsumersByConnection(this.consumersByConnection);
 
+    ChannelCustomizer channelCustomizer = channel -> {};
+
     if (tls) {
       TlsConfiguration tlsConfiguration = environmentBuilder.tls();
       tlsConfiguration =
@@ -508,15 +512,22 @@ public class StreamPerfTest implements Callable<Integer> {
               SslContextBuilder.forClient()
                   .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
                   .build());
-      if (!this.sniServerNames.isEmpty()) {
-        SSLParameters sslParameters = new SSLParameters();
-        sslParameters.setServerNames(this.sniServerNames);
-        tlsConfiguration = tlsConfiguration.sslParameters(sslParameters);
-      }
       environmentBuilder = tlsConfiguration.environmentBuilder();
+      if (!this.sniServerNames.isEmpty()) {
+        channelCustomizer =
+            channelCustomizer.andThen(
+                ch -> {
+                  SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
+                  if (sslHandler != null) {
+                    SSLParameters sslParameters = sslHandler.engine().getSSLParameters();
+                    sslParameters.setServerNames(this.sniServerNames);
+                    sslHandler.engine().setSSLParameters(sslParameters);
+                  }
+                });
+      }
     }
 
-    Environment environment = environmentBuilder.build();
+    Environment environment = environmentBuilder.channelCustomizer(channelCustomizer).build();
     shutdownService.wrap(closeStep("Closing environment(s)", () -> environment.close()));
 
     streams = Utils.streams(this.streamCount, this.streams);

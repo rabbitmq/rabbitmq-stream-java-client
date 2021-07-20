@@ -25,8 +25,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLParameters;
 
 /**
  * API to configure and create an {@link Environment}.
@@ -333,21 +331,6 @@ public interface EnvironmentBuilder {
      * @return the TLS configuration helper
      */
     TlsConfiguration sslContext(SslContext sslContext);
-
-    /**
-     * Set {@link SSLParameters} for the {@link javax.net.ssl.SSLEngine}.
-     *
-     * <p>Provided {@link SSLParameters} will be merged into the {@link SSLParameters} returned by
-     * {@link SSLEngine#getSSLParameters()}, that is non-null property values from the provided
-     * instance will override those in the original instance.
-     *
-     * <p>This is typically use to provide SNI information with {@link
-     * SSLParameters#setServerNames(List)}.
-     *
-     * @param sslParameters
-     * @return the TLS configuration helper
-     */
-    TlsConfiguration sslParameters(SSLParameters sslParameters);
 
     /**
      * Convenience method to set a {@link SslContext} that trusts all servers.

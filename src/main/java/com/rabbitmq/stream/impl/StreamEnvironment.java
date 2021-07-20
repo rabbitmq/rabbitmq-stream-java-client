@@ -145,7 +145,6 @@ class StreamEnvironment implements Environment {
         clientParametersPrototype.sslContext(sslContext);
         clientParametersPrototype.tlsHostnameVerification(
             tlsConfiguration.hostnameVerificationEnabled());
-        clientParametersPrototype.sslParameters(tlsConfiguration.sslParameters());
 
       } catch (SSLException e) {
         throw new StreamException("Error while creating Netty SSL context", e);

@@ -14,6 +14,7 @@
 package com.rabbitmq.stream;
 
 import io.netty.channel.Channel;
+import java.util.Objects;
 
 /**
  * An extension point to customize Netty's {@link io.netty.channel.Channel}s used for connection.
@@ -23,4 +24,12 @@ import io.netty.channel.Channel;
 public interface ChannelCustomizer {
 
   void customize(Channel channel);
+
+  default ChannelCustomizer andThen(ChannelCustomizer after) {
+    Objects.requireNonNull(after);
+    return ch -> {
+      customize(ch);
+      after.customize(ch);
+    };
+  }
 }

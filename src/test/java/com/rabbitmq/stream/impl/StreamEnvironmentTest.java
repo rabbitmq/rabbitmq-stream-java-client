@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
@@ -37,6 +38,7 @@ import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.handler.ssl.SslHandler;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -137,13 +139,20 @@ public class StreamEnvironmentTest {
   @DisabledIfTlsNotEnabled
   @Test
   void environmentCreationShouldSucceedWhenUsingTls() {
-    SSLParameters sslParameters = new SSLParameters();
-    sslParameters.setServerNames(Collections.singletonList(new SNIHostName("localhost")));
+    ChannelCustomizer channelCustomizer =
+        ch -> {
+          SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
+          if (sslHandler != null) {
+            SSLParameters sslParameters = sslHandler.engine().getSSLParameters();
+            sslParameters.setServerNames(Collections.singletonList(new SNIHostName("localhost")));
+            sslHandler.engine().setSSLParameters(sslParameters);
+          }
+        };
     environmentBuilder
         .uri("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f")
+        .channelCustomizer(channelCustomizer)
         .tls()
         .trustEverything()
-        .sslParameters(sslParameters)
         .environmentBuilder()
         .build()
         .close();
