@@ -26,7 +26,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -213,27 +212,5 @@ final class Utils {
     public X509Certificate[] getAcceptedIssuers() {
       return new X509Certificate[0];
     }
-  }
-
-  private static boolean notNullOrBlank(String str) {
-    return str != null && !str.trim().isEmpty();
-  }
-
-  private static String arrayToString(Object[] array) {
-    if (emptyArray(array)) {
-      return "";
-    } else {
-      return Arrays.stream(array)
-          .map(o -> o == null ? "null" : o.toString())
-          .collect(Collectors.joining());
-    }
-  }
-
-  private static boolean emptyArray(Object[] array) {
-    return array == null || array.length == 0;
-  }
-
-  private static boolean notEmptyArray(Object[] array) {
-    return !emptyArray(array);
   }
 }
