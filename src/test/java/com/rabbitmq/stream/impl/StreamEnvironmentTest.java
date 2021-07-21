@@ -26,11 +26,14 @@ import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.ChannelCustomizer;
+import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
@@ -60,6 +63,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamEnvironmentTest {
@@ -158,9 +163,10 @@ public class StreamEnvironmentTest {
         .close();
   }
 
-  @Test
-  void producersAndConsumersShouldBeClosedWhenEnvironmentIsClosed() {
-    Environment environment = environmentBuilder.build();
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void producersAndConsumersShouldBeClosedWhenEnvironmentIsClosed(boolean lazyInit) {
+    Environment environment = environmentBuilder.lazyInitialization(lazyInit).build();
     Collection<Producer> producers =
         IntStream.range(0, 2)
             .mapToObj(i -> environment.producerBuilder().stream(stream).build())
@@ -317,8 +323,7 @@ public class StreamEnvironmentTest {
 
   @Test
   @TestUtils.DisabledIfRabbitMqCtlNotSet
-  void environmentPublishersConsumersShouldCloseSuccessfullyWhenBrokerIsDown(TestInfo info)
-      throws Exception {
+  void environmentPublishersConsumersShouldCloseSuccessfullyWhenBrokerIsDown() throws Exception {
     Environment environment =
         environmentBuilder
             .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(10)))
@@ -437,6 +442,68 @@ public class StreamEnvironmentTest {
       env.streamCreator().stream(s).maxAge(retention).create();
     } finally {
       assertThat(client.delete(s).isOk()).isTrue();
+    }
+  }
+
+  @Test
+  void instanciationShouldSucceedWhenLazyInitIsEnabledAndHostIsNotKnown() {
+    String dummyHost = UUID.randomUUID().toString();
+    Address dummyAddress = new Address(dummyHost, Client.DEFAULT_PORT);
+    try (Environment env =
+        environmentBuilder
+            .host(dummyHost)
+            .addressResolver(a -> dummyAddress)
+            .lazyInitialization(true)
+            .build()) {
+
+      assertThatThrownBy(() -> env.streamCreator().stream("should not have been created").create())
+          .isInstanceOf(StreamException.class);
+      assertThatThrownBy(() -> env.deleteStream("should not exist"))
+          .isInstanceOf(StreamException.class);
+      assertThatThrownBy(() -> env.producerBuilder().stream(stream).build())
+          .isInstanceOf(StreamException.class);
+      assertThatThrownBy(
+              () ->
+                  env.consumerBuilder().stream(stream)
+                      .messageHandler((context, message) -> {})
+                      .build())
+          .isInstanceOf(StreamException.class);
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void createPublishConsumeDelete(boolean lazyInit, TestInfo info) {
+    try (Environment env = environmentBuilder.lazyInitialization(lazyInit).build()) {
+      String s = streamName(info);
+      env.streamCreator().stream(s).create();
+      int messageCount = 50_000;
+      CountDownLatch confirmLatch = new CountDownLatch(messageCount);
+      CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+
+      Producer producer = env.producerBuilder().stream(s).build();
+      ConfirmationHandler confirmationHandler = confirmationStatus -> confirmLatch.countDown();
+      IntStream.range(0, messageCount)
+          .forEach(
+              i -> {
+                Message message =
+                    producer.messageBuilder().addData("".getBytes(StandardCharsets.UTF_8)).build();
+                producer.send(message, confirmationHandler);
+              });
+
+      latchAssert(confirmLatch).completes();
+
+      Consumer consumer =
+          env.consumerBuilder().stream(s)
+              .offset(OffsetSpecification.first())
+              .messageHandler((context, message) -> consumeLatch.countDown())
+              .build();
+
+      latchAssert(consumeLatch).completes();
+
+      producer.close();
+      consumer.close();
+      env.deleteStream(s);
     }
   }
 }

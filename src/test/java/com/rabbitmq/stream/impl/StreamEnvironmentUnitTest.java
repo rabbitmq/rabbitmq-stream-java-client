@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import io.netty.buffer.ByteBufAllocator;
 import java.net.URI;
 import java.time.Duration;
@@ -29,6 +30,8 @@ import java.util.function.Function;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -81,6 +84,7 @@ public class StreamEnvironmentUnitTest {
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
             ByteBufAllocator.DEFAULT,
+            false,
             cf);
   }
 
@@ -140,7 +144,32 @@ public class StreamEnvironmentUnitTest {
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
             ByteBufAllocator.DEFAULT,
+            false,
             cf);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false,1", "true,0"})
+  void shouldNotOpenConnectionWhenLazyInitIsEnabled(
+      boolean lazyInit, int expectedConnectionCreation) throws Exception {
+    reset(cf);
+    when(cf.apply(any(Client.ClientParameters.class))).thenReturn(client);
+    environment =
+        new StreamEnvironment(
+            scheduledExecutorService,
+            new ClientParameters(),
+            Collections.emptyList(),
+            recoveryBackOffDelayPolicy,
+            topologyUpdateBackOffDelayPolicy,
+            host -> host,
+            ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
+            ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            null,
+            ByteBufAllocator.DEFAULT,
+            lazyInit,
+            cf);
+    verify(cf, times(expectedConnectionCreation)).apply(any(Client.ClientParameters.class));
   }
 }

@@ -29,6 +29,7 @@ import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
@@ -83,6 +84,8 @@ class StreamEnvironment implements Environment {
   private final Clock clock = new Clock();
   private final ScheduledFuture<?> clockRefreshFuture;
   private final ByteBufAllocator byteBufAllocator;
+  private final AtomicBoolean locatorInitialized = new AtomicBoolean(false);
+  private final Runnable locatorInitializationSequence;
   private volatile Client locator;
 
   StreamEnvironment(
@@ -96,7 +99,8 @@ class StreamEnvironment implements Environment {
       int maxTrackingConsumersByConnection,
       int maxConsumersByConnection,
       DefaultTlsConfiguration tlsConfiguration,
-      ByteBufAllocator byteBufAllocator) {
+      ByteBufAllocator byteBufAllocator,
+      boolean lazyInit) {
     this(
         scheduledExecutorService,
         clientParametersPrototype,
@@ -109,6 +113,7 @@ class StreamEnvironment implements Environment {
         maxConsumersByConnection,
         tlsConfiguration,
         byteBufAllocator,
+        lazyInit,
         cp -> new Client(cp));
   }
 
@@ -124,6 +129,7 @@ class StreamEnvironment implements Environment {
       int maxConsumersByConnection,
       DefaultTlsConfiguration tlsConfiguration,
       ByteBufAllocator byteBufAllocator,
+      boolean lazyInit,
       Function<Client.ClientParameters, Client> clientFactory) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
@@ -235,29 +241,41 @@ class StreamEnvironment implements Environment {
           }
         };
     shutdownListenerReference.set(shutdownListener);
-    RuntimeException lastException = null;
-    for (Address address : addresses) {
-      address = addressResolver.resolve(address);
-      Client.ClientParameters locatorParameters =
-          clientParametersPrototype
-              .duplicate()
-              .host(address.host())
-              .port(address.port())
-              .clientProperty("connection_name", "rabbitmq-stream-locator")
-              .shutdownListener(shutdownListenerReference.get());
-      try {
-        this.locator = clientFactory.apply(locatorParameters);
-        LOGGER.debug("Locator connected to {}", address);
-        break;
-      } catch (RuntimeException e) {
-        LOGGER.debug("Error while try to connect to {}: {}", address, e.getMessage());
-        lastException = e;
-      }
+    ClientParameters clientParametersForInit = clientParametersPrototype.duplicate();
+    Runnable locatorInitSequence =
+        () -> {
+          RuntimeException lastException = null;
+          for (Address address : addresses) {
+            address = addressResolver.resolve(address);
+            Client.ClientParameters locatorParameters =
+                clientParametersForInit
+                    .duplicate()
+                    .host(address.host())
+                    .port(address.port())
+                    .clientProperty("connection_name", "rabbitmq-stream-locator")
+                    .shutdownListener(shutdownListenerReference.get());
+            try {
+              this.locator = clientFactory.apply(locatorParameters);
+              LOGGER.debug("Locator connected to {}", address);
+              break;
+            } catch (RuntimeException e) {
+              LOGGER.debug("Error while try to connect to {}: {}", address, e.getMessage());
+              lastException = e;
+            }
+          }
+          if (this.locator == null) {
+            throw lastException;
+          }
+        };
+    if (lazyInit) {
+      this.locatorInitializationSequence = locatorInitSequence;
+    } else {
+      locatorInitSequence.run();
+      locatorInitialized.set(true);
+      this.locatorInitializationSequence = () -> {};
     }
-    if (this.locator == null) {
-      throw lastException;
-    }
-    this.codec = locator.codec();
+    this.codec =
+        clientParametersPrototype.codec == null ? Codecs.DEFAULT : clientParametersPrototype.codec;
     this.clockRefreshFuture =
         this.scheduledExecutorService.scheduleAtFixedRate(
             () -> this.clock.refresh(), 1, 1, SECONDS);
@@ -318,13 +336,26 @@ class StreamEnvironment implements Environment {
     return byteBufAllocator;
   }
 
+  private void maybeInitializeLocator() {
+    if (this.locatorInitialized.compareAndSet(false, true)) {
+      try {
+        this.locatorInitializationSequence.run();
+      } catch (RuntimeException e) {
+        this.locatorInitialized.set(false);
+        throw e;
+      }
+    }
+  }
+
   @Override
   public StreamCreator streamCreator() {
+    maybeInitializeLocator();
     return new StreamStreamCreator(this);
   }
 
   @Override
   public void deleteStream(String stream) {
+    maybeInitializeLocator();
     Client.Response response = this.locator().delete(stream);
     if (!response.isOk()) {
       throw new StreamException(
@@ -339,6 +370,7 @@ class StreamEnvironment implements Environment {
 
   @Override
   public ProducerBuilder producerBuilder() {
+    maybeInitializeLocator();
     return new StreamProducerBuilder(this);
   }
 
@@ -360,6 +392,7 @@ class StreamEnvironment implements Environment {
 
   @Override
   public ConsumerBuilder consumerBuilder() {
+    maybeInitializeLocator();
     return new StreamConsumerBuilder(this);
   }
 

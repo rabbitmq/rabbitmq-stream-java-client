@@ -60,6 +60,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private int maxConsumersByConnection = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
   private CompressionCodecFactory compressionCodecFactory;
   private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
+  private boolean lazyInit = false;
 
   public StreamEnvironmentBuilder() {}
 
@@ -267,6 +268,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
+  public EnvironmentBuilder lazyInitialization(boolean lazy) {
+    this.lazyInit = lazy;
+    return this;
+  }
+
+  @Override
   public TlsConfiguration tls() {
     this.tls.enable();
     return this.tls;
@@ -290,7 +297,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         maxTrackingConsumersByConnection,
         maxConsumersByConnection,
         tls,
-        byteBufAllocator);
+        byteBufAllocator,
+        lazyInit);
   }
 
   static final class DefaultTlsConfiguration implements TlsConfiguration {
