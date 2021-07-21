@@ -186,6 +186,10 @@ can maintain before a new connection is open. The value must be between 1 and 25
 a new connection is open. The value must be between 1 and 255.
 |255
 
+|`lazyInitialization`
+|To delay the connection opening until necessary.
+|false
+
 |`tls`
 |Configuration helper for TLS.
 |TLS is enabled if a `rabbitmq-stream+tls` URI is provided.

@@ -287,6 +287,19 @@ public interface EnvironmentBuilder {
       BackOffDelayPolicy topologyUpdateBackOffDelayPolicy);
 
   /**
+   * To delay the connection opening until necessary.
+   *
+   * <p>No connection will be open before it is necessary (for stream management or
+   * producer/consumer creation).
+   *
+   * <p>Default is false.
+   *
+   * @param lazy
+   * @return this builder instance
+   */
+  EnvironmentBuilder lazyInitialization(boolean lazy);
+
+  /**
    * Create the {@link Environment} instance.
    *
    * @return the configured environment
