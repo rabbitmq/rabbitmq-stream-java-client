@@ -151,8 +151,9 @@ public class StreamEnvironmentUnitTest {
 
   @ParameterizedTest
   @CsvSource({"false,1", "true,0"})
+  @SuppressWarnings("unchecked")
   void shouldNotOpenConnectionWhenLazyInitIsEnabled(
-      boolean lazyInit, int expectedConnectionCreation) throws Exception {
+      boolean lazyInit, int expectedConnectionCreation) {
     reset(cf);
     when(cf.apply(any(Client.ClientParameters.class))).thenReturn(client);
     environment =
