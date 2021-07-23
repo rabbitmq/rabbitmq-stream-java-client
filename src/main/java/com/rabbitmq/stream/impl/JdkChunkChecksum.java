@@ -35,7 +35,7 @@ class JdkChunkChecksum implements ChunkChecksum {
 
   static {
     if (isChecksumUpdateByteBufferAvailable()) {
-      LOGGER.debug("Checksum#update(ByteBuffer) method not available, using it for direct buffers");
+      LOGGER.debug("Checksum#update(ByteBuffer) method available, using it for direct buffers");
       CRC32_SINGLETON = new ByteBufferDirectByteBufChecksum(CRC32_SUPPLIER);
     } else {
       LOGGER.debug(
