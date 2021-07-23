@@ -283,7 +283,7 @@ public class StreamPerfTest implements Callable<Integer> {
   @CommandLine.Option(
       names = {"--consumer-names", "-cn"},
       description =
-          "naming strategy for consumer names. Valid are values are 'uuid' or a pattern with "
+          "naming strategy for consumer names. Valid values are 'uuid' or a pattern with "
               + "stream name and consumer index as arguments.",
       defaultValue = "%s-%d",
       converter = Utils.ConsumerNameStrategyConverter.class)
