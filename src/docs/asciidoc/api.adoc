@@ -533,7 +533,7 @@ stream at the same time.
 The producer name is only one part of the de-duplication mechanism, the other part
 is the _message publishing ID_. If the producer has a name, the client automatically
 assigns a publishing ID to each outbound message for the producer. The publishing ID
-is a monotonic sequence, starting at 0 and incremented for each message. The default
+is a strictly increasing sequence, starting at 0 and incremented for each message. The default
 publishing sequence is good enough for de-duplication, but it is possible to
 assign a publishing ID to each message:
 
@@ -547,7 +547,7 @@ include::{test-examples}/ProducerUsage.java[tag=message-with-publishing-id]
 There are a few rules to follow when using a custom publishing ID sequence:
 
  * the sequence should start at 0
- * the sequence must be monotonic, that is always increments
+ * the sequence must be strictly increasing
  * there can be gaps in the sequence (e.g. 0, 1, 2, 3, 6, 7, 9, 10, etc)
 
 A custom publishing ID sequence has usually a meaning: it can be the line number of a file
