@@ -15,16 +15,35 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.ChunkChecksumValidationException;
+import com.rabbitmq.stream.StreamException;
 import io.netty.buffer.ByteBuf;
 import io.netty.util.ByteProcessor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.function.Supplier;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class JdkChunkChecksum implements ChunkChecksum {
 
+  static final ChunkChecksum CRC32_SINGLETON;
+  private static final Logger LOGGER = LoggerFactory.getLogger(JdkChunkChecksum.class);
   private static final Supplier<Checksum> CRC32_SUPPLIER = CRC32::new;
-  static final ChunkChecksum CRC32_SINGLETON = new JdkChunkChecksum(CRC32_SUPPLIER);
+
+  static {
+    if (isChecksumUpdateByteBufferAvailable()) {
+      LOGGER.debug("Checksum#update(ByteBuffer) method not available, using it for direct buffers");
+      CRC32_SINGLETON = new ByteBufferDirectByteBufChecksum(CRC32_SUPPLIER);
+    } else {
+      LOGGER.debug(
+          "Checksum#update(ByteBuffer) method not available, using byte-by-byte CRC calculation for direct buffers");
+      CRC32_SINGLETON = new JdkChunkChecksum(CRC32_SUPPLIER);
+    }
+  }
+
   private final Supplier<Checksum> checksumSupplier;
 
   JdkChunkChecksum() {
@@ -33,6 +52,15 @@ class JdkChunkChecksum implements ChunkChecksum {
 
   JdkChunkChecksum(Supplier<Checksum> checksumSupplier) {
     this.checksumSupplier = checksumSupplier;
+  }
+
+  private static boolean isChecksumUpdateByteBufferAvailable() {
+    try {
+      Checksum.class.getDeclaredMethod("update", ByteBuffer.class);
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
   }
 
   @Override
@@ -47,6 +75,44 @@ class JdkChunkChecksum implements ChunkChecksum {
     }
     if (expected != checksum.getValue()) {
       throw new ChunkChecksumValidationException(expected, checksum.getValue());
+    }
+  }
+
+  private static class ByteBufferDirectByteBufChecksum implements ChunkChecksum {
+
+    private final Supplier<Checksum> checksumSupplier;
+    private final Method updateMethod;
+
+    private ByteBufferDirectByteBufChecksum(Supplier<Checksum> checksumSupplier) {
+      this.checksumSupplier = checksumSupplier;
+      try {
+        this.updateMethod = Checksum.class.getDeclaredMethod("update", ByteBuffer.class);
+      } catch (NoSuchMethodException e) {
+        throw new StreamException("Error while looking up Checksum#update(ByteBuffer) method", e);
+      }
+    }
+
+    @Override
+    public void checksum(ByteBuf byteBuf, long dataLength, long expected) {
+      Checksum checksum = checksumSupplier.get();
+      if (byteBuf.hasArray()) {
+        checksum.update(
+            byteBuf.array(),
+            byteBuf.arrayOffset() + byteBuf.readerIndex(),
+            byteBuf.readableBytes());
+      } else {
+        try {
+          this.updateMethod.invoke(
+              checksum, byteBuf.nioBuffer(byteBuf.readerIndex(), byteBuf.readableBytes()));
+        } catch (IllegalAccessException e) {
+          throw new StreamException("Error while calculating CRC", e);
+        } catch (InvocationTargetException e) {
+          throw new StreamException("Error while calculating CRC", e);
+        }
+      }
+      if (expected != checksum.getValue()) {
+        throw new ChunkChecksumValidationException(expected, checksum.getValue());
+      }
     }
   }
 
