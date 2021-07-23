@@ -14,7 +14,7 @@ include::overview.adoc[]
 
 == The Stream Java Client
 
-The library requires Java 8 or more.
+The library requires Java 8 or more. Java 11 is recommended (CRC calculation uses methods available as of Java 9.)
 
 include::setup.adoc[]
 
