@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.2.0-SNAPSHOT</span>
-<br><span id="revremark">(64ca19a)</span>
+<br><span id="revremark">(3d315b8)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2137,7 +2137,7 @@ stream at the same time.</p>
 <p>The producer name is only one part of the de-duplication mechanism, the other part
 is the <em>message publishing ID</em>. If the producer has a name, the client automatically
 assigns a publishing ID to each outbound message for the producer. The publishing ID
-is a monotonic sequence, starting at 0 and incremented for each message. The default
+is a strictly increasing sequence, starting at 0 and incremented for each message. The default
 publishing sequence is good enough for de-duplication, but it is possible to
 assign a publishing ID to each message:</p>
 </div>
@@ -2168,7 +2168,7 @@ producer.send(message, confirmationStatus -&gt; { });</code></pre>
 <p>the sequence should start at 0</p>
 </li>
 <li>
-<p>the sequence must be monotonic, that is always increments</p>
+<p>the sequence must be strictly increasing</p>
 </li>
 <li>
 <p>there can be gaps in the sequence (e.g. 0, 1, 2, 3, 6, 7, 9, 10, etc)</p>
@@ -3423,7 +3423,7 @@ tracking consumers would ignore the specified offset and would start where they 
 <div id="footer">
 <div id="footer-text">
 Version 0.2.0-SNAPSHOT<br>
-Last updated 2021-07-23 12:29:14 UTC
+Last updated 2021-07-23 14:49:46 UTC
 </div>
 </div>
 <style>
