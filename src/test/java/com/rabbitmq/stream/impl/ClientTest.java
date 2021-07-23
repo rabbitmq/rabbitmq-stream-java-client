@@ -32,6 +32,8 @@ import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.net.UnknownHostException;
@@ -477,9 +479,11 @@ public class ClientTest {
     client.close();
   }
 
-  @Test
-  void publishAndConsume() throws Exception {
-    int publishCount = 1000000;
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void publishAndConsume(boolean directBuffer) throws Exception {
+    ByteBufAllocator allocator = new UnpooledByteBufAllocator(directBuffer);
+    int publishCount = 1_000_000;
 
     CountDownLatch consumedLatch = new CountDownLatch(publishCount);
     Client.ChunkListener chunkListener =
@@ -494,6 +498,7 @@ public class ClientTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
+                .byteBufAllocator(allocator)
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
     client.subscribe(b(1), stream, OffsetSpecification.first(), credit);
@@ -504,6 +509,7 @@ public class ClientTest {
               Client publisher =
                   cf.get(
                       new Client.ClientParameters()
+                          .byteBufAllocator(allocator)
                           .publishConfirmListener(
                               (publisherId, correlationId) -> confirmedLatch.countDown()));
               int messageId = 0;

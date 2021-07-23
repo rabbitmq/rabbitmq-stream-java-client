@@ -39,7 +39,8 @@ class JdkChunkChecksum implements ChunkChecksum {
   public void checksum(ByteBuf byteBuf, long dataLength, long expected) {
     Checksum checksum = checksumSupplier.get();
     if (byteBuf.hasArray()) {
-      checksum.update(byteBuf.array(), byteBuf.readerIndex(), byteBuf.readableBytes());
+      checksum.update(
+          byteBuf.array(), byteBuf.arrayOffset() + byteBuf.readerIndex(), byteBuf.readableBytes());
     } else {
       byteBuf.forEachByte(
           byteBuf.readerIndex(), byteBuf.readableBytes(), new UpdateProcessor(checksum));
