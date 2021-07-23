@@ -29,12 +29,15 @@ import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.ProducerBuilder;
+import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
@@ -456,18 +459,15 @@ public class StreamEnvironmentTest {
             .lazyInitialization(true)
             .build()) {
 
-      assertThatThrownBy(() -> env.streamCreator().stream("should not have been created").create())
-          .isInstanceOf(StreamException.class);
+      StreamCreator streamCreator = env.streamCreator().stream("should not have been created");
+      assertThatThrownBy(() -> streamCreator.create()).isInstanceOf(StreamException.class);
       assertThatThrownBy(() -> env.deleteStream("should not exist"))
           .isInstanceOf(StreamException.class);
-      assertThatThrownBy(() -> env.producerBuilder().stream(stream).build())
-          .isInstanceOf(StreamException.class);
-      assertThatThrownBy(
-              () ->
-                  env.consumerBuilder().stream(stream)
-                      .messageHandler((context, message) -> {})
-                      .build())
-          .isInstanceOf(StreamException.class);
+      ProducerBuilder producerBuilder = env.producerBuilder().stream(this.stream);
+      assertThatThrownBy(() -> producerBuilder.build()).isInstanceOf(StreamException.class);
+      ConsumerBuilder consumerBuilder =
+          env.consumerBuilder().stream(this.stream).messageHandler((context, message) -> {});
+      assertThatThrownBy(() -> consumerBuilder.build()).isInstanceOf(StreamException.class);
     }
   }
 

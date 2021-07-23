@@ -336,7 +336,7 @@ class StreamEnvironment implements Environment {
     return byteBufAllocator;
   }
 
-  private void maybeInitializeLocator() {
+  void maybeInitializeLocator() {
     if (this.locatorInitialized.compareAndSet(false, true)) {
       try {
         this.locatorInitializationSequence.run();
@@ -349,13 +349,12 @@ class StreamEnvironment implements Environment {
 
   @Override
   public StreamCreator streamCreator() {
-    maybeInitializeLocator();
     return new StreamStreamCreator(this);
   }
 
   @Override
   public void deleteStream(String stream) {
-    maybeInitializeLocator();
+    this.maybeInitializeLocator();
     Client.Response response = this.locator().delete(stream);
     if (!response.isOk()) {
       throw new StreamException(
@@ -370,7 +369,6 @@ class StreamEnvironment implements Environment {
 
   @Override
   public ProducerBuilder producerBuilder() {
-    maybeInitializeLocator();
     return new StreamProducerBuilder(this);
   }
 
@@ -392,7 +390,6 @@ class StreamEnvironment implements Environment {
 
   @Override
   public ConsumerBuilder consumerBuilder() {
-    maybeInitializeLocator();
     return new StreamConsumerBuilder(this);
   }
 

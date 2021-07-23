@@ -155,6 +155,7 @@ class StreamProducerBuilder implements ProducerBuilder {
     if (subEntrySize > 1 && compression == null) {
       compression = Compression.NONE;
     }
+    this.environment.maybeInitializeLocator();
     Producer producer;
     if (this.routingKeyExtractor == null) {
       producer =

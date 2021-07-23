@@ -87,6 +87,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       throw new IllegalArgumentException("A name must be set if a tracking strategy is specified");
     }
 
+    this.environment.maybeInitializeLocator();
     TrackingConfiguration trackingConfiguration;
     if (this.autoTrackingStrategy != null) {
       trackingConfiguration =
