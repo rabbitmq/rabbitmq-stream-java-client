@@ -101,7 +101,6 @@ public class StreamPerfTest implements Callable<Integer> {
   private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
 
   int streamDispatching = 0;
-  private volatile Codec codec;
 
   @CommandLine.Option(
       names = {"--uris", "-u"},
@@ -388,8 +387,8 @@ public class StreamPerfTest implements Callable<Integer> {
       versionInformation(System.out);
       System.exit(0);
     }
-    // FIXME assign codec
-    this.codec = createCodec(this.codecClass);
+
+    Codec codec = createCodec(this.codecClass);
 
     ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
 
@@ -498,6 +497,7 @@ public class StreamPerfTest implements Callable<Integer> {
             .scheduledExecutorService(envExecutor)
             .metricsCollector(metricsCollector)
             .byteBufAllocator(byteBufAllocator)
+            .codec(codec)
             .maxProducersByConnection(this.producersByConnection)
             .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
             .maxConsumersByConnection(this.consumersByConnection);
