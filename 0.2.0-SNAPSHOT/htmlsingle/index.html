@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.2.0-SNAPSHOT</span>
-<br><span id="revremark">(3d315b8)</span>
+<br><span id="revremark">(c1e74f9)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -794,8 +794,8 @@ same host).</p>
 <div class="title">Running the stream plugin with Docker</div>
 <div class="content">
 <pre>docker run -it --rm --name rabbitmq -p 5552:5552 \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
-    rabbitmq:3.9-rc</pre>
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
+    rabbitmq:3.9</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -806,8 +806,8 @@ ports for other protocols:</p>
 <div class="title">Exposing the AMQP 0.9.1 and management ports:</div>
 <div class="content">
 <pre>docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
-    rabbitmq:3.9-rc-management</pre>
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
+    rabbitmq:3.9-management</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -834,7 +834,7 @@ this is perfect for experimenting locally.</p>
 <div class="listingblock">
 <div class="title">Running RabbitMQ Stream with the host network driver</div>
 <div class="content">
-<pre>docker run -it --rm --name rabbitmq --network host rabbitmq:3.9-rc</pre>
+<pre>docker run -it --rm --name rabbitmq --network host rabbitmq:3.9</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2870,7 +2870,7 @@ this is perfect for experimenting locally.</p>
 <div class="title">Running the broker and performance tool with the host network driver</div>
 <div class="content">
 <pre># run the broker
-docker run -it --rm --name rabbitmq --network host rabbitmq:3.9-rc
+docker run -it --rm --name rabbitmq --network host rabbitmq:3.9
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
@@ -2907,9 +2907,7 @@ can be done by defining a network and running the containers in this network.</p
 <pre># create a network
 docker network create stream-perf-test
 # run the broker
-docker run -it --rm --network stream-perf-test --name rabbitmq \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbit loopback_users "none"' \
-    rabbitmq:3.9-rc
+docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:3.9
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
@@ -3423,7 +3421,7 @@ tracking consumers would ignore the specified offset and would start where they 
 <div id="footer">
 <div id="footer-text">
 Version 0.2.0-SNAPSHOT<br>
-Last updated 2021-07-23 14:49:46 UTC
+Last updated 2021-07-27 06:40:10 UTC
 </div>
 </div>
 <style>
