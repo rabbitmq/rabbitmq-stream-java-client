@@ -181,6 +181,8 @@ java -jar stream-perf-test.jar \
 Note the performance tool will automatically configure the client to trust all
 server certificates and to not use a private key (for client authentication).
 
+Have a look at the <<api.adoc#understanding-connection-logic,connection logic section>> in case of connection problem.
+
 ===== Publishing Rate
 
 It is possible to limit the publishing rate with the `--rate` option:

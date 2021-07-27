@@ -68,6 +68,15 @@ include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-uri
 By specifying several URIs, the environment will try to connect to the first one, and
 will pick a new URI randomly in case of disconnection.
 
+[[understanding-connection-logic]]
+===== Understanding Connection Logic
+
+Creating the environment to connect to a cluster node works usually seamlessly.
+Creating publishers and consumers can cause problems as the client uses hints from the cluster to locate the nodes where stream leaders and replicas are located to connect to the appropriate nodes.
+
+These connection hints can be accurate or less appropriate depending on the infrastructure.
+If you hit some connection problems at some point – like hostnames impossible to resolve for client applications - this https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/[blog post] should help you understand what is going on and fix the issues.
+
 ===== Enabling TLS
 
 TLS can be enabled by using the `rabbitmq-stream+tls` scheme in the URI.
