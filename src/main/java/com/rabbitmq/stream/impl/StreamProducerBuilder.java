@@ -109,7 +109,7 @@ class StreamProducerBuilder implements ProducerBuilder {
     if (timeout.isNegative()) {
       throw new IllegalArgumentException("the confirm timeout cannot be negative");
     }
-    if (timeout.compareTo(Duration.ofSeconds(1)) < 0) {
+    if (timeout.compareTo(Duration.ofSeconds(1)) < 0 && !timeout.isZero()) {
       throw new IllegalArgumentException("the confirm timeout cannot be less than 1 second");
     }
     this.confirmTimeout = timeout;

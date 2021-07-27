@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyByte;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -44,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.ToLongFunction;
 import java.util.stream.IntStream;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -281,5 +283,18 @@ public class StreamProducerUnitTest {
 
     assertThat(interruptedLatch.await(5, TimeUnit.SECONDS)).isTrue();
     assertThat(confirmCalled).isFalse();
+  }
+
+  @ParameterizedTest
+  @CsvSource({"-1,false", "0,true", "500,false", "1000,true", "5000,true"})
+  void confirmTimeoutCanZeroAndLongerThanOneSecond(int timeoutInMs, boolean ok) throws Throwable {
+    Duration timeout = Duration.ofMillis(timeoutInMs);
+    StreamProducerBuilder builder = new StreamProducerBuilder(env);
+    ThrowingCallable call = () -> builder.confirmTimeout(timeout);
+    if (ok) {
+      call.call();
+    } else {
+      assertThatThrownBy(call).isInstanceOf(IllegalArgumentException.class);
+    }
   }
 }
