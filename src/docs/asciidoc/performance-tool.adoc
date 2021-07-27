@@ -404,6 +404,7 @@ The following command shows how to store the offset every 100,000 messages:
 java -jar stream-perf-test.jar --store-every 100000
 ----
 
+[[consumer-names]]
 ===== Consumer Names
 
 When using `--store-every` (see above) for <<api.adoc#consumer-offset-tracking, offset tracking>>,
@@ -447,6 +448,13 @@ can be useful when you want to use tracking consumers in different runs but you 
 force the offset they start consuming from. With consumer names that do not change between runs,
 tracking consumers would ignore the specified offset and would start where they left off
 (this is the purpose of offset tracking).
+
+===== Producer Names
+You can use the `--producer-names` option to set the producer names pattern and therefore
+enable <<api.adoc#outbound-message-de-duplication, message de-duplication>> (using the default
+publishing sequence starting at 0 and incremented for each message).
+The same naming options apply as above in <<api.adoc#consumer-names, consumer names>> with the only
+difference that the default pattern is empty (i.e. no de-duplication).
 
 === Building the Performance Tool
 

@@ -49,7 +49,7 @@ you need to use an AMQP 0-9-1 client library.
 RabbitMQ stream provides at-least-once guarantees thanks to the
 publisher confirm mechanism, which is supported by the stream Java client.
 
-Message <<api.adoc#outbound-message-de-deduplication,de-duplication>>
+Message <<api.adoc#outbound-message-de-duplication,de-duplication>>
 is also supported on the publisher side.
 
 [[stream-client-overview]]
