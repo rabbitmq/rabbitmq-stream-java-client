@@ -84,7 +84,6 @@ import picocli.CommandLine;
     name = "stream-perf-test",
     mixinStandardHelpOptions = false,
     showDefaultValues = true,
-    version = "perftest 0.1",
     description = "Tests the performance of stream queues in RabbitMQ.")
 public class StreamPerfTest implements Callable<Integer> {
 
