@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.2.0-SNAPSHOT</span>
-<br><span id="revremark">(b04bc3d)</span>
+<br><span id="revremark">(d5fb041)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -481,6 +481,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#environment">Environment</a>
 <ul class="sectlevel4">
 <li><a href="#creating-the-environment">Creating the Environment</a></li>
+<li><a href="#understanding-connection-logic">Understanding Connection Logic</a></li>
 <li><a href="#enabling-tls">Enabling TLS</a></li>
 <li><a href="#configuring-the-environment">Configuring the Environment</a></li>
 <li><a href="#managing-streams">Managing Streams</a></li>
@@ -679,9 +680,7 @@ can also be useful for development and testing.</p>
 automatic or manual offset tracking.</p>
 </li>
 <li>
-<p><em>use cluster nodes appropriately</em> by letting the client decide which node to connect to - to
-stream leaders for publishers to minimize inter-node traffic and to stream replicas
-for consumers to offload leaders.</p>
+<p><em>enforce <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/">best practices</a> to create client connections</em> – to stream leaders for publishers to minimize inter-node traffic and to stream replicas for consumers to offload leaders.</p>
 </li>
 <li>
 <p><em>optimize resources</em> thanks to automatic growing and shrinking of
@@ -1332,6 +1331,17 @@ several other URIs to try in case of failure of a node:</p>
 <div class="paragraph">
 <p>By specifying several URIs, the environment will try to connect to the first one, and
 will pick a new URI randomly in case of disconnection.</p>
+</div>
+</div>
+<div class="sect4">
+<h5 id="understanding-connection-logic"><a class="anchor" href="#understanding-connection-logic"></a>Understanding Connection Logic</h5>
+<div class="paragraph">
+<p>Creating the environment to connect to a cluster node works usually seamlessly.
+Creating publishers and consumers can cause problems as the client uses hints from the cluster to locate the nodes where stream leaders and replicas are located to connect to the appropriate nodes.</p>
+</div>
+<div class="paragraph">
+<p>These connection hints can be accurate or less appropriate depending on the infrastructure.
+If you hit some connection problems at some point – like hostnames impossible to resolve for client applications - this <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/">blog post</a> should help you understand what is going on and fix the issues.</p>
 </div>
 </div>
 <div class="sect4">
@@ -3027,6 +3037,9 @@ to distribute publishers and consumers across a cluster.</p>
 <p>Note the performance tool will automatically configure the client to trust all
 server certificates and to not use a private key (for client authentication).</p>
 </div>
+<div class="paragraph">
+<p>Have a look at the <a href="#understanding-connection-logic">connection logic section</a> in case of connection problem.</p>
+</div>
 </div>
 <div class="sect4">
 <h5 id="publishing-rate"><a class="anchor" href="#publishing-rate"></a>Publishing Rate</h5>
@@ -3410,7 +3423,7 @@ tracking consumers would ignore the specified offset and would start where they 
 <div id="footer">
 <div id="footer-text">
 Version 0.2.0-SNAPSHOT<br>
-Last updated 2021-07-27 06:52:31 UTC
+Last updated 2021-07-27 07:16:33 UTC
 </div>
 </div>
 <style>
