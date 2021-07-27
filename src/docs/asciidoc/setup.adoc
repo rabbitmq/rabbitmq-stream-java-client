@@ -92,9 +92,6 @@ Refer to the https://rabbitmq.com/stream.html[stream plugin documentation] for m
 
 Use your favorite build management tool to add the client dependencies to your project.
 
-Note the client uses the https://github.com/apache/qpid-proton-j[Apache QPid Proton-J]
-library for <<api.adoc#working-with-complex-messages,AMQP 1.0 message encoding and decoding>>.
-
 ==== Maven
 
 .pom.xml
@@ -106,12 +103,6 @@ library for <<api.adoc#working-with-complex-messages,AMQP 1.0 message encoding a
     <groupId>com.rabbitmq</groupId>
     <artifactId>stream-client</artifactId>
     <version>{project-version}</version>
-  </dependency>
-
-  <dependency>
-    <groupId>org.apache.qpid</groupId>
-    <artifactId>proton-j</artifactId>
-    <version>{protonj-version}</version>
   </dependency>
 
 </dependencies>
@@ -126,7 +117,6 @@ Milestones and snapshots require to declare the <<milestones-and-snapshots,appro
 ----
 dependencies {
   compile "com.rabbitmq:stream-client:{project-version}"
-  compile "org.apache.qpid:proton-j:{protonj-version}"
 }
 ----
 

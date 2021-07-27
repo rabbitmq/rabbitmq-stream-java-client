@@ -136,7 +136,6 @@
       <groupId>org.apache.qpid</groupId>
       <artifactId>proton-j</artifactId>
       <version>${proton-j.version}</version>
-      <optional>true</optional>
     </dependency>
 
     <dependency>
