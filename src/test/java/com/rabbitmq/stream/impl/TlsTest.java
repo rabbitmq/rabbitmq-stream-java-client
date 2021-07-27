@@ -49,12 +49,34 @@ import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLParameters;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @DisabledIfTlsNotEnabled
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class TlsTest {
+
+  static boolean isJava13() {
+    String javaVersion = System.getProperty("java.version");
+    return javaVersion != null && javaVersion.startsWith("13.");
+  }
+
+  @BeforeEach
+  public void init() {
+    if (isJava13()) {
+      // for Java 13.0.7, see https://github.com/bcgit/bc-java/issues/941
+      System.setProperty("keystore.pkcs12.keyProtectionAlgorithm", "PBEWithHmacSHA256AndAES_256");
+    }
+  }
+
+  @AfterEach
+  public void tearDown() throws Exception {
+    if (isJava13()) {
+      System.setProperty("keystore.pkcs12.keyProtectionAlgorithm", "");
+    }
+  }
 
   String stream;
 
