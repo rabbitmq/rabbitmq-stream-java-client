@@ -26,8 +26,8 @@ The following command creates a one-time Docker container to run RabbitMQ:
 .Running the stream plugin with Docker
 ----
 docker run -it --rm --name rabbitmq -p 5552:5552 \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
-    rabbitmq:3.9-rc
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
+    rabbitmq:3.9
 ----
 
 The previous command exposes only the stream port (5552), you can expose
@@ -36,8 +36,8 @@ ports for other protocols:
 .Exposing the AMQP 0.9.1 and management ports:
 ----
 docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"' \
-    rabbitmq:3.9-rc-management
+    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
+    rabbitmq:3.9-management
 ----
 
 Refer to the official https://hub.docker.com/_/rabbitmq[RabbitMQ Docker image web page]
@@ -58,7 +58,7 @@ this is perfect for experimenting locally.
 
 .Running RabbitMQ Stream with the host network driver
 ----
-docker run -it --rm --name rabbitmq --network host rabbitmq:3.9-rc
+docker run -it --rm --name rabbitmq --network host rabbitmq:3.9
 ----
 
 Once the container is started, **the stream plugin must be enabled**:
