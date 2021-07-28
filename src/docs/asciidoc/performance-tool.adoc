@@ -456,6 +456,14 @@ publishing sequence starting at 0 and incremented for each message).
 The same naming options apply as above in <<api.adoc#consumer-names, consumer names>> with the only
 difference that the default pattern is empty (i.e. no deduplication).
 
+Here is an example of the usage of the `--producer-names` option:
+
+----
+java -jar stream-perf-test.jar --producer-names %s-%d
+----
+
+The run will start one producer and will use the `stream-1` producer reference (default stream is `stream` and the number of the producer is 1.)
+
 === Building the Performance Tool
 
 To build the uber JAR:
