@@ -187,10 +187,34 @@ public class StreamPerfTestTest {
   void offsetShouldNotBeStoredWhenOptionIsNotEnabled() throws Exception {
     Future<?> run = run(builder());
     waitUntilStreamExists(s);
-    String consumerName = s + "-0"; // convention
+    String consumerName = s + "-0"; // default value when offset tracking is enabled
     assertThat(client.queryOffset(consumerName, s)).isZero();
     waitOneSecond();
     assertThat(client.queryOffset(consumerName, s)).isZero();
+    run.cancel(true);
+    waitRunEnds();
+  }
+
+  @Test
+  void publishingSequenceShouldBeStoredWhenProducerNamesAreSet() throws Exception {
+    Future<?> run = run(builder().producerNames("producer-%2$d-on-stream-%1$s"));
+    waitUntilStreamExists(s);
+    String producerName = "producer-1-on-stream-" + s;
+    long seq = client.queryPublisherSequence(producerName, s);
+    waitOneSecond();
+    waitAtMost(() -> client.queryPublisherSequence(producerName, s) > seq);
+    run.cancel(true);
+    waitRunEnds();
+  }
+
+  @Test
+  void publishingSequenceShouldNotBeStoredWhenProducerNamesAreNotSet() throws Exception {
+    Future<?> run = run(builder());
+    waitUntilStreamExists(s);
+    String producerName = s + "-0"; // shooting in the dark here
+    assertThat(client.queryPublisherSequence(producerName, s)).isZero();
+    waitOneSecond();
+    assertThat(client.queryPublisherSequence(producerName, s)).isZero();
     run.cancel(true);
     waitRunEnds();
   }
@@ -402,6 +426,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder consumerNames(String pattern) {
       arguments.put("consumer-names", pattern);
+      return this;
+    }
+
+    ArgumentsBuilder producerNames(String pattern) {
+      arguments.put("producer-names", pattern);
       return this;
     }
 

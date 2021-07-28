@@ -346,8 +346,8 @@ The following table sums up the main settings to create a `Producer`:
 
 |`name`
 |The logical name of the producer. Specify a name to enable
-<<outbound-message-de-deduplication,message de-deduplication>>.
-|`null` (no de-duplication)
+<<outbound-message-deduplication,message deduplication>>.
+|`null` (no deduplication)
 
 |`batchSize`
 |The maximum number of messages to accumulate before sending them to the broker.
@@ -357,7 +357,7 @@ The following table sums up the main settings to create a `Producer`:
 |[[producer-sub-entry-size-configuration-entry]]The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
 frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
 as well. Use this feature to increase throughput at the cost of increased latency and
-potential duplicated messages even when de-duplication is enabled.
+potential duplicated messages even when deduplication is enabled.
 |1 (meaning no use of sub-entry batching)
 
 |`maxUnconfirmedMessages`
@@ -475,8 +475,8 @@ type system. It provides good interoperability, which allows streams
 to be accessed as AMQP 0-9-1 queues, without data loss.
 ====
 
-[[outbound-message-de-deduplication]]
-===== Message De-deduplication
+[[outbound-message-deduplication]]
+===== Message Deduplication
 
 RabbitMQ Stream provides publisher confirms to avoid losing messages: once
 the broker has persisted a message it sends a confirmation for this message.
@@ -490,9 +490,9 @@ Luckily RabbitMQ Stream can detect and filter out duplicated messages, based
 on 2 client-side elements: the _producer name_ and the _message publishing ID_.
 
 [WARNING]
-.De-duplication is not guaranteed when using sub-entries batching
+.Deduplication is not guaranteed when using sub-entries batching
 ====
-It is not possible to guarantee de-duplication when
+It is not possible to guarantee deduplication when
 <<producer-sub-entry-size-configuration-entry, sub-entry batching>> is in use.
 Sub-entry batching is disabled by default and it does not prevent from
 batching messages in a single publish frame, which can already provide
@@ -502,9 +502,9 @@ very high throughput.
 ====== Setting the Name of a Producer
 
 The producer name is set when creating the producer instance, which automatically
-enables de-duplication:
+enables deduplication:
 
-.Naming a producer to enable message de-duplication
+.Naming a producer to enable message deduplication
 [source,java,indent=0]
 --------
 include::{test-examples}/ProducerUsage.java[tag=producer-with-name]
@@ -518,13 +518,13 @@ will automatically recover and retry outstanding messages. The broker will then
 filter out messages it has already received and persisted. No more duplicates!
 
 [IMPORTANT]
-.Why setting `confirmTimeout` to 0 when using de-duplication?
+.Why setting `confirmTimeout` to 0 when using deduplication?
 ====
-The point of de-duplication is to avoid duplicates when retrying unconfirmed messages.
+The point of deduplication is to avoid duplicates when retrying unconfirmed messages.
 But why retrying in the first place? To avoid _losing_ messages, that is enforcing
 _at-least-once_ semantics. If the client does not stubbornly retry messages and gives
 up at some point, messages can be lost, which maps to _at-most-once_ semantics. This
-is why the de-duplication examples set the
+is why the deduplication examples set the
 <<producer-confirm-timeout-configuration-entry,`confirmTimeout` setting>> to `Duration.ZERO`:
 to disable the background task that calls the confirmation callback for outstanding
 messages that time out. This way the client will do its best to retry messages
@@ -539,11 +539,11 @@ stream at the same time.
 
 ====== Understanding Publishing ID
 
-The producer name is only one part of the de-duplication mechanism, the other part
+The producer name is only one part of the deduplication mechanism, the other part
 is the _message publishing ID_. If the producer has a name, the client automatically
 assigns a publishing ID to each outbound message for the producer. The publishing ID
 is a strictly increasing sequence, starting at 0 and incremented for each message. The default
-publishing sequence is good enough for de-duplication, but it is possible to
+publishing sequence is good enough for deduplication, but it is possible to
 assign a publishing ID to each message:
 
 .Using an explicit publishing ID
@@ -570,7 +570,7 @@ properties (e.g. `messageId`).
 [IMPORTANT]
 .Do not mix client-assigned and custom publishing ID
 ====
-As soon as a producer name is set, message de-duplication is enabled.
+As soon as a producer name is set, message deduplication is enabled.
 It is then possible to let the producer assign a publishing ID to each
 message or assign custom publishing IDs. *Do one or the other, not both!*
 ====

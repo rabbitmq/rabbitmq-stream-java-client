@@ -151,7 +151,7 @@ class Utils {
     }
   }
 
-  static class ConsumerNameStrategyConverter
+  static class NameStrategyConverter
       implements CommandLine.ITypeConverter<BiFunction<String, Integer, String>> {
 
     @Override
@@ -159,7 +159,7 @@ class Utils {
       if ("uuid".equals(input)) {
         return (stream, index) -> UUID.randomUUID().toString();
       } else {
-        return new PatternConsumerNameStrategy(input);
+        return new PatternNameStrategy(input);
       }
     }
   }
@@ -429,11 +429,11 @@ class Utils {
     }
   }
 
-  static final class PatternConsumerNameStrategy implements BiFunction<String, Integer, String> {
+  static final class PatternNameStrategy implements BiFunction<String, Integer, String> {
 
     private final String pattern;
 
-    PatternConsumerNameStrategy(String pattern) {
+    PatternNameStrategy(String pattern) {
       this.pattern = pattern;
     }
 

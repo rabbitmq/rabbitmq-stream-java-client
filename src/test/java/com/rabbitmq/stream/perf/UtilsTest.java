@@ -22,7 +22,8 @@ import static org.junit.jupiter.params.provider.Arguments.of;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.perf.Utils.CompressionTypeConverter;
-import com.rabbitmq.stream.perf.Utils.PatternConsumerNameStrategy;
+import com.rabbitmq.stream.perf.Utils.NameStrategyConverter;
+import com.rabbitmq.stream.perf.Utils.PatternNameStrategy;
 import com.rabbitmq.stream.perf.Utils.RangeTypeConverter;
 import com.rabbitmq.stream.perf.Utils.SniServerNamesConverter;
 import java.util.Arrays;
@@ -30,6 +31,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
+import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
@@ -143,8 +145,34 @@ public class UtilsTest {
     "consumer-%2$d-on-stream-%1$s,consumer-2-on-stream-s1"
   })
   void consumerNameStrategy(String pattern, String expected) {
-    BiFunction<String, Integer, String> strategy = new PatternConsumerNameStrategy(pattern);
+    BiFunction<String, Integer, String> strategy = new PatternNameStrategy(pattern);
     assertThat(strategy.apply("s1", 2)).isEqualTo(expected);
+  }
+
+  @Test
+  void producerConsumerNameStrategyConverterShouldReturnUuidWhenAskedForUuid() {
+    NameStrategyConverter nameStrategyConverter = new NameStrategyConverter();
+    BiFunction<String, Integer, String> nameStrategy = nameStrategyConverter.convert("uuid");
+    String name = nameStrategy.apply("stream", 1);
+    UUID.fromString(name);
+    assertThat(nameStrategy.apply("stream", 1)).isNotEqualTo(name);
+  }
+
+  @Test
+  void producerConsumerNameStrategyConverterShouldReturnEmptyStringWhenPatternIsEmptyString() {
+    NameStrategyConverter nameStrategyConverter = new NameStrategyConverter();
+    BiFunction<String, Integer, String> nameStrategy = nameStrategyConverter.convert("");
+    assertThat(nameStrategy.apply("stream", 1)).isEmpty();
+    assertThat(nameStrategy.apply("stream", 2)).isEmpty();
+  }
+
+  @Test
+  void producerConsumerNameStrategyConverterShouldReturnPatternStrategyWhenAsked() {
+    NameStrategyConverter nameStrategyConverter = new NameStrategyConverter();
+    BiFunction<String, Integer, String> nameStrategy =
+        nameStrategyConverter.convert("stream-%s-consumer-%d");
+    assertThat(nameStrategy).isInstanceOf(PatternNameStrategy.class);
+    assertThat(nameStrategy.apply("s1", 2)).isEqualTo("stream-s1-consumer-2");
   }
 
   @Test

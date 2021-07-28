@@ -30,6 +30,7 @@ import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.EnvironmentBuilder.TlsConfiguration;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.StreamException;
@@ -259,6 +260,16 @@ public class StreamPerfTest implements Callable<Integer> {
   private int producersByConnection;
 
   @CommandLine.Option(
+      names = {"--producer-names", "-pn"},
+      description =
+          "naming strategy for producer names. Valid values are 'uuid' or a pattern with "
+              + "stream name and producer index as arguments. "
+              + "If set, a publishing ID is automatically assigned to each outbound message.",
+      defaultValue = "",
+      converter = Utils.NameStrategyConverter.class)
+  private BiFunction<String, Integer, String> producerNameStrategy;
+
+  @CommandLine.Option(
       names = {"--tracking-consumers-by-connection", "-ccbc"},
       description = "number of tracking consumers by connection. Value must be between 1 and 255.",
       defaultValue = "50",
@@ -284,7 +295,7 @@ public class StreamPerfTest implements Callable<Integer> {
           "naming strategy for consumer names. Valid values are 'uuid' or a pattern with "
               + "stream name and consumer index as arguments.",
       defaultValue = "%s-%d",
-      converter = Utils.ConsumerNameStrategyConverter.class)
+      converter = Utils.NameStrategyConverter.class)
   private BiFunction<String, Integer, String> consumerNameStrategy;
 
   @CommandLine.Option(
@@ -597,10 +608,16 @@ public class StreamPerfTest implements Callable<Integer> {
                   }
 
                   String stream = stream();
+                  ProducerBuilder producerBuilder = environment.producerBuilder();
+
+                  String producerName = this.producerNameStrategy.apply(stream, i + 1);
+                  if (producerName != "") {
+                    producerBuilder =
+                        producerBuilder.name(producerName).confirmTimeout(Duration.ZERO);
+                  }
 
                   Producer producer =
-                      environment
-                          .producerBuilder()
+                      producerBuilder
                           .subEntrySize(this.subEntrySize)
                           .batchSize(this.batchSize)
                           .compression(
