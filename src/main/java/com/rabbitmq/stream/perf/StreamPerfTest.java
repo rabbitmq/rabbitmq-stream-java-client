@@ -266,6 +266,7 @@ public class StreamPerfTest implements Callable<Integer> {
               + "stream name and producer index as arguments. "
               + "If set, a publishing ID is automatically assigned to each outbound message.",
       defaultValue = "",
+      showDefaultValue = CommandLine.Help.Visibility.NEVER,
       converter = Utils.NameStrategyConverter.class)
   private BiFunction<String, Integer, String> producerNameStrategy;
 
