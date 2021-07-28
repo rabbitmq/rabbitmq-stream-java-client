@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.3.0-SNAPSHOT</span>
-<br><span id="revremark">(7bb6f8b)</span>
+<br><span id="revremark">(6aed989)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -492,7 +492,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#creating-a-producer">Creating a Producer</a></li>
 <li><a href="#sending-messages">Sending Messages</a></li>
 <li><a href="#working-with-complex-messages">Working with Complex Messages</a></li>
-<li><a href="#outbound-message-de-deduplication">Message De-deduplication</a>
+<li><a href="#outbound-message-deduplication">Message Deduplication</a>
 <ul class="sectlevel5">
 <li><a href="#setting-the-name-of-a-producer">Setting the Name of a Producer</a></li>
 <li><a href="#understanding-publishing-id">Understanding Publishing ID</a></li>
@@ -547,6 +547,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#offset-consumer">Offset (Consumer)</a></li>
 <li><a href="#offset-tracking-consumer">Offset Tracking (Consumer)</a></li>
 <li><a href="#consumer-names">Consumer Names</a></li>
+<li><a href="#producer-names">Producer Names</a></li>
 </ul>
 </li>
 </ul>
@@ -649,7 +650,7 @@ you need to use an AMQP 0-9-1 client library.</p>
 publisher confirm mechanism, which is supported by the stream Java client.</p>
 </div>
 <div class="paragraph">
-<p>Message <a href="#outbound-message-de-deduplication">de-duplication</a>
+<p>Message <a href="#outbound-message-deduplication">deduplication</a>
 is also supported on the publisher side.</p>
 </div>
 </div>
@@ -673,7 +674,7 @@ can also be useful for development and testing.</p>
 <p><em>adapt publishing throughput</em> thanks to the configurable batch size and flow control.</p>
 </li>
 <li>
-<p><em>avoid publishing duplicate messages</em> thanks to message de-duplication.</p>
+<p><em>avoid publishing duplicate messages</em> thanks to message deduplication.</p>
 </li>
 <li>
 <p><em>consume asynchronously from streams and resume where left off</em> thanks to
@@ -1795,8 +1796,8 @@ publish to the leader node of the stream.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>name</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The logical name of the producer. Specify a name to enable
-<a href="#outbound-message-de-deduplication">message de-deduplication</a>.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>null</code> (no de-duplication)</p></td>
+<a href="#outbound-message-deduplication">message deduplication</a>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>null</code> (no deduplication)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>batchSize</code></p></td>
@@ -1808,7 +1809,7 @@ publish to the leader node of the stream.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><a id="producer-sub-entry-size-configuration-entry"></a>The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
 frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
 as well. Use this feature to increase throughput at the cost of increased latency and
-potential duplicated messages even when de-duplication is enabled.</p></td>
+potential duplicated messages even when deduplication is enabled.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1 (meaning no use of sub-entry batching)</p></td>
 </tr>
 <tr>
@@ -2032,7 +2033,7 @@ to be accessed as AMQP 0-9-1 queues, without data loss.</p>
 </div>
 </div>
 <div class="sect4">
-<h5 id="outbound-message-de-deduplication"><a class="anchor" href="#outbound-message-de-deduplication"></a>Message De-deduplication</h5>
+<h5 id="outbound-message-deduplication"><a class="anchor" href="#outbound-message-deduplication"></a>Message Deduplication</h5>
 <div class="paragraph">
 <p>RabbitMQ Stream provides publisher confirms to avoid losing messages: once
 the broker has persisted a message it sends a confirmation for this message.
@@ -2053,9 +2054,9 @@ on 2 client-side elements: the <em>producer name</em> and the <em>message publis
 <i class="fa icon-warning" title="Warning"></i>
 </td>
 <td class="content">
-<div class="title">De-duplication is not guaranteed when using sub-entries batching</div>
+<div class="title">Deduplication is not guaranteed when using sub-entries batching</div>
 <div class="paragraph">
-<p>It is not possible to guarantee de-duplication when
+<p>It is not possible to guarantee deduplication when
 <a href="#producer-sub-entry-size-configuration-entry">sub-entry batching</a> is in use.
 Sub-entry batching is disabled by default and it does not prevent from
 batching messages in a single publish frame, which can already provide
@@ -2069,10 +2070,10 @@ very high throughput.</p>
 <h6 id="setting-the-name-of-a-producer"><a class="anchor" href="#setting-the-name-of-a-producer"></a>Setting the Name of a Producer</h6>
 <div class="paragraph">
 <p>The producer name is set when creating the producer instance, which automatically
-enables de-duplication:</p>
+enables deduplication:</p>
 </div>
 <div class="listingblock">
-<div class="title">Naming a producer to enable message de-duplication</div>
+<div class="title">Naming a producer to enable message deduplication</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
     .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-app-producer</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
@@ -2106,13 +2107,13 @@ filter out messages it has already received and persisted. No more duplicates!</
 <i class="fa icon-important" title="Important"></i>
 </td>
 <td class="content">
-<div class="title">Why setting <code>confirmTimeout</code> to 0 when using de-duplication?</div>
+<div class="title">Why setting <code>confirmTimeout</code> to 0 when using deduplication?</div>
 <div class="paragraph">
-<p>The point of de-duplication is to avoid duplicates when retrying unconfirmed messages.
+<p>The point of deduplication is to avoid duplicates when retrying unconfirmed messages.
 But why retrying in the first place? To avoid <em>losing</em> messages, that is enforcing
 <em>at-least-once</em> semantics. If the client does not stubbornly retry messages and gives
 up at some point, messages can be lost, which maps to <em>at-most-once</em> semantics. This
-is why the de-duplication examples set the
+is why the deduplication examples set the
 <a href="#producer-confirm-timeout-configuration-entry"><code>confirmTimeout</code> setting</a> to <code>Duration.ZERO</code>:
 to disable the background task that calls the confirmation callback for outstanding
 messages that time out. This way the client will do its best to retry messages
@@ -2133,11 +2134,11 @@ stream at the same time.</p>
 <div class="sect5">
 <h6 id="understanding-publishing-id"><a class="anchor" href="#understanding-publishing-id"></a>Understanding Publishing ID</h6>
 <div class="paragraph">
-<p>The producer name is only one part of the de-duplication mechanism, the other part
+<p>The producer name is only one part of the deduplication mechanism, the other part
 is the <em>message publishing ID</em>. If the producer has a name, the client automatically
 assigns a publishing ID to each outbound message for the producer. The publishing ID
 is a strictly increasing sequence, starting at 0 and incremented for each message. The default
-publishing sequence is good enough for de-duplication, but it is possible to
+publishing sequence is good enough for deduplication, but it is possible to
 assign a publishing ID to each message:</p>
 </div>
 <div class="listingblock">
@@ -2193,7 +2194,7 @@ properties (e.g. <code>messageId</code>).</p>
 <td class="content">
 <div class="title">Do not mix client-assigned and custom publishing ID</div>
 <div class="paragraph">
-<p>As soon as a producer name is set, message de-duplication is enabled.
+<p>As soon as a producer name is set, message deduplication is enabled.
 It is then possible to let the producer assign a publishing ID to each
 message or assign custom publishing IDs. <strong>Do one or the other, not both!</strong></p>
 </div>
@@ -3396,6 +3397,27 @@ tracking consumers would ignore the specified offset and would start where they 
 (this is the purpose of offset tracking).</p>
 </div>
 </div>
+<div class="sect4">
+<h5 id="producer-names"><a class="anchor" href="#producer-names"></a>Producer Names</h5>
+<div class="paragraph">
+<p>You can use the <code>--producer-names</code> option to set the producer names pattern and therefore
+enable <a href="#outbound-message-deduplication">message deduplication</a> (using the default
+publishing sequence starting at 0 and incremented for each message).
+The same naming options apply as above in <a href="#consumer-names">consumer names</a> with the only
+difference that the default pattern is empty (i.e. no deduplication).</p>
+</div>
+<div class="paragraph">
+<p>Here is an example of the usage of the <code>--producer-names</code> option:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --producer-names %s-%d</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The run will start one producer and will use the <code>stream-1</code> producer reference (default stream is <code>stream</code> and the number of the producer is 1.)</p>
+</div>
+</div>
 </div>
 </div>
 <div class="sect2">
@@ -3423,7 +3445,7 @@ tracking consumers would ignore the specified offset and would start where they 
 <div id="footer">
 <div id="footer-text">
 Version 0.3.0-SNAPSHOT<br>
-Last updated 2021-07-27 13:02:25 UTC
+Last updated 2021-07-28 07:40:13 UTC
 </div>
 </div>
 <style>
