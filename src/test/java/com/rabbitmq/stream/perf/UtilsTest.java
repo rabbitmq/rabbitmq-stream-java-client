@@ -169,7 +169,8 @@ public class UtilsTest {
   @Test
   void producerConsumerNameStrategyConverterShouldReturnPatternStrategyWhenAsked() {
     NameStrategyConverter nameStrategyConverter = new NameStrategyConverter();
-    BiFunction<String, Integer, String> nameStrategy = nameStrategyConverter.convert("stream-%s-consumer-%d");
+    BiFunction<String, Integer, String> nameStrategy =
+        nameStrategyConverter.convert("stream-%s-consumer-%d");
     assertThat(nameStrategy).isInstanceOf(PatternNameStrategy.class);
     assertThat(nameStrategy.apply("s1", 2)).isEqualTo("stream-s1-consumer-2");
   }

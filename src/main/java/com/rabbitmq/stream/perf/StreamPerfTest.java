@@ -612,9 +612,8 @@ public class StreamPerfTest implements Callable<Integer> {
 
                   String producerName = this.producerNameStrategy.apply(stream, i + 1);
                   if (producerName != "") {
-                      producerBuilder = producerBuilder
-                          .name(producerName)
-                          .confirmTimeout(Duration.ZERO);
+                    producerBuilder =
+                        producerBuilder.name(producerName).confirmTimeout(Duration.ZERO);
                   }
 
                   Producer producer =
