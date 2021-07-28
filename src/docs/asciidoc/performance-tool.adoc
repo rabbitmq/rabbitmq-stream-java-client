@@ -451,10 +451,10 @@ tracking consumers would ignore the specified offset and would start where they 
 
 ===== Producer Names
 You can use the `--producer-names` option to set the producer names pattern and therefore
-enable <<api.adoc#outbound-message-de-duplication, message de-duplication>> (using the default
+enable <<api.adoc#outbound-message-deduplication, message deduplication>> (using the default
 publishing sequence starting at 0 and incremented for each message).
 The same naming options apply as above in <<api.adoc#consumer-names, consumer names>> with the only
-difference that the default pattern is empty (i.e. no de-duplication).
+difference that the default pattern is empty (i.e. no deduplication).
 
 === Building the Performance Tool
 
