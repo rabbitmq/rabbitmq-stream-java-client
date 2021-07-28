@@ -187,7 +187,7 @@ public class StreamPerfTestTest {
   void offsetShouldNotBeStoredWhenOptionIsNotEnabled() throws Exception {
     Future<?> run = run(builder());
     waitUntilStreamExists(s);
-    String consumerName = s + "-0"; // convention
+    String consumerName = s + "-0"; // default value when offset tracking is enabled
     assertThat(client.queryOffset(consumerName, s)).isZero();
     waitOneSecond();
     assertThat(client.queryOffset(consumerName, s)).isZero();
@@ -211,7 +211,7 @@ public class StreamPerfTestTest {
   void publishingSequenceShouldNotBeStoredWhenProducerNamesAreNotSet() throws Exception {
     Future<?> run = run(builder());
     waitUntilStreamExists(s);
-    String producerName = s + "-0"; // convention
+    String producerName = s + "-0"; // shooting in the dark here
     assertThat(client.queryPublisherSequence(producerName, s)).isZero();
     waitOneSecond();
     assertThat(client.queryPublisherSequence(producerName, s)).isZero();
