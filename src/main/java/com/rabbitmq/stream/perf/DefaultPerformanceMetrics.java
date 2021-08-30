@@ -326,6 +326,13 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     boolean activity =
         this.lastPublishedCount != currentPublishedCount
             || this.lastConsumedCount != currentConsumedCount;
+    LOGGER.debug(
+        "Activity check: published {} vs {}, consumed {} vs {}, activity {}",
+        this.lastPublishedCount,
+        currentPublishedCount,
+        this.lastConsumedCount,
+        currentConsumedCount,
+        activity);
     if (activity) {
       this.lastPublishedCount = currentPublishedCount;
       this.lastConsumedCount = currentConsumedCount;
