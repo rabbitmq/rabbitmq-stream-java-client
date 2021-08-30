@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.4.0-SNAPSHOT</span>
-<br><span id="revremark">(0a4de81)</span>
+<br><span id="revremark">(290f107)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -548,6 +548,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#offset-tracking-consumer">Offset Tracking (Consumer)</a></li>
 <li><a href="#consumer-names">Consumer Names</a></li>
 <li><a href="#producer-names">Producer Names</a></li>
+<li><a href="#logging">Logging</a></li>
 </ul>
 </li>
 </ul>
@@ -3418,6 +3419,46 @@ difference that the default pattern is empty (i.e. no deduplication).</p>
 <p>The run will start one producer and will use the <code>stream-1</code> producer reference (default stream is <code>stream</code> and the number of the producer is 1.)</p>
 </div>
 </div>
+<div class="sect4">
+<h5 id="logging"><a class="anchor" href="#logging"></a>Logging</h5>
+<div class="paragraph">
+<p>The performance tool binary uses Logback with an internal configuration file.
+The default log level is <code>warn</code> with a console appender.</p>
+</div>
+<div class="paragraph">
+<p>It is possible to define loggers directly from the command line, this is useful for quick debugging.
+Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>name=level</code> pairs, e.g.:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -Drabbitmq.streamperftest.loggers=com.rabbitmq.stream=debug -jar stream-perf-test.jar</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>It is possible to define several loggers by separating them with commas, e.g. <code>-Drabbitmq.streamperftest.loggers=com.rabbitmq.stream=debug,com.rabbitmq.stream.perf=info</code>.</p>
+</div>
+<div class="paragraph">
+<p>It is also possible to use an environment variable:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>export RABBITMQ_STREAM_PERF_TEST_LOGGERS=com.rabbitmq.stream=debug</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The system property takes precedence over the environment variable.</p>
+</div>
+<div class="paragraph">
+<p>Use the environment variable with the Docker image:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>docker run -it --rm --network host \
+    --env RABBITMQ_STREAM_PERF_TEST_LOGGERS=com.rabbitmq.stream=debug \
+    pivotalrabbitmq/stream-perf-test</pre>
+</div>
+</div>
+</div>
 </div>
 </div>
 <div class="sect2">
@@ -3445,7 +3486,7 @@ difference that the default pattern is empty (i.e. no deduplication).</p>
 <div id="footer">
 <div id="footer-text">
 Version 0.4.0-SNAPSHOT<br>
-Last updated 2021-08-30 08:37:16 UTC
+Last updated 2021-08-30 12:25:49 UTC
 </div>
 </div>
 <style>
