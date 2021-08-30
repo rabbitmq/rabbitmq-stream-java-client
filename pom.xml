@@ -138,11 +138,12 @@
       <version>${proton-j.version}</version>
     </dependency>
 
+    <!-- performance tool -->
     <dependency>
       <groupId>info.picocli</groupId>
       <artifactId>picocli</artifactId>
       <version>${picocli.version}</version>
-      <scope>compile</scope>
+      <optional>true</optional>
     </dependency>
 
     <dependency>
@@ -156,14 +157,14 @@
       <groupId>io.dropwizard.metrics</groupId>
       <artifactId>metrics-core</artifactId>
       <version>${metrics.version}</version>
-      <scope>compile</scope>
+      <optional>true</optional>
     </dependency>
 
     <dependency>
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-core</artifactId>
       <version>${micrometer.version}</version>
-      <scope>compile</scope>
+      <optional>true</optional>
     </dependency>
 
     <!-- for rate limiter -->
@@ -171,8 +172,9 @@
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
       <version>${guava.version}</version>
-      <scope>compile</scope>
+      <optional>true</optional>
     </dependency>
+    <!-- end of dependencies for performance tool -->
 
     <dependency>
       <groupId>org.apache.commons</groupId>
@@ -529,15 +531,34 @@
       <dependencies>
 
         <dependency>
+          <groupId>info.picocli</groupId>
+          <artifactId>picocli</artifactId>
+          <version>${picocli.version}</version>
+        </dependency>
+
+        <dependency>
           <groupId>ch.qos.logback</groupId>
           <artifactId>logback-classic</artifactId>
           <version>${logback.version}</version>
         </dependency>
 
         <dependency>
-          <groupId>org.apache.qpid</groupId>
-          <artifactId>proton-j</artifactId>
-          <version>${proton-j.version}</version>
+          <groupId>io.dropwizard.metrics</groupId>
+          <artifactId>metrics-core</artifactId>
+          <version>${metrics.version}</version>
+        </dependency>
+
+        <dependency>
+          <groupId>io.micrometer</groupId>
+          <artifactId>micrometer-core</artifactId>
+          <version>${micrometer.version}</version>
+        </dependency>
+
+        <!-- for rate limiter -->
+        <dependency>
+          <groupId>com.google.guava</groupId>
+          <artifactId>guava</artifactId>
+          <version>${guava.version}</version>
         </dependency>
 
       </dependencies>
