@@ -50,6 +50,7 @@ import io.netty.buffer.ByteBufAllocatorMetricProvider;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.internal.PlatformDependent;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.net.URI;
@@ -340,7 +341,8 @@ public class StreamPerfTest implements Callable<Integer> {
     this.err = new PrintWriter(consoleErr, true);
   }
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws IOException {
+    LogUtils.configureLog();
     int exitCode = run(args, System.out, System.err);
     System.exit(exitCode);
   }

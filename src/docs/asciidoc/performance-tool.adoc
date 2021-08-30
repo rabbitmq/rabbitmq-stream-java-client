@@ -450,6 +450,7 @@ tracking consumers would ignore the specified offset and would start where they 
 (this is the purpose of offset tracking).
 
 ===== Producer Names
+
 You can use the `--producer-names` option to set the producer names pattern and therefore
 enable <<api.adoc#outbound-message-deduplication, message deduplication>> (using the default
 publishing sequence starting at 0 and incremented for each message).
@@ -463,6 +464,36 @@ java -jar stream-perf-test.jar --producer-names %s-%d
 ----
 
 The run will start one producer and will use the `stream-1` producer reference (default stream is `stream` and the number of the producer is 1.)
+
+===== Logging
+
+The performance tool binary uses Logback with an internal configuration file.
+The default log level is `warn` with a console appender.
+
+It is possible to define loggers directly from the command line, this is useful for quick debugging.
+Use the `rabbitmq.streamperftest.loggers` system property with `name=level` pairs, e.g.:
+
+----
+java -Drabbitmq.streamperftest.loggers=com.rabbitmq.stream=debug -jar stream-perf-test.jar
+----
+
+It is possible to define several loggers by separating them with commas, e.g. `-Drabbitmq.streamperftest.loggers=com.rabbitmq.stream=debug,com.rabbitmq.stream.perf=info`.
+
+It is also possible to use an environment variable:
+
+----
+export RABBITMQ_STREAM_PERF_TEST_LOGGERS=com.rabbitmq.stream=debug
+----
+
+The system property takes precedence over the environment variable.
+
+Use the environment variable with the Docker image:
+
+----
+docker run -it --rm --network host \
+    --env RABBITMQ_STREAM_PERF_TEST_LOGGERS=com.rabbitmq.stream=debug \
+    pivotalrabbitmq/stream-perf-test
+----
 
 === Building the Performance Tool
 
