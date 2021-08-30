@@ -85,4 +85,9 @@ RUN set -eux; \
     if [ "$(uname -m)" = "x86_64" ] ; then java -jar stream-perf-test.jar --help ; \
 	  fi
 
+RUN groupadd --gid 1000 stream-perf-test
+RUN useradd --uid 1000 --gid stream-perf-test --comment "perf-test user" stream-perf-test
+
+USER stream-perf-test:stream-perf-test
+
 ENTRYPOINT ["java", "-Dio.netty.processId=1", "-jar", "stream-perf-test.jar"]
