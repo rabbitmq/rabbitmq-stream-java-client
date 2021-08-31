@@ -20,4 +20,6 @@ interface PerformanceMetrics extends AutoCloseable {
   void start(String description) throws Exception;
 
   void latency(long latency, TimeUnit unit);
+
+  void offset(long offset);
 }

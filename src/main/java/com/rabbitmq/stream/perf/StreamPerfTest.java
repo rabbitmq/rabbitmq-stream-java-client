@@ -678,7 +678,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
                       consumerBuilder =
                           consumerBuilder.messageHandler(
-                              (offset, message) -> {
+                              (context, message) -> {
                                 // at very high throughput ( > 1 M / s), the histogram can
                                 // become a bottleneck,
                                 // so we downsample and calculate latency for every x message
@@ -687,6 +687,7 @@ public class StreamPerfTest implements Callable<Integer> {
                                   metrics.latency(
                                       System.nanoTime() - Utils.readLong(message.getBodyAsBinary()),
                                       TimeUnit.NANOSECONDS);
+                                  metrics.offset(context.offset());
                                 }
                               });
 

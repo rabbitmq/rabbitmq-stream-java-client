@@ -49,6 +49,9 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   private final boolean includeByteRates;
   private final Supplier<String> memoryReportSupplier;
   private volatile Closeable closingSequence = () -> {};
+  private volatile long lastPublishedCount = 0;
+  private volatile long lastConsumedCount = 0;
+  private volatile long offset;
 
   DefaultPerformanceMetrics(
       CompositeMeterRegistry meterRegistry,
@@ -102,9 +105,6 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   private long getConsumedCount() {
     return this.metricRegistry.getMeters().get("rabbitmqStreamConsumed").getCount();
   }
-
-  private volatile long lastPublishedCount = 0;
-  private volatile long lastConsumedCount = 0;
 
   @Override
   public void start(String description) throws Exception {
@@ -327,12 +327,13 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
         this.lastPublishedCount != currentPublishedCount
             || this.lastConsumedCount != currentConsumedCount;
     LOGGER.debug(
-        "Activity check: published {} vs {}, consumed {} vs {}, activity {}",
+        "Activity check: published {} vs {}, consumed {} vs {}, activity {}, offset {}",
         this.lastPublishedCount,
         currentPublishedCount,
         this.lastConsumedCount,
         currentConsumedCount,
-        activity);
+        activity,
+        this.offset);
     if (activity) {
       this.lastPublishedCount = currentPublishedCount;
       this.lastConsumedCount = currentConsumedCount;
@@ -343,6 +344,11 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   @Override
   public void latency(long latency, TimeUnit unit) {
     this.latency.record(latency, unit);
+  }
+
+  @Override
+  public void offset(long offset) {
+    this.offset = offset;
   }
 
   @Override
