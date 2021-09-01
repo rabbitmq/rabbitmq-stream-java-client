@@ -924,6 +924,62 @@ public class ConsumersCoordinatorTest {
 
   @ParameterizedTest
   @MethodSource("disruptionArguments")
+  void shouldReUseInitialOffsetSpecificationAfterDisruptionIfNoMessagesReceived(
+      Consumer<ConsumersCoordinatorTest> configurator) throws Exception {
+    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(null, replicas()))
+        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, replicas()));
+
+    ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
+        ArgumentCaptor.forClass(OffsetSpecification.class);
+
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            offsetSpecificationArgumentCaptor.capture(),
+            anyInt(),
+            anyMap()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    Runnable closingRunnable =
+        coordinator.subscribe(
+            consumer, "stream", OffsetSpecification.next(), null, (offset, message) -> {});
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+    assertThat(offsetSpecificationArgumentCaptor.getAllValues())
+        .element(0)
+        .isEqualTo(OffsetSpecification.next());
+
+    configurator.accept(this);
+
+    Thread.sleep(retryDelay.toMillis() * 5);
+
+    verify(client, times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    assertThat(offsetSpecificationArgumentCaptor.getAllValues())
+        .element(1)
+        .isEqualTo(OffsetSpecification.next());
+
+    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    closingRunnable.run();
+    verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+  }
+
+  @ParameterizedTest
+  @MethodSource("disruptionArguments")
   @SuppressWarnings("unchecked")
   void shouldUseStoredOffsetOnRecovery(Consumer<ConsumersCoordinatorTest> configurator)
       throws Exception {

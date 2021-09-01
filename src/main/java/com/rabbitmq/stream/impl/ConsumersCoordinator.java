@@ -94,7 +94,8 @@ class ConsumersCoordinator {
     // create stream subscription to track final and changing state of this very subscription
     // we keep this instance when we move the subscription from a client to another one
     SubscriptionTracker subscriptionTracker =
-        new SubscriptionTracker(consumer, stream, trackingReference, messageHandler);
+        new SubscriptionTracker(
+            consumer, stream, offsetSpecification, trackingReference, messageHandler);
 
     String key = keyForClientSubscription(newNode);
 
@@ -210,10 +211,12 @@ class ConsumersCoordinator {
   private static class SubscriptionTracker {
 
     private final String stream;
+    private final OffsetSpecification initialOffsetSpecification;
     private final String offsetTrackingReference;
     private final MessageHandler messageHandler;
     private final StreamConsumer consumer;
     private volatile long offset;
+    private volatile boolean hasReceivedSomething = false;
     private volatile byte subscriptionIdInClient;
     private volatile ClientSubscriptionsManager manager;
     private volatile boolean closing = false;
@@ -221,10 +224,12 @@ class ConsumersCoordinator {
     private SubscriptionTracker(
         StreamConsumer consumer,
         String stream,
+        OffsetSpecification initialOffsetSpecification,
         String offsetTrackingReference,
         MessageHandler messageHandler) {
       this.consumer = consumer;
       this.stream = stream;
+      this.initialOffsetSpecification = initialOffsetSpecification;
       this.offsetTrackingReference = offsetTrackingReference;
       this.messageHandler = messageHandler;
     }
@@ -301,14 +306,14 @@ class ConsumersCoordinator {
     private synchronized void add(
         SubscriptionTracker subscriptionTracker,
         OffsetSpecification offsetSpecification,
-        boolean isSubscription) {
+        boolean isInitialSubscription) {
       boolean added = false;
       // FIXME deal with manager unavailability (manager may be closing because of connection
       // closing)
       // try all of them until it succeeds, throw exception if failure
       for (ClientSubscriptionsManager manager : managers) {
         if (!manager.isFull()) {
-          manager.add(subscriptionTracker, offsetSpecification, isSubscription);
+          manager.add(subscriptionTracker, offsetSpecification, isInitialSubscription);
           added = true;
           break;
         }
@@ -320,7 +325,7 @@ class ConsumersCoordinator {
             managers.size() + 1);
         ClientSubscriptionsManager manager = new ClientSubscriptionsManager(this, clientParameters);
         managers.add(manager);
-        manager.add(subscriptionTracker, offsetSpecification, isSubscription);
+        manager.add(subscriptionTracker, offsetSpecification, isInitialSubscription);
       }
     }
 
@@ -396,6 +401,7 @@ class ConsumersCoordinator {
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             if (subscriptionTracker != null) {
               subscriptionTracker.offset = offset;
+              subscriptionTracker.hasReceivedSomething = true;
               subscriptionTracker.messageHandler.handle(
                   new MessageHandlerContext(offset, subscriptionTracker.consumer), message);
               // FIXME set offset here as well, best effort to avoid duplicates
@@ -463,9 +469,10 @@ class ConsumersCoordinator {
                 }
                 for (SubscriptionTracker subscription : subscriptions) {
                   LOGGER.debug(
-                      "Subscription {} was at offset {}",
+                      "Subscription {} was at offset {} (received something? {})",
                       subscription.subscriptionIdInClient,
-                      subscription.offset);
+                      subscription.offset,
+                      subscription.hasReceivedSomething);
                   newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
                 }
                 this.subscriptionTrackers = newSubscriptions;
@@ -557,10 +564,14 @@ class ConsumersCoordinator {
                                             .port(broker.getPort())));
                         synchronized (affectedSubscription.consumer) {
                           if (affectedSubscription.consumer.isOpen()) {
-                            subscriptionPool.add(
-                                affectedSubscription,
-                                OffsetSpecification.offset(affectedSubscription.offset),
-                                false);
+                            OffsetSpecification offsetSpecification;
+                            if (affectedSubscription.hasReceivedSomething) {
+                              offsetSpecification =
+                                  OffsetSpecification.offset(affectedSubscription.offset);
+                            } else {
+                              offsetSpecification = affectedSubscription.initialOffsetSpecification;
+                            }
+                            subscriptionPool.add(affectedSubscription, offsetSpecification, false);
                           }
                         }
                       } else {
@@ -591,7 +602,7 @@ class ConsumersCoordinator {
     synchronized void add(
         SubscriptionTracker subscriptionTracker,
         OffsetSpecification offsetSpecification,
-        boolean isSubcription) {
+        boolean isInitialSubscription) {
       // FIXME check manager is still open (not closed because of connection failure)
       byte subscriptionId = 0;
       for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
@@ -617,14 +628,13 @@ class ConsumersCoordinator {
             .add(subscriptionTracker);
         this.subscriptionTrackers =
             update(previousSubscriptions, subscriptionId, subscriptionTracker);
-        // FIXME consider using fewer initial credits
 
         String offsetTrackingReference = subscriptionTracker.offsetTrackingReference;
         if (subscriptionTracker.offsetTrackingReference != null) {
           long trackedOffset =
               client.queryOffset(offsetTrackingReference, subscriptionTracker.stream);
           if (trackedOffset != 0) {
-            if (offsetSpecification != null && isSubcription) {
+            if (offsetSpecification != null && isInitialSubscription) {
               // subscription call (not recovery), so telling the user their offset specification is
               // ignored
               LOGGER.info(
@@ -651,6 +661,7 @@ class ConsumersCoordinator {
           subscriptionProperties.put("name", subscriptionTracker.offsetTrackingReference);
         }
 
+        // FIXME consider using fewer initial credits
         Client.Response subscribeResponse =
             client.subscribe(
                 subscriptionId,

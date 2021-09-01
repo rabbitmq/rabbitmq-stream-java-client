@@ -31,14 +31,18 @@ import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -58,15 +62,42 @@ public class StreamConsumerTest {
 
   static final Duration RECOVERY_DELAY = Duration.ofSeconds(2);
   static final Duration TOPOLOGY_DELAY = Duration.ofSeconds(2);
-
+  static volatile Duration recoveryInitialDelay;
   String stream;
   EventLoopGroup eventLoopGroup;
-
   TestUtils.ClientFactory cf;
-
   Environment environment;
 
-  static volatile Duration recoveryInitialDelay;
+  static Stream<java.util.function.Consumer<Object>> consumerShouldKeepConsumingAfterDisruption() {
+    return Stream.of(
+        TestUtils.namedTask(
+            o -> {
+              Host.killStreamLeaderProcess(o.toString());
+              Thread.sleep(TOPOLOGY_DELAY.toMillis());
+            },
+            "stream leader process is killed"),
+        TestUtils.namedTask(
+            o -> Host.killConnection("rabbitmq-stream-consumer"), "consumer connection is killed"),
+        TestUtils.namedTask(
+            o -> {
+              try {
+                Host.rabbitmqctl("stop_app");
+                Thread.sleep(1000L);
+              } finally {
+                Host.rabbitmqctl("start_app");
+              }
+              Thread.sleep(recoveryInitialDelay.toMillis() * 2);
+            },
+            "broker is restarted"));
+  }
+
+  private static void waitMs(long waitTime) {
+    try {
+      Thread.sleep(waitTime);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
 
   @BeforeEach
   void init() {
@@ -298,27 +329,67 @@ public class StreamConsumerTest {
     consumer.close();
   }
 
-  static Stream<java.util.function.Consumer<Object>> consumerShouldKeepConsumingAfterDisruption() {
-    return Stream.of(
-        TestUtils.namedTask(
-            o -> {
-              Host.killStreamLeaderProcess(o.toString());
-              Thread.sleep(TOPOLOGY_DELAY.toMillis());
-            },
-            "stream leader process is killed"),
-        TestUtils.namedTask(
-            o -> Host.killConnection("rabbitmq-stream-consumer"), "consumer connection is killed"),
-        TestUtils.namedTask(
-            o -> {
-              try {
-                Host.rabbitmqctl("stop_app");
-                Thread.sleep(1000L);
-              } finally {
-                Host.rabbitmqctl("start_app");
+  @Test
+  @DisabledIfRabbitMqCtlNotSet
+  void consumerShouldReUseInitialOffsetSpecificationAfterDisruptionIfNoMessagesReceived()
+      throws Exception {
+    int messageCountFirstWave = 10_000;
+    Producer producer = environment.producerBuilder().stream(stream).build();
+
+    // send a first wave of messages, they should be consumed later
+    CountDownLatch publishLatch = new CountDownLatch(messageCountFirstWave);
+    IntStream.range(0, messageCountFirstWave)
+        .forEach(
+            i ->
+                producer.send(
+                    producer.messageBuilder().addData("first wave".getBytes()).build(),
+                    confirmationStatus -> publishLatch.countDown()));
+
+    latchAssert(publishLatch).completes();
+
+    // setting up the consumer, offset spec "next", it should only consume messages of the second
+    // wave
+    AtomicInteger consumedCount = new AtomicInteger(0);
+    CountDownLatch consumeLatch = new CountDownLatch(1);
+    Set<String> bodies = ConcurrentHashMap.newKeySet(10);
+    environment.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.next())
+        .messageHandler(
+            (context, message) -> {
+              String body = new String(message.getBodyAsBinary());
+              bodies.add(body);
+              if (body.contains("second wave")) {
+                consumeLatch.countDown();
               }
-              Thread.sleep(recoveryInitialDelay.toMillis() * 2);
-            },
-            "broker is restarted"));
+            })
+        .build();
+
+    // killing the consumer connection to trigger an internal restart
+    Host.killConnection("rabbitmq-stream-consumer");
+
+    // no messages should have been received
+    assertThat(consumedCount.get()).isZero();
+
+    // starting the second wave, it sends a message every 100 ms
+    AtomicBoolean keepPublishing = new AtomicBoolean(true);
+    new Thread(
+            () -> {
+              while (keepPublishing.get()) {
+                producer.send(
+                    producer.messageBuilder().addData("second wave".getBytes()).build(),
+                    confirmationStatus -> publishLatch.countDown());
+                waitMs(100);
+              }
+            })
+        .start();
+
+    // the consumer should restart consuming with its initial offset spec, "next"
+    try {
+      latchAssert(consumeLatch).completes();
+      assertThat(bodies).hasSize(1).contains("second wave");
+    } finally {
+      keepPublishing.set(false);
+    }
   }
 
   @ParameterizedTest

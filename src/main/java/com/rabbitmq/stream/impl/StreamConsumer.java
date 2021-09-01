@@ -178,6 +178,10 @@ class StreamConsumer implements Consumer {
     return this.stream;
   }
 
+  Status status() {
+    return this.status;
+  }
+
   enum Status {
     RUNNING,
     NOT_AVAILABLE,
