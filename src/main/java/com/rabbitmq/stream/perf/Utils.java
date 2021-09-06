@@ -403,8 +403,8 @@ class Utils {
       this(Executors.defaultThreadFactory(), prefix);
     }
 
-    public NamedThreadFactory(ThreadFactory backingThreaFactory, String prefix) {
-      this.backingThreaFactory = backingThreaFactory;
+    public NamedThreadFactory(ThreadFactory backingThreadFactory, String prefix) {
+      this.backingThreaFactory = backingThreadFactory;
       this.prefix = prefix;
     }
 

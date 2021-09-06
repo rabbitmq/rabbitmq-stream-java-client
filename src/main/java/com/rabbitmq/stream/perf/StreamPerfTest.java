@@ -641,14 +641,18 @@ public class StreamPerfTest implements Callable<Integer> {
                                 producerConfirm.increment();
                               }
                             };
-                        while (true && !Thread.currentThread().isInterrupted()) {
-                          rateLimiterCallback.run();
-                          long creationTime = System.nanoTime();
-                          byte[] payload = new byte[msgSize];
-                          Utils.writeLong(payload, creationTime);
-                          producer.send(
-                              producer.messageBuilder().addData(payload).build(),
-                              confirmationHandler);
+                        try {
+                          while (true && !Thread.currentThread().isInterrupted()) {
+                            rateLimiterCallback.run();
+                            long creationTime = System.nanoTime();
+                            byte[] payload = new byte[msgSize];
+                            Utils.writeLong(payload, creationTime);
+                            producer.send(
+                                producer.messageBuilder().addData(payload).build(),
+                                confirmationHandler);
+                          }
+                        } catch (Exception e) {
+                          LOGGER.warn("Publisher #{} crashed", i, e);
                         }
                       };
                 })
@@ -708,7 +712,9 @@ public class StreamPerfTest implements Callable<Integer> {
 
     ExecutorService executorService;
     if (this.producers > 0) {
-      executorService = Executors.newFixedThreadPool(this.producers);
+      executorService =
+          Executors.newFixedThreadPool(
+              this.producers, new NamedThreadFactory("stream-perf-test-publishers-"));
       for (Runnable producer : producerRunnables) {
         this.out.println("Starting producer");
         executorService.submit(producer);
