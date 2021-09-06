@@ -61,6 +61,8 @@ class SuperStreamProducer implements Producer {
 
   @Override
   public void send(Message message, ConfirmationHandler confirmationHandler) {
+    // TODO handle when the stream is not found (no partition found for the message)
+    // and call the confirmation handler with a failure
     String stream = this.routingStrategy.route(message);
     Producer producer =
         producers.computeIfAbsent(

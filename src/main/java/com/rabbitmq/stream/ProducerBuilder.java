@@ -136,6 +136,9 @@ public interface ProducerBuilder {
    */
   Producer build();
 
+  /**
+   * Routing type when using super streams. Experimental!
+   */
   enum RoutingType {
     HASH,
     KEY
