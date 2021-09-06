@@ -136,12 +136,14 @@ class StreamProducerBuilder implements ProducerBuilder {
       Function<Message, String> routingKeyExtractor,
       RoutingType routingType,
       ToIntFunction<String> hash) {
-    if (routingKeyExtractor == null || routingType == null) {
+    if ((routingKeyExtractor == null && routingType == null)
+        || (routingKeyExtractor != null && routingType != null)) {
+      this.routingKeyExtractor = routingKeyExtractor;
+      this.routingType = routingType;
+    } else {
       throw new IllegalArgumentException(
           "both routing key extractor and routing type must be " + "non-null");
     }
-    this.routingKeyExtractor = routingKeyExtractor;
-    this.routingType = routingType;
     return this;
   }
 
