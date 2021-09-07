@@ -315,7 +315,13 @@ public class StreamPerfTestTest {
   @Test
   void monitoringShouldReturnValidEndpoint() throws Exception {
     int monitoringPort = randomNetworkPort();
-    Future<?> run = run(builder().deleteStreams().monitoring(true).monitoringPort(monitoringPort));
+    Future<?> run =
+        run(
+            builder()
+                .deleteStreams()
+                .monitoring(true)
+                .monitoringPort(monitoringPort)
+                .prometheus(true));
     waitUntilStreamExists(s);
     waitOneSecond();
 
@@ -327,6 +333,13 @@ public class StreamPerfTestTest {
               && response.body.contains("stream-perf-test-publishers-");
         });
 
+    waitAtMost(
+        10,
+        () -> {
+          HttpResponse response = httpRequest("http://localhost:" + monitoringPort + "/metrics");
+          return response.responseCode == 200
+              && response.body.contains("# HELP rabbitmq_stream_published_total");
+        });
     run.cancel(true);
     waitRunEnds();
   }
@@ -506,6 +519,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder monitoringPort(int port) {
       arguments.put("monitoring-port", String.valueOf(port));
+      return this;
+    }
+
+    ArgumentsBuilder prometheus(boolean prometheus) {
+      arguments.put("prometheus", String.valueOf(prometheus));
       return this;
     }
 

@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,13 +30,15 @@ import org.eclipse.jetty.util.thread.QueuedThreadPool;
 class MonitoringContext {
 
   private final int monitoringPort;
+  private final CompositeMeterRegistry meterRegistry;
 
   private final Map<String, Handler> handlers = new LinkedHashMap<>();
 
   private volatile Server server;
 
-  MonitoringContext(int monitoringPort) {
+  MonitoringContext(int monitoringPort, CompositeMeterRegistry meterRegistry) {
     this.monitoringPort = monitoringPort;
+    this.meterRegistry = meterRegistry;
   }
 
   void addHttpEndpoint(String path, Handler handler) {
@@ -76,5 +79,9 @@ class MonitoringContext {
     if (server != null) {
       server.stop();
     }
+  }
+
+  CompositeMeterRegistry meterRegistry() {
+    return meterRegistry;
   }
 }

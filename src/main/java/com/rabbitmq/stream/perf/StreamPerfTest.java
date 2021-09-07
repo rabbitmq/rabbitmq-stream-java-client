@@ -360,7 +360,8 @@ public class StreamPerfTest implements Callable<Integer> {
     CommandLine commandLine =
         new CommandLine(streamPerfTest).setOut(streamPerfTest.out).setErr(streamPerfTest.err);
 
-    List<Monitoring> monitorings = Arrays.asList(new DebugEndpointMonitoring());
+    List<Monitoring> monitorings =
+        Arrays.asList(new DebugEndpointMonitoring(), new PrometheusEndpointMonitoring());
 
     monitorings.forEach(m -> commandLine.addMixin(m.getClass().getSimpleName(), m));
 
@@ -477,7 +478,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
     ShutdownService shutdownService = new ShutdownService();
 
-    MonitoringContext monitoringContext = new MonitoringContext(this.monitoringPort);
+    MonitoringContext monitoringContext = new MonitoringContext(this.monitoringPort, meterRegistry);
     this.monitorings.forEach(m -> m.configure(monitoringContext));
     monitoringContext.start();
 
