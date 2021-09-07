@@ -573,7 +573,6 @@
           <groupId>org.eclipse.jetty</groupId>
           <artifactId>jetty-servlet</artifactId>
           <version>${jetty.version}</version>
-          <optional>true</optional>
         </dependency>
 
       </dependencies>
