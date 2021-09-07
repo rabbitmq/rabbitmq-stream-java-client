@@ -58,6 +58,7 @@ import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -319,8 +320,15 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.SniServerNamesConverter.class)
   private List<SNIServerName> sniServerNames;
 
+  @CommandLine.Option(
+      names = {"--monitoring-port", "-mp"},
+      description = "port to launch HTTP monitoring on",
+      defaultValue = "8080")
+  private int monitoringPort;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
+  private List<Monitoring> monitorings;
 
   private final PrintWriter err, out;
 
@@ -349,10 +357,15 @@ public class StreamPerfTest implements Callable<Integer> {
 
   static int run(String[] args, PrintStream consoleOut, PrintStream consoleErr) {
     StreamPerfTest streamPerfTest = new StreamPerfTest(args, consoleOut, consoleErr);
-    return new CommandLine(streamPerfTest)
-        .setOut(streamPerfTest.out)
-        .setErr(streamPerfTest.err)
-        .execute(args);
+    CommandLine commandLine =
+        new CommandLine(streamPerfTest).setOut(streamPerfTest.out).setErr(streamPerfTest.err);
+
+    List<Monitoring> monitorings = Arrays.asList(new DebugEndpointMonitoring());
+
+    monitorings.forEach(m -> commandLine.addMixin(m.getClass().getSimpleName(), m));
+
+    streamPerfTest.monitorings(monitorings);
+    return commandLine.execute(args);
   }
 
   static void versionInformation(PrintStream out) {
@@ -463,6 +476,12 @@ public class StreamPerfTest implements Callable<Integer> {
     this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
 
     ShutdownService shutdownService = new ShutdownService();
+
+    MonitoringContext monitoringContext = new MonitoringContext(this.monitoringPort);
+    this.monitorings.forEach(m -> m.configure(monitoringContext));
+    monitoringContext.start();
+
+    shutdownService.wrap(closeStep("Closing monitoring context", () -> monitoringContext.close()));
 
     Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdownService.close()));
 
@@ -773,6 +792,10 @@ public class StreamPerfTest implements Callable<Integer> {
         return message;
       }
     };
+  }
+
+  public void monitorings(List<Monitoring> monitorings) {
+    this.monitorings = monitorings;
   }
 
   private String stream() {

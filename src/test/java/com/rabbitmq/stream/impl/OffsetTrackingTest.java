@@ -290,7 +290,7 @@ public class OffsetTrackingTest {
   }
 
   @Test
-  void storeOffsetAndThenAttachByTimestampShouldWork() throws InterruptedException {
+  void storeOffsetAndThenAttachByTimestampShouldWork() throws Exception {
     // this test performs a timestamp-based index search within a segment with
     // a lot of non-user entries (chunks that contain tracking info, not messages)
     int messageCount = 50_000;

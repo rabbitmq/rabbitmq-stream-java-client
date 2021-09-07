@@ -26,8 +26,14 @@ import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.TestUtils;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.net.HttpURLConnection;
+import java.net.ServerSocket;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -93,7 +99,7 @@ public class StreamPerfTestTest {
   }
 
   private void waitRunEnds(int expectedExitCode) throws Exception {
-    TestUtils.waitAtMost(20, () -> exitCode.get() == expectedExitCode);
+    waitAtMost(20, () -> exitCode.get() == expectedExitCode);
   }
 
   private void waitRunEnds() throws Exception {
@@ -306,6 +312,65 @@ public class StreamPerfTestTest {
     checkErrIsEmpty = false;
   }
 
+  @Test
+  void monitoringShouldReturnValidEndpoint() throws Exception {
+    int monitoringPort = randomNetworkPort();
+    Future<?> run = run(builder().deleteStreams().monitoring(true).monitoringPort(monitoringPort));
+    waitUntilStreamExists(s);
+    waitOneSecond();
+
+    waitAtMost(
+        10,
+        () -> {
+          HttpResponse response = httpRequest("http://localhost:" + monitoringPort + "/threaddump");
+          return response.responseCode == 200
+              && response.body.contains("stream-perf-test-publishers-");
+        });
+
+    run.cancel(true);
+    waitRunEnds();
+  }
+
+  private static HttpResponse httpRequest(String urlString) throws Exception {
+    URL url = new URL(urlString);
+    HttpURLConnection con = (HttpURLConnection) url.openConnection();
+    try {
+      con.setRequestMethod("GET");
+      con.setConnectTimeout(5000);
+      con.setReadTimeout(5000);
+      int status = con.getResponseCode();
+      try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+        String inputLine;
+        StringBuffer content = new StringBuffer();
+        while ((inputLine = in.readLine()) != null) {
+          content.append(inputLine);
+        }
+        return new HttpResponse(status, content.toString());
+      }
+    } finally {
+      con.disconnect();
+    }
+  }
+
+  private static class HttpResponse {
+
+    private final int responseCode;
+    private final String body;
+
+    private HttpResponse(int responseCode, String body) {
+      this.responseCode = responseCode;
+      this.body = body;
+    }
+  }
+
+  private static int randomNetworkPort() throws IOException {
+    ServerSocket socket = new ServerSocket();
+    socket.bind(null);
+    int port = socket.getLocalPort();
+    socket.close();
+    return port;
+  }
+
   boolean streamExists(String stream) {
     return client.metadata(stream).get(stream).isResponseOk();
   }
@@ -431,6 +496,16 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder producerNames(String pattern) {
       arguments.put("producer-names", pattern);
+      return this;
+    }
+
+    ArgumentsBuilder monitoring(boolean monitoring) {
+      arguments.put("monitoring", String.valueOf(monitoring));
+      return this;
+    }
+
+    ArgumentsBuilder monitoringPort(int port) {
+      arguments.put("monitoring-port", String.valueOf(port));
       return this;
     }
 

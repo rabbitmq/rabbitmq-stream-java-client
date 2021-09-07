@@ -54,7 +54,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -77,18 +76,18 @@ public final class TestUtils {
 
   private TestUtils() {}
 
-  public static Duration waitAtMost(BooleanSupplier condition) throws InterruptedException {
+  public static Duration waitAtMost(CallableBooleanSupplier condition) throws Exception {
     return waitAtMost(10, condition, null);
   }
 
-  public static Duration waitAtMost(int timeoutInSeconds, BooleanSupplier condition)
-      throws InterruptedException {
+  public static Duration waitAtMost(int timeoutInSeconds, CallableBooleanSupplier condition)
+      throws Exception {
     return waitAtMost(timeoutInSeconds, condition, null);
   }
 
   static Duration waitAtMost(
-      int timeoutInSeconds, BooleanSupplier condition, Supplier<String> message)
-      throws InterruptedException {
+      int timeoutInSeconds, CallableBooleanSupplier condition, Supplier<String> message)
+      throws Exception {
     if (condition.getAsBoolean()) {
       return Duration.ZERO;
     }
@@ -377,6 +376,11 @@ public final class TestUtils {
   interface CallableConsumer<T> {
 
     void accept(T t) throws Exception;
+  }
+
+  @FunctionalInterface
+  public interface CallableBooleanSupplier {
+    boolean getAsBoolean() throws Exception;
   }
 
   interface RunnableWithException {

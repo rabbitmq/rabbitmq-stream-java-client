@@ -57,6 +57,7 @@
     <micrometer.version>1.7.3</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.6.1</picocli.version>
+    <jetty.version>9.4.43.v20210629</jetty.version>
     <guava.version>30.1.1-jre</guava.version>
     <commons-compress.version>1.21</commons-compress.version>
     <zstd-jni.version>1.5.0-4</zstd-jni.version>
@@ -172,6 +173,13 @@
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
       <version>${guava.version}</version>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-servlet</artifactId>
+      <version>${jetty.version}</version>
       <optional>true</optional>
     </dependency>
     <!-- end of dependencies for performance tool -->
@@ -559,6 +567,13 @@
           <groupId>com.google.guava</groupId>
           <artifactId>guava</artifactId>
           <version>${guava.version}</version>
+        </dependency>
+
+        <dependency>
+          <groupId>org.eclipse.jetty</groupId>
+          <artifactId>jetty-servlet</artifactId>
+          <version>${jetty.version}</version>
+          <optional>true</optional>
         </dependency>
 
       </dependencies>
