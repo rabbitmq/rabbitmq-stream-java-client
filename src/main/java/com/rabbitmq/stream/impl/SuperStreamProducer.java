@@ -44,7 +44,7 @@ class SuperStreamProducer implements Producer {
     this.superStream = superStream;
     this.producerBuilder = producerBuilder.duplicate();
     this.producerBuilder.stream(null);
-    this.producerBuilder.routing(null, null);
+    this.producerBuilder.resetRouting();
   }
 
   @Override
