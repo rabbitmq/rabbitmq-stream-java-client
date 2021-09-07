@@ -18,6 +18,7 @@ import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Producer;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,15 +34,20 @@ class SuperStreamProducer implements Producer {
   private final String superStream;
   private final Map<String, Producer> producers = new ConcurrentHashMap<>();
   private final StreamProducerBuilder producerBuilder;
+  private final StreamEnvironment environment;
+  private final String name;
 
   SuperStreamProducer(
       StreamProducerBuilder producerBuilder,
+      String name,
       String superStream,
       RoutingStrategy routingStrategy,
       StreamEnvironment streamEnvironment) {
     this.routingStrategy = routingStrategy;
     this.codec = streamEnvironment.codec();
+    this.name = name;
     this.superStream = superStream;
+    this.environment = streamEnvironment;
     this.producerBuilder = producerBuilder.duplicate();
     this.producerBuilder.stream(null);
     this.producerBuilder.resetRouting();
@@ -54,9 +60,25 @@ class SuperStreamProducer implements Producer {
 
   @Override
   public long getLastPublishingId() {
-    // TODO get all partitions for this super stream, query the last publishing ID for each of team,
-    // return the highest (or the lowest, because duplicates will be filtered out anyway?)
-    return 0;
+    if (this.name != null && !this.name.isEmpty()) {
+      List<String> streams = this.environment.locator().partitions(superStream);
+      long publishingId = 0;
+      boolean first = true;
+      for (String partition : streams) {
+        long pubId = this.environment.locator().queryPublisherSequence(this.name, partition);
+        if (first) {
+          publishingId = pubId;
+          first = false;
+        } else {
+          if (Long.compareUnsigned(publishingId, pubId) > 0) {
+            publishingId = pubId;
+          }
+        }
+      }
+      return publishingId;
+    } else {
+      throw new IllegalStateException("The producer has no name");
+    }
   }
 
   @Override

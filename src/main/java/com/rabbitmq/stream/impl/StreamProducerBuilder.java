@@ -187,7 +187,8 @@ class StreamProducerBuilder implements ProducerBuilder {
                   this.stream, this.routingKeyExtractor, this.environment, hashFunction)
               : new RoutingKeyRoutingStrategy(
                   this.stream, this.routingKeyExtractor, this.environment);
-      producer = new SuperStreamProducer(this, stream, routingStrategy, environment);
+      producer =
+          new SuperStreamProducer(this, this.name, this.stream, routingStrategy, this.environment);
     }
     return producer;
   }

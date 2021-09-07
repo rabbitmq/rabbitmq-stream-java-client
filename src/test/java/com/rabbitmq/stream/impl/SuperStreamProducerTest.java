@@ -51,6 +51,7 @@ public class SuperStreamProducerTest {
   int partitions = 3;
   String superStream;
   String[] routingKeys = null;
+  TestUtils.ClientFactory cf;
 
   @BeforeEach
   void init(TestInfo info) throws Exception {
@@ -169,6 +170,70 @@ public class SuperStreamProducerTest {
 
     assertThat(counts.values().stream().map(AtomicLong::get))
         .hasSameSizeAs(routingKeys)
+        .doesNotContain(0L);
+    assertThat(counts.values().stream().map(AtomicLong::get).reduce(0L, Long::sum))
+        .isEqualTo(messageCount);
+  }
+
+  @Test
+  void getLastPublishingIdShouldReturnLowestValue() throws Exception {
+    int messageCount = 10_000;
+    declareSuperStreamTopology(connection, superStream, partitions);
+    String producerName = "super-stream-application";
+    Producer producer =
+        environment.producerBuilder().name(producerName).stream(superStream)
+            .routing(message -> message.getProperties().getMessageIdAsString(), RoutingType.HASH)
+            .build();
+
+    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    IntStream.range(0, messageCount)
+        .forEach(
+            i ->
+                producer.send(
+                    producer
+                        .messageBuilder()
+                        .publishingId(i)
+                        .properties()
+                        .messageId(UUID.randomUUID().toString())
+                        .messageBuilder()
+                        .build(),
+                    confirmationStatus -> publishLatch.countDown()));
+
+    assertThat(latchAssert(publishLatch)).completes(5);
+
+    long lastPublishingId = producer.getLastPublishingId();
+    assertThat(lastPublishingId).isNotZero();
+    Client client = cf.get();
+    IntStream.range(0, partitions)
+        .mapToObj(i -> superStream + "-" + i)
+        .forEach(
+            stream -> {
+              long publishingId = client.queryPublisherSequence(producerName, stream);
+              assertThat(publishingId).isGreaterThanOrEqualTo(lastPublishingId);
+            });
+
+    Map<String, AtomicLong> counts = new ConcurrentHashMap<>();
+    AtomicLong totalCount = new AtomicLong(0);
+    IntStream.range(0, partitions)
+        .mapToObj(i -> superStream + "-" + i)
+        .forEach(
+            stream -> {
+              AtomicLong streamCount = new AtomicLong(0);
+              counts.put(stream, streamCount);
+              environment.consumerBuilder().stream(stream)
+                  .offset(OffsetSpecification.first())
+                  .messageHandler(
+                      (context, message) -> {
+                        streamCount.incrementAndGet();
+                        totalCount.incrementAndGet();
+                      })
+                  .build();
+            });
+
+    waitAtMost(10, () -> totalCount.get() == messageCount);
+
+    assertThat(counts.values().stream().map(AtomicLong::get))
+        .hasSize(partitions)
         .doesNotContain(0L);
     assertThat(counts.values().stream().map(AtomicLong::get).reduce(0L, Long::sum))
         .isEqualTo(messageCount);
