@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.4.0-SNAPSHOT</span>
-<br><span id="revremark">(83d9e6e)</span>
+<br><span id="revremark">(ec1dc72)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -548,6 +548,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#offset-tracking-consumer">Offset Tracking (Consumer)</a></li>
 <li><a href="#consumer-names">Consumer Names</a></li>
 <li><a href="#producer-names">Producer Names</a></li>
+<li><a href="#monitoring">Monitoring</a></li>
 <li><a href="#logging">Logging</a></li>
 </ul>
 </li>
@@ -3420,6 +3421,29 @@ difference that the default pattern is empty (i.e. no deduplication).</p>
 </div>
 </div>
 <div class="sect4">
+<h5 id="monitoring"><a class="anchor" href="#monitoring"></a>Monitoring</h5>
+<div class="paragraph">
+<p>The tool can expose some runtime information on HTTP.
+The default port is 8080.
+The following options are available:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>--monitoring</code>: add a <code>threaddump</code> endpoint to display a thread dump of the process.
+This can be useful to inspect threads if the tool seems blocked.</p>
+</li>
+<li>
+<p><code>--prometheus</code>: add a <code>metrics</code> endpoint to expose metrics using the Prometheus format.
+The endpoint can then be declared in a Prometheus instance to scrape the metrics.</p>
+</li>
+<li>
+<p><code>--monitoring-port</code>: set the port to use for the web server.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect4">
 <h5 id="logging"><a class="anchor" href="#logging"></a>Logging</h5>
 <div class="paragraph">
 <p>The performance tool binary uses Logback with an internal configuration file.
@@ -3486,7 +3510,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.4.0-SNAPSHOT<br>
-Last updated 2021-09-07 09:40:14 UTC
+Last updated 2021-09-07 12:29:36 UTC
 </div>
 </div>
 <style>
