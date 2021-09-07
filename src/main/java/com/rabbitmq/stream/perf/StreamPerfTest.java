@@ -671,7 +671,11 @@ public class StreamPerfTest implements Callable<Integer> {
                                 confirmationHandler);
                           }
                         } catch (Exception e) {
-                          LOGGER.warn("Publisher #{} crashed", i, e);
+                          if (e instanceof InterruptedException) {
+                            LOGGER.info("Publisher #{} thread interrupted", i, e);
+                          } else {
+                            LOGGER.warn("Publisher #{} crashed", i, e);
+                          }
                         }
                       };
                 })
