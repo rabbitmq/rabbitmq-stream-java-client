@@ -465,6 +465,18 @@ java -jar stream-perf-test.jar --producer-names %s-%d
 
 The run will start one producer and will use the `stream-1` producer reference (default stream is `stream` and the number of the producer is 1.)
 
+===== Monitoring
+
+The tool can expose some runtime information on HTTP.
+The default port is 8080.
+The following options are available:
+
+* `--monitoring`: add a `threaddump` endpoint to display a thread dump of the process.
+This can be useful to inspect threads if the tool seems blocked.
+* `--prometheus`: add a `metrics` endpoint to expose metrics using the Prometheus format.
+The endpoint can then be declared in a Prometheus instance to scrape the metrics.
+* `--monitoring-port`: set the port to use for the web server.
+
 ===== Logging
 
 The performance tool binary uses Logback with an internal configuration file.
