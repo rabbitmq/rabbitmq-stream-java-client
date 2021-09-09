@@ -51,7 +51,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -332,7 +331,6 @@ public class StreamConsumerTest {
 
   @Test
   @DisabledIfRabbitMqCtlNotSet
-  @Disabled
   void consumerShouldReUseInitialOffsetSpecificationAfterDisruptionIfNoMessagesReceived()
       throws Exception {
     int messageCountFirstWave = 10_000;
