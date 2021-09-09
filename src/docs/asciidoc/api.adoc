@@ -328,6 +328,13 @@ include::{test-examples}/ProducerUsage.java[tag=producer-creation]
 Consider a `Producer` instance like a long-lived object, do not create one
 to send just one message.
 
+
+[NOTE]
+.Producer thread safety
+====
+Producer instances are thread-safe.
+====
+
 Internally, the `Environment` will query the broker to find out about
 the topology of the stream and will create or re-use a connection to
 publish to the leader node of the stream.
