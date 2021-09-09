@@ -385,7 +385,7 @@ public class StreamConsumerTest {
 
     // the consumer should restart consuming with its initial offset spec, "next"
     try {
-      latchAssert(consumeLatch).completes();
+      latchAssert(consumeLatch).completes(recoveryInitialDelay.multipliedBy(2));
       assertThat(bodies).hasSize(1).contains("second wave");
     } finally {
       keepPublishing.set(false);
