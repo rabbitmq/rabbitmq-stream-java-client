@@ -714,9 +714,12 @@ public class StreamPerfTest implements Callable<Integer> {
                                 // so we downsample and calculate latency for every x message
                                 // this should not affect the metric much
                                 if (messageCount.incrementAndGet() % 100 == 0) {
-                                  metrics.latency(
-                                      System.nanoTime() - Utils.readLong(message.getBodyAsBinary()),
-                                      TimeUnit.NANOSECONDS);
+                                  try {
+                                    long time = Utils.readLong(message.getBodyAsBinary());
+                                    metrics.latency(System.nanoTime() - time, TimeUnit.NANOSECONDS);
+                                  } catch (Exception e) {
+                                    // not able to read the body, maybe not a message from the tool
+                                  }
                                   metrics.offset(context.offset());
                                 }
                               });
