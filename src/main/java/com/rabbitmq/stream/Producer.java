@@ -18,7 +18,7 @@ package com.rabbitmq.stream;
  *
  * <p>Instances are created and configured with a {@link ProducerBuilder}.
  *
- * Implementations are expected to be thread-safe, RabbitMQ Streams' are.
+ * <p>Implementations are expected to be thread-safe, RabbitMQ Streams' are.
  *
  * @see ProducerBuilder
  * @see Environment#producerBuilder()

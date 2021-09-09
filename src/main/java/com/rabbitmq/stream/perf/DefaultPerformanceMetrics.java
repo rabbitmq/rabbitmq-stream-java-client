@@ -33,6 +33,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -108,6 +109,8 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
 
   @Override
   public void start(String description) throws Exception {
+    long startTime = System.nanoTime();
+
     String metricPublished = "rabbitmqStreamPublished";
     String metricProducerConfirmed = "rabbitmqStreamProducer_confirmed";
     String metricConsumed = "rabbitmqStreamConsumed";
@@ -150,14 +153,18 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
         .entrySet()
         .forEach(entry -> meters.put(entry.getValue(), registryMeters.get(entry.getKey())));
 
-    Map<String, Function<Meter, String>> formatMeter = new HashMap<>();
+    Map<String, BiFunction<Meter, Duration, String>> formatMeter = new HashMap<>();
     metersNamesAndLabels.entrySet().stream()
         .filter(entry -> !entry.getKey().contains("bytes"))
         .forEach(
             entry -> {
               formatMeter.put(
                   entry.getValue(),
-                  meter -> String.format("%s %.0f msg/s, ", entry.getValue(), meter.getMeanRate()));
+                  (meter, duration) -> {
+                    double rate =
+                        duration.getSeconds() <= 5 ? meter.getMeanRate() : meter.getOneMinuteRate();
+                    return String.format("%s %.0f msg/s, ", entry.getValue(), rate);
+                  });
             });
 
     metersNamesAndLabels.entrySet().stream()
@@ -166,7 +173,11 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
             entry -> {
               formatMeter.put(
                   entry.getValue(),
-                  meter -> formatByteRate(entry.getValue(), meter.getMeanRate()) + ", ");
+                  (meter, duration) -> {
+                    double rate =
+                        duration.getSeconds() <= 5 ? meter.getMeanRate() : meter.getOneMinuteRate();
+                    return formatByteRate(entry.getValue(), rate) + ", ";
+                  });
             });
 
     Histogram chunkSize = metricRegistry.getHistograms().get(metricChunkSize);
@@ -195,6 +206,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
             () -> {
               try {
                 if (checkActivity()) {
+                  Duration duration = Duration.ofNanos(System.nanoTime() - startTime);
                   StringBuilder builder = new StringBuilder();
                   builder.append(reportCount.get()).append(", ");
                   meters
@@ -203,7 +215,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                           entry -> {
                             String meterName = entry.getKey();
                             Meter meter = entry.getValue();
-                            builder.append(formatMeter.get(meterName).apply(meter));
+                            builder.append(formatMeter.get(meterName).apply(meter, duration));
                           });
                   builder.append(formatLatency.apply(latency)).append(", ");
                   builder.append(formatChunkSize.apply(chunkSize));
@@ -222,8 +234,6 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
             1,
             TimeUnit.SECONDS);
 
-    long start = System.currentTimeMillis();
-
     this.closingSequence =
         () -> {
           consoleReportingTask.cancel(true);
@@ -232,18 +242,19 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
 
           scheduledExecutorService.shutdownNow();
 
-          long duration = System.currentTimeMillis() - start;
+          Duration d = Duration.ofNanos(System.nanoTime() - startTime);
+          Duration duration = d.getSeconds() <= 0 ? Duration.ofSeconds(1) : d;
 
           Function<Map.Entry<String, Meter>, String> formatMeterSummary =
               entry -> {
                 if (entry.getKey().contains("bytes")) {
                   return formatByteRate(
-                          entry.getKey(), entry.getValue().getCount() * 1000 / duration)
+                          entry.getKey(), entry.getValue().getCount() / duration.getSeconds())
                       + ", ";
                 } else {
                   return String.format(
                       "%s %d msg/s, ",
-                      entry.getKey(), entry.getValue().getCount() * 1000 / duration);
+                      entry.getKey(), entry.getValue().getCount() / duration.getSeconds());
                 }
               };
 
