@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.4.0-SNAPSHOT</span>
-<br><span id="revremark">(ec1dc72)</span>
+<br><span id="revremark">(452a383)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1767,6 +1767,21 @@ producer.close();  <i class="conum" data-value="4"></i><b>(4)</b></code></pre>
 <div class="paragraph">
 <p>Consider a <code>Producer</code> instance like a long-lived object, do not create one
 to send just one message.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Producer thread safety</div>
+<div class="paragraph">
+<p>Producer instances are thread-safe.</p>
+</div>
+</td>
+</tr>
+</table>
 </div>
 <div class="paragraph">
 <p>Internally, the <code>Environment</code> will query the broker to find out about
@@ -3510,7 +3525,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.4.0-SNAPSHOT<br>
-Last updated 2021-09-07 12:29:36 UTC
+Last updated 2021-09-09 06:42:50 UTC
 </div>
 </div>
 <style>
