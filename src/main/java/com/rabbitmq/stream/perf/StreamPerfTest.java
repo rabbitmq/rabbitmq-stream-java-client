@@ -664,7 +664,11 @@ public class StreamPerfTest implements Callable<Integer> {
                         try {
                           while (true && !Thread.currentThread().isInterrupted()) {
                             rateLimiterCallback.run();
-                            long creationTime = System.nanoTime();
+                            // Using current time for interoperability with other tools
+                            // and also across different processes.
+                            // This is good enough to measure duration/latency this way
+                            // in a performance tool.
+                            long creationTime = System.currentTimeMillis();
                             byte[] payload = new byte[msgSize];
                             Utils.writeLong(payload, creationTime);
                             producer.send(
@@ -716,7 +720,9 @@ public class StreamPerfTest implements Callable<Integer> {
                                 if (messageCount.incrementAndGet() % 100 == 0) {
                                   try {
                                     long time = Utils.readLong(message.getBodyAsBinary());
-                                    metrics.latency(System.nanoTime() - time, TimeUnit.NANOSECONDS);
+                                    // see above why we use current time to measure latency
+                                    metrics.latency(
+                                        System.currentTimeMillis() - time, TimeUnit.MILLISECONDS);
                                   } catch (Exception e) {
                                     // not able to read the body, maybe not a message from the tool
                                   }

@@ -187,12 +187,12 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     com.codahale.metrics.Timer latency = metricRegistry.getTimers().get(metricLatency);
 
     Function<Number, Number> convertDuration =
-        in -> in instanceof Long ? in.longValue() / 1000 : in.doubleValue() / 1000;
+        in -> in instanceof Long ? in.longValue() / 1_000_000 : in.doubleValue() / 1_000_000;
     Function<com.codahale.metrics.Timer, String> formatLatency =
         timer -> {
           Snapshot snapshot = timer.getSnapshot();
           return String.format(
-              "latency min/median/75th/95th/99th %.0f/%.0f/%.0f/%.0f/%.0f µs",
+              "latency min/median/75th/95th/99th %.0f/%.0f/%.0f/%.0f/%.0f ms",
               convertDuration.apply(snapshot.getMin()),
               convertDuration.apply(snapshot.getMedian()),
               convertDuration.apply(snapshot.get75thPercentile()),
@@ -261,7 +261,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
           Function<com.codahale.metrics.Timer, String> formatLatencySummary =
               histogram ->
                   String.format(
-                      "latency 95th %.0f µs",
+                      "latency 95th %.0f ms",
                       convertDuration.apply(latency.getSnapshot().get95thPercentile()));
 
           StringBuilder builder = new StringBuilder("Summary: ");
