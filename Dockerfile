@@ -65,6 +65,7 @@ RUN set -eux; \
 	apt-get update; \
 	apt-get install -y --no-install-recommends \
 		locales \
+		wget \
 	; \
 	rm -rf /var/lib/apt/lists/*; \
 	locale-gen en_US.UTF-8
