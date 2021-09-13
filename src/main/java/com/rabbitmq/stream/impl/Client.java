@@ -1240,7 +1240,7 @@ public class Client implements AutoCloseable {
     return port;
   }
 
-  public String route(String routingKey, String superStream) {
+  public List<String> route(String routingKey, String superStream) {
     if (routingKey == null || superStream == null) {
       throw new IllegalArgumentException("routing key and stream must not be null");
     }
@@ -1263,7 +1263,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(routingKey.getBytes(StandardCharsets.UTF_8));
       bb.writeShort(superStream.length());
       bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<String> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<List<String>> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();

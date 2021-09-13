@@ -14,8 +14,9 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Message;
+import java.util.List;
 
-public interface RoutingStrategy {
+interface RoutingStrategy {
 
-  String route(Message message);
+  List<String> route(Message message);
 }

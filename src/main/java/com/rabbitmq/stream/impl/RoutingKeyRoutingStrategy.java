@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Message;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -22,7 +23,7 @@ class RoutingKeyRoutingStrategy implements RoutingStrategy {
 
   private final Function<Message, String> routingKeyExtractor;
 
-  private final Map<String, String> routingKeysToStreams = new ConcurrentHashMap<>();
+  private final Map<String, List<String>> routingKeysToStreams = new ConcurrentHashMap<>();
 
   private final StreamEnvironment env;
 
@@ -36,15 +37,15 @@ class RoutingKeyRoutingStrategy implements RoutingStrategy {
   }
 
   @Override
-  public String route(Message message) {
+  public List<String> route(Message message) {
     String routingKey = this.routingKeyExtractor.apply(message);
-    String stream =
+    List<String> streams =
         routingKeysToStreams.computeIfAbsent(
             routingKey,
             routingKey1 -> {
               // TODO retry on locator lookup
               return env.locator().route(routingKey1, superStream);
             });
-    return stream;
+    return streams;
   }
 }

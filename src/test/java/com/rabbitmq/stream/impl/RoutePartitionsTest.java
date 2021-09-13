@@ -52,8 +52,8 @@ public class RoutePartitionsTest {
   }
 
   @Test
-  void routeShouldReturnNullWhenExchangeDoesNotExist() {
-    assertThat(cf.get().route("", UUID.randomUUID().toString())).isNull();
+  void routeShouldReturnEmptyListWhenExchangeDoesNotExist() {
+    assertThat(cf.get().route("", UUID.randomUUID().toString())).isEmpty();
   }
 
   @Test
@@ -66,8 +66,8 @@ public class RoutePartitionsTest {
     declareSuperStreamTopology(connection, superStream, partitions);
 
     Client client = cf.get();
-    assertThat(client.route("0", superStream)).isEqualTo(superStream + "-0");
-    assertThat(client.route("42", superStream)).isNull();
+    assertThat(client.route("0", superStream)).hasSize(1).contains(superStream + "-0");
+    assertThat(client.route("42", superStream)).isEmpty();
   }
 
   @Test
@@ -88,8 +88,25 @@ public class RoutePartitionsTest {
         .hasSize(partitions)
         .containsExactlyInAnyOrderElementsOf(
             IntStream.range(0, partitions).mapToObj(i -> superStream + "-" + i).collect(toList()));
-    assertThat(client.route("0", superStream)).isEqualTo(superStream + "-0");
-    assertThat(client.route("1", superStream)).isEqualTo(superStream + "-1");
-    assertThat(client.route("2", superStream)).isEqualTo(superStream + "-2");
+    assertThat(client.route("0", superStream)).hasSize(1).contains(superStream + "-0");
+    assertThat(client.route("1", superStream)).hasSize(1).contains(superStream + "-1");
+    assertThat(client.route("2", superStream)).hasSize(1).contains(superStream + "-2");
+  }
+
+  @Test
+  void routeReturnsMultipleStreamsIfMultipleBindingsForSameKey() throws Exception {
+    declareSuperStreamTopology(connection, superStream, 3);
+    connection.createChannel().queueBind(superStream + "-1", superStream, "0");
+    Client client = cf.get();
+    List<String> streams = client.partitions(superStream);
+    assertThat(streams)
+        .hasSize(partitions + 1)
+        .contains(
+            IntStream.range(0, partitions)
+                .mapToObj(i -> superStream + "-" + i)
+                .toArray(String[]::new));
+    assertThat(client.route("0", superStream))
+        .hasSize(2)
+        .contains(superStream + "-0", superStream + "-1");
   }
 }

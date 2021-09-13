@@ -879,28 +879,33 @@ class ServerFrameHandler {
       int read = 4;
       short responseCode = message.readShort();
       read += 2;
-      short streamSize = message.readShort();
-      read += 2;
-      String stream;
-      if (streamSize == -1) {
-        stream = null;
+      int streamCount = message.readInt();
+      read += 4;
+      List<String> streams;
+      if (streamCount == 0) {
+        streams = Collections.emptyList();
       } else {
-        byte[] bytes = new byte[streamSize];
-        message.readBytes(bytes);
-        stream = new String(bytes, StandardCharsets.UTF_8);
-        read += stream.length();
+        streams = new ArrayList<>(streamCount);
+        for (int i = 0; i < streamCount; i++) {
+          String stream = readString(message);
+          read += (2 + stream.length());
+          streams.add(stream);
+        }
       }
 
       if (responseCode != RESPONSE_CODE_OK) {
         LOGGER.info("Route returned error: {}", Utils.formatConstant(responseCode));
       }
 
-      OutstandingRequest<String> outstandingRequest =
-          remove(client.outstandingRequests, correlationId, String.class);
+      OutstandingRequest<List<String>> outstandingRequest =
+          remove(
+              client.outstandingRequests,
+              correlationId,
+              new ParameterizedTypeReference<List<String>>() {});
       if (outstandingRequest == null) {
         LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
       } else {
-        outstandingRequest.response().set(stream);
+        outstandingRequest.response().set(streams);
         outstandingRequest.countDown();
       }
       return read;
