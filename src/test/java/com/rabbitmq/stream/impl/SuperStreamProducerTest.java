@@ -27,6 +27,7 @@ import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder.RoutingType;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import io.netty.channel.EventLoopGroup;
 import java.util.Map;
 import java.util.UUID;
@@ -74,6 +75,7 @@ public class SuperStreamProducerTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.9.6")
   void allMessagesSentToSuperStreamWithHashRoutingShouldBeThenConsumed() throws Exception {
     int messageCount = 10_000;
     declareSuperStreamTopology(connection, superStream, partitions);
@@ -125,6 +127,7 @@ public class SuperStreamProducerTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.9.6")
   void allMessagesSentToSuperStreamWithRoutingKeyRoutingShouldBeThenConsumed() throws Exception {
     int messageCount = 10_000;
     routingKeys = new String[] {"amer", "emea", "apac"};
@@ -176,6 +179,7 @@ public class SuperStreamProducerTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.9.6")
   void getLastPublishingIdShouldReturnLowestValue() throws Exception {
     int messageCount = 10_000;
     declareSuperStreamTopology(connection, superStream, partitions);

@@ -27,6 +27,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.Broker;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -39,6 +40,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -47,6 +49,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -71,6 +74,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.slf4j.LoggerFactory;
 
 public final class TestUtils {
 
@@ -363,6 +367,15 @@ public final class TestUtils {
   @ExtendWith(DisabledIfTlsNotEnabledCondition.class)
   public @interface DisabledIfTlsNotEnabled {}
 
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
+  @ExtendWith(BrokerVersionAtLeastCondition.class)
+  public @interface BrokerVersionAtLeast {
+
+    String value();
+  }
+
   interface TaskWithException {
 
     void run(Object context) throws Exception;
@@ -398,7 +411,7 @@ public final class TestUtils {
       return extensionContext.getRoot().getStore(NAMESPACE);
     }
 
-    private static EventLoopGroup eventLoopGroup(ExtensionContext context) {
+    static EventLoopGroup eventLoopGroup(ExtensionContext context) {
       return (EventLoopGroup) store(context).get("nettyEventLoopGroup");
     }
 
@@ -568,6 +581,96 @@ public final class TestUtils {
         return ConditionEvaluationResult.disabled("TLS is disabled");
       }
     }
+  }
+
+  static class BrokerVersionAtLeastCondition implements ExecutionCondition {
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      Optional<AnnotatedElement> element = context.getElement();
+      //      String expectedVersion = annotation.get().getAnnotation(BrokerVersionAtLeast.class);
+      BrokerVersionAtLeast annotation = element.get().getAnnotation(BrokerVersionAtLeast.class);
+      if (annotation == null) {
+        return ConditionEvaluationResult.enabled("No broker version requirement");
+      } else {
+        EventLoopGroup eventLoopGroup = StreamTestInfrastructureExtension.eventLoopGroup(context);
+        if (eventLoopGroup == null) {
+          throw new IllegalStateException(
+              "The event loop group must be in the test context to use "
+                  + BrokerVersionAtLeast.class.getSimpleName()
+                  + ", use the "
+                  + StreamTestInfrastructureExtension.class.getSimpleName()
+                  + " extension in the test");
+        }
+        Client client = new Client(new ClientParameters().eventLoopGroup(eventLoopGroup));
+        String expectedVersion = annotation.value();
+        String brokerVersion = client.brokerVersion();
+        if (atLeastVersion(expectedVersion, brokerVersion)) {
+          return ConditionEvaluationResult.enabled(
+              "Broker version requirement met, expected "
+                  + expectedVersion
+                  + ", actual "
+                  + brokerVersion);
+        } else {
+          return ConditionEvaluationResult.disabled(
+              "Broker version requirement not met, expected "
+                  + expectedVersion
+                  + ", actual "
+                  + brokerVersion);
+        }
+      }
+    }
+  }
+
+  private static String currentVersion(String currentVersion) {
+    // versions built from source: 3.7.0+rc.1.4.gedc5d96
+    if (currentVersion.contains("+")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("+"));
+    }
+    // alpha (snapshot) versions: 3.7.0~alpha.449-1
+    if (currentVersion.contains("~")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("~"));
+    }
+    // alpha (snapshot) versions: 3.7.1-alpha.40
+    if (currentVersion.contains("-")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("-"));
+    }
+    return currentVersion;
+  }
+
+  static boolean atLeastVersion(String expectedVersion, String currentVersion) {
+    if (currentVersion.contains("alpha-stream")) {
+      return true;
+    }
+    try {
+      currentVersion = currentVersion(currentVersion);
+      return "0.0.0".equals(currentVersion) || versionCompare(currentVersion, expectedVersion) >= 0;
+    } catch (RuntimeException e) {
+      LoggerFactory.getLogger(TestUtils.class)
+          .warn("Unable to parse broker version {}", currentVersion, e);
+      throw e;
+    }
+  }
+
+  /**
+   * https://stackoverflow.com/questions/6701948/efficient-way-to-compare-version-strings-in-java
+   */
+  static int versionCompare(String str1, String str2) {
+    String[] vals1 = str1.split("\\.");
+    String[] vals2 = str2.split("\\.");
+    int i = 0;
+    // set index to first non-equal ordinal or length of shortest version string
+    while (i < vals1.length && i < vals2.length && vals1[i].equals(vals2[i])) {
+      i++;
+    }
+    // compare first non-equal ordinal number
+    if (i < vals1.length && i < vals2.length) {
+      int diff = Integer.valueOf(vals1[i]).compareTo(Integer.valueOf(vals2[i]));
+      return Integer.signum(diff);
+    }
+    // the strings are equal or one string is a substring of the other
+    // e.g. "1.2.3" = "1.2.3" or "1.2.3" < "1.2.3.4"
+    return Integer.signum(vals1.length - vals2.length);
   }
 
   static class CountDownLatchAssert implements AssertDelegateTarget {

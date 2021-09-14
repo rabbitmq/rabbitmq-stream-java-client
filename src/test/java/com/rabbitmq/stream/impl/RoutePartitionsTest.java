@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.IntStream;
@@ -52,6 +53,7 @@ public class RoutePartitionsTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.9.6")
   void routeShouldReturnEmptyListWhenExchangeDoesNotExist() {
     assertThat(cf.get().route("", UUID.randomUUID().toString())).isEmpty();
   }
@@ -62,6 +64,7 @@ public class RoutePartitionsTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.9.6")
   void routeShouldReturnNullWhenNoStreamForRoutingKey() throws Exception {
     declareSuperStreamTopology(connection, superStream, partitions);
 
@@ -79,6 +82,7 @@ public class RoutePartitionsTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.9.6")
   void routeTopologyWithPartitionCount() throws Exception {
     declareSuperStreamTopology(connection, superStream, 3);
 
@@ -94,6 +98,7 @@ public class RoutePartitionsTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.9.6")
   void routeReturnsMultipleStreamsIfMultipleBindingsForSameKey() throws Exception {
     declareSuperStreamTopology(connection, superStream, 3);
     connection.createChannel().queueBind(superStream + "-1", superStream, "0");

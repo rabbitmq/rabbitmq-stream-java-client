@@ -1320,6 +1320,10 @@ public class Client implements AutoCloseable {
     return Integer.valueOf(this.connectionProperties("advertised_port"));
   }
 
+  String brokerVersion() {
+    return this.serverProperties.get("version");
+  }
+
   private String connectionProperties(String key) {
     if (this.connectionProperties != null && this.connectionProperties.containsKey(key)) {
       return this.connectionProperties.get(key);
