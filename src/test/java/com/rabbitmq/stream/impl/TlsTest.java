@@ -20,6 +20,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Environment;
@@ -277,6 +278,7 @@ public class TlsTest {
     try (Environment env =
         Environment.builder()
             .uri("rabbitmq-stream+tls://localhost")
+            .addressResolver(addr -> new Address("localhost", Client.DEFAULT_TLS_PORT))
             .tls()
             .sslContext(SslContextBuilder.forClient().trustManager(caCertificate()).build())
             .environmentBuilder()
