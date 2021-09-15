@@ -55,6 +55,11 @@ public class Host {
     return pr;
   }
 
+  public static String hostname() throws IOException {
+    Process process = executeCommand("hostname");
+    return capture(process.getInputStream()).trim();
+  }
+
   private static int waitForExitValue(Process pr) {
     while (true) {
       try {

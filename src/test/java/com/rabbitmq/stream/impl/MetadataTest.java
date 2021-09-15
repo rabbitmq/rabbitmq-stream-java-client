@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.impl.Client.Broker;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
@@ -144,7 +145,11 @@ public class MetadataTest {
     try {
       return InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
-      throw new RuntimeException(e);
+      try {
+        return Host.hostname();
+      } catch (IOException ex) {
+        throw new RuntimeException(ex);
+      }
     }
   }
 }
