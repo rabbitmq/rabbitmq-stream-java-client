@@ -103,6 +103,9 @@ public class StreamPerfTest implements Callable<Integer> {
   @CommandLine.Mixin
   private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
 
+  // for testing
+  private final AddressResolver addressResolver;
+
   int streamDispatching = 0;
 
   @CommandLine.Option(
@@ -334,10 +337,14 @@ public class StreamPerfTest implements Callable<Integer> {
 
   // constructor for completion script generation
   public StreamPerfTest() {
-    this(null, null, null);
+    this(null, null, null, null);
   }
 
-  public StreamPerfTest(String[] arguments, PrintStream consoleOut, PrintStream consoleErr) {
+  public StreamPerfTest(
+      String[] arguments,
+      PrintStream consoleOut,
+      PrintStream consoleErr,
+      AddressResolver addressResolver) {
     this.arguments = arguments;
     if (consoleOut == null) {
       consoleOut = System.out;
@@ -347,16 +354,22 @@ public class StreamPerfTest implements Callable<Integer> {
     }
     this.out = new PrintWriter(consoleOut, true);
     this.err = new PrintWriter(consoleErr, true);
+    this.addressResolver = addressResolver;
   }
 
   public static void main(String[] args) throws IOException {
     LogUtils.configureLog();
-    int exitCode = run(args, System.out, System.err);
+    int exitCode = run(args, System.out, System.err, null);
     System.exit(exitCode);
   }
 
-  static int run(String[] args, PrintStream consoleOut, PrintStream consoleErr) {
-    StreamPerfTest streamPerfTest = new StreamPerfTest(args, consoleOut, consoleErr);
+  static int run(
+      String[] args,
+      PrintStream consoleOut,
+      PrintStream consoleErr,
+      AddressResolver addressResolver) {
+    StreamPerfTest streamPerfTest =
+        new StreamPerfTest(args, consoleOut, consoleErr, addressResolver);
     CommandLine commandLine =
         new CommandLine(streamPerfTest).setOut(streamPerfTest.out).setErr(streamPerfTest.err);
 
@@ -497,7 +510,7 @@ public class StreamPerfTest implements Callable<Integer> {
         closeStep("Closing environment executor", () -> envExecutor.shutdownNow()));
 
     boolean tls = isTls(this.uris);
-    AddressResolver addressResolver;
+    AddressResolver addrResolver;
     if (loadBalancer) {
       int defaultPort = tls ? Client.DEFAULT_TLS_PORT : Client.DEFAULT_PORT;
       List<Address> addresses =
@@ -518,16 +531,20 @@ public class StreamPerfTest implements Callable<Integer> {
                           uriItem.getPort() == -1 ? defaultPort : uriItem.getPort()))
               .collect(Collectors.toList());
       AtomicInteger connectionAttemptCount = new AtomicInteger(0);
-      addressResolver =
+      addrResolver =
           address -> addresses.get(connectionAttemptCount.getAndIncrement() % addresses.size());
     } else {
-      addressResolver = address -> address;
+      if (this.addressResolver == null) {
+        addrResolver = address -> address;
+      } else {
+        addrResolver = this.addressResolver; // should happen only in tests
+      }
     }
 
     EnvironmentBuilder environmentBuilder =
         Environment.builder()
             .uris(this.uris)
-            .addressResolver(addressResolver)
+            .addressResolver(addrResolver)
             .scheduledExecutorService(envExecutor)
             .metricsCollector(metricsCollector)
             .byteBufAllocator(byteBufAllocator)

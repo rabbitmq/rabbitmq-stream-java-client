@@ -16,6 +16,8 @@ package com.rabbitmq.stream.perf;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
@@ -398,13 +400,15 @@ public class StreamPerfTestTest {
   }
 
   Future<?> run(ArgumentsBuilder builder) {
+    AddressResolver addressResolver = address -> new Address("localhost", Client.DEFAULT_PORT);
     return executor.submit(
         () ->
             exitCode.set(
                 StreamPerfTest.run(
                     builder.build().split(" "),
                     new PrintStream(out, true),
-                    new PrintStream(err, true))));
+                    new PrintStream(err, true),
+                    addressResolver)));
   }
 
   static class ArgumentsBuilder {
