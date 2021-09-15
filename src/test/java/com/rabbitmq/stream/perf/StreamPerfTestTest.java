@@ -400,7 +400,11 @@ public class StreamPerfTestTest {
   }
 
   Future<?> run(ArgumentsBuilder builder) {
-    AddressResolver addressResolver = address -> new Address("localhost", Client.DEFAULT_PORT);
+    AddressResolver addressResolver =
+        address ->
+            address.port() == Client.DEFAULT_PORT
+                ? new Address("localhost", Client.DEFAULT_PORT)
+                : new Address("localhost", Client.DEFAULT_TLS_PORT);
     return executor.submit(
         () ->
             exitCode.set(
