@@ -18,9 +18,11 @@ import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.IntStream;
@@ -113,5 +115,37 @@ public class RoutePartitionsTest {
     assertThat(client.route("0", superStream))
         .hasSize(2)
         .contains(superStream + "-0", superStream + "-1");
+  }
+
+  @Test
+  @BrokerVersionAtLeast("3.9.6")
+  void partitionsAndRouteShouldNotReturnNonStreamQueue() throws Exception {
+    declareSuperStreamTopology(connection, superStream, 3);
+    Channel channel = connection.createChannel();
+    String nonStreamQueue = channel.queueDeclare().getQueue();
+    connection.createChannel().queueBind(nonStreamQueue, superStream, "not-a-stream");
+    Client client = cf.get();
+    List<String> streams = client.partitions(superStream);
+    assertThat(streams)
+        .hasSize(partitions)
+        .contains(
+            IntStream.range(0, partitions)
+                .mapToObj(i -> superStream + "-" + i)
+                .toArray(String[]::new));
+    List<String> routes = client.route("not-a-stream", superStream);
+    assertThat(routes).isEmpty();
+  }
+
+  @Test
+  @BrokerVersionAtLeast("3.9.6")
+  void partitionsReturnsCorrectOrder() throws Exception {
+    String[] partitionNames = {"z", "y", "x"};
+    declareSuperStreamTopology(connection, superStream, partitionNames);
+    Client client = cf.get();
+    List<String> streams = client.partitions(superStream);
+    assertThat(streams)
+        .hasSize(partitions)
+        .containsSequence(
+            Arrays.stream(partitionNames).map(p -> superStream + "-" + p).toArray(String[]::new));
   }
 }
