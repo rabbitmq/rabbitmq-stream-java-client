@@ -237,7 +237,7 @@ class ConsumersCoordinator {
     synchronized void cancel() {
       this.closing = true;
       if (this.manager != null) {
-        LOGGER.debug("Removing consumer from manager");
+        LOGGER.debug("Removing consumer from manager " + this.consumer);
         this.manager.remove(this);
       } else {
         LOGGER.debug("No manager to remove consumer from");

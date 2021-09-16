@@ -17,6 +17,9 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.time.Duration;
 
 class StreamConsumerBuilder implements ConsumerBuilder {
@@ -24,7 +27,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private static final int NAME_MAX_SIZE = 256; // server-side limitation
   private final StreamEnvironment environment;
 
-  private String stream;
+  private String stream, superStream;
   private OffsetSpecification offsetSpecification = null;
   private MessageHandler messageHandler;
   private String name;
@@ -38,6 +41,12 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   @Override
   public ConsumerBuilder stream(String stream) {
     this.stream = stream;
+    return this;
+  }
+
+  @Override
+  public ConsumerBuilder superStream(String superStream) {
+    this.superStream = superStream;
     return this;
   }
 
@@ -79,8 +88,11 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
   @Override
   public Consumer build() {
-    if (this.stream == null) {
-      throw new IllegalArgumentException("stream cannot be null");
+    if (this.stream == null && this.superStream == null) {
+      throw new IllegalArgumentException("A stream must be specified");
+    }
+    if (this.stream != null && this.superStream != null) {
+      throw new IllegalArgumentException("Stream and superStream cannot be set at the same time");
     }
     if (this.name == null
         && (this.autoTrackingStrategy != null || this.manualTrackingStrategy != null)) {
@@ -110,15 +122,20 @@ class StreamConsumerBuilder implements ConsumerBuilder {
           new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
     }
 
-    StreamConsumer consumer =
-        new StreamConsumer(
-            this.stream,
-            this.offsetSpecification,
-            this.messageHandler,
-            this.name,
-            this.environment,
-            trackingConfiguration);
-    environment.addConsumer(consumer);
+    Consumer consumer;
+    if (this.stream != null) {
+      consumer =
+          new StreamConsumer(
+              this.stream,
+              this.offsetSpecification,
+              this.messageHandler,
+              this.name,
+              this.environment,
+              trackingConfiguration);
+      environment.addConsumer((StreamConsumer) consumer);
+    } else {
+      consumer = new SuperStreamConsumer(this, this.superStream, this.environment);
+    }
     return consumer;
   }
 
@@ -226,5 +243,21 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     public ConsumerBuilder builder() {
       return this.builder;
     }
+  }
+
+  StreamConsumerBuilder duplicate() {
+    StreamConsumerBuilder duplicate = new StreamConsumerBuilder(this.environment);
+    for (Field field : StreamConsumerBuilder.class.getDeclaredFields()) {
+      if (Modifier.isStatic(field.getModifiers())) {
+        continue;
+      }
+      field.setAccessible(true);
+      try {
+        field.set(duplicate, field.get(this));
+      } catch (IllegalAccessException e) {
+        throw new StreamException("Error while duplicating stream producer builder", e);
+      }
+    }
+    return duplicate;
   }
 }

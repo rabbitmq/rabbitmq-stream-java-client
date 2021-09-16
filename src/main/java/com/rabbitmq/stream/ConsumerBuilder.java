@@ -27,6 +27,14 @@ public interface ConsumerBuilder {
   ConsumerBuilder stream(String stream);
 
   /**
+   * Set the consumer to consume from a super stream (partitioned stream). Experimental!
+   *
+   * @param superStream
+   * @return this builder instance
+   */
+  ConsumerBuilder superStream(String superStream);
+
+  /**
    * The offset to start consuming from.
    *
    * <p>The default is {@link OffsetSpecification#next()} (the end of the stream).

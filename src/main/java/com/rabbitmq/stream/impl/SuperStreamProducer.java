@@ -89,7 +89,11 @@ class SuperStreamProducer implements Producer {
     for (String stream : streams) {
       Producer producer =
           producers.computeIfAbsent(
-              stream, stream1 -> producerBuilder.duplicate().stream(stream1).build());
+              stream,
+              stream1 -> {
+                Producer p = producerBuilder.duplicate().stream(stream1).build();
+                return p;
+              });
       producer.send(message, confirmationHandler);
     }
   }
