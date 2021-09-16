@@ -74,7 +74,7 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
 
-ENV JAVA_HOME=/usr/lib/jvm/java-1.17-openjdk/jre
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk/jre
 RUN mkdir -p $JAVA_HOME
 COPY --from=builder /jre $JAVA_HOME/
 RUN ln -svT $JAVA_HOME/bin/java /usr/local/bin/java
