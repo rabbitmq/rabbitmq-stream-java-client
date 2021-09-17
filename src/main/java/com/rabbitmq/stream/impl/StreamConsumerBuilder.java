@@ -33,6 +33,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private String name;
   private DefaultAutoTrackingStrategy autoTrackingStrategy;
   private DefaultManualTrackingStrategy manualTrackingStrategy;
+  private boolean lazyInit = false;
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -62,6 +63,10 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     return this;
   }
 
+  MessageHandler messageHandler() {
+    return this.messageHandler;
+  }
+
   @Override
   public ConsumerBuilder name(String name) {
     if (name == null || name.length() > NAME_MAX_SIZE) {
@@ -84,6 +89,11 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     this.autoTrackingStrategy = new DefaultAutoTrackingStrategy(this);
     this.manualTrackingStrategy = null;
     return this.autoTrackingStrategy;
+  }
+
+  StreamConsumerBuilder lazyInit(boolean lazyInit) {
+    this.lazyInit = lazyInit;
+    return this;
   }
 
   @Override
@@ -131,10 +141,12 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.messageHandler,
               this.name,
               this.environment,
-              trackingConfiguration);
+              trackingConfiguration,
+              this.lazyInit);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
-      consumer = new SuperStreamConsumer(this, this.superStream, this.environment);
+      consumer =
+          new SuperStreamConsumer(this, this.superStream, this.environment, trackingConfiguration);
     }
     return consumer;
   }
