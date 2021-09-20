@@ -27,7 +27,9 @@ public interface ConsumerBuilder {
   ConsumerBuilder stream(String stream);
 
   /**
-   * Set the consumer to consume from a super stream (partitioned stream). Experimental!
+   * Set the consumer to consume from a super stream (partitioned stream).
+   *
+   * <p>This is an experimental API, subject to change.
    *
    * @param superStream
    * @return this builder instance

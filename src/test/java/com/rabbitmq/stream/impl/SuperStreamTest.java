@@ -24,7 +24,6 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.ProducerBuilder.RoutingType;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import io.netty.channel.EventLoopGroup;
 import java.util.UUID;
@@ -76,7 +75,8 @@ public class SuperStreamTest {
     declareSuperStreamTopology(connection, superStream, partitions);
     Producer producer =
         environment.producerBuilder().stream(superStream)
-            .routing(message -> message.getProperties().getMessageIdAsString(), RoutingType.HASH)
+            .routing(message -> message.getProperties().getMessageIdAsString())
+            .producerBuilder()
             .build();
 
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
@@ -119,9 +119,9 @@ public class SuperStreamTest {
     declareSuperStreamTopology(connection, superStream, routingKeys);
     Producer producer =
         environment.producerBuilder().stream(superStream)
-            .routing(
-                message -> message.getApplicationProperties().get("region").toString(),
-                RoutingType.KEY)
+            .routing(message -> message.getApplicationProperties().get("region").toString())
+            .key()
+            .producerBuilder()
             .build();
 
     CountDownLatch publishLatch = new CountDownLatch(messageCount);

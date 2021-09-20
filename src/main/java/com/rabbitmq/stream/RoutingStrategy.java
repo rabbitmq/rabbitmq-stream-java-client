@@ -11,12 +11,36 @@
 //
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
-package com.rabbitmq.stream.impl;
+package com.rabbitmq.stream;
 
-import com.rabbitmq.stream.Message;
 import java.util.List;
+import java.util.function.Function;
 
-interface RoutingStrategy {
+/**
+ * Strategy to route outbound messages to appropriate streams.
+ *
+ * <p>This is an experimental API, subject to change.
+ *
+ * <p>Used for super streams (partitioned stream).
+ *
+ * @see ProducerBuilder#routing(Function)
+ */
+public interface RoutingStrategy {
 
-  List<String> route(Message message);
+  /**
+   * Where to route a message.
+   *
+   * @param message
+   * @param metadata
+   * @return
+   */
+  List<String> route(Message message, Metadata metadata);
+
+  /** Metadata on the super stream. */
+  interface Metadata {
+
+    List<String> partitions();
+
+    List<String> route(String routingKey);
+  }
 }

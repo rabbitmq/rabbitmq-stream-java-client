@@ -108,37 +108,81 @@ public interface ProducerBuilder {
   ProducerBuilder enqueueTimeout(Duration timeout);
 
   /**
-   * Routing strategy for super streams. Experimental!
-   *
-   * @param routingKeyExtractor
-   * @param routingType
-   * @return this builder instance
-   */
-  ProducerBuilder routing(Function<Message, String> routingKeyExtractor, RoutingType routingType);
-
-  /**
-   * Routing strategy for super streams. Experimental!
-   *
-   * @param routingKeyExtractor
-   * @param routingType
-   * @param hash
-   * @return this builder instance
-   */
-  ProducerBuilder routing(
-      Function<Message, String> routingKeyExtractor,
-      RoutingType routingType,
-      ToIntFunction<String> hash);
-
-  /**
    * Create the {@link Producer} instance.
    *
    * @return the configured producer
    */
   Producer build();
 
-  /** Routing type when using super streams. Experimental! */
-  enum RoutingType {
-    HASH,
-    KEY
+  /**
+   * Configure the routing for super streams (partitioned streams).
+   *
+   * <p>This is an experimental API, subject to change.
+   *
+   * <p>The to-be-created producer will be a composite producer when this method is called. It will
+   * use the routing configuration to find out where a message should be routed. The application
+   * developer must provide the logic to extract a "routing key" from a message, which will decide
+   * the destination(s) of the message.
+   *
+   * <p>The default routing strategy hashes the routing key to choose the stream (partition) to send
+   * the message to.
+   *
+   * @param routingKeyExtractor the logic to extract a routing key from a message
+   * @return the routing configuration instance
+   * @see RoutingConfiguration
+   */
+  RoutingConfiguration routing(Function<Message, String> routingKeyExtractor);
+
+  /**
+   * Routing configuration for super streams (partitioned streams).
+   *
+   * <p>This is an experimental API, subject to change.
+   */
+  interface RoutingConfiguration {
+
+    /**
+     * Enable the "hash" routing strategy (the default).
+     *
+     * <p>The default hash algorithm is 32-bit MurmurHash3.
+     *
+     * @return the routing configuration instance
+     */
+    RoutingConfiguration hash();
+
+    /**
+     * Enable the "hash" routing strategy with a specific hash algorithm.
+     *
+     * @param hash
+     * @return
+     */
+    RoutingConfiguration hash(ToIntFunction<String> hash);
+
+    /**
+     * Enable the "key" routing strategy.
+     *
+     * <p>It consists in using the "route" command of the RabbitMQ Stream protocol to determine the
+     * streams to send a message to.
+     *
+     * @return the routing configuration instance
+     */
+    RoutingConfiguration key();
+
+    /**
+     * Set the routing strategy to use.
+     *
+     * <p>Providing the routing strategy provides control over the streams a message is routed to
+     * (routing key extraction logic if relevant and destination(s) decision).
+     *
+     * @param routingStrategy
+     * @return the routing configuration instance
+     */
+    RoutingConfiguration strategy(RoutingStrategy routingStrategy);
+
+    /**
+     * Go back to the producer builder.
+     *
+     * @return the producer builder
+     */
+    ProducerBuilder producerBuilder();
   }
 }

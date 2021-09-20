@@ -18,10 +18,13 @@ import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.RoutingStrategy;
+import com.rabbitmq.stream.RoutingStrategy.Metadata;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +39,7 @@ class SuperStreamProducer implements Producer {
   private final StreamProducerBuilder producerBuilder;
   private final StreamEnvironment environment;
   private final String name;
+  private final Metadata superStreamMetadata;
 
   SuperStreamProducer(
       StreamProducerBuilder producerBuilder,
@@ -48,6 +52,7 @@ class SuperStreamProducer implements Producer {
     this.name = name;
     this.superStream = superStream;
     this.environment = streamEnvironment;
+    this.superStreamMetadata = new DefaultSuperStreamMetadata(this.superStream, this.environment);
     this.producerBuilder = producerBuilder.duplicate();
     this.producerBuilder.stream(null);
     this.producerBuilder.resetRouting();
@@ -86,7 +91,7 @@ class SuperStreamProducer implements Producer {
   public void send(Message message, ConfirmationHandler confirmationHandler) {
     // TODO handle when the stream is not found (no partition found for the message)
     // and call the confirmation handler with a failure
-    List<String> streams = this.routingStrategy.route(message);
+    List<String> streams = this.routingStrategy.route(message, superStreamMetadata);
     for (String stream : streams) {
       Producer producer =
           producers.computeIfAbsent(
@@ -111,6 +116,31 @@ class SuperStreamProducer implements Producer {
             this.superStream,
             e.getMessage());
       }
+    }
+  }
+
+  private static class DefaultSuperStreamMetadata implements Metadata {
+
+    private final String superStream;
+    private final StreamEnvironment environment;
+    private final List<String> partitions;
+    private final Map<String, List<String>> routes = new ConcurrentHashMap<>();
+
+    private DefaultSuperStreamMetadata(String superStream, StreamEnvironment environment) {
+      this.superStream = superStream;
+      this.environment = environment;
+      this.partitions = new CopyOnWriteArrayList<>(environment.locator().partitions(superStream));
+    }
+
+    @Override
+    public List<String> partitions() {
+      return partitions;
+    }
+
+    @Override
+    public List<String> route(String routingKey) {
+      return routes.computeIfAbsent(
+          routingKey, routingKey1 -> environment.locator().route(routingKey1, superStream));
     }
   }
 }
