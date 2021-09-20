@@ -99,7 +99,8 @@ public class MetricsCollectionTest {
                 .chunkListener(
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
-                .messageListener((subscriptionId, offset, message) -> consumeLatch.countDown()));
+                .messageListener(
+                    (subscriptionId, offset, chunkTimestamp, message) -> consumeLatch.countDown()));
 
     Client.Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
@@ -175,7 +176,7 @@ public class MetricsCollectionTest {
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, message) -> {
                       consumeLatch.countDown();
                     }));
 
@@ -218,7 +219,7 @@ public class MetricsCollectionTest {
           new Client(
               new ClientParameters()
                   .messageListener(
-                      (subscriptionId, offset, message) -> {
+                      (subscriptionId, offset, chunkTimestamp, message) -> {
                         counts.get(subscriptionId).incrementAndGet();
                         if (message.getProperties().getMessageIdAsLong() == messageCount) {
                           latches.get(subscriptionId).countDown();

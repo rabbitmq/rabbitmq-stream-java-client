@@ -232,6 +232,7 @@ class ServerFrameHandler {
         AtomicBoolean messageFiltered,
         long offset,
         long offsetLimit,
+        long chunkTimestamp,
         Codec codec,
         MessageListener messageListener,
         byte subscriptionId) {
@@ -245,7 +246,7 @@ class ServerFrameHandler {
         messageFiltered.set(true);
       } else {
         Message message = codec.decode(data);
-        messageListener.handle(subscriptionId, offset, message);
+        messageListener.handle(subscriptionId, offset, chunkTimestamp, message);
       }
       return read;
     }
@@ -291,7 +292,7 @@ class ServerFrameHandler {
       read += 2;
       long numRecords = message.readUnsignedInt();
       read += 4;
-      message.readLong(); // timestamp
+      long chunkTimestamp = message.readLong(); // timestamp
       read += 8;
       message.readLong(); // epoch, unsigned long
       read += 8;
@@ -354,6 +355,7 @@ class ServerFrameHandler {
                   messageFiltered,
                   offset,
                   offsetLimit,
+                  chunkTimestamp,
                   codec,
                   messageListener,
                   subscriptionId);
@@ -418,6 +420,7 @@ class ServerFrameHandler {
                     messageFiltered,
                     offset,
                     offsetLimit,
+                    chunkTimestamp,
                     codec,
                     messageListener,
                     subscriptionId);

@@ -310,7 +310,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(0);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
 
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
@@ -319,7 +320,8 @@ public class ConsumersCoordinatorTest {
     closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
-    messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
   }
 
@@ -362,7 +364,7 @@ public class ConsumersCoordinatorTest {
                 .forEach(
                     subscriptionId -> {
                       messageListener.handle(
-                          subscriptionId, 0, new WrapperMessageBuilder().build());
+                          subscriptionId, 0, 0, new WrapperMessageBuilder().build());
                     });
     messageToEachSubscription.run();
     assertThat(messageHandlerCalls).hasSize(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
@@ -420,7 +422,7 @@ public class ConsumersCoordinatorTest {
 
     assertThat(messageHandlerCalls.get()).isEqualTo(0);
     messageListener.handle(
-        subscriptionIdCaptor.getAllValues().get(0), 1, new WrapperMessageBuilder().build());
+        subscriptionIdCaptor.getAllValues().get(0), 1, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
 
     coordinator.subscribe(
@@ -444,7 +446,7 @@ public class ConsumersCoordinatorTest {
 
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
     messageListener.handle(
-        subscriptionIdCaptor.getAllValues().get(0), 0, new WrapperMessageBuilder().build());
+        subscriptionIdCaptor.getAllValues().get(0), 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
@@ -453,7 +455,8 @@ public class ConsumersCoordinatorTest {
     closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
-    messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
   }
 
@@ -503,7 +506,8 @@ public class ConsumersCoordinatorTest {
 
     assertThat(messageHandlerCalls.get()).isEqualTo(0);
     firstMessageListener()
-        .handle(subscriptionIdCaptor.getAllValues().get(0), 1, new WrapperMessageBuilder().build());
+        .handle(
+            subscriptionIdCaptor.getAllValues().get(0), 1, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
 
     this.metadataListeners.forEach(
@@ -517,7 +521,8 @@ public class ConsumersCoordinatorTest {
 
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
     lastMessageListener()
-        .handle(subscriptionIdCaptor.getAllValues().get(0), 0, new WrapperMessageBuilder().build());
+        .handle(
+            subscriptionIdCaptor.getAllValues().get(0), 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
@@ -527,7 +532,7 @@ public class ConsumersCoordinatorTest {
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
     lastMessageListener()
-        .handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+        .handle(subscriptionIdCaptor.getValue(), 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
     assertThat(coordinator.poolSize()).isZero();
@@ -568,7 +573,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(0);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 1, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -579,7 +585,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
     when(client.unsubscribe(subscriptionIdCaptor.getValue()))
@@ -588,7 +595,8 @@ public class ConsumersCoordinatorTest {
     closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
 
-    messageListener.handle(subscriptionIdCaptor.getValue(), 0, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
     assertThat(coordinator.poolSize()).isZero();
@@ -626,7 +634,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(0);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 1, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -674,7 +683,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(0);
-    messageListener.handle(subscriptionIdCaptor.getValue(), 1, new WrapperMessageBuilder().build());
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 1, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -902,7 +912,10 @@ public class ConsumersCoordinatorTest {
 
     long lastReceivedOffset = 10;
     messageListener.handle(
-        subscriptionIdCaptor.getValue(), lastReceivedOffset, new WrapperMessageBuilder().build());
+        subscriptionIdCaptor.getValue(),
+        lastReceivedOffset,
+        0,
+        new WrapperMessageBuilder().build());
 
     configurator.accept(this);
 
@@ -1029,7 +1042,10 @@ public class ConsumersCoordinatorTest {
         .isEqualTo(Collections.singletonMap("name", "consumer-name"));
 
     messageListener.handle(
-        subscriptionIdCaptor.getValue(), lastReceivedOffset, new WrapperMessageBuilder().build());
+        subscriptionIdCaptor.getValue(),
+        lastReceivedOffset,
+        0,
+        new WrapperMessageBuilder().build());
 
     configurator.accept(this);
 

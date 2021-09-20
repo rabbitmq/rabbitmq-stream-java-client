@@ -261,10 +261,12 @@ class ConsumersCoordinator {
   private static final class MessageHandlerContext implements Context {
 
     private final long offset;
+    private final long timestamp;
     private final Consumer consumer;
 
-    private MessageHandlerContext(long offset, Consumer consumer) {
+    private MessageHandlerContext(long offset, long timestamp, Consumer consumer) {
       this.offset = offset;
+      this.timestamp = timestamp;
       this.consumer = consumer;
     }
 
@@ -276,6 +278,11 @@ class ConsumersCoordinator {
     @Override
     public void storeOffset() {
       this.consumer.store(this.offset);
+    }
+
+    @Override
+    public long timestamp() {
+      return this.timestamp;
     }
 
     @Override
@@ -396,14 +403,15 @@ class ConsumersCoordinator {
                   subscriptionId & 0xFF,
                   Utils.formatConstant(responseCode));
       MessageListener messageListener =
-          (subscriptionId, offset, message) -> {
+          (subscriptionId, offset, chunkTimestamp, message) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             if (subscriptionTracker != null) {
               subscriptionTracker.offset = offset;
               subscriptionTracker.hasReceivedSomething = true;
               subscriptionTracker.messageHandler.handle(
-                  new MessageHandlerContext(offset, subscriptionTracker.consumer), message);
+                  new MessageHandlerContext(offset, chunkTimestamp, subscriptionTracker.consumer),
+                  message);
               // FIXME set offset here as well, best effort to avoid duplicates
             } else {
               LOGGER.debug("Could not find stream subscription {}", subscriptionId);

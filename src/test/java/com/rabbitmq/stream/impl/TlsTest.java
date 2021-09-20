@@ -154,7 +154,8 @@ public class TlsTest {
           }
         };
 
-    Client.MessageListener messageListener = (corr, offset, data) -> consumedLatch.countDown();
+    Client.MessageListener messageListener =
+        (corr, offset, chunkTimestamp, data) -> consumedLatch.countDown();
 
     Client client =
         cf.get(

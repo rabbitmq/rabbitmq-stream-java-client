@@ -162,13 +162,19 @@ public class StreamConsumerTest {
 
     CountDownLatch consumeLatch = new CountDownLatch(messageCount);
 
+    AtomicLong chunkTimestamp = new AtomicLong();
     Consumer consumer =
         environment.consumerBuilder().stream(stream)
             .offset(OffsetSpecification.first())
-            .messageHandler((offset, message) -> consumeLatch.countDown())
+            .messageHandler(
+                (context, message) -> {
+                  chunkTimestamp.set(context.timestamp());
+                  consumeLatch.countDown();
+                })
             .build();
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(chunkTimestamp.get()).isNotZero();
 
     consumer.close();
   }

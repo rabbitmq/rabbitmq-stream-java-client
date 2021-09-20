@@ -47,6 +47,13 @@ public interface MessageHandler {
     void storeOffset();
 
     /**
+     * The timestamp of the message chunk.
+     *
+     * @return the timestamp of the message chunk
+     */
+    long timestamp();
+
+    /**
      * The consumer that receives the message.
      *
      * @return the consumer instance

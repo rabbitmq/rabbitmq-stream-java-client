@@ -210,7 +210,7 @@ public class AmqpInteroperabilityTest {
                     (client1, subscriptionId, offset, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, message) -> {
                       messages.add(message);
                       messageBodies.add(new String(message.getBodyAsBinary(), UTF8));
                       consumedLatch.countDown();

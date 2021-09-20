@@ -306,6 +306,11 @@ public class OffsetTrackingCoordinatorTest {
       }
 
       @Override
+      public long timestamp() {
+        return 0;
+      }
+
+      @Override
       public com.rabbitmq.stream.Consumer consumer() {
         return consumer;
       }

@@ -46,6 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -244,7 +245,7 @@ public class ClientTest {
     Client.ChunkListener chunkListener =
         (client, correlationId, offset, messageCount, dataSize) -> client.credit(correlationId, 1);
     Client.MessageListener messageListener =
-        (correlationId, offset, message) -> {
+        (correlationId, offset, chunkTimestamp, message) -> {
           messages.add(message);
           latch.countDown();
         };
@@ -380,7 +381,7 @@ public class ClientTest {
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, message) -> {
                       messageBodies.add(new String(message.getBodyAsBinary()));
                       consumeLatch.countDown();
                     }));
@@ -433,7 +434,7 @@ public class ClientTest {
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, message) -> {
                       ByteBuffer bb = ByteBuffer.wrap(message.getBodyAsBinary());
                       sizes.add(message.getBodyAsBinary().length);
                       sequences.add(bb.getInt());
@@ -462,7 +463,12 @@ public class ClientTest {
           client.credit(correlationId, 1);
         };
 
-    Client.MessageListener messageListener = (corr, offset, message) -> latch.countDown();
+    AtomicLong chunkTimestamp = new AtomicLong();
+    Client.MessageListener messageListener =
+        (corr, offset, chkTimestamp, message) -> {
+          chunkTimestamp.set(chkTimestamp);
+          latch.countDown();
+        };
 
     Client client =
         cf.get(
@@ -476,6 +482,7 @@ public class ClientTest {
 
     assertThat(latch.await(60, SECONDS)).isTrue();
     assertThat(receivedCorrelationId).hasValue(correlationId);
+    assertThat(chunkTimestamp.get()).isNotZero();
     client.close();
   }
 
@@ -493,7 +500,8 @@ public class ClientTest {
           }
         };
 
-    Client.MessageListener messageListener = (corr, offset, data) -> consumedLatch.countDown();
+    Client.MessageListener messageListener =
+        (corr, offset, chunkTimestamp, data) -> consumedLatch.countDown();
 
     Client client =
         cf.get(
@@ -615,7 +623,9 @@ public class ClientTest {
                 .chunkListener(
                     (client1, subscriptionId, offset, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
-                .messageListener((subscriptionId, offset, message) -> consumedLatch.countDown()));
+                .messageListener(
+                    (subscriptionId, offset, chunkTimestamp, message) ->
+                        consumedLatch.countDown()));
     ConnectionFactory connectionFactory = new ConnectionFactory();
     try (Connection amqpConnection = connectionFactory.newConnection()) {
       Channel c = amqpConnection.createChannel();

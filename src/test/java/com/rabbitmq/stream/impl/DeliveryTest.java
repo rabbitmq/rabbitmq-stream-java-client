@@ -136,7 +136,8 @@ public class DeliveryTest {
                     assertThat(messageCount).isEqualTo(nbMessages);
                     chunkCountInCallback.incrementAndGet();
                   },
-                  (subscriptionId, offset, message) -> messageCountInCallback.incrementAndGet(),
+                  (subscriptionId, offset, chunkTimestamp, message) ->
+                      messageCountInCallback.incrementAndGet(),
                   NO_OP_CODEC,
                   subscriptionOffsets,
                   ChunkChecksum.NO_OP,

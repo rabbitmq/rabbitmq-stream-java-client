@@ -110,7 +110,7 @@ public class SubEntryBatchingTest {
                         (client, subscriptionId, offset, messageCount1, dataSize) ->
                             client.credit(subscriptionId, 1))
                     .messageListener(
-                        (subscriptionId, offset, message) -> {
+                        (subscriptionId, offset, chunkTimestamp, message) -> {
                           consumedBodies.add(new String(message.getBodyAsBinary(), UTF8));
                           consumeLatch.countDown();
                         })
@@ -189,7 +189,7 @@ public class SubEntryBatchingTest {
                           (client, subscriptionId, offset, messageCount1, dataSize) ->
                               client.credit(subscriptionId, 1))
                       .messageListener(
-                          (subscriptionId, offset, message) -> {
+                          (subscriptionId, offset, chunkTimestamp, message) -> {
                             consumedBodies.add(new String(message.getBodyAsBinary(), UTF8));
                             consumeLatch.countDown();
                           }));

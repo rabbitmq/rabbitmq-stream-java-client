@@ -99,7 +99,7 @@ public class OffsetTest {
                     (client1, subscriptionId, offset12, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset1, message) -> {
+                    (subscriptionId, offset1, chunkTimestamp, message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       latch.countDown();
@@ -162,7 +162,7 @@ public class OffsetTest {
                       chunkCount.incrementAndGet();
                     })
                 .messageListener(
-                    (subscriptionId, offset1, message) -> {
+                    (subscriptionId, offset1, chunkTimestamp, message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       if (offset1 == lastOffset) {
@@ -240,7 +240,7 @@ public class OffsetTest {
                     (client1, subscriptionId, offset, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset1, message) -> {
+                    (subscriptionId, offset1, chunkTimestamp, message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       if (offset1 == lastOffset) {
@@ -308,7 +308,7 @@ public class OffsetTest {
                     (client1, subscriptionId, offset12, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset1, message) -> {
+                    (subscriptionId, offset1, chunkTimestamp, message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       latch.countDown();
@@ -373,7 +373,7 @@ public class OffsetTest {
                     (client1, subscriptionId, offset, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset1, message) -> {
+                    (subscriptionId, offset1, chunkTimestamp, message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       consumed.add(new String(message.getBodyAsBinary(), StandardCharsets.UTF_8));
@@ -446,7 +446,7 @@ public class OffsetTest {
           new Client(
               new Client.ClientParameters()
                   .messageListener(
-                      (subscriptionId, offset, message) -> {
+                      (subscriptionId, offset, chunkTimestamp, message) -> {
                         if (firstOffsets.get(subscriptionId) == null) {
                           firstOffsets.put(subscriptionId, offset);
                         }
@@ -507,7 +507,7 @@ public class OffsetTest {
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, message) -> {
                       consumed.add(new String(message.getBodyAsBinary(), StandardCharsets.UTF_8));
                       consumedLatch.countDown();
                     }));
@@ -559,7 +559,7 @@ public class OffsetTest {
                 .chunkListener(
                     (client, subscriptionId, offset, msgCount, dataSize) -> client.credit(b(0), 1))
                 .messageListener(
-                    (subscriptionId, offset, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, message) -> {
                       lastConsumedMessage.set(new String(message.getBodyAsBinary()));
                       consumedMessagesLatch.countDown();
                     }));
