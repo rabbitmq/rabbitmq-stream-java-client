@@ -136,7 +136,8 @@ class SuperStreamProducer implements Producer {
     private DefaultSuperStreamMetadata(String superStream, StreamEnvironment environment) {
       this.superStream = superStream;
       this.environment = environment;
-      this.partitions = new CopyOnWriteArrayList<>(environment.locator().partitions(superStream));
+      List<String> ps = environment.locatorOperation(c -> c.partitions(superStream));
+      this.partitions = new CopyOnWriteArrayList<>(ps);
     }
 
     @Override
@@ -147,7 +148,8 @@ class SuperStreamProducer implements Producer {
     @Override
     public List<String> route(String routingKey) {
       return routes.computeIfAbsent(
-          routingKey, routingKey1 -> environment.locator().route(routingKey1, superStream));
+          routingKey,
+          routingKey1 -> environment.locatorOperation(c -> c.route(routingKey1, superStream)));
     }
   }
 }
