@@ -130,6 +130,7 @@ public class ConsumersCoordinatorTest {
         };
     mocks = MockitoAnnotations.openMocks(this);
     when(environment.locator()).thenReturn(locator);
+    when(environment.locatorOperation(any())).thenCallRealMethod();
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.addressResolver()).thenReturn(address -> address);
 

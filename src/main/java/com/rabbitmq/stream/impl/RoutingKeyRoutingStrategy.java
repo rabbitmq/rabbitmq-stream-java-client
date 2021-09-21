@@ -44,7 +44,7 @@ class RoutingKeyRoutingStrategy implements RoutingStrategy {
             routingKey,
             routingKey1 -> {
               // TODO retry on locator lookup
-              return env.locator().route(routingKey1, superStream);
+              return env.locatorOperation(c -> c.route(routingKey1, superStream));
             });
     return streams;
   }

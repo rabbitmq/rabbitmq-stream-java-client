@@ -29,7 +29,7 @@ class SuperStreamConsumer implements Consumer {
   SuperStreamConsumer(
       StreamConsumerBuilder builder, String superStream, StreamEnvironment environment) {
     this.superStream = superStream;
-    for (String partition : environment.locator().partitions(superStream)) {
+    for (String partition : environment.locatorOperation(c -> c.partitions(superStream))) {
       Consumer consumer = builder.duplicate().superStream(null).stream(partition).build();
       consumers.put(partition, consumer);
       LOGGER.debug("Created consumer on stream '{}' for super stream '{}'", partition, superStream);

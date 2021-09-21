@@ -38,8 +38,7 @@ class HashRoutingStrategy implements RoutingStrategy {
       ToIntFunction<String> hash) {
     this.routingKeyExtractor = routingKeyExtractor;
     this.env = env;
-    // TODO use async retry to get locator
-    List<String> ps = this.env.locator().partitions(superStream);
+    List<String> ps = this.env.locatorOperation(c -> c.partitions(superStream));
     this.partitions =
         new CopyOnWriteArrayList<>(
             ps.stream().map(Collections::singletonList).collect(Collectors.toList()));

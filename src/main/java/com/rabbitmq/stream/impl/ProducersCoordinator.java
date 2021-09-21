@@ -95,7 +95,8 @@ class ProducersCoordinator {
   }
 
   private Client.Broker getBrokerForProducer(String stream) {
-    Map<String, Client.StreamMetadata> metadata = this.environment.locator().metadata(stream);
+    Map<String, Client.StreamMetadata> metadata =
+        this.environment.locatorOperation(c -> c.metadata(stream));
     if (metadata.size() == 0 || metadata.get(stream) == null) {
       throw new StreamDoesNotExistException(stream);
     }

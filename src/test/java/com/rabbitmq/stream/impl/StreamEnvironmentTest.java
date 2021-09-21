@@ -373,34 +373,21 @@ public class StreamEnvironmentTest {
   void locatorShouldReconnectIfConnectionIsLost(TestInfo info) throws Exception {
     try (Environment environment =
         environmentBuilder
-            .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
+            .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(1)))
             .build()) {
       String s = streamName(info);
       environment.streamCreator().stream(s).create();
       environment.deleteStream(s);
       Host.killConnection("rabbitmq-stream-locator");
-      assertThatThrownBy(() -> environment.streamCreator().stream("whatever").create())
-          .isInstanceOf(StreamException.class);
-      assertThatThrownBy(() -> environment.deleteStream("whatever"))
-          .isInstanceOf(StreamException.class);
-      assertThatThrownBy(() -> environment.producerBuilder().stream(stream).build())
-          .isInstanceOf(StreamException.class);
-      assertThatThrownBy(() -> environment.consumerBuilder().stream(stream).build())
-          .isInstanceOf(StreamException.class);
-
-      Producer producer = null;
-      int timeout = 10_000;
-      int waited = 0;
-      int interval = 1_000;
-      while (producer == null && waited < timeout) {
-        try {
-          Thread.sleep(interval);
-          waited += interval;
-          producer = environment.producerBuilder().stream(stream).build();
-        } catch (StreamException e) {
-        }
+      environment.streamCreator().stream(s).create();
+      try {
+        Producer producer = environment.producerBuilder().stream(s).build();
+        Consumer consumer = environment.consumerBuilder().stream(s).build();
+        producer.close();
+        consumer.close();
+      } finally {
+        environment.deleteStream(s);
       }
-      assertThat(producer).isNotNull();
     }
   }
 

@@ -13,18 +13,25 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.StreamEnvironment.LocatorNotAvailableException;
 import io.netty.buffer.ByteBufAllocator;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.junit.jupiter.api.AfterEach;
@@ -172,5 +179,93 @@ public class StreamEnvironmentUnitTest {
             lazyInit,
             cf);
     verify(cf, times(expectedConnectionCreation)).apply(any(Client.ClientParameters.class));
+  }
+
+  @Test
+  void locatorOperationShouldReturnOperationResultIfNoProblem() {
+    AtomicInteger counter = new AtomicInteger();
+    int result =
+        StreamEnvironment.locatorOperation(
+            c -> counter.incrementAndGet(), () -> null, BackOffDelayPolicy.fixed(Duration.ZERO));
+    assertThat(result).isEqualTo(1);
+  }
+
+  @Test
+  void locatorOperationShouldRetryAndReturnResultIfLocatorException() {
+    AtomicInteger counter = new AtomicInteger();
+    int result =
+        StreamEnvironment.locatorOperation(
+            c -> {
+              if (counter.incrementAndGet() < 2) {
+                throw new LocatorNotAvailableException();
+              } else {
+                return counter.get();
+              }
+            },
+            () -> null,
+            BackOffDelayPolicy.fixed(Duration.ofMillis(10)));
+    assertThat(result).isEqualTo(2);
+  }
+
+  @Test
+  void locatorOperationShouldThrowLocatorExceptionWhenRetryExhausts() {
+    AtomicInteger counter = new AtomicInteger();
+    assertThatThrownBy(
+            () ->
+                StreamEnvironment.locatorOperation(
+                    c -> {
+                      counter.incrementAndGet();
+                      throw new LocatorNotAvailableException();
+                    },
+                    () -> null,
+                    BackOffDelayPolicy.fixed(Duration.ofMillis(10))))
+        .isInstanceOf(LocatorNotAvailableException.class);
+    assertThat(counter).hasValue(3);
+  }
+
+  @Test
+  void locatorOperationShouldThrowInterruptedExceptionAsCauseIfInterrupted()
+      throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicReference<Exception> exception = new AtomicReference<>();
+    Thread thread =
+        new Thread(
+            () -> {
+              try {
+                StreamEnvironment.locatorOperation(
+                    c -> {
+                      latch.countDown();
+                      throw new LocatorNotAvailableException();
+                    },
+                    () -> null,
+                    BackOffDelayPolicy.fixed(Duration.ofMinutes(10)));
+              } catch (StreamException e) {
+                exception.set(e);
+              }
+            });
+    thread.start();
+    latchAssert(latch).completes();
+    Thread.sleep(100);
+    thread.interrupt();
+    Thread.sleep(100);
+    assertThat(exception.get())
+        .isInstanceOf(StreamException.class)
+        .hasCauseInstanceOf(InterruptedException.class);
+  }
+
+  @Test
+  void locatorOperationShouldNotRetryAndReThrowUnexpectedException() {
+    AtomicInteger counter = new AtomicInteger();
+    assertThatThrownBy(
+            () ->
+                StreamEnvironment.locatorOperation(
+                    c -> {
+                      counter.incrementAndGet();
+                      throw new RuntimeException();
+                    },
+                    () -> null,
+                    BackOffDelayPolicy.fixed(Duration.ofMillis(10))))
+        .isInstanceOf(RuntimeException.class);
+    assertThat(counter).hasValue(1);
   }
 }

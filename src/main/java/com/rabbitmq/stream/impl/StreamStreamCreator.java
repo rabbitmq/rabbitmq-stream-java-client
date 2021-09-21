@@ -69,7 +69,7 @@ class StreamStreamCreator implements StreamCreator {
     }
     this.environment.maybeInitializeLocator();
     Client.Response response =
-        environment.locator().create(stream, streamParametersBuilder.build());
+        environment.locatorOperation(c -> c.create(stream, streamParametersBuilder.build()));
     if (!response.isOk()
         && response.getResponseCode() != Constants.RESPONSE_CODE_STREAM_ALREADY_EXISTS) {
       throw new StreamException(

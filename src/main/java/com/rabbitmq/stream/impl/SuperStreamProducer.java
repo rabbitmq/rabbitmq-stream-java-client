@@ -61,11 +61,12 @@ class SuperStreamProducer implements Producer {
   @Override
   public long getLastPublishingId() {
     if (this.name != null && !this.name.isEmpty()) {
-      List<String> streams = this.environment.locator().partitions(superStream);
+      List<String> streams = this.environment.locatorOperation(c -> c.partitions(superStream));
       long publishingId = 0;
       boolean first = true;
       for (String partition : streams) {
-        long pubId = this.environment.locator().queryPublisherSequence(this.name, partition);
+        long pubId =
+            this.environment.locatorOperation(c -> c.queryPublisherSequence(this.name, partition));
         if (first) {
           publishingId = pubId;
           first = false;

@@ -115,14 +115,11 @@ class ConsumersCoordinator {
     return subscriptionTracker::cancel;
   }
 
-  private Client locator() {
-    return environment.locator();
-  }
-
   // package protected for testing
   List<Client.Broker> findBrokersForStream(String stream) {
     // FIXME make sure locator is not null (retry)
-    Map<String, Client.StreamMetadata> metadata = locator().metadata(stream);
+    Map<String, Client.StreamMetadata> metadata =
+        this.environment.locatorOperation(c -> c.metadata(stream));
     if (metadata.size() == 0 || metadata.get(stream) == null) {
       // this is not supposed to happen
       throw new StreamDoesNotExistException(stream);

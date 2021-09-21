@@ -55,6 +55,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
 import org.slf4j.Logger;
@@ -477,13 +478,51 @@ class StreamEnvironment implements Environment {
     return producersCoordinator.registerProducer(producer, reference, stream);
   }
 
-  // FIXME make the locator available as a completable future (with retry)
-  // this would make client code more robust
   Client locator() {
     if (this.locator == null) {
-      throw new StreamException("No connection available");
+      throw new LocatorNotAvailableException();
     }
     return this.locator;
+  }
+
+  <T> T locatorOperation(Function<Client, T> operation) {
+    return locatorOperation(operation, () -> locator(), this.recoveryBackOffDelayPolicy);
+  }
+
+  static <T> T locatorOperation(
+      Function<Client, T> operation,
+      Supplier<Client> clientSupplier,
+      BackOffDelayPolicy backOffDelayPolicy) {
+    int maxAttempt = 3;
+    int attempt = 0;
+    boolean executed = false;
+    Exception lastException = null;
+    T result = null;
+    while (attempt < maxAttempt) {
+      try {
+        result = operation.apply(clientSupplier.get());
+        executed = true;
+        break;
+      } catch (LocatorNotAvailableException e) {
+        attempt++;
+        try {
+          Thread.sleep(backOffDelayPolicy.delay(attempt).toMillis());
+        } catch (InterruptedException ex) {
+          lastException = ex;
+          Thread.currentThread().interrupt();
+          break;
+        }
+      }
+    }
+    if (!executed) {
+      if (lastException == null) {
+        throw new LocatorNotAvailableException();
+      } else {
+        throw new StreamException(
+            "Could not execute operation after " + maxAttempt + " attempts", lastException);
+      }
+    }
+    return result;
   }
 
   Clock clock() {
@@ -559,6 +598,13 @@ class StreamEnvironment implements Environment {
 
     public Consumer<Context> postMessageProcessingCallback() {
       return postMessageProcessingCallback;
+    }
+  }
+
+  static class LocatorNotAvailableException extends StreamException {
+
+    public LocatorNotAvailableException() {
+      super("Locator not available");
     }
   }
 }
