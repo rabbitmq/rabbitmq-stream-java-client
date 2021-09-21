@@ -27,7 +27,6 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
-import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
@@ -97,7 +96,6 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.9.6")
   void consumeAllMessagesFromAllPartitions() throws Exception {
     declareSuperStreamTopology(connection, superStream, partitionCount);
     Client client = cf.get();
@@ -130,7 +128,6 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.9.6")
   void manualOffsetTrackingShouldStoreOnAllPartitions() throws Exception {
     declareSuperStreamTopology(connection, superStream, partitionCount);
     Client client = cf.get();
@@ -153,6 +150,58 @@ public class SuperStreamConsumerTest {
             .offset(OffsetSpecification.first())
             .name(consumerName)
             .manualTrackingStrategy()
+            .builder()
+            .messageHandler(
+                (context, message) -> {
+                  String partition = new String(message.getBodyAsBinary());
+                  messagesReceived.get(partition).incrementAndGet();
+                  lastOffsets.put(partition, context.offset());
+                  totalCount.incrementAndGet();
+                  if (totalCount.get() % 50 == 0) {
+                    context.storeOffset();
+                  }
+                  consumeLatch.countDown();
+                })
+            .build();
+    latchAssert(consumeLatch).completes();
+    assertThat(messagesReceived).hasSize(partitionCount);
+    partitions.forEach(
+        p -> {
+          assertThat(messagesReceived).containsKey(p);
+          assertThat(messagesReceived.get(p).get()).isEqualTo(messageCount / partitionCount);
+        });
+    // checking stored offsets are big enough
+    // offset near the end (the message count per partition minus a few messages)
+    long almostLastOffset = messageCount / partitionCount - messageCount / (partitionCount * 10);
+    partitions.forEach(
+        p -> assertThat(client.queryOffset(consumerName, p)).isGreaterThan(almostLastOffset));
+    consumer.close();
+  }
+
+  @Test
+  void autoOffsetTrackingShouldStoreOnAllPartitions() throws Exception {
+    declareSuperStreamTopology(connection, superStream, partitionCount);
+    Client client = cf.get();
+    List<String> partitions = client.partitions(superStream);
+    int messageCount = 10000 * partitionCount;
+    publishToPartitions(cf, partitions, messageCount);
+    ConcurrentMap<String, AtomicInteger> messagesReceived = new ConcurrentHashMap<>(partitionCount);
+    ConcurrentMap<String, Long> lastOffsets = new ConcurrentHashMap<>(partitionCount);
+    partitions.forEach(
+        p -> {
+          messagesReceived.put(p, new AtomicInteger(0));
+        });
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    String consumerName = "my-app";
+    AtomicInteger totalCount = new AtomicInteger();
+    Consumer consumer =
+        environment
+            .consumerBuilder()
+            .superStream(superStream)
+            .offset(OffsetSpecification.first())
+            .name(consumerName)
+            .autoTrackingStrategy()
+            .messageCountBeforeStorage(messageCount / partitionCount / 50)
             .builder()
             .messageHandler(
                 (context, message) -> {

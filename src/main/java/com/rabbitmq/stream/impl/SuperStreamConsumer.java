@@ -39,7 +39,7 @@ class SuperStreamConsumer implements Consumer {
     this.superStream = superStream;
     List<String> partitions = environment.locatorOperation(c -> c.partitions(superStream));
 
-    // for manual tracking offset strategy only
+    // for manual offset tracking strategy only
     ConsumerState[] states = new ConsumerState[partitions.size()];
     Map<String, ConsumerState> partitionToStates = new HashMap<>(partitions.size());
     for (int i = 0; i < partitions.size(); i++) {
@@ -47,6 +47,8 @@ class SuperStreamConsumer implements Consumer {
       states[i] = state;
       partitionToStates.put(partitions.get(i), state);
     }
+    // end of manual offset tracking strategy
+
     for (String partition : partitions) {
       ConsumerState state = partitionToStates.get(partition);
       MessageHandler messageHandler;
@@ -56,13 +58,21 @@ class SuperStreamConsumer implements Consumer {
       } else {
         messageHandler = builder.messageHandler();
       }
+      StreamConsumerBuilder subConsumerBuilder = builder.duplicate();
+
+      if (trackingConfiguration.enabled() && trackingConfiguration.auto()) {
+        subConsumerBuilder =
+            (StreamConsumerBuilder)
+                subConsumerBuilder
+                    .autoTrackingStrategy()
+                    .messageCountBeforeStorage(
+                        trackingConfiguration.autoMessageCountBeforeStorage() / partitions.size())
+                    .builder();
+      }
+
       Consumer consumer =
-          builder
-              .duplicate()
-              .lazyInit(true)
-              .superStream(null)
-              .messageHandler(messageHandler)
-              .stream(partition)
+          subConsumerBuilder.lazyInit(true).superStream(null).messageHandler(messageHandler).stream(
+                  partition)
               .build();
       consumers.put(partition, consumer);
       state.consumer = consumer;
