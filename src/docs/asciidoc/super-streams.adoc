@@ -1,0 +1,114 @@
+:test-examples: ../../test/java/com/rabbitmq/stream/docs
+
+==== Super Streams (Partitioned Streams)
+
+[WARNING]
+.Experimental
+====
+Super streams are an experimental feature, they are subject to change.
+====
+
+A super stream is a logical stream made of several individual streams.
+In essence, a super stream is a partitioned stream that brings scalability compared to a single stream.
+
+The stream Java client uses the same programming model for super streams as with individual streams, that is the `Producer`, `Consumer`, `Message`, etc API are still valid when super streams are in use.
+Application code should not be impacted whether it uses individual or super streams.
+
+==== Topology
+
+A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
+The topology of a super stream is based on the https://www.rabbitmq.com/tutorials/amqp-concepts.html[AMQP 0.9.1 model], that is exchange, queues, and bindings between them.
+This does not mean AMQP resources are used to transport or store stream messages, it means that they are used to _describe_ the super stream topology, that is the streams it is made of.
+
+Let's take the example of an `invoices` super stream made of 3 streams (i.e. partitions):
+
+* an `invoices` exchange represents the super stream
+* the `invoices-0`, `invoices-1`, `invoices-2` streams are the partitions of the super stream (streams are also AMQP queues in RabbitMQ)
+* 3 bindings between the exchange and the streams link the super stream to its partitions and represent _routing rules_
+
+.The topology of a super stream is defined with bindings between an exchange and queues
+[ditaa]
+....
+                 0    +------------+
+               +----->+ invoices–0 |
+               |      +------------+
++----------+   |
+| invoices |   | 1    +------------+
+|          +---+----->+ invoices–1 |
+| exchange |   |      +------------+
++----------+   |
+               | 2    +------------+
+               +----->+ invoices–2 |
+                      +------------+
+....
+
+When a super stream is in use, the stream Java client queries this information to find out about the partitions of a super stream and the routing rules.
+From the application code point of view, using a super stream is mostly configuration-based.
+Some logic must also be provided to extract routing information from messages.
+
+==== Publishing to a Super Stream
+
+When the topology of a super stream like the one described above has been set, creating a producer for it is straightforward:
+
+.Creating a Producer for a Super Stream
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=producer-simple]
+--------
+<1> Use the super stream name
+<2> Provide the logic to get the routing key from a message
+<3> Create the producer instance
+<4> Close the producer when it's no longer necessary
+
+Note that even though the `invoices` super stream is not an actual stream, its name must be used to declare the producer.
+Internally the client will figure out the streams that compose the super stream.
+The application code must provide the logic to extract a routing key from a message as a `Function<Message, String>`.
+The client will hash the routing key to determine the stream to send the message to (using partition list and a modulo operation).
+
+The client uses 32-bit https://en.wikipedia.org/wiki/MurmurHash[MurmurHash3] by default to hash the routing key.
+This hash function provides good uniformity, performance, and portability, making it a good default choice, but it is possible to specify a custom hash function:
+
+.Specifying a custom hash function
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=producer-custom-hash-function]
+--------
+<1> Use `String#hashCode()` to hash the routing key
+
+Note using Java's `hashCode()` method is a debatable choice as potential producers in other languages are unlikely to implement it, making the routing different between producers in different languages.
+
+==== Resolving Routes with Bindings
+
+Hashing the routing key to pick a partition is only one way to route messages to the appropriate streams.
+The stream Java client provides another way to resolve streams, based on the routing key _and_ the bindings between the super stream exchange and the streams.
+
+This routing strategy makes sense when the partitioning has a business meaning, e.g. with a partition for a region in the world, like in the diagram below:
+
+.A super stream with a partition for a region in a world
+[ditaa]
+....
+                 amer  +---------------+
+               +------>+ invoices–amer |
+               |       +---------------+
++----------+   |
+| invoices |   | emea  +---------------+
+|          +---+------>+ invoices–emea |
+| exchange |   |       +---------------+
++----------+   |
+               | apac  +---------------+
+               +------>+ invoices–apac |
+                       +---------------+
+....
+
+In such a case, the routing key will be a property of the message that represents the region:
+
+.Enabling the "key" routing strategy
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=producer-key-routing-strategy]
+--------
+<1> Extract the routing key
+<2> Enable the "key" routing strategy
+
+Internally the client will query the broker to resolve the destination streams for a given routing key, making the routing logic from any exchange type available to streams.
+Note the client caches results, it does not query the broker for every message.

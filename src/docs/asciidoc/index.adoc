@@ -22,6 +22,8 @@ include::sample-application.adoc[]
 
 include::api.adoc[]
 
+include::super-streams.adoc[]
+
 include::building.adoc[]
 
 include::performance-tool.adoc[]

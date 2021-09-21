@@ -180,7 +180,6 @@ public class SuperStreamProducerTest {
 
   @Test
   void messageIsNackedIfNoRouteFound() throws Exception {
-    int messageCount = 10_000;
     routingKeys = new String[] {"amer", "emea", "apac"};
     declareSuperStreamTopology(connection, superStream, routingKeys);
     Producer producer =
