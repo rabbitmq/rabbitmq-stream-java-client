@@ -15,6 +15,8 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Producer;
@@ -92,15 +94,20 @@ class SuperStreamProducer implements Producer {
     // TODO handle when the stream is not found (no partition found for the message)
     // and call the confirmation handler with a failure
     List<String> streams = this.routingStrategy.route(message, superStreamMetadata);
-    for (String stream : streams) {
-      Producer producer =
-          producers.computeIfAbsent(
-              stream,
-              stream1 -> {
-                Producer p = producerBuilder.duplicate().stream(stream1).build();
-                return p;
-              });
-      producer.send(message, confirmationHandler);
+    if (streams.isEmpty()) {
+      confirmationHandler.handle(
+          new ConfirmationStatus(message, false, Constants.CODE_NO_ROUTE_FOUND));
+    } else {
+      for (String stream : streams) {
+        Producer producer =
+            producers.computeIfAbsent(
+                stream,
+                stream1 -> {
+                  Producer p = producerBuilder.duplicate().stream(stream1).build();
+                  return p;
+                });
+        producer.send(message, confirmationHandler);
+      }
     }
   }
 

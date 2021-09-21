@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -31,6 +32,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -173,6 +176,39 @@ public class SuperStreamProducerTest {
         .doesNotContain(0L);
     assertThat(counts.values().stream().map(AtomicLong::get).reduce(0L, Long::sum))
         .isEqualTo(messageCount);
+  }
+
+  @Test
+  void messageIsNackedIfNoRouteFound() throws Exception {
+    int messageCount = 10_000;
+    routingKeys = new String[] {"amer", "emea", "apac"};
+    declareSuperStreamTopology(connection, superStream, routingKeys);
+    Producer producer =
+        environment.producerBuilder().stream(superStream)
+            .routing(message -> message.getApplicationProperties().get("region").toString())
+            .key()
+            .producerBuilder()
+            .build();
+
+    AtomicBoolean confirmed = new AtomicBoolean(true);
+    AtomicInteger code = new AtomicInteger();
+    CountDownLatch publishLatch = new CountDownLatch(1);
+    producer.send(
+        producer
+            .messageBuilder()
+            .applicationProperties()
+            .entry("region", "atlantis")
+            .messageBuilder()
+            .build(),
+        confirmationStatus -> {
+          confirmed.set(confirmationStatus.isConfirmed());
+          code.set(confirmationStatus.getCode());
+          publishLatch.countDown();
+        });
+
+    assertThat(latchAssert(publishLatch)).completes(5);
+    assertThat(confirmed).isFalse();
+    assertThat(code).hasValue(Constants.CODE_NO_ROUTE_FOUND);
   }
 
   @Test
