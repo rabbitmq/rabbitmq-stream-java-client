@@ -127,6 +127,10 @@ public interface ProducerBuilder {
    * <p>The default routing strategy hashes the routing key to choose the stream (partition) to send
    * the message to.
    *
+   * Note the routing key extraction logic is required only when the built-in routing strategies
+   * are used. It can set to <code>null</code> when a custom {@link RoutingStrategy} is set
+   * with {@link #routing(Function)}.
+   *
    * @param routingKeyExtractor the logic to extract a routing key from a message
    * @return the routing configuration instance
    * @see RoutingConfiguration

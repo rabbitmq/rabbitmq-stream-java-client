@@ -14,8 +14,15 @@
 
 package com.rabbitmq.stream.docs;
 
+import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.RoutingStrategy;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class SuperStreamUsage {
 
@@ -55,4 +62,38 @@ public class SuperStreamUsage {
             .build();
         // end::producer-key-routing-strategy[]
     }
+
+   void producerCustomRoutingStrategy() {
+       Environment environment = Environment.builder().build();
+       // tag::producer-custom-routing-strategy[]
+       AtomicLong messageCount = new AtomicLong(0);
+       RoutingStrategy routingStrategy = (message, metadata) -> {
+           List<String> partitions = metadata.partitions();
+           String stream = partitions.get(
+               (int) messageCount.getAndIncrement() % partitions.size()
+           );
+           return Collections.singletonList(stream);
+       };
+       Producer producer = environment.producerBuilder()
+           .stream("invoices")
+           .routing(null)  // <1>
+           .strategy(routingStrategy)  // <2>
+           .producerBuilder()
+           .build();
+       // end::producer-custom-routing-strategy[]
+   }
+
+   void consumerSimple() {
+       Environment environment = Environment.builder().build();
+       // tag::consumer-simple[]
+       Consumer consumer = environment.consumerBuilder()
+           .superStream("invoices")  // <1>
+           .messageHandler((context, message) -> {
+               // message processing
+           })
+           .build();
+       // ...
+       consumer.close();  // <2>
+       // end::consumer-simple[]
+   }
 }

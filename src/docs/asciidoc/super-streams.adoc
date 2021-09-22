@@ -1,5 +1,6 @@
 :test-examples: ../../test/java/com/rabbitmq/stream/docs
 
+[[super-streams]]
 ==== Super Streams (Partitioned Streams)
 
 [WARNING]
@@ -14,7 +15,7 @@ In essence, a super stream is a partitioned stream that brings scalability compa
 The stream Java client uses the same programming model for super streams as with individual streams, that is the `Producer`, `Consumer`, `Message`, etc API are still valid when super streams are in use.
 Application code should not be impacted whether it uses individual or super streams.
 
-==== Topology
+===== Topology
 
 A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
 The topology of a super stream is based on the https://www.rabbitmq.com/tutorials/amqp-concepts.html[AMQP 0.9.1 model], that is exchange, queues, and bindings between them.
@@ -46,7 +47,7 @@ When a super stream is in use, the stream Java client queries this information t
 From the application code point of view, using a super stream is mostly configuration-based.
 Some logic must also be provided to extract routing information from messages.
 
-==== Publishing to a Super Stream
+===== Publishing to a Super Stream
 
 When the topology of a super stream like the one described above has been set, creating a producer for it is straightforward:
 
@@ -77,7 +78,7 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-custom-hash-function
 
 Note using Java's `hashCode()` method is a debatable choice as potential producers in other languages are unlikely to implement it, making the routing different between producers in different languages.
 
-==== Resolving Routes with Bindings
+====== Resolving Routes with Bindings
 
 Hashing the routing key to pick a partition is only one way to route messages to the appropriate streams.
 The stream Java client provides another way to resolve streams, based on the routing key _and_ the bindings between the super stream exchange and the streams.
@@ -112,3 +113,56 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-key-routing-strategy
 
 Internally the client will query the broker to resolve the destination streams for a given routing key, making the routing logic from any exchange type available to streams.
 Note the client caches results, it does not query the broker for every message.
+
+====== Using a Custom Routing Strategy
+
+The solution that provides the most control over routing is using a custom routing strategy.
+This should be needed only for specific cases.
+
+The following code sample shows how to implement a simplistic round-robin `RoutingStrategy` and use it in the producer.
+Note this implementation should not be used in production as the modulo operation is not sign-safe for simplicity's sake.
+
+.Setting a round-robin routing strategy
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=producer-custom-routing-strategy]
+--------
+<1> No need to set the routing key extraction logic
+<2> Set the custom routing strategy
+
+====== Deduplication
+
+Deduplication for a super stream producer works the same way as with a <<api.adoc#outbound-message-deduplication, single stream producer>>.
+The publishing ID values are spread across the streams but this does affect the mechanism.
+
+===== Consuming From a Super Stream
+
+A super stream consumer is not much different from a single stream consumer.
+The `ConsumerBuilder#superStream(String)` must be used to set the super stream to consume from:
+
+.Declaring a super stream consumer
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=consumer-simple]
+--------
+<1> Set the super stream name
+<2> Close the consumer when it is no longer necessary
+
+A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
+
+====== Offset Tracking
+
+The semantic of offset tracking for a super stream consumer are roughly the same as for an individual stream consumer.
+There are still some subtle differences, so a good understanding of <<api.adoc#consumer-offset-tracking, offset tracking>> in general and of the <<api.adoc#consumer-automatic-offset-tracking,automatic>> and <<api.adoc#consumer-manual-offset-tracking,manual>> offset tracking strategies is recommended.
+
+Here are the main differences for the automatic/manual offset tracking strategies between single and super stream consuming:
+
+* *automatic offset tracking*: internally, _the client divides the `messageCountBeforeStorage` setting by the number of partitions for each individual consumer_.
+Imagine a 3-partition super stream, `messageCountBeforeStorage` set to 10,000, and 10,000 messages coming in, perfectly balanced across the partitions (that is about 3,333 messages for each partition).
+In this case, the automatic offset tracking strategy will not kick in, because the expected count message has not been reached on any partition.
+Making the client divide `messageCountBeforeStorage` by the number of partitions can be considered "more accurate" if the message are well balanced across the partitions.
+A good rule of thumb is to then multiply the expected per-stream `messageCountBeforeStorage` by the number of partitions, to avoid storing offsets too often. So the default being 10,000, it can be set to 30,000 for a 3-partition super stream.
+* *manual offset tracking*: the `MessageHandler.Context#storeOffset()` method must be used, the `Consumer#store(long)` will fail, because an offset value has a meaning only in one stream, not in other streams.
+A call to `MessageHandler.Context#storeOffset()` will store the current message offset in _its_ stream, but also the offset of the last dispatched message for the other streams of the super stream.
+
+
