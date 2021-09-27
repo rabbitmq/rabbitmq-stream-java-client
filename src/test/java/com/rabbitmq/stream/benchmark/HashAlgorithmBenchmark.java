@@ -59,7 +59,7 @@ public class HashAlgorithmBenchmark {
           put(
               "murmur3-guava",
               d -> {
-                HashFunction hashFunction = Hashing.murmur3_32();
+                HashFunction hashFunction = Hashing.murmur3_32_fixed();
                 return hashFunction.hashString(d, StandardCharsets.UTF_8).asInt();
               });
           put(
