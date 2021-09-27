@@ -58,7 +58,7 @@
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.6.1</picocli.version>
     <jetty.version>9.4.43.v20210629</jetty.version>
-    <guava.version>30.1.1-jre</guava.version>
+    <guava.version>31.0-jre</guava.version>
     <commons-compress.version>1.21</commons-compress.version>
     <zstd-jni.version>1.5.0-4</zstd-jni.version>
     <lz4-java.version>1.8.0</lz4-java.version>
