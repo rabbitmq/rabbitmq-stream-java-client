@@ -28,7 +28,7 @@ class StreamConsumer implements Consumer {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamConsumer.class);
 
-  private final Runnable closingCallback;
+  private volatile Runnable closingCallback;
 
   private final Runnable closingTrackingCallback;
 
@@ -44,7 +44,11 @@ class StreamConsumer implements Consumer {
 
   private volatile Status status;
 
+  private volatile long lastRequestedStoredOffset = 0;
+
   private final LongConsumer trackingCallback;
+
+  private final Runnable initCallback;
 
   StreamConsumer(
       String stream,
@@ -52,7 +56,8 @@ class StreamConsumer implements Consumer {
       MessageHandler messageHandler,
       String name,
       StreamEnvironment environment,
-      TrackingConfiguration trackingConfiguration) {
+      TrackingConfiguration trackingConfiguration,
+      boolean lazyInit) {
 
     try {
       this.name = name;
@@ -87,11 +92,33 @@ class StreamConsumer implements Consumer {
         messageHandlerWithOrWithoutTracking = messageHandler;
       }
 
-      this.closingCallback =
-          environment.registerConsumer(
-              this, stream, offsetSpecification, this.name, messageHandlerWithOrWithoutTracking);
+      Runnable init =
+          () -> {
+            this.closingCallback =
+                environment.registerConsumer(
+                    this,
+                    stream,
+                    offsetSpecification,
+                    this.name,
+                    messageHandlerWithOrWithoutTracking);
 
-      this.status = Status.RUNNING;
+            this.status = Status.RUNNING;
+          };
+      if (lazyInit) {
+        this.initCallback = init;
+      } else {
+        this.initCallback = () -> {};
+        init.run();
+      }
+    } catch (RuntimeException e) {
+      this.closed.set(true);
+      throw e;
+    }
+  }
+
+  void start() {
+    try {
+      this.initCallback.run();
     } catch (RuntimeException e) {
       this.closed.set(true);
       throw e;
@@ -102,10 +129,13 @@ class StreamConsumer implements Consumer {
   public void store(long offset) {
     trackingCallback.accept(offset);
     if (canTrack()) {
-      try {
-        this.trackingClient.storeOffset(this.name, this.stream, offset);
-      } catch (Exception e) {
-        LOGGER.debug("Error while trying to store offset: {}", e.getMessage());
+      if (Long.compareUnsigned(this.lastRequestedStoredOffset, offset) < 0) {
+        try {
+          this.trackingClient.storeOffset(this.name, this.stream, offset);
+          this.lastRequestedStoredOffset = offset;
+        } catch (Exception e) {
+          LOGGER.debug("Error while trying to store offset: {}", e.getMessage());
+        }
       }
     }
     // nothing special to do if tracking is not possible or errors, e.g. because of a network
@@ -114,7 +144,7 @@ class StreamConsumer implements Consumer {
   }
 
   private boolean canTrack() {
-    return this.status == Status.RUNNING;
+    return this.status == Status.RUNNING && this.name != null;
   }
 
   @Override

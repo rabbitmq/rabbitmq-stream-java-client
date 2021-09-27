@@ -22,17 +22,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.ProducerBuilder.RoutingType;
-import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import io.netty.channel.EventLoopGroup;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -75,13 +76,13 @@ public class SuperStreamProducerTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.9.6")
   void allMessagesSentToSuperStreamWithHashRoutingShouldBeThenConsumed() throws Exception {
     int messageCount = 10_000;
     declareSuperStreamTopology(connection, superStream, partitions);
     Producer producer =
         environment.producerBuilder().stream(superStream)
-            .routing(message -> message.getProperties().getMessageIdAsString(), RoutingType.HASH)
+            .routing(message -> message.getProperties().getMessageIdAsString())
+            .producerBuilder()
             .build();
 
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
@@ -127,16 +128,15 @@ public class SuperStreamProducerTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.9.6")
   void allMessagesSentToSuperStreamWithRoutingKeyRoutingShouldBeThenConsumed() throws Exception {
     int messageCount = 10_000;
     routingKeys = new String[] {"amer", "emea", "apac"};
     declareSuperStreamTopology(connection, superStream, routingKeys);
     Producer producer =
         environment.producerBuilder().stream(superStream)
-            .routing(
-                message -> message.getApplicationProperties().get("region").toString(),
-                RoutingType.KEY)
+            .routing(message -> message.getApplicationProperties().get("region").toString())
+            .key()
+            .producerBuilder()
             .build();
 
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
@@ -179,14 +179,46 @@ public class SuperStreamProducerTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.9.6")
+  void messageIsNackedIfNoRouteFound() throws Exception {
+    routingKeys = new String[] {"amer", "emea", "apac"};
+    declareSuperStreamTopology(connection, superStream, routingKeys);
+    Producer producer =
+        environment.producerBuilder().stream(superStream)
+            .routing(message -> message.getApplicationProperties().get("region").toString())
+            .key()
+            .producerBuilder()
+            .build();
+
+    AtomicBoolean confirmed = new AtomicBoolean(true);
+    AtomicInteger code = new AtomicInteger();
+    CountDownLatch publishLatch = new CountDownLatch(1);
+    producer.send(
+        producer
+            .messageBuilder()
+            .applicationProperties()
+            .entry("region", "atlantis")
+            .messageBuilder()
+            .build(),
+        confirmationStatus -> {
+          confirmed.set(confirmationStatus.isConfirmed());
+          code.set(confirmationStatus.getCode());
+          publishLatch.countDown();
+        });
+
+    assertThat(latchAssert(publishLatch)).completes(5);
+    assertThat(confirmed).isFalse();
+    assertThat(code).hasValue(Constants.CODE_NO_ROUTE_FOUND);
+  }
+
+  @Test
   void getLastPublishingIdShouldReturnLowestValue() throws Exception {
     int messageCount = 10_000;
     declareSuperStreamTopology(connection, superStream, partitions);
     String producerName = "super-stream-application";
     Producer producer =
         environment.producerBuilder().name(producerName).stream(superStream)
-            .routing(message -> message.getProperties().getMessageIdAsString(), RoutingType.HASH)
+            .routing(message -> message.getProperties().getMessageIdAsString())
+            .producerBuilder()
             .build();
 
     CountDownLatch publishLatch = new CountDownLatch(messageCount);

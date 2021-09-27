@@ -14,41 +14,28 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.RoutingStrategy;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
-import java.util.stream.Collectors;
 
 class HashRoutingStrategy implements RoutingStrategy {
 
   private final Function<Message, String> routingKeyExtractor;
 
-  private final StreamEnvironment env;
-
-  private final List<List<String>> partitions;
-
   private final ToIntFunction<String> hash;
 
-  HashRoutingStrategy(
-      String superStream,
-      Function<Message, String> routingKeyExtractor,
-      StreamEnvironment env,
-      ToIntFunction<String> hash) {
+  HashRoutingStrategy(Function<Message, String> routingKeyExtractor, ToIntFunction<String> hash) {
     this.routingKeyExtractor = routingKeyExtractor;
-    this.env = env;
-    List<String> ps = this.env.locatorOperation(c -> c.partitions(superStream));
-    this.partitions =
-        new CopyOnWriteArrayList<>(
-            ps.stream().map(Collections::singletonList).collect(Collectors.toList()));
     this.hash = hash;
   }
 
   @Override
-  public List<String> route(Message message) {
+  public List<String> route(Message message, Metadata metadata) {
     String routingKey = routingKeyExtractor.apply(message);
     int hashValue = hash.applyAsInt(routingKey);
-    return this.partitions.get((hashValue & 0x7FFFFFFF) % this.partitions.size());
+    List<String> partitions = metadata.partitions();
+    return Collections.singletonList(partitions.get((hashValue & 0x7FFFFFFF) % partitions.size()));
   }
 }

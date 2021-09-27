@@ -14,6 +14,11 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,12 +32,107 @@ class SuperStreamConsumer implements Consumer {
   private final Map<String, Consumer> consumers = new ConcurrentHashMap<>();
 
   SuperStreamConsumer(
-      StreamConsumerBuilder builder, String superStream, StreamEnvironment environment) {
+      StreamConsumerBuilder builder,
+      String superStream,
+      StreamEnvironment environment,
+      TrackingConfiguration trackingConfiguration) {
     this.superStream = superStream;
-    for (String partition : environment.locatorOperation(c -> c.partitions(superStream))) {
-      Consumer consumer = builder.duplicate().superStream(null).stream(partition).build();
+    List<String> partitions = environment.locatorOperation(c -> c.partitions(superStream));
+
+    // for manual offset tracking strategy only
+    ConsumerState[] states = new ConsumerState[partitions.size()];
+    Map<String, ConsumerState> partitionToStates = new HashMap<>(partitions.size());
+    for (int i = 0; i < partitions.size(); i++) {
+      ConsumerState state = new ConsumerState();
+      states[i] = state;
+      partitionToStates.put(partitions.get(i), state);
+    }
+    // end of manual offset tracking strategy
+
+    for (String partition : partitions) {
+      ConsumerState state = partitionToStates.get(partition);
+      MessageHandler messageHandler;
+      if (trackingConfiguration.enabled() && trackingConfiguration.manual()) {
+        messageHandler =
+            new ManualOffsetTrackingMessageHandler(builder.messageHandler(), states, state);
+      } else {
+        messageHandler = builder.messageHandler();
+      }
+      StreamConsumerBuilder subConsumerBuilder = builder.duplicate();
+
+      if (trackingConfiguration.enabled() && trackingConfiguration.auto()) {
+        subConsumerBuilder =
+            (StreamConsumerBuilder)
+                subConsumerBuilder
+                    .autoTrackingStrategy()
+                    .messageCountBeforeStorage(
+                        trackingConfiguration.autoMessageCountBeforeStorage() / partitions.size())
+                    .builder();
+      }
+
+      Consumer consumer =
+          subConsumerBuilder.lazyInit(true).superStream(null).messageHandler(messageHandler).stream(
+                  partition)
+              .build();
       consumers.put(partition, consumer);
+      state.consumer = consumer;
       LOGGER.debug("Created consumer on stream '{}' for super stream '{}'", partition, superStream);
+    }
+
+    consumers.values().forEach(c -> ((StreamConsumer) c).start());
+  }
+
+  private static final class ConsumerState {
+
+    private volatile long offset = 0;
+    private volatile Consumer consumer;
+  }
+
+  private static final class ManualOffsetTrackingMessageHandler implements MessageHandler {
+
+    private final MessageHandler delegate;
+    private final ConsumerState[] consumerStates;
+    private final ConsumerState consumerState;
+
+    private ManualOffsetTrackingMessageHandler(
+        MessageHandler delegate, ConsumerState[] consumerStates, ConsumerState consumerState) {
+      this.delegate = delegate;
+      this.consumerStates = consumerStates;
+      this.consumerState = consumerState;
+    }
+
+    @Override
+    public void handle(Context context, Message message) {
+      Context ctx =
+          new Context() {
+            @Override
+            public long offset() {
+              return context.offset();
+            }
+
+            @Override
+            public long timestamp() {
+              return context.timestamp();
+            }
+
+            @Override
+            public void storeOffset() {
+              for (ConsumerState state : consumerStates) {
+                if (ManualOffsetTrackingMessageHandler.this.consumerState == state) {
+                  context.storeOffset();
+                } else if (state.offset != 0) {
+                  state.consumer.store(state.offset);
+                }
+              }
+            }
+
+            @Override
+            public Consumer consumer() {
+              return context.consumer();
+            }
+          };
+      this.delegate.handle(ctx, message);
+      consumerState.offset = context.offset();
     }
   }
 

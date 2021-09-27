@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder;
+import com.rabbitmq.stream.RoutingStrategy;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import java.lang.reflect.Field;
@@ -45,11 +46,7 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   private Duration enqueueTimeout = Duration.ofSeconds(10);
 
-  private Function<Message, String> routingKeyExtractor;
-
-  private RoutingType routingType;
-
-  private ToIntFunction<String> hash = HashUtils.MURMUR3;
+  private DefaultRoutingConfiguration routingConfiguration;
 
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -126,32 +123,14 @@ class StreamProducerBuilder implements ProducerBuilder {
   }
 
   @Override
-  public ProducerBuilder routing(
-      Function<Message, String> routingKeyExtractor, RoutingType routingType) {
-    return this.routing(routingKeyExtractor, routingType, HashUtils.MURMUR3);
-  }
-
-  @Override
-  public ProducerBuilder routing(
-      Function<Message, String> routingKeyExtractor,
-      RoutingType routingType,
-      ToIntFunction<String> hash) {
-    if (routingKeyExtractor == null || routingType == null) {
-      throw new IllegalArgumentException(
-          "both routing key extractor and routing type must be non-null");
-    }
-    this.routingKeyExtractor = routingKeyExtractor;
-    this.routingType = routingType;
-    if (hash != null) {
-      this.hash = hash;
-    }
-    return this;
+  public RoutingConfiguration routing(Function<Message, String> routingKeyExtractor) {
+    this.routingConfiguration = new DefaultRoutingConfiguration(this);
+    this.routingConfiguration.routingKeyExtractor = routingKeyExtractor;
+    return this.routingConfiguration;
   }
 
   void resetRouting() {
-    this.routingKeyExtractor = null;
-    this.routingType = null;
-    this.hash = null;
+    this.routingConfiguration = null;
   }
 
   public Producer build() {
@@ -164,7 +143,7 @@ class StreamProducerBuilder implements ProducerBuilder {
     }
     this.environment.maybeInitializeLocator();
     Producer producer;
-    if (this.routingKeyExtractor == null) {
+    if (this.routingConfiguration == null) {
       producer =
           new StreamProducer(
               name,
@@ -179,14 +158,17 @@ class StreamProducerBuilder implements ProducerBuilder {
               environment);
       this.environment.addProducer((StreamProducer) producer);
     } else {
-      // FIXME propagate compression to super stream producer
-      ToIntFunction<String> hashFunction = this.hash == null ? HashUtils.MURMUR3 : this.hash;
-      RoutingStrategy routingStrategy =
-          this.routingType == RoutingType.HASH
-              ? new HashRoutingStrategy(
-                  this.stream, this.routingKeyExtractor, this.environment, hashFunction)
-              : new RoutingKeyRoutingStrategy(
-                  this.stream, this.routingKeyExtractor, this.environment);
+      RoutingStrategy routingStrategy = this.routingConfiguration.routingStrategy;
+      if (routingStrategy == null) {
+        if (this.routingConfiguration.hash == null) {
+          routingStrategy =
+              new RoutingKeyRoutingStrategy(this.routingConfiguration.routingKeyExtractor);
+        } else {
+          routingStrategy =
+              new HashRoutingStrategy(
+                  this.routingConfiguration.routingKeyExtractor, this.routingConfiguration.hash);
+        }
+      }
       producer =
           new SuperStreamProducer(this, this.name, this.stream, routingStrategy, this.environment);
     }
@@ -204,5 +186,54 @@ class StreamProducerBuilder implements ProducerBuilder {
       }
     }
     return duplicate;
+  }
+
+  static final class DefaultRoutingConfiguration implements RoutingConfiguration {
+
+    private final StreamProducerBuilder producerBuilder;
+
+    private Function<Message, String> routingKeyExtractor;
+
+    private RoutingStrategy routingStrategy;
+
+    private ToIntFunction<String> hash = HashUtils.MURMUR3;
+
+    DefaultRoutingConfiguration(StreamProducerBuilder producerBuilder) {
+      this.producerBuilder = producerBuilder;
+    }
+
+    @Override
+    public RoutingConfiguration hash() {
+      if (this.hash == null) {
+        this.hash = HashUtils.MURMUR3;
+      }
+      this.routingStrategy = null;
+      return this;
+    }
+
+    @Override
+    public RoutingConfiguration hash(ToIntFunction<String> hash) {
+      this.hash = hash;
+      this.routingStrategy = null;
+      return this;
+    }
+
+    @Override
+    public RoutingConfiguration key() {
+      this.hash = null;
+      this.routingStrategy = null;
+      return this;
+    }
+
+    @Override
+    public RoutingConfiguration strategy(RoutingStrategy routingStrategy) {
+      this.routingStrategy = routingStrategy;
+      return this;
+    }
+
+    @Override
+    public ProducerBuilder producerBuilder() {
+      return this.producerBuilder;
+    }
   }
 }

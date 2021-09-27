@@ -39,6 +39,7 @@ public final class Constants {
   public static final short CODE_PRODUCER_NOT_AVAILABLE = 10_002;
   public static final short CODE_PRODUCER_CLOSED = 10_003;
   public static final short CODE_PUBLISH_CONFIRM_TIMEOUT = 10_004;
+  public static final short CODE_NO_ROUTE_FOUND = 10_005;
 
   public static final short COMMAND_DECLARE_PUBLISHER = 1;
   public static final short COMMAND_PUBLISH = 2;
