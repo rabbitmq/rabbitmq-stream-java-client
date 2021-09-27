@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.5.0-SNAPSHOT</span>
-<br><span id="revremark">(5fb0f47)</span>
+<br><span id="revremark">(067c15d)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -510,6 +510,23 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#consumer-automatic-offset-tracking">Automatic Offset Tracking</a></li>
 <li><a href="#consumer-manual-offset-tracking">Manual Offset Tracking</a></li>
 <li><a href="#considerations-on-offset-tracking">Considerations On Offset Tracking</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#super-streams">Super Streams (Partitioned Streams)</a>
+<ul class="sectlevel4">
+<li><a href="#topology">Topology</a></li>
+<li><a href="#publishing-to-a-super-stream">Publishing to a Super Stream</a>
+<ul class="sectlevel5">
+<li><a href="#resolving-routes-with-bindings">Resolving Routes with Bindings</a></li>
+<li><a href="#using-a-custom-routing-strategy">Using a Custom Routing Strategy</a></li>
+<li><a href="#deduplication">Deduplication</a></li>
+</ul>
+</li>
+<li><a href="#consuming-from-a-super-stream">Consuming From a Super Stream</a>
+<ul class="sectlevel5">
+<li><a href="#offset-tracking">Offset Tracking</a></li>
 </ul>
 </li>
 </ul>
@@ -2793,6 +2810,292 @@ no guarantee to be contiguous, the operation may not happen exactly every X mess
 </div>
 </div>
 </div>
+<div class="sect3">
+<h4 id="super-streams"><a class="anchor" href="#super-streams"></a>Super Streams (Partitioned Streams)</h4>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="title">Experimental</div>
+<div class="paragraph">
+<p>Super streams are an experimental feature, they are subject to change.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>A super stream is a logical stream made of several individual streams.
+In essence, a super stream is a partitioned stream that brings scalability compared to a single stream.</p>
+</div>
+<div class="paragraph">
+<p>The stream Java client uses the same programming model for super streams as with individual streams, that is the <code>Producer</code>, <code>Consumer</code>, <code>Message</code>, etc API are still valid when super streams are in use.
+Application code should not be impacted whether it uses individual or super streams.</p>
+</div>
+<div class="sect4">
+<h5 id="topology"><a class="anchor" href="#topology"></a>Topology</h5>
+<div class="paragraph">
+<p>A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
+The topology of a super stream is based on the <a href="https://www.rabbitmq.com/tutorials/amqp-concepts.html">AMQP 0.9.1 model</a>, that is exchange, queues, and bindings between them.
+This does not mean AMQP resources are used to transport or store stream messages, it means that they are used to <em>describe</em> the super stream topology, that is the streams it is made of.</p>
+</div>
+<div class="paragraph">
+<p>Let&#8217;s take the example of an <code>invoices</code> super stream made of 3 streams (i.e. partitions):</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>an <code>invoices</code> exchange represents the super stream</p>
+</li>
+<li>
+<p>the <code>invoices-0</code>, <code>invoices-1</code>, <code>invoices-2</code> streams are the partitions of the super stream (streams are also AMQP queues in RabbitMQ)</p>
+</li>
+<li>
+<p>3 bindings between the exchange and the streams link the super stream to its partitions and represent <em>routing rules</em></p>
+</li>
+</ul>
+</div>
+<div class="imageblock">
+<div class="content">
+<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZAAAADSCAIAAADrOgFIAAAU/UlEQVR42u2df0xV9f/HDYyfX0ilGXMwI5C2SkGQNdBEkdaW0PxDcyiO8P/mH7a1Nps2czYVt5quZi2GRWZaaAvSzR8MYZI0fkjNQlMu4S9UBEGQBZ8+z/n+7uwOuBf8APeei4/HH3fv93mfc+8573PP47ze73ve7zvlXwAAH2EKVQAACAsAYMKE9R8AAFuCsAAAYQEAICwAQFgICwAQFgAAwgIAhIWwAABhAQAgLABAWAAACAsAAGEBAMICAEBYAAAICwAQFgAAwgIAQFgAgLAAABAWAADCAgCEBQCAsAAAEBYAICwAAIQFvkZTU9Mbb7wR9hAlLl26RJ0AwgI7cuvWrVmzZqWkpPz9kOTk5KioqDt37lAzgLDAdrz//vtTpkw5evSoyf7www/Kbt68mZoBhAW2IykpSYZSbGWyDodD2QULFlAzgLDAdoSFhclQDx48MNmenh5lw8PDqRlAWGA7/Pz8ZKiBgQGT7e/vV9bf35+aAYQFNo2went77RZhRURETAFvo7OAsMBGmD6slpYWk21ubrZJH5Z241/wNjoLHR0dXV1dupP19fUpAEdY4E02bdrk/Cvh999/b5NfCRGWTYTlcDiuX79+584daUvOQljgTdra2iIjI1NSUlofkpycPGvWrNu3byMsMMJqbGy8ePGivhtyluIshAVe5s8//8zKyvq/h2RnZzc1NdlhrxCWTYRVWVlZX18vZynOUpCFsAAQln2FVVZWJmcpzlLbsKOjA2EBICz7CuvAgQPHjh07d+6cgqz/YcwWwgJfJScnp729HWEhLADfCJqio6NPnjzpYWGZR4om+sL2lmHlEefJNv766y+EBTA+whJ+fn4bN260HlVFWGPh9u3bZrIN60feqKgohbEIC2B8hGWYN29eQ0MDTcIxYibb+PHHH022pKRE2S1btiAsgPEUlggMDNy1a5c1jNEzEZZJHz58ePHixdOnT58xY0Z2dvbly5dVNH/+fFNkbXjo0CEtSUpKMtnjx48vWrQoJCQkODh44cKFyrqKsBobG1evXh0ZGaljVNRz5MgRq+jMmTOZmZlqvoWHh6elpZWWllpFCpHy8vIUImmrmJiYNWvWVFRUuD80M1BBG5psS0uLGaiAsADGWViGjIwMh8PhYWElJCTU1dXdu3dv69atyqanp6toz549SmdlZVkbLl++XEv27t1rbKXGbGpqanNzs3ZYCWUtZzl/hK5tGS06OvrEiRNdXV21tbVSjyk6ffr01KlT5cpLly6p4bZu3TptVVRUZEq1G8oqSurp6ZEdCgsL1dZzf2hmKGhfX5/JqqFthoIiLIAJEZaYNm1acXGxJ4VVXV1tshKKifWUvnv3blBQkIRy48YNZfWqtNSj5coqpNKaVVVVZsPKykplFXAN/Yhly5Yp7RxVWUhVKjp//rzJ3rx5U9n4+HiTDQ0NVVZRlfN17vz+zpjlZrINa32Fq2ayDYQFtsan5zbwvLCskMTSqMmuXbtW6YKCAqXVXFU6NzfXFMlcykpwJqvoTFktHPoRajMqPWzPtykahOUX6c8s0WqJiYkbNmy4evWqe2FZ05kRYYGPBS80CUcvLFelp06dUnru3LlK61Xp8vLyYYVlQjOZxZWwTFw2rLDa2tqG3c+Wlpb8/Hy1Ja3KsSI4931Yf//9t8laE8YiLEBYk6fT3VWpPjc2NlbZffv26TUuLs665AY1CZVw1SSUgs0EGEP3ZMmSJYP69Yels7NTmtCaaiS6X9NMtmH9SmhNyY+wAGGNp7A8+VjD6IUltm3bZtp6et2+fbu13HS6S1uKYhQKKeGq0726ujooKGj27NmK17q7u+vr61euXGn1fAUEBMTExGid+/fvX7hwQWa0AqLU1NSDBw9euXJFLdaysjK9YWZmpvtDu3Xrlpls4+pDzGQb0grCAoQ1PsLy7oOjIwrr2rVr/v7+pmtJaec1zWMNwQ9JS0vTZezqTeTiVatWzZw5U1GkWm3OHfA1NTUrVqyIiIiQuRTB5eXlyQWm6OzZszk5OTKdtlLDcP369ab73z1NTU3Ok21IKzzpDghrfHbSK0NzAGEBwnpkGPyMsBAW+IywHvWI8AXCAoSFsABhAcJCWAgLYQHCAoQFCAthAcIChIWwEBbCAoQFCAsQlh3x6fknJg2hoaEICxDWqOjo6HA4HI2NjZWVlWVlZQfAG/C/hICwRkVXV9f169d1Y6+vr9c1cwy8Af/8DAhrVPT09KgN0traqqtFd/hz4A1U86p/nQWdC50RhAUIa3j6+vp0S9d1onu72iMXwRuo5lX/Ogs6FzojCAsQ1vD09/frCtFdXZdKR0fHHfAGqnnVv86CzoXOCMIChAWTFoQFCAsQFiAsAIQFCAsQFsIChAUICxAWAMIChAUIC2EBwoLHSViMjB8vVJMIC2BihcXcQ+M4f9AYnwxGWICwEJbnhDXGsVcICxAWwvKcsMY4uh1hAcJCWJ4T1hjnD0JYgLAQlueENcYZGhEWICyE5TOT9iMsQFgIC2EBIKwhl+tEu88DH/FYCeu3337bvHnziy++aCqWCwwQFsKyr7BeeOEFCUvaQlhAk5Amoc80CREWPNYRlkkfPnx48eLF06dPnzFjRnZ29uXLl1U0f/58U2RteOjQIS1JSkoy2ePHjy9atCgkJCQ4OHjhwoXKuoqwGhsbV69eHRkZGRgYmJycfOTIEavozJkzmZmZYWFh4eHhaWlppaWlVlFra2teXl5UVJS2iomJWbNmTUVFBcJCWPC4CyshIaGuru7evXtbt25VNj09XUV79uxROisry9pw+fLlWrJ3715jKz8/v9TU1ObmZofDoYSylrOcP0JSkNGio6NPnDjR1dVVW1sr9Zii06dPT506Va68dOlSe3v7unXrtFVRUZEp1W4oW1JS0tPTI60UFhampKQgLIQFj7uwqqurTVZCUVYRjdJ3794NCgqSUG7cuKGsXpWWerRcWYVUWrOqqspsWFlZqawCrqEfsWzZMqWdoyoLqUpF58+fN9mbN28qGx8fb7KhoaHKKqpyrlCEhbDgcRdWX1+ftZPOpWvXrlW6oKBA6V27dimdm5trimQuZSU4k1V0pqwWDv0ItRmVVgA1dE9M0SD8/f1NqfRnlmi1xMTEDRs2XL16FWHZSljMIDI5Zh/xMWG5Kj116pTSc+fOVVqvSpeXlw8rLBOaySyuhGXismGF1dbWNux+trS05Ofnqy1pnRgrgkNYNoEfgmzyI5Id/5fQ88LSh8bGxiq7b98+vcbFxVnHNqhJqISrJmFGRobSR48eHbonS5YsGdSvPyydnZ3yi9ZUIxFhISwY+n224z8/e15YYtu2baatp9ft27dby02nu7SlmlIopISrTvfq6uqgoKDZs2crXuvu7q6vr1+5cqXV8xUQEBATE6N17t+/f+HCBZlxwYIFpjQ1NfXgwYNXrlzRCSgrK9MbZmZmIiyEBUO/z2OcfWTyCOvatWv+/v6ma0lp5zXNYw3BD0lLS9P17+pNGhoaVq1aNXPmzMDAwKSkJOcO+JqamhUrVqgRLnMpgsvLy5NETNHZs2dzcnJkOm2lhuH69etN9//jKayhPRcIC6zv8xhnH+HBUR4cnZAIy27wnbTJ93mMs48gLISFsMBnvs8IC2H5qrDUDG9vb+c7ibAQFsKa4hNBU3R09MmTJz38nZzEY/J///33LVu2WJNtICxAWOO5k8LPz2/jxo29vb0Ia+yYyTakLYQFCGtChGWYN29eQ0MD30mbGxNhISyE9f8EBgbu2rVrYGDAkxHWZJ1EBGEBwppYYRkyMjIcDoeHhTX5JhFBWICwPCEsMW3atOLiYk8Ky+cmERlaaQgLxu3agEfC88LyuUlEEBbCIsJ6fJuErkp9dxIRhAUIa9J2ursq/Y/PTiKCsABhTZLHGh6HSUQQFiCsSfjg6OSbRGTE7i2EBQjLl4bmAMIChPXIMPgZYSEshOUzwuI7ibAmm7Bs/k/0CAthISyEhbAQFsJCWAgLYSEsQFj/uh10np+frzdMTk4eGBhQVq9mHPz69eutdVwNZ3czmN7wzTffWI8dxsfHb9q0yRpmMeK2X3/9dWxsbEhISFJSUlFR0SA5ujkihIWwEJYPC8v9oPOenp558+aZx4WV3bt3rxkf39vba1ZwM5zdzWB6w7vvvvvzzz93d3d3dnbu3LlTpe+9995otjWjLsxoe/Hyyy87C8v9ESEshIWwfFhY7gedi6amJsUpTz/9tBIKdp566ikdrVXqZjj7oMH0ZoipGUw/lH/++Uelzz333LDbOg/EF0uXLjX/WWSyFRUVzsIa8YgQFsJCWL4qLPeDzg3fffedFspWev3++++Hbj7scHb3g+nb2treeuutqKgoRUPW5/r5+Y1mW7UQh462HzRg1f0RISxPEhERwTwWXic0NHTyCMvVoHODmZ1j1qxZet2xY8fQzYcdzu5+5MRrr71m2oC3bt1S9sGDB6MfdTEaYbk/IoTlYTo6OhwOR2Njo+LisrKyA+ANJsP/Eo446PzXX38NCAiIjIxsbW2Vs5588smamhqr1M1wdvfSCQsLc5ZOeXn56IVlmoRWg3FQk3CUw+gRlifRib5+/bqqsb6+XtfMMfAGk+Gfn90POtdRxcXF6T3379+vbHFxsZmpQ0GNWcHNcHb30jGdX7t379aH/vLLL3PmzHnUqY7S09NbWlqGdrq7PyKE5RV6enpUgbrnqSZ1hz8H3kA1r/rXWdC50Bnx1cca3Aw6z83NHTT32CuvvOI8eeO/roezu5fOtWvX3nzzTTXutFViYqJR4egH4pvHGoKDgxMSEsyER869VG6OCGF5hb6+Pt38VIe6t6s9chG8gWpe9a+zoHOhM8KDo95B9w0d9fPPP8+Do7alv79fV4ju6rpUOjo67oA3UM2r/nUWdC50RhCW53j99derqqrUCP3jjz9Mp9X/8KQVwgJAWJ6gtLQ0LS0tJCQkPDw8PT29pKSEoTkACIsH7RAWAMJCWAgLEBbCQlgACAthISxAWAgLYSEsQFiAsADsLixGxttndDvCAoQ1MoyMt8nodoQFCGtkGBlvk9HtCAsQ1sgwMt4mo9sRFiCskWFkvE1GtyMsQFgjw8h4m4xuR1iAsGCSg7AAYQHCAkBYYBth1dbWvv3223PmzAkICHjmmWeWLl36008/UZ+AsMCOwkpISCgoKKivr+/q6mpqanr11Vf1Vp9++ilVCggL7N4kdDgceqtnn32WKgWEBXYXlvnLazUPqVJAWGB3Yb3zzjt6q5deeokqBYQFthZWQUGBGcJ94MABqhQQFthXWDt27NCbPPHEEx9//LEdjogZROyAzgLCAtsJa/v27cZWn3/+uX2OiOnV7DC/mx3/lxAeZ2Ft3bpVm/v5+X355Ze2OiJ8YQdh2fGfn+GxFdaWLVu0rb+///79++12RPjCDsIa4+wjCAvGU1iuOi8QFhhhjXF+N4QFE9LpbsMjwhd2ENYYZ9BFWICwwGf+VAVhga8KKycnp729HWEhLEBYU3xiJ6Ojo0+ePOlhYZleuYm+sL1i2Lq6ukGTbZSWliIsQFjjs5Pm+YmNGzf29vYirLGTkJCwe/fuhoaG7u5uCcVMtvHZZ58hLEBY4yMsw7x583SZ0SQcX1paWsxkGwgLENZ4CksEBgbu2rVrYGDAkxGWSR8+fHjx4sXTp0+fMWNGdnb25cuXVTR//nxTZG146NAhLUlKSjLZ48ePL1q0KCQkJDg4eOHChcq6irAaGxtXr14dGRmpY0xOTj5y5IhVdObMmczMzLCwsPDw8LS0NOcWXGtra15eXlRUlLaKiYlZs2ZNRUXFIx1pW1ubmWwDYQHCGmdhGTIyMhwOh4eFpZZUXV3dvXv3zFP+6enpKtqzZ4/SWVlZ1obLly/Xkr179xpbqTGbmpra3NysHVZCWctZzh+ha1tGi46OPnHiRFdXV21trdRjik6fPj116lS58tKlS+3t7evWrdNWRUVFplS7oWxJSUlPT4/sUFhYmJKS8khHak22gbAAYU2IsMS0adOKi4s9Kazq6mqTlVBMrKf03bt3g4KCJJQbN24oq1elpR4tV1YhldasqqoyG1ZWViqrgGvoRyxbtkxp56jKQqpS0fnz503WzD4WHx9vsqGhocoqqnK+zp3f35mhb757925T9O233yIssDU+PbeB54XV19dnXTvOpWvXrlW6oKBAaTVXlc7NzTVFMpeyEpzJKjpTVguHfoTajEorgBq6J6ZoEP7+/qZU+jNLtFpiYuKGDRuuXr06SmHt3LnTDF//5JNP+JUQYFI1CV2Vnjp1Sum5c+cqrVely8vLhxWWCc1kFlfCMnHZsMJqa2tz1WWen5+vtqRVOVYE556PPvrI2OqLL77gOSyAydbp7qpUnxsbG6vsvn379BoXF2ddcoOahEq4ahJKwUofPXp06J4sWbJkUL/+sHR2dkoTWlONxBGP7sMPPzQPixQWFvLgKMCECMuTjzWMXlhi27Ztpq2n1+3bt1vLTae7tKV4UKGQEq463aurq4OCgmbPnq14rbu7u76+fuXKlVbPV0BAQExMjNa5f//+hQsXZMYFCxaY0tTU1IMHD165ckUt1rKyMr1hZmam+0P74IMPTKPyq6++4kl3gPEXlncfHB1RWNeuXdP1byygtPOa5rGG4IekpaXpMnb1JnLxqlWrZs6cqSgyKSnJuQO+pqZmxYoVERERMpciuLy8PLnAFJ09ezYnJ0em01ZqGK5fv950/494aKPpkkdYAI8sLK8MzQGEBfDIMPgZYSEsmLThGL5AWAAICxAWAMJCWAgLEBYgLACEBQgLAGEhLIQFCAsQFoAd8en5JyYNoaGhCAtgVHR0dDgcjsbGxsrKyrKysgPgDfhfQoBR0dXVdf36dd3Y6+vrdc0cA2/APz8DjIqenh61QVpbW3W16A5/DryBal71r7Ogc6EzgrAAhqevr0+3dF0nurerPXIRvIFqXvWvs6BzoTOCsACGp7+/X1eI7uq6VDo6Ou6AN1DNq/51FnQudEYQFgBMWhAWACAsAACEBQAIC2EBAMICAEBYAICwEBYAICwAAIQFAAgLAABhAQAgLABAWAAACAsAAGEBAMICAEBYAAAICwAQFgAAwgIAQFgAgLAAABAWAADCAgCEBQDgDWEBANgchAUACAsAYLz5L0oKotpPul/bAAAAAElFTkSuQmCC" alt="diag aac8bd1c4e55d509fed3c8e39e6f7e72" width="400" height="210">
+</div>
+<div class="title">Figure 2. The topology of a super stream is defined with bindings between an exchange and queues</div>
+</div>
+<div class="paragraph">
+<p>When a super stream is in use, the stream Java client queries this information to find out about the partitions of a super stream and the routing rules.
+From the application code point of view, using a super stream is mostly configuration-based.
+Some logic must also be provided to extract routing information from messages.</p>
+</div>
+</div>
+<div class="sect4">
+<h5 id="publishing-to-a-super-stream"><a class="anchor" href="#publishing-to-a-super-stream"></a>Publishing to a Super Stream</h5>
+<div class="paragraph">
+<p>When the topology of a super stream like the one described above has been set, creating a producer for it is straightforward:</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating a Producer for a Super Stream</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
+        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+        .routing(message -&gt; message.getProperties().getMessageIdAsString()) <i class="conum" data-value="2"></i><b>(2)</b>
+        .producerBuilder()
+        .build();  <i class="conum" data-value="3"></i><b>(3)</b>
+<span class="comment">// ...</span>
+producer.close();  <i class="conum" data-value="4"></i><b>(4)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Use the super stream name</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Provide the logic to get the routing key from a message</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Create the producer instance</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Close the producer when it&#8217;s no longer necessary</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Note that even though the <code>invoices</code> super stream is not an actual stream, its name must be used to declare the producer.
+Internally the client will figure out the streams that compose the super stream.
+The application code must provide the logic to extract a routing key from a message as a <code>Function&lt;Message, String&gt;</code>.
+The client will hash the routing key to determine the stream to send the message to (using partition list and a modulo operation).</p>
+</div>
+<div class="paragraph">
+<p>The client uses 32-bit <a href="https://en.wikipedia.org/wiki/MurmurHash">MurmurHash3</a> by default to hash the routing key.
+This hash function provides good uniformity, performance, and portability, making it a good default choice, but it is possible to specify a custom hash function:</p>
+</div>
+<div class="listingblock">
+<div class="title">Specifying a custom hash function</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
+    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+    .routing(message -&gt; message.getProperties().getMessageIdAsString())
+    .hash(rk -&gt; rk.hashCode())  <i class="conum" data-value="1"></i><b>(1)</b>
+    .producerBuilder()
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Use <code>String#hashCode()</code> to hash the routing key</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Note using Java&#8217;s <code>hashCode()</code> method is a debatable choice as potential producers in other languages are unlikely to implement it, making the routing different between producers in different languages.</p>
+</div>
+<div class="sect5">
+<h6 id="resolving-routes-with-bindings"><a class="anchor" href="#resolving-routes-with-bindings"></a>Resolving Routes with Bindings</h6>
+<div class="paragraph">
+<p>Hashing the routing key to pick a partition is only one way to route messages to the appropriate streams.
+The stream Java client provides another way to resolve streams, based on the routing key <em>and</em> the bindings between the super stream exchange and the streams.</p>
+</div>
+<div class="paragraph">
+<p>This routing strategy makes sense when the partitioning has a business meaning, e.g. with a partition for a region in the world, like in the diagram below:</p>
+</div>
+<div class="imageblock">
+<div class="content">
+<img src="data:image/png;base64,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" alt="diag cd0f334dd833c1b20259f0f0dcf09038" width="440" height="210">
+</div>
+<div class="title">Figure 3. A super stream with a partition for a region in a world</div>
+</div>
+<div class="paragraph">
+<p>In such a case, the routing key will be a property of the message that represents the region:</p>
+</div>
+<div class="listingblock">
+<div class="title">Enabling the "key" routing strategy</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
+    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+    .routing(msg -&gt; msg.getApplicationProperties().get(<span class="string"><span class="delimiter">&quot;</span><span class="content">region</span><span class="delimiter">&quot;</span></span>).toString())  <i class="conum" data-value="1"></i><b>(1)</b>
+    .key()  <i class="conum" data-value="2"></i><b>(2)</b>
+    .producerBuilder()
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Extract the routing key</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Enable the "key" routing strategy</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Internally the client will query the broker to resolve the destination streams for a given routing key, making the routing logic from any exchange type available to streams.
+Note the client caches results, it does not query the broker for every message.</p>
+</div>
+</div>
+<div class="sect5">
+<h6 id="using-a-custom-routing-strategy"><a class="anchor" href="#using-a-custom-routing-strategy"></a>Using a Custom Routing Strategy</h6>
+<div class="paragraph">
+<p>The solution that provides the most control over routing is using a custom routing strategy.
+This should be needed only for specific cases.</p>
+</div>
+<div class="paragraph">
+<p>The following code sample shows how to implement a simplistic round-robin <code>RoutingStrategy</code> and use it in the producer.
+Note this implementation should not be used in production as the modulo operation is not sign-safe for simplicity&#8217;s sake.</p>
+</div>
+<div class="listingblock">
+<div class="title">Setting a round-robin routing strategy</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">AtomicLong</span> messageCount = <span class="keyword">new</span> <span class="predefined-type">AtomicLong</span>(<span class="integer">0</span>);
+RoutingStrategy routingStrategy = (message, metadata) -&gt; {
+    <span class="predefined-type">List</span>&lt;<span class="predefined-type">String</span>&gt; partitions = metadata.partitions();
+    <span class="predefined-type">String</span> stream = partitions.get(
+        (<span class="type">int</span>) messageCount.getAndIncrement() % partitions.size()
+    );
+    <span class="keyword">return</span> <span class="predefined-type">Collections</span>.singletonList(stream);
+};
+Producer producer = environment.producerBuilder()
+    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+    .routing(<span class="predefined-constant">null</span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .strategy(routingStrategy)  <i class="conum" data-value="2"></i><b>(2)</b>
+    .producerBuilder()
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>No need to set the routing key extraction logic</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Set the custom routing strategy</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect5">
+<h6 id="deduplication"><a class="anchor" href="#deduplication"></a>Deduplication</h6>
+<div class="paragraph">
+<p>Deduplication for a super stream producer works the same way as with a <a href="#outbound-message-deduplication">single stream producer</a>.
+The publishing ID values are spread across the streams but this does affect the mechanism.</p>
+</div>
+</div>
+</div>
+<div class="sect4">
+<h5 id="consuming-from-a-super-stream"><a class="anchor" href="#consuming-from-a-super-stream"></a>Consuming From a Super Stream</h5>
+<div class="paragraph">
+<p>A super stream consumer is not much different from a single stream consumer.
+The <code>ConsumerBuilder#superStream(String)</code> must be used to set the super stream to consume from:</p>
+</div>
+<div class="listingblock">
+<div class="title">Declaring a super stream consumer</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer = environment.consumerBuilder()
+    .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .messageHandler((context, message) -&gt; {
+        <span class="comment">// message processing</span>
+    })
+    .build();
+<span class="comment">// ...</span>
+consumer.close();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the super stream name</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Close the consumer when it is no longer necessary</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.</p>
+</div>
+<div class="sect5">
+<h6 id="offset-tracking"><a class="anchor" href="#offset-tracking"></a>Offset Tracking</h6>
+<div class="paragraph">
+<p>The semantic of offset tracking for a super stream consumer are roughly the same as for an individual stream consumer.
+There are still some subtle differences, so a good understanding of <a href="#consumer-offset-tracking">offset tracking</a> in general and of the <a href="#consumer-automatic-offset-tracking">automatic</a> and <a href="#consumer-manual-offset-tracking">manual</a> offset tracking strategies is recommended.</p>
+</div>
+<div class="paragraph">
+<p>Here are the main differences for the automatic/manual offset tracking strategies between single and super stream consuming:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>automatic offset tracking</strong>: internally, <em>the client divides the <code>messageCountBeforeStorage</code> setting by the number of partitions for each individual consumer</em>.
+Imagine a 3-partition super stream, <code>messageCountBeforeStorage</code> set to 10,000, and 10,000 messages coming in, perfectly balanced across the partitions (that is about 3,333 messages for each partition).
+In this case, the automatic offset tracking strategy will not kick in, because the expected count message has not been reached on any partition.
+Making the client divide <code>messageCountBeforeStorage</code> by the number of partitions can be considered "more accurate" if the message are well balanced across the partitions.
+A good rule of thumb is to then multiply the expected per-stream <code>messageCountBeforeStorage</code> by the number of partitions, to avoid storing offsets too often. So the default being 10,000, it can be set to 30,000 for a 3-partition super stream.</p>
+</li>
+<li>
+<p><strong>manual offset tracking</strong>: the <code>MessageHandler.Context#storeOffset()</code> method must be used, the <code>Consumer#store(long)</code> will fail, because an offset value has a meaning only in one stream, not in other streams.
+A call to <code>MessageHandler.Context#storeOffset()</code> will store the current message offset in <em>its</em> stream, but also the offset of the last dispatched message for the other streams of the super stream.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
 </div>
 <div class="sect2">
 <h3 id="building-the-client"><a class="anchor" href="#building-the-client"></a>Building the Client</h3>
@@ -3525,7 +3828,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.5.0-SNAPSHOT<br>
-Last updated 2021-09-21 07:33:40 UTC
+Last updated 2021-09-27 14:18:26 UTC
 </div>
 </div>
 <style>
