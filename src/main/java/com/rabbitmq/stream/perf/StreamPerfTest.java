@@ -105,7 +105,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
   // for testing
   private final AddressResolver addressResolver;
-
+  private final PrintWriter err, out;
   int streamDispatching = 0;
 
   @CommandLine.Option(
@@ -332,8 +332,6 @@ public class StreamPerfTest implements Callable<Integer> {
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
-
-  private final PrintWriter err, out;
 
   // constructor for completion script generation
   public StreamPerfTest() {
@@ -640,8 +638,7 @@ public class StreamPerfTest implements Callable<Integer> {
                 i -> {
                   Runnable rateLimiterCallback;
                   if (this.rate > 0) {
-                    RateLimiter rateLimiter =
-                        com.google.common.util.concurrent.RateLimiter.create(this.rate);
+                    RateLimiter rateLimiter = RateLimiter.create(this.rate);
                     rateLimiterCallback = () -> rateLimiter.acquire(1);
                   } else {
                     rateLimiterCallback = () -> {};
@@ -651,7 +648,7 @@ public class StreamPerfTest implements Callable<Integer> {
                   ProducerBuilder producerBuilder = environment.producerBuilder();
 
                   String producerName = this.producerNameStrategy.apply(stream, i + 1);
-                  if (producerName != "") {
+                  if (producerName != null && !producerName.trim().isEmpty()) {
                     producerBuilder =
                         producerBuilder.name(producerName).confirmTimeout(Duration.ZERO);
                   }

@@ -162,7 +162,11 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                   entry.getValue(),
                   (meter, duration) -> {
                     double rate =
-                        duration.getSeconds() <= 5 ? meter.getMeanRate() : meter.getOneMinuteRate();
+                        duration.getSeconds() <= 60
+                            ? meter.getMeanRate()
+                            : meter.getOneMinuteRate();
+                    //                        meter.getMeanRate();
+                    //                    System.out.println(duration.getSeconds());
                     return String.format("%s %.0f msg/s, ", entry.getValue(), rate);
                   });
             });
@@ -175,7 +179,9 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                   entry.getValue(),
                   (meter, duration) -> {
                     double rate =
-                        duration.getSeconds() <= 5 ? meter.getMeanRate() : meter.getOneMinuteRate();
+                        duration.getSeconds() <= 60
+                            ? meter.getMeanRate()
+                            : meter.getOneMinuteRate();
                     return formatByteRate(entry.getValue(), rate) + ", ";
                   });
             });
@@ -201,6 +207,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
         };
 
     AtomicInteger reportCount = new AtomicInteger(1);
+
     ScheduledFuture<?> consoleReportingTask =
         scheduledExecutorService.scheduleAtFixedRate(
             () -> {
@@ -248,13 +255,10 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
           Function<Map.Entry<String, Meter>, String> formatMeterSummary =
               entry -> {
                 if (entry.getKey().contains("bytes")) {
-                  return formatByteRate(
-                          entry.getKey(), entry.getValue().getCount() / duration.getSeconds())
-                      + ", ";
+                  return formatByteRate(entry.getKey(), entry.getValue().getMeanRate()) + ", ";
                 } else {
                   return String.format(
-                      "%s %d msg/s, ",
-                      entry.getKey(), entry.getValue().getCount() / duration.getSeconds());
+                      "%s %.0f msg/s, ", entry.getKey(), entry.getValue().getMeanRate());
                 }
               };
 
