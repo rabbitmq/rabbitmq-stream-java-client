@@ -28,12 +28,13 @@ import java.text.SimpleDateFormat;
 import java.text.StringCharacterIterator;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiFunction;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -153,21 +154,16 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
         .entrySet()
         .forEach(entry -> meters.put(entry.getValue(), registryMeters.get(entry.getKey())));
 
-    Map<String, BiFunction<Meter, Duration, String>> formatMeter = new HashMap<>();
+    Map<String, FormatCallback> formatMeter = new HashMap<>();
     metersNamesAndLabels.entrySet().stream()
         .filter(entry -> !entry.getKey().contains("bytes"))
         .forEach(
             entry -> {
               formatMeter.put(
                   entry.getValue(),
-                  (meter, duration) -> {
-                    double rate =
-                        duration.getSeconds() <= 60
-                            ? meter.getMeanRate()
-                            : meter.getOneMinuteRate();
-                    //                        meter.getMeanRate();
-                    //                    System.out.println(duration.getSeconds());
-                    return String.format("%s %.0f msg/s, ", entry.getValue(), rate);
+                  (lastValue, currentValue, duration) -> {
+                    long rate = 1000 * (currentValue - lastValue) / duration.toMillis();
+                    return String.format("%s %d msg/s, ", entry.getValue(), rate);
                   });
             });
 
@@ -177,11 +173,8 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
             entry -> {
               formatMeter.put(
                   entry.getValue(),
-                  (meter, duration) -> {
-                    double rate =
-                        duration.getSeconds() <= 60
-                            ? meter.getMeanRate()
-                            : meter.getOneMinuteRate();
+                  (lastValue, currentValue, duration) -> {
+                    long rate = 1000 * (currentValue - lastValue) / duration.toMillis();
                     return formatByteRate(entry.getValue(), rate) + ", ";
                   });
             });
@@ -208,12 +201,18 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
 
     AtomicInteger reportCount = new AtomicInteger(1);
 
+    AtomicLong lastTick = new AtomicLong(startTime);
+    Map<String, Long> lastMetersValues = new ConcurrentHashMap<>(meters.size());
+    meters.entrySet().forEach(e -> lastMetersValues.put(e.getKey(), e.getValue().getCount()));
+
     ScheduledFuture<?> consoleReportingTask =
         scheduledExecutorService.scheduleAtFixedRate(
             () -> {
               try {
                 if (checkActivity()) {
-                  Duration duration = Duration.ofNanos(System.nanoTime() - startTime);
+                  long currentTime = System.nanoTime();
+                  Duration duration = Duration.ofNanos(currentTime - lastTick.get());
+                  lastTick.set(currentTime);
                   StringBuilder builder = new StringBuilder();
                   builder.append(reportCount.get()).append(", ");
                   meters
@@ -222,7 +221,13 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                           entry -> {
                             String meterName = entry.getKey();
                             Meter meter = entry.getValue();
-                            builder.append(formatMeter.get(meterName).apply(meter, duration));
+                            long lastValue = lastMetersValues.get(meterName);
+                            long currentValue = meter.getCount();
+                            builder.append(
+                                formatMeter
+                                    .get(meterName)
+                                    .compute(lastValue, currentValue, duration));
+                            lastMetersValues.put(meterName, currentValue);
                           });
                   builder.append(formatLatency.apply(latency)).append(", ");
                   builder.append(formatChunkSize.apply(chunkSize));
@@ -234,7 +239,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                 }
                 reportCount.incrementAndGet();
               } catch (Exception e) {
-                LOGGER.warn("Error while metrics report: {}", e.getMessage());
+                LOGGER.warn("Error while computing metrics report: {}", e.getMessage());
               }
             },
             1,
@@ -255,10 +260,13 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
           Function<Map.Entry<String, Meter>, String> formatMeterSummary =
               entry -> {
                 if (entry.getKey().contains("bytes")) {
-                  return formatByteRate(entry.getKey(), entry.getValue().getMeanRate()) + ", ";
+                  return formatByteRate(
+                          entry.getKey(), 1000 * entry.getValue().getCount() / duration.toMillis())
+                      + ", ";
                 } else {
                   return String.format(
-                      "%s %.0f msg/s, ", entry.getKey(), entry.getValue().getMeanRate());
+                      "%s %d msg/s, ",
+                      entry.getKey(), 1000 * entry.getValue().getCount() / duration.toMillis());
                 }
               };
 
@@ -369,5 +377,10 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   @Override
   public void close() throws Exception {
     this.closingSequence.close();
+  }
+
+  private interface FormatCallback {
+
+    String compute(long lastValue, long currentValue, Duration duration);
   }
 }
