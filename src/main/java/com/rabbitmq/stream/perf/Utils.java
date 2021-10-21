@@ -17,6 +17,8 @@ import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.compression.Compression;
+import com.sun.management.OperatingSystemMXBean;
+import java.lang.reflect.Method;
 import java.security.cert.X509Certificate;
 import java.text.CharacterIterator;
 import java.text.StringCharacterIterator;
@@ -36,6 +38,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
@@ -49,9 +52,37 @@ import picocli.CommandLine.ITypeConverter;
 class Utils {
 
   static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
+  private static final LongSupplier TOTAL_MEMORY_SIZE_SUPPLIER;
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
   private static final String RANGE_SEPARATOR_1 = "-";
   private static final String RANGE_SEPARATOR_2 = "..";
+
+  // this trick avoids a deprecation warning when compiling on Java 14+
+  static {
+    Method method;
+    try {
+      // Java 14+
+      method = OperatingSystemMXBean.class.getDeclaredMethod("getTotalMemorySize");
+    } catch (NoSuchMethodException nsme) {
+      try {
+        method = OperatingSystemMXBean.class.getDeclaredMethod("getTotalPhysicalMemorySize");
+      } catch (Exception e) {
+        throw new RuntimeException("Error while computing method to get total memory size");
+      }
+    }
+    Method m = method;
+    TOTAL_MEMORY_SIZE_SUPPLIER =
+        () -> {
+          OperatingSystemMXBean os =
+              (OperatingSystemMXBean)
+                  java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+          try {
+            return (long) m.invoke(os);
+          } catch (Exception e) {
+            throw new RuntimeException("Could not retrieve total memory size", e);
+          }
+        };
+  }
 
   static void writeLong(byte[] array, long value) {
     // from Guava Longs
@@ -123,10 +154,7 @@ class Utils {
 
   static long physicalMemory() {
     try {
-      com.sun.management.OperatingSystemMXBean os =
-          (com.sun.management.OperatingSystemMXBean)
-              java.lang.management.ManagementFactory.getOperatingSystemMXBean();
-      return os.getTotalPhysicalMemorySize();
+      return TOTAL_MEMORY_SIZE_SUPPLIER.getAsLong();
     } catch (Throwable e) {
       // we can get NoClassDefFoundError, so we catch from Throwable and below
       LOGGER.warn("Could not get physical memory", e);
