@@ -532,7 +532,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.5.0-SNAPSHOT</span>
-<br><span id="revremark">(a130883)</span>
+<br><span id="revremark">(ac7d418)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -656,6 +656,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#consumer-names">Consumer Names</a></li>
 <li><a href="#producer-names">Producer Names</a></li>
 <li><a href="#monitoring">Monitoring</a></li>
+<li><a href="#using-environment-variables-as-options">Using Environment Variables as Options</a></li>
 <li><a href="#logging">Logging</a></li>
 </ul>
 </li>
@@ -3852,6 +3853,40 @@ The endpoint can then be declared in a Prometheus instance to scrape the metrics
 </div>
 </div>
 <div class="sect4">
+<h5 id="using-environment-variables-as-options"><a class="anchor" href="#using-environment-variables-as-options"></a>Using Environment Variables as Options</h5>
+<div class="paragraph">
+<p>Environment variables can sometimes be easier to work with than command line options.
+This is especially true when using a manifest file for configuration (with Docker Compose or Kubernetes) and the number of options used grows.</p>
+</div>
+<div class="paragraph">
+<p>The performance tool automatically uses environment variables that match the snake case version of its long options.
+E.g. it automatically picks up the value of the <code>BATCH_SIZE</code> environment variable for the <code>--batch-size</code> option, but only if the environment variable is defined.</p>
+</div>
+<div class="paragraph">
+<p>You can list the environment variables that the tool picks up with the following command:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --environment-variables</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The short version of the option is <code>-env</code>.</p>
+</div>
+<div class="paragraph">
+<p>To avoid collisions with environment variables that already exist, it is possible to specify a prefix for the environment variables that the tool looks up.
+This prefix is defined with the <code>RABBITMQ_STREAM_PERF_TEST_ENV_PREFIX</code> environment variable, e.g.:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>RABBITMQ_STREAM_PERF_TEST_ENV_PREFIX="STREAM_PERF_TEST_"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>With <code>RABBITMQ_STREAM_PERF_TEST_ENV_PREFIX="STREAM_PERF_TEST_"</code> defined, the tool looks for the <code>STREAM_PERF_TEST_BATCH_SIZE</code> environment variable, not <code>BATCH_SIZE</code>.</p>
+</div>
+</div>
+<div class="sect4">
 <h5 id="logging"><a class="anchor" href="#logging"></a>Logging</h5>
 <div class="paragraph">
 <p>The performance tool binary uses Logback with an internal configuration file.
@@ -3918,7 +3953,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.5.0-SNAPSHOT<br>
-Last updated 2021-10-21 08:31:31 UTC
+Last updated 2021-10-26 08:15:10 UTC
 </div>
 </div>
 </body>
