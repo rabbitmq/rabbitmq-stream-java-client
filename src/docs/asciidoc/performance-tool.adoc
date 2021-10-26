@@ -477,6 +477,31 @@ This can be useful to inspect threads if the tool seems blocked.
 The endpoint can then be declared in a Prometheus instance to scrape the metrics.
 * `--monitoring-port`: set the port to use for the web server.
 
+===== Using Environment Variables as Options
+
+Environment variables can sometimes be easier to work with than command line options.
+This is especially true when using a manifest file for configuration (with Docker Compose or Kubernetes) and the number of options used grows.
+
+The performance tool automatically uses environment variables that match the snake case version of its long options.
+E.g. it automatically picks up the value of the `BATCH_SIZE` environment variable for the `--batch-size` option, but only if the environment variable is defined.
+
+You can list the environment variables that the tool picks up with the following command:
+
+----
+java -jar stream-perf-test.jar --environment-variables
+----
+
+The short version of the option is `-env`.
+
+To avoid collisions with environment variables that already exist, it is possible to specify a prefix for the environment variables that the tool looks up.
+This prefix is defined with the `RABBITMQ_STREAM_PERF_TEST_ENV_PREFIX` environment variable, e.g.:
+
+----
+RABBITMQ_STREAM_PERF_TEST_ENV_PREFIX="STREAM_PERF_TEST_"
+----
+
+With `RABBITMQ_STREAM_PERF_TEST_ENV_PREFIX="STREAM_PERF_TEST_"` defined, the tool looks for the `STREAM_PERF_TEST_BATCH_SIZE` environment variable, not `BATCH_SIZE`.
+
 ===== Logging
 
 The performance tool binary uses Logback with an internal configuration file.

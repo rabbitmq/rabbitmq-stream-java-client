@@ -13,6 +13,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import static com.rabbitmq.stream.perf.Utils.ENVIRONMENT_VARIABLE_LOOKUP;
+import static com.rabbitmq.stream.perf.Utils.ENVIRONMENT_VARIABLE_PREFIX;
+import static com.rabbitmq.stream.perf.Utils.OPTION_TO_ENVIRONMENT_VARIABLE;
 import static java.lang.String.format;
 
 import com.google.common.util.concurrent.RateLimiter;
@@ -74,6 +77,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -82,6 +86,7 @@ import javax.net.ssl.SSLParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
+import picocli.CommandLine.Model.CommandSpec;
 
 @CommandLine.Command(
     name = "stream-perf-test",
@@ -329,6 +334,12 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "8080")
   private int monitoringPort;
 
+  @CommandLine.Option(
+      names = {"--environment-variables", "-env"},
+      description = "show usage with environment variables",
+      defaultValue = "false")
+  private boolean environmentVariables;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -422,10 +433,9 @@ public class StreamPerfTest implements Callable<Integer> {
 
   @Override
   public Integer call() throws Exception {
-    if (this.version) {
-      versionInformation(System.out);
-      System.exit(0);
-    }
+    maybeDisplayVersion();
+    maybeDisplayEnvironmentVariablesHelp();
+    overridePropertiesWithEnvironmentVariables();
 
     Codec codec = createCodec(this.codecClass);
 
@@ -806,6 +816,44 @@ public class StreamPerfTest implements Callable<Integer> {
     shutdownService.close();
 
     return 0;
+  }
+
+  private void overridePropertiesWithEnvironmentVariables() throws Exception {
+    Function<String, String> optionToEnvMappings =
+        OPTION_TO_ENVIRONMENT_VARIABLE
+            .andThen(ENVIRONMENT_VARIABLE_PREFIX)
+            .andThen(ENVIRONMENT_VARIABLE_LOOKUP);
+
+    Utils.assignValuesToCommand(this, optionToEnvMappings);
+    this.monitorings.forEach(
+        command -> {
+          try {
+            Utils.assignValuesToCommand(command, optionToEnvMappings);
+          } catch (Exception e) {
+            LOGGER.warn(
+                "Error while trying to assign environment variables to command {}",
+                command.getClass());
+          }
+        });
+  }
+
+  private void maybeDisplayEnvironmentVariablesHelp() {
+    if (this.environmentVariables) {
+      Collection<Object> commands = new ArrayList<>(this.monitorings.size() + 1);
+      commands.add(this);
+      commands.addAll(this.monitorings);
+      CommandSpec commandSpec = Utils.buildCommandSpec(commands.toArray());
+      CommandLine commandLine = new CommandLine(commandSpec);
+      CommandLine.usage(commandLine, System.out);
+      System.exit(0);
+    }
+  }
+
+  private void maybeDisplayVersion() {
+    if (this.version) {
+      versionInformation(System.out);
+      System.exit(0);
+    }
   }
 
   private ShutdownService.CloseCallback closeStep(

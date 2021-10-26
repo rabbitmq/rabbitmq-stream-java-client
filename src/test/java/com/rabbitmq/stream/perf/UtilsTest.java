@@ -28,8 +28,10 @@ import com.rabbitmq.stream.perf.Utils.RangeTypeConverter;
 import com.rabbitmq.stream.perf.Utils.SniServerNamesConverter;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -44,6 +46,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.TypeConversionException;
 
 public class UtilsTest {
@@ -262,5 +267,59 @@ public class UtilsTest {
   void streamsSpecifyOnlyOneStreamWhenStreamCountIsSpecified() {
     assertThatThrownBy(() -> Utils.streams("2", Arrays.asList("stream1", "stream2")))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void assignValuesToCommand() throws Exception {
+    TestCommand command = new TestCommand();
+    Map<String, String> mappings = new HashMap<>();
+    mappings.put("aaa", "42"); // takes only long options
+    mappings.put("b", "true");
+    mappings.put("offset", "first");
+    Utils.assignValuesToCommand(command, option -> mappings.get(option));
+    assertThat(command.a).isEqualTo(42);
+    assertThat(command.b).isTrue();
+    assertThat(command.c).isFalse();
+    assertThat(command.offsetSpecification).isEqualTo(OffsetSpecification.first());
+  }
+
+  @Test
+  void buildCommandSpec() {
+    CommandSpec spec = Utils.buildCommandSpec(new TestCommand());
+    assertThat(spec.optionsMap()).hasSize(4).containsKeys("AAA", "B", "C", "OFFSET");
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "--uris,URIS",
+    "--stream-count,STREAM_COUNT",
+    "-sc,SC",
+    "--sub-entry-size, SUB_ENTRY_SIZE",
+    "-ses,SES"
+  })
+  void optionToEnvironmentVariable(String option, String envVariable) {
+    assertThat(Utils.OPTION_TO_ENVIRONMENT_VARIABLE.apply(option)).isEqualTo(envVariable);
+  }
+
+  @Command(name = "test-command")
+  static class TestCommand {
+    @Option(
+        names = {"aaa", "a"},
+        defaultValue = "10")
+    private int a = 10;
+
+    @Option(names = "b", defaultValue = "false")
+    private boolean b = false;
+
+    @Option(names = "c", defaultValue = "false")
+    private boolean c = false;
+
+    @CommandLine.Option(
+        names = {"offset"},
+        defaultValue = "next",
+        converter = Utils.OffsetSpecificationTypeConverter.class)
+    private OffsetSpecification offsetSpecification = OffsetSpecification.next();
+
+    public TestCommand() {}
   }
 }

@@ -18,6 +18,8 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.compression.Compression;
 import com.sun.management.OperatingSystemMXBean;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.security.cert.X509Certificate;
 import java.text.CharacterIterator;
@@ -27,8 +29,11 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +43,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -47,11 +53,38 @@ import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
+import picocli.CommandLine.Command;
 import picocli.CommandLine.ITypeConverter;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Model.OptionSpec;
+import picocli.CommandLine.Option;
 
 class Utils {
 
   static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
+  static final Function<String, String> OPTION_TO_ENVIRONMENT_VARIABLE =
+      option -> {
+        if (option.startsWith("--")) {
+          return option.replace("--", "").replace('-', '_').toUpperCase(Locale.ENGLISH);
+        } else if (option.startsWith("-")) {
+          return option.substring(1).replace('-', '_').toUpperCase(Locale.ENGLISH);
+        } else {
+          return option.replace('-', '_').toUpperCase(Locale.ENGLISH);
+        }
+      };
+  static final Function<String, String> ENVIRONMENT_VARIABLE_PREFIX =
+      name -> {
+        String prefix = System.getenv("RABBITMQ_STREAM_PERF_TEST_ENV_PREFIX");
+        if (prefix == null || prefix.trim().isEmpty()) {
+          return name;
+        }
+        if (prefix.endsWith("_")) {
+          return prefix + name;
+        } else {
+          return prefix + "_" + name;
+        }
+      };
+  static final Function<String, String> ENVIRONMENT_VARIABLE_LOOKUP = name -> System.getenv(name);
   private static final LongSupplier TOTAL_MEMORY_SIZE_SUPPLIER;
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
   private static final String RANGE_SEPARATOR_1 = "-";
@@ -164,6 +197,85 @@ class Utils {
 
   private static void throwConversionException(String format, String... arguments) {
     throw new CommandLine.TypeConversionException(String.format(format, (Object[]) arguments));
+  }
+
+  static void assignValuesToCommand(Object command, Function<String, String> optionMapping)
+      throws Exception {
+    LOGGER.debug("Assigning values to command {}", command.getClass());
+    Collection<String> arguments = new ArrayList<>();
+    Collection<Field> fieldsToAssign = new ArrayList<>();
+    for (Field field : command.getClass().getDeclaredFields()) {
+      Option option = field.getAnnotation(Option.class);
+      if (option == null) {
+        LOGGER.debug("No option annotation for field {}", field.getName());
+        continue;
+      }
+      String longOption =
+          Arrays.stream(option.names())
+              .sorted(Comparator.comparingInt(String::length).reversed())
+              .findFirst()
+              .get();
+      LOGGER.debug("Looking up new value for option {}", longOption);
+      String newValue = optionMapping.apply(longOption);
+
+      LOGGER.debug(
+          "New value found for option {} (field {}): {}", longOption, field.getName(), newValue);
+      if (newValue == null) {
+        continue;
+      }
+      fieldsToAssign.add(field);
+      if (field.getType().equals(boolean.class) || field.getType().equals(Boolean.class)) {
+        if (Boolean.parseBoolean(newValue)) {
+          arguments.add(longOption);
+        }
+      } else {
+        arguments.add(longOption + " " + newValue);
+      }
+    }
+    if (fieldsToAssign.size() > 0) {
+      Constructor<?> defaultConstructor = command.getClass().getConstructor();
+      Object commandBuffer = defaultConstructor.newInstance();
+      String argumentsLine = String.join(" ", arguments);
+      LOGGER.debug("Arguments line with extra values: {}", argumentsLine);
+      String[] args = argumentsLine.split(" ");
+      commandBuffer = CommandLine.populateCommand(commandBuffer, args);
+      for (Field field : fieldsToAssign) {
+        field.setAccessible(true);
+        field.set(command, field.get(commandBuffer));
+      }
+    }
+  }
+
+  static CommandSpec buildCommandSpec(Object... commands) {
+    Object mainCommand = commands[0];
+    Command commandAnnotation = mainCommand.getClass().getAnnotation(Command.class);
+    CommandSpec spec = CommandSpec.create();
+    spec.name(commandAnnotation.name());
+    spec.mixinStandardHelpOptions(commandAnnotation.mixinStandardHelpOptions());
+    for (Object command : commands) {
+      for (Field f : command.getClass().getDeclaredFields()) {
+        Option annotation = f.getAnnotation(Option.class);
+        if (annotation == null) {
+          continue;
+        }
+        String name =
+            Arrays.stream(annotation.names())
+                .sorted(Comparator.comparingInt(String::length).reversed())
+                .findFirst()
+                .map(OPTION_TO_ENVIRONMENT_VARIABLE::apply)
+                .get();
+        spec.addOption(
+            OptionSpec.builder(name)
+                .type(f.getType())
+                .description(annotation.description())
+                .paramLabel("<" + name.replace("_", "-") + ">")
+                .defaultValue(annotation.defaultValue())
+                .showDefaultValue(annotation.showDefaultValue())
+                .build());
+      }
+    }
+
+    return spec;
   }
 
   static class ByteCapacityTypeConverter implements CommandLine.ITypeConverter<ByteCapacity> {
