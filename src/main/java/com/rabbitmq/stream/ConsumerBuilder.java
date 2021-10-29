@@ -64,6 +64,8 @@ public interface ConsumerBuilder {
    */
   ConsumerBuilder name(String name);
 
+  ConsumerBuilder subscriptionListener(SubscriptionListener subscriptionListener);
+
   /**
    * Enable {@link ManualTrackingStrategy}.
    *

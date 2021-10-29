@@ -87,6 +87,11 @@ public final class TestUtils {
     return waitAtMost(10, condition, null);
   }
 
+  public static Duration waitAtMost(Duration timeout, CallableBooleanSupplier condition)
+      throws Exception {
+    return waitAtMost((int) timeout.getSeconds(), condition, null);
+  }
+
   public static Duration waitAtMost(int timeoutInSeconds, CallableBooleanSupplier condition)
       throws Exception {
     return waitAtMost(timeoutInSeconds, condition, null);

@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntConsumer;
 import java.util.function.UnaryOperator;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -514,5 +515,162 @@ public class StreamConsumerTest {
     waitAtMost(5, () -> messageCount.get() == storeEvery * 2 + extraMessages);
 
     waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
+  }
+
+  @Test
+  @DisabledIfRabbitMqCtlNotSet
+  void externalOffsetTrackingWithSubscriptionListener() throws Exception {
+    AtomicInteger subscriptionListenerCallCount = new AtomicInteger(0);
+    AtomicInteger receivedMessages = new AtomicInteger(0);
+    AtomicLong offsetTracking = new AtomicLong(0);
+    AtomicBoolean started = new AtomicBoolean(false);
+    environment.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
+        .subscriptionListener(
+            subscriptionContext -> {
+              subscriptionListenerCallCount.incrementAndGet();
+              OffsetSpecification offsetSpecification =
+                  started.get()
+                      ? OffsetSpecification.offset(offsetTracking.get() + 1)
+                      : subscriptionContext.offsetSpecification();
+              subscriptionContext.offsetSpecification(offsetSpecification);
+            })
+        .messageHandler(
+            (context, message) -> {
+              receivedMessages.incrementAndGet();
+              offsetTracking.set(context.offset());
+              started.set(true);
+            })
+        .build();
+
+    int messageCount = 10_000;
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    Runnable publish =
+        () ->
+            IntStream.range(0, messageCount)
+                .forEach(
+                    i ->
+                        producer.send(
+                            producer.messageBuilder().addData("".getBytes()).build(),
+                            confirmationStatus -> {}));
+
+    publish.run();
+
+    waitAtMost(5, () -> receivedMessages.get() == messageCount);
+    assertThat(offsetTracking.get()).isGreaterThanOrEqualTo(messageCount - 1);
+
+    Host.killConnection("rabbitmq-stream-consumer");
+    waitAtMost(RECOVERY_DELAY.multipliedBy(2), () -> subscriptionListenerCallCount.get() == 2);
+
+    publish.run();
+    waitAtMost(5, () -> receivedMessages.get() == messageCount * 2);
+    assertThat(offsetTracking.get()).isGreaterThanOrEqualTo(messageCount * 2 - 1);
+  }
+
+  @Test
+  @DisabledIfRabbitMqCtlNotSet
+  void duplicatesWhenResubscribeAfterDisconnectionWithLongFlushInterval() throws Exception {
+    AtomicInteger receivedMessages = new AtomicInteger(0);
+    int storeEvery = 10_000;
+    String reference = "ref-1";
+    CountDownLatch poisonLatch = new CountDownLatch(1);
+    environment.consumerBuilder().name(reference).stream(stream)
+        .offset(OffsetSpecification.first())
+        .messageHandler(
+            (context, message) -> {
+              receivedMessages.incrementAndGet();
+              if ("poison".equals(new String(message.getBodyAsBinary()))) {
+                poisonLatch.countDown();
+              }
+            })
+        .autoTrackingStrategy()
+        .flushInterval(Duration.ofMinutes(60)) // long flush interval
+        .messageCountBeforeStorage(storeEvery)
+        .builder()
+        .build();
+
+    AtomicInteger publishedMessages = new AtomicInteger(0);
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    IntConsumer publish =
+        messagesToPublish -> {
+          publishedMessages.addAndGet(messagesToPublish);
+          IntStream.range(0, messagesToPublish)
+              .forEach(
+                  i ->
+                      producer.send(
+                          producer.messageBuilder().addData("".getBytes()).build(),
+                          confirmationStatus -> {}));
+        };
+    publish.accept(storeEvery * 2 - 100);
+    waitAtMost(5, () -> receivedMessages.get() == publishedMessages.get());
+    Host.killConnection("rabbitmq-stream-consumer");
+
+    publish.accept(storeEvery * 2);
+    producer.send(
+        producer.messageBuilder().addData("poison".getBytes()).build(), confirmationStatus -> {});
+    latchAssert(poisonLatch).completes();
+    // we have duplicates because the last stored value is behind and the re-subscription uses it
+    assertThat(receivedMessages).hasValueGreaterThan(publishedMessages.get());
+  }
+
+  @Test
+  @DisabledIfRabbitMqCtlNotSet
+  void useSubscriptionListenerToRestartExactlyWhereDesired() throws Exception {
+    AtomicInteger subscriptionListenerCallCount = new AtomicInteger(0);
+    AtomicInteger receivedMessages = new AtomicInteger(0);
+    AtomicLong offsetTracking = new AtomicLong(0);
+    AtomicBoolean started = new AtomicBoolean(false);
+    int storeEvery = 10_000;
+    String reference = "ref-1";
+    CountDownLatch poisonLatch = new CountDownLatch(1);
+    environment.consumerBuilder().name(reference).stream(stream)
+        .offset(OffsetSpecification.first())
+        .subscriptionListener(
+            subscriptionContext -> {
+              subscriptionListenerCallCount.getAndIncrement();
+              OffsetSpecification offsetSpecification =
+                  started.get()
+                      ? OffsetSpecification.offset(offsetTracking.get() + 1)
+                      : subscriptionContext.offsetSpecification();
+              subscriptionContext.offsetSpecification(offsetSpecification);
+            })
+        .messageHandler(
+            (context, message) -> {
+              receivedMessages.incrementAndGet();
+              offsetTracking.set(context.offset());
+              started.set(true);
+              if ("poison".equals(new String(message.getBodyAsBinary()))) {
+                poisonLatch.countDown();
+              }
+            })
+        .autoTrackingStrategy()
+        .flushInterval(Duration.ofMinutes(60)) // long flush interval
+        .messageCountBeforeStorage(storeEvery)
+        .builder()
+        .build();
+
+    AtomicInteger publishedMessages = new AtomicInteger(0);
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    IntConsumer publish =
+        messagesToPublish -> {
+          publishedMessages.addAndGet(messagesToPublish);
+          IntStream.range(0, messagesToPublish)
+              .forEach(
+                  i ->
+                      producer.send(
+                          producer.messageBuilder().addData("".getBytes()).build(),
+                          confirmationStatus -> {}));
+        };
+    publish.accept(storeEvery * 2 - 100);
+    waitAtMost(5, () -> receivedMessages.get() == publishedMessages.get());
+    Host.killConnection("rabbitmq-stream-consumer");
+
+    publish.accept(storeEvery * 2);
+    producer.send(
+        producer.messageBuilder().addData("poison".getBytes()).build(), confirmationStatus -> {});
+    latchAssert(poisonLatch).completes();
+    // no duplicates because the custom offset tracking overrides the stored offset in the
+    // subscription listener
+    assertThat(receivedMessages).hasValue(publishedMessages.get() + 1);
   }
 }

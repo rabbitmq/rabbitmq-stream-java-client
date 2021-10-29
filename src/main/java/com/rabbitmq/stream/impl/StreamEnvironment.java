@@ -28,6 +28,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
@@ -467,10 +468,16 @@ class StreamEnvironment implements Environment {
       String stream,
       OffsetSpecification offsetSpecification,
       String trackingReference,
+      SubscriptionListener subscriptionListener,
       MessageHandler messageHandler) {
     Runnable closingCallback =
         this.consumersCoordinator.subscribe(
-            consumer, stream, offsetSpecification, trackingReference, messageHandler);
+            consumer,
+            stream,
+            offsetSpecification,
+            trackingReference,
+            subscriptionListener,
+            messageHandler);
     return closingCallback;
   }
 

@@ -18,6 +18,7 @@ import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.SubscriptionListener;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
@@ -34,6 +35,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private DefaultAutoTrackingStrategy autoTrackingStrategy;
   private DefaultManualTrackingStrategy manualTrackingStrategy;
   private boolean lazyInit = false;
+  private SubscriptionListener subscriptionListener = subscriptionContext -> {};
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -74,6 +76,15 @@ class StreamConsumerBuilder implements ConsumerBuilder {
           "The consumer name must be non-null and under 256 characters");
     }
     this.name = name;
+    return this;
+  }
+
+  @Override
+  public ConsumerBuilder subscriptionListener(SubscriptionListener subscriptionListener) {
+    if (subscriptionListener == null) {
+      throw new IllegalArgumentException("The subscription listener cannot be null");
+    }
+    this.subscriptionListener = subscriptionListener;
     return this;
   }
 
@@ -142,7 +153,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.name,
               this.environment,
               trackingConfiguration,
-              this.lazyInit);
+              this.lazyInit,
+              this.subscriptionListener);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       consumer =
