@@ -881,3 +881,43 @@ entry, which has its own offset.
 This means one must be careful when basing some decision on offset values, like
 a modulo to perform an operation every X messages. As the message offsets have
 no guarantee to be contiguous, the operation may not happen exactly every X messages.
+
+====== Subscription Listener
+
+The library provides a `SubscriptionListener` interface callback to add behavior before a subscription is created.
+This callback can be used to customize the offset the library computed for the subscription.
+The callback is called when the consumer is first created and when the library has to re-subscribe (e.g. after a disconnection or a topology change).
+
+It is possible to use the callback to get the last processed offset from an external store, that is not using the server-side offset tracking feature RabbitMQ Stream provides.
+The following code snippet shows how this can be done (note the interaction with the external store is not detailed):
+
+.Using an external store for offset tracking with a subscription listener
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=subscription-listener]
+--------
+<1> Set subscription listener
+<2> Get offset from external store
+<3> Set offset to use for the subscription
+<4> Store the offset in the external store after processing
+
+When using an external store for offset tracking, it is no longer necessary to set a name and an offset strategy, as these only apply when server-side offset tracking is in use.
+
+Using a subscription listener can be useful to have more accurate offset tracking on re-subscription, at the cost of making the application code slightly more complex.
+This requires a good understanding on how and when subscription occurs in the library, and so when the subscription listener is called:
+
+* for a consumer with no name (server-side offset tracking _disabled_)
+** on the first subscription (when the consumer is created): the offset specification is the one specified with `ConsumerBuilder#offset(OffsetSpecification)`, the default being `OffsetSpecification#next()`
+** on re-subscription (after a disconnection or topology change): the offset specification is the offset of the last dispatched message
+* for a consumer with a name (server-side offset tracking _enabled_)
+** on the first subscription (when the consumer is created): the server-side stored offset (if any) overrides the value specified with `ConsumerBuilder#offset(OffsetSpecification)`
+** on re-subscription (after a disconnection or topology change): the server-side stored offset is used
+
+The subscription listener comes in handy on re-subscription.
+The application can track the last processed offset in-memory, with an `AtomicLong` for example.
+The application knows exactly when a message is processed and updates its in-memory tracking accordingly, whereas the value computed by the library may not be perfectly appropriate on re-subscription.
+
+If we take the example of a named consumer with an offset tracking strategy that is lagging because of bad timing and a long flush interval.
+When the glitch happens and triggers the re-subscription, the server-side stored offset can be quite behind what the application actually processed.
+Using this server-side stored offset can lead to duplicates, whereas using the in-memory, application-specific offset tracking variable is more accurate.
+A custom `SubscriptionListener` lets the application developer uses what's best for the application if the computed value is not optimal.

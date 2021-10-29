@@ -127,4 +127,30 @@ public class ConsumerUsage {
     // end::manual-tracking-with-settings[]
   }
 
+  void subscriptionListener() {
+    Environment environment = Environment.builder().build();
+    // tag::subscription-listener[]
+    Consumer consumer = environment.consumerBuilder()
+        .stream("my-stream")
+        .subscriptionListener(subscriptionContext -> {  // <1>
+            long offset = getOffsetFromExternalStore();  // <2>
+            subscriptionContext.offsetSpecification(OffsetSpecification.offset(offset));  // <3>
+        })
+        .messageHandler((context, message) -> {
+            // message handling code...
+
+            storeOffsetInExternalStore(context.offset());  // <4>
+        })
+        .build();
+    // end::subscription-listener[]
+  }
+
+  void storeOffsetInExternalStore(long offset) {
+
+  }
+
+  long getOffsetFromExternalStore() {
+      return 0L;
+  }
+
 }
