@@ -560,7 +560,7 @@ public class StreamConsumerTest {
     assertThat(offsetTracking.get()).isGreaterThanOrEqualTo(messageCount - 1);
 
     Host.killConnection("rabbitmq-stream-consumer");
-    waitAtMost(RECOVERY_DELAY.multipliedBy(2), () -> subscriptionListenerCallCount.get() == 2);
+    waitAtMost(recoveryInitialDelay.multipliedBy(2), () -> subscriptionListenerCallCount.get() == 2);
 
     publish.run();
     waitAtMost(5, () -> receivedMessages.get() == messageCount * 2);
