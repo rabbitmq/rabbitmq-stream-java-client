@@ -518,6 +518,42 @@ public class StreamConsumerTest {
   }
 
   @Test
+  void autoTrackingShouldStoreAfterClosing() throws Exception {
+    int storeEvery = 10_000;
+    int messageCount = storeEvery * 5 - 100;
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    String reference = "ref-1";
+    AtomicLong lastReceivedOffset = new AtomicLong(0);
+    Consumer consumer =
+        environment.consumerBuilder().name(reference).stream(stream)
+            .offset(OffsetSpecification.first())
+            .messageHandler(
+                (context, message) -> {
+                  lastReceivedOffset.set(context.offset());
+                  consumeLatch.countDown();
+                })
+            .autoTrackingStrategy()
+            .flushInterval(Duration.ofHours(1)) // long flush interval
+            .messageCountBeforeStorage(storeEvery)
+            .builder()
+            .build();
+
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    IntStream.range(0, messageCount)
+        .forEach(
+            i ->
+                producer.send(
+                    producer.messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> {}));
+
+    latchAssert(consumeLatch).completes();
+    consumer.close();
+
+    Client client = cf.get();
+    waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
+  }
+
+  @Test
   @DisabledIfRabbitMqCtlNotSet
   void externalOffsetTrackingWithSubscriptionListener() throws Exception {
     AtomicInteger subscriptionListenerCallCount = new AtomicInteger(0);
@@ -560,7 +596,8 @@ public class StreamConsumerTest {
     assertThat(offsetTracking.get()).isGreaterThanOrEqualTo(messageCount - 1);
 
     Host.killConnection("rabbitmq-stream-consumer");
-    waitAtMost(recoveryInitialDelay.multipliedBy(2), () -> subscriptionListenerCallCount.get() == 2);
+    waitAtMost(
+        recoveryInitialDelay.multipliedBy(2), () -> subscriptionListenerCallCount.get() == 2);
 
     publish.run();
     waitAtMost(5, () -> receivedMessages.get() == messageCount * 2);

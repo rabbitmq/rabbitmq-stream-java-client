@@ -551,14 +551,33 @@ class StreamEnvironment implements Environment {
   TrackingConsumerRegistration registerTrackingConsumer(
       StreamConsumer streamConsumer, TrackingConfiguration configuration) {
     Runnable closingCallable = this.producersCoordinator.registerTrackingConsumer(streamConsumer);
-    Registration offsetTrackingRegistration = null;
+    Registration offsetTrackingRegistration;
     if (this.offsetTrackingCoordinator.needTrackingRegistration(configuration)) {
       offsetTrackingRegistration =
           this.offsetTrackingCoordinator.registerTrackingConsumer(streamConsumer, configuration);
+    } else {
+      offsetTrackingRegistration = null;
+    }
+
+    Runnable closingSequence;
+    if (offsetTrackingRegistration == null) {
+      closingSequence = closingCallable;
+    } else {
+      closingSequence =
+          () -> {
+            try {
+              LOGGER.debug("Executing offset tracking registration closing sequence");
+              offsetTrackingRegistration.closingCallback().run();
+              LOGGER.debug("Offset tracking registration closing sequence executed");
+            } catch (Exception e) {
+              LOGGER.warn("Error while executing offset tracking registration closing sequence");
+            }
+            closingCallable.run();
+          };
     }
 
     return new TrackingConsumerRegistration(
-        closingCallable,
+        closingSequence,
         offsetTrackingRegistration == null
             ? null
             : offsetTrackingRegistration.postMessageProcessingCallback(),

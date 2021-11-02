@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -121,6 +122,42 @@ public class OffsetTrackingCoordinatorTest {
     postProcessedMessageCallback.accept(context(1, () -> {}));
 
     assertThat(latchAssert(flushLatch)).completes(5);
+  }
+
+  @Test
+  void autoShouldStoreLastProcessedOffsetOnClosing() {
+    Duration checkInterval = Duration.ofMillis(100);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
+    when(consumer.lastStoredOffset()).thenReturn(5L);
+
+    Registration registration =
+        coordinator.registerTrackingConsumer(
+            consumer, new TrackingConfiguration(true, true, 1, Duration.ofHours(1), Duration.ZERO));
+
+    long lastProcessedOffset = 10;
+    registration.postMessageProcessingCallback().accept(context(lastProcessedOffset, () -> {}));
+
+    registration.closingCallback().run();
+
+    verify(consumer, times(1)).store(lastProcessedOffset);
+  }
+
+  @Test
+  void autoShouldNotStoreLastProcessedOffsetOnClosingIfBehindStoredOffset() {
+    Duration checkInterval = Duration.ofMillis(100);
+    OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
+    when(consumer.lastStoredOffset()).thenReturn(15L);
+
+    Registration registration =
+        coordinator.registerTrackingConsumer(
+            consumer, new TrackingConfiguration(true, true, 1, Duration.ofHours(1), Duration.ZERO));
+
+    long lastProcessedOffset = 10;
+    registration.postMessageProcessingCallback().accept(context(lastProcessedOffset, () -> {}));
+
+    registration.closingCallback().run();
+
+    verify(consumer, never()).store(anyLong());
   }
 
   @Test

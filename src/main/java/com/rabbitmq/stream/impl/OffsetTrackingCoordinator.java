@@ -25,8 +25,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class OffsetTrackingCoordinator {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(OffsetTrackingCoordinator.class);
 
   private final StreamEnvironment streamEnvironment;
 
@@ -106,7 +110,7 @@ class OffsetTrackingCoordinator {
                   TimeUnit.MILLISECONDS);
     }
 
-    return new Registration(tracker.postProcessingCallback(), tracker.trackingCallback());
+    return new Registration(tracker);
   }
 
   private ScheduledExecutorService executor() {
@@ -134,24 +138,28 @@ class OffsetTrackingCoordinator {
     StreamConsumer consumer();
 
     LongConsumer trackingCallback();
+
+    Runnable closingCallback();
   }
 
   static class Registration {
 
-    private final java.util.function.Consumer<Context> postMessageProcessingCallback;
-    private final LongConsumer trackingCallback;
+    private final Tracker tracker;
 
-    Registration(Consumer<Context> postMessageProcessingCallback, LongConsumer trackingCallback) {
-      this.postMessageProcessingCallback = postMessageProcessingCallback;
-      this.trackingCallback = trackingCallback;
+    Registration(Tracker tracker) {
+      this.tracker = tracker;
     }
 
-    public Consumer<Context> postMessageProcessingCallback() {
-      return postMessageProcessingCallback;
+    Consumer<Context> postMessageProcessingCallback() {
+      return this.tracker.postProcessingCallback();
     }
 
-    public LongConsumer trackingCallback() {
-      return trackingCallback;
+    LongConsumer trackingCallback() {
+      return this.tracker.trackingCallback();
+    }
+
+    Runnable closingCallback() {
+      return this.tracker.closingCallback();
     }
   }
 
@@ -204,6 +212,22 @@ class OffsetTrackingCoordinator {
     public LongConsumer trackingCallback() {
       return Utils.NO_OP_LONG_CONSUMER;
     }
+
+    @Override
+    public Runnable closingCallback() {
+      return () -> {
+        long lastStoredOffset = consumer.lastStoredOffset();
+        if (lastStoredOffset < lastProcessedOffset) {
+          LOGGER.debug("Storing offset before closing");
+          this.consumer.store(this.lastProcessedOffset);
+        } else {
+          LOGGER.debug(
+              "Not storing offset before closing because last stored offset after last processed offset: {} > {}",
+              lastStoredOffset,
+              lastProcessedOffset);
+        }
+      };
+    }
   }
 
   private static final class ManualTrackingTracker implements Tracker {
@@ -248,6 +272,11 @@ class OffsetTrackingCoordinator {
         lastRequestedOffset = requestedOffset;
         lastTrackingActivity = clock.time();
       };
+    }
+
+    @Override
+    public Runnable closingCallback() {
+      return () -> {};
     }
   }
 
