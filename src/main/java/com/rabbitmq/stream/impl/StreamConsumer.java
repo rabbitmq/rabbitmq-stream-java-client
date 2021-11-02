@@ -17,6 +17,7 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,7 +58,8 @@ class StreamConsumer implements Consumer {
       String name,
       StreamEnvironment environment,
       TrackingConfiguration trackingConfiguration,
-      boolean lazyInit) {
+      boolean lazyInit,
+      SubscriptionListener subscriptionListener) {
 
     try {
       this.name = name;
@@ -100,6 +102,7 @@ class StreamConsumer implements Consumer {
                     stream,
                     offsetSpecification,
                     this.name,
+                    subscriptionListener,
                     messageHandlerWithOrWithoutTracking);
 
             this.status = Status.RUNNING;

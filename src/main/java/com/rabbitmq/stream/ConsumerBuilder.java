@@ -65,6 +65,17 @@ public interface ConsumerBuilder {
   ConsumerBuilder name(String name);
 
   /**
+   * Callback on subscription.
+   *
+   * <p>Can be used to set the offset specification before subscribing to the stream.
+   *
+   * @see SubscriptionListener
+   * @param subscriptionListener the listener
+   * @return this builder instance
+   */
+  ConsumerBuilder subscriptionListener(SubscriptionListener subscriptionListener);
+
+  /**
    * Enable {@link ManualTrackingStrategy}.
    *
    * @return the manual tracking strategy

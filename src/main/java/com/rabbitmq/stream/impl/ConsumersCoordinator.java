@@ -23,6 +23,8 @@ import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.SubscriptionListener;
+import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
 import com.rabbitmq.stream.impl.Client.ChunkListener;
 import com.rabbitmq.stream.impl.Client.CreditNotification;
 import com.rabbitmq.stream.impl.Client.MessageListener;
@@ -83,6 +85,7 @@ class ConsumersCoordinator {
       String stream,
       OffsetSpecification offsetSpecification,
       String trackingReference,
+      SubscriptionListener subscriptionListener,
       MessageHandler messageHandler) {
     // FIXME fail immediately if there's no locator (can provide a supplier that does not retry)
     List<Client.Broker> candidates = findBrokersForStream(stream);
@@ -95,7 +98,12 @@ class ConsumersCoordinator {
     // we keep this instance when we move the subscription from a client to another one
     SubscriptionTracker subscriptionTracker =
         new SubscriptionTracker(
-            consumer, stream, offsetSpecification, trackingReference, messageHandler);
+            consumer,
+            stream,
+            offsetSpecification,
+            trackingReference,
+            subscriptionListener,
+            messageHandler);
 
     String key = keyForClientSubscription(newNode);
 
@@ -212,6 +220,7 @@ class ConsumersCoordinator {
     private final String offsetTrackingReference;
     private final MessageHandler messageHandler;
     private final StreamConsumer consumer;
+    private final SubscriptionListener subscriptionListener;
     private volatile long offset;
     private volatile boolean hasReceivedSomething = false;
     private volatile byte subscriptionIdInClient;
@@ -223,11 +232,13 @@ class ConsumersCoordinator {
         String stream,
         OffsetSpecification initialOffsetSpecification,
         String offsetTrackingReference,
+        SubscriptionListener subscriptionListener,
         MessageHandler messageHandler) {
       this.consumer = consumer;
       this.stream = stream;
       this.initialOffsetSpecification = initialOffsetSpecification;
       this.offsetTrackingReference = offsetTrackingReference;
+      this.subscriptionListener = subscriptionListener;
       this.messageHandler = messageHandler;
     }
 
@@ -635,7 +646,7 @@ class ConsumersCoordinator {
             update(previousSubscriptions, subscriptionId, subscriptionTracker);
 
         String offsetTrackingReference = subscriptionTracker.offsetTrackingReference;
-        if (subscriptionTracker.offsetTrackingReference != null) {
+        if (offsetTrackingReference != null) {
           long trackedOffset =
               client.queryOffset(offsetTrackingReference, subscriptionTracker.stream);
           if (trackedOffset != 0) {
@@ -666,12 +677,20 @@ class ConsumersCoordinator {
           subscriptionProperties.put("name", subscriptionTracker.offsetTrackingReference);
         }
 
+        SubscriptionContext subscriptionContext =
+            new DefaultSubscriptionContext(offsetSpecification);
+        subscriptionTracker.subscriptionListener.preSubscribe(subscriptionContext);
+        LOGGER.info(
+            "Computed offset specification {}, offset specification used after subscription listener {}",
+            offsetSpecification,
+            subscriptionContext.offsetSpecification());
+
         // FIXME consider using fewer initial credits
         Client.Response subscribeResponse =
             client.subscribe(
                 subscriptionId,
                 subscriptionTracker.stream,
-                offsetSpecification,
+                subscriptionContext.offsetSpecification(),
                 10,
                 subscriptionProperties);
         if (!subscribeResponse.isOk()) {
@@ -765,6 +784,30 @@ class ConsumersCoordinator {
           this.client.close();
         }
       }
+    }
+  }
+
+  private static final class DefaultSubscriptionContext implements SubscriptionContext {
+
+    private volatile OffsetSpecification offsetSpecification;
+
+    private DefaultSubscriptionContext(OffsetSpecification computedOffsetSpecification) {
+      this.offsetSpecification = computedOffsetSpecification;
+    }
+
+    @Override
+    public OffsetSpecification offsetSpecification() {
+      return this.offsetSpecification;
+    }
+
+    @Override
+    public void offsetSpecification(OffsetSpecification offsetSpecification) {
+      this.offsetSpecification = offsetSpecification;
+    }
+
+    @Override
+    public String toString() {
+      return "SubscriptionContext{" + "offsetSpecification=" + offsetSpecification + '}';
     }
   }
 }
