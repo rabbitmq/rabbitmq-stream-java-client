@@ -532,7 +532,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.5.0-SNAPSHOT</span>
-<br><span id="revremark">(ac7d418)</span>
+<br><span id="revremark">(20e2bfc)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -600,6 +600,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#consumer-automatic-offset-tracking">Automatic Offset Tracking</a></li>
 <li><a href="#consumer-manual-offset-tracking">Manual Offset Tracking</a></li>
 <li><a href="#considerations-on-offset-tracking">Considerations On Offset Tracking</a></li>
+<li><a href="#subscription-listener">Subscription Listener</a></li>
 </ul>
 </li>
 </ul>
@@ -2899,6 +2900,103 @@ a modulo to perform an operation every X messages. As the message offsets have
 no guarantee to be contiguous, the operation may not happen exactly every X messages.</p>
 </div>
 </div>
+<div class="sect5">
+<h6 id="subscription-listener"><a class="anchor" href="#subscription-listener"></a>Subscription Listener</h6>
+<div class="paragraph">
+<p>The client provides a <code>SubscriptionListener</code> interface callback to add behavior before a subscription is created.
+This callback can be used to customize the offset the client computed for the subscription.
+The callback is called when the consumer is first created and when the client has to re-subscribe (e.g. after a disconnection or a topology change).</p>
+</div>
+<div class="paragraph">
+<p>It is possible to use the callback to get the last processed offset from an external store, that is not using the server-side offset tracking feature RabbitMQ Stream provides.
+The following code snippet shows how this can be done (note the interaction with the external store is not detailed):</p>
+</div>
+<div class="listingblock">
+<div class="title">Using an external store for offset tracking with a subscription listener</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer = environment.consumerBuilder()
+    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+    .subscriptionListener(subscriptionContext -&gt; {  <i class="conum" data-value="1"></i><b>(1)</b>
+        <span class="type">long</span> offset = getOffsetFromExternalStore();  <i class="conum" data-value="2"></i><b>(2)</b>
+        subscriptionContext.offsetSpecification(OffsetSpecification.offset(offset));  <i class="conum" data-value="3"></i><b>(3)</b>
+    })
+    .messageHandler((context, message) -&gt; {
+        <span class="comment">// message handling code...</span>
+
+        storeOffsetInExternalStore(context.offset());  <i class="conum" data-value="4"></i><b>(4)</b>
+    })
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set subscription listener</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Get offset from external store</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Set offset to use for the subscription</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Store the offset in the external store after processing</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>When using an external store for offset tracking, it is no longer necessary to set a name and an offset strategy, as these only apply when server-side offset tracking is in use.</p>
+</div>
+<div class="paragraph">
+<p>Using a subscription listener can also be useful to have more accurate offset tracking on re-subscription, at the cost of making the application code slightly more complex.
+This requires a good understanding on how and when subscription occurs in the client, and so when the subscription listener is called:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>for a consumer with no name (server-side offset tracking <em>disabled</em>)</p>
+<div class="ulist">
+<ul>
+<li>
+<p>on the first subscription (when the consumer is created): the offset specification is the one specified with <code>ConsumerBuilder#offset(OffsetSpecification)</code>, the default being <code>OffsetSpecification#next()</code></p>
+</li>
+<li>
+<p>on re-subscription (after a disconnection or topology change): the offset specification is the offset of the last dispatched message</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p>for a consumer with a name (server-side offset tracking <em>enabled</em>)</p>
+<div class="ulist">
+<ul>
+<li>
+<p>on the first subscription (when the consumer is created): the server-side stored offset (if any) overrides the value specified with <code>ConsumerBuilder#offset(OffsetSpecification)</code></p>
+</li>
+<li>
+<p>on re-subscription (after a disconnection or topology change): the server-side stored offset is used</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The subscription listener comes in handy on re-subscription.
+The application can track the last processed offset in-memory, with an <code>AtomicLong</code> for example.
+The application knows exactly when a message is processed and updates its in-memory tracking accordingly, whereas the value computed by the client may not be perfectly appropriate on re-subscription.</p>
+</div>
+<div class="paragraph">
+<p>Let&#8217;s take the example of a named consumer with an offset tracking strategy that is lagging because of bad timing and a long flush interval.
+When a glitch happens and triggers the re-subscription, the server-side stored offset can be quite behind what the application actually processed.
+Using this server-side stored offset can lead to duplicates, whereas using the in-memory, application-specific offset tracking variable is more accurate.
+A custom <code>SubscriptionListener</code> lets the application developer uses what&#8217;s best for the application if the computed value is not optimal.</p>
+</div>
+</div>
 </div>
 </div>
 <div class="sect3">
@@ -3953,7 +4051,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.5.0-SNAPSHOT<br>
-Last updated 2021-10-26 08:15:10 UTC
+Last updated 2021-11-02 14:46:44 UTC
 </div>
 </div>
 </body>
