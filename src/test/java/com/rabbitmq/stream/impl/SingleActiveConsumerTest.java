@@ -150,4 +150,29 @@ public class SingleActiveConsumerTest {
     response = client.unsubscribe(b(9));
     assertThat(response.isOk()).isTrue();
   }
+
+  @Test
+  void noConsumerUpdateOnConnectionClosingIfSubscriptionNotUnsubscribed() throws Exception {
+    AtomicInteger consumerUpdateCount = new AtomicInteger(0);
+    Client client =
+        cf.get(
+            new ClientParameters()
+                .consumerUpdateListener(
+                    (client1, subscriptionId, active) -> {
+                      consumerUpdateCount.incrementAndGet();
+                      return null;
+                    }));
+    String consumerName = "foo";
+    Map<String, String> parameters = new HashMap<>();
+    parameters.put("single-active-consumer", "true");
+    parameters.put("name", consumerName);
+    Response response = client.subscribe(b(0), stream, OffsetSpecification.first(), 2, parameters);
+    assertThat(response.isOk()).isTrue();
+    response = client.subscribe(b(1), stream, OffsetSpecification.first(), 2, parameters);
+    assertThat(response.isOk()).isTrue();
+    waitAtMost(() -> consumerUpdateCount.get() == 2);
+
+    client.close();
+    assertThat(consumerUpdateCount).hasValue(2);
+  }
 }
