@@ -506,6 +506,19 @@ batching messages in a single publish frame, which can already provide
 very high throughput.
 ====
 
+[[deduplication-multithreading]]
+[WARNING]
+.Deduplication is not guaranteed when publishing on several threads
+====
+We'll see below that deduplication works using a strictly increasing sequence for messages.
+This means messages must be published in order and the preferred way to do this is usually _within a single thread_.
+Even if messages are _created_ in order, with the proper sequence ID, if they are published in several threads, they can get out of order, e.g. message 5 can be _published_ before message 2.
+The deduplication mechanism will then filter out message 2 in this case.
+
+So you have to be very careful about the way your applications publish messages when deduplication is in use.
+If you worry about performance, note it is possible to publish hundreds of thousands of messages in a single thread with RabbitMQ Stream.
+====
+
 ====== Setting the Name of a Producer
 
 The producer name is set when creating the producer instance, which automatically
