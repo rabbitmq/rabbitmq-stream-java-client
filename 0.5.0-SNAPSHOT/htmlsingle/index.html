@@ -532,7 +532,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.5.0-SNAPSHOT</span>
-<br><span id="revremark">(9cf6965)</span>
+<br><span id="revremark">(a5ebef9)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2187,6 +2187,28 @@ on 2 client-side elements: the <em>producer name</em> and the <em>message publis
 Sub-entry batching is disabled by default and it does not prevent from
 batching messages in a single publish frame, which can already provide
 very high throughput.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div id="deduplication-multithreading" class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="title">Deduplication is not guaranteed when publishing on several threads</div>
+<div class="paragraph">
+<p>We&#8217;ll see below that deduplication works using a strictly increasing sequence for messages.
+This means messages must be published in order and the preferred way to do this is usually <em>within a single thread</em>.
+Even if messages are <em>created</em> in order, with the proper sequence ID, if they are published in several threads, they can get out of order, e.g. message 5 can be <em>published</em> before message 2.
+The deduplication mechanism will then filter out message 2 in this case.</p>
+</div>
+<div class="paragraph">
+<p>So you have to be very careful about the way your applications publish messages when deduplication is in use.
+If you worry about performance, note it is possible to publish hundreds of thousands of messages in a single thread with RabbitMQ Stream.</p>
 </div>
 </td>
 </tr>
@@ -4051,7 +4073,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.5.0-SNAPSHOT<br>
-Last updated 2021-11-23 08:58:44 UTC
+Last updated 2021-11-23 09:26:11 UTC
 </div>
 </div>
 </body>
