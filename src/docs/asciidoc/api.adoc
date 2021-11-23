@@ -333,6 +333,7 @@ to send just one message.
 .Producer thread safety
 ====
 Producer instances are thread-safe.
+<<outbound-message-deduplication,Deduplication>> imposes <<deduplication-multithreading,restrictions on the usage of threads>> though.
 ====
 
 Internally, the `Environment` will query the broker to find out about
