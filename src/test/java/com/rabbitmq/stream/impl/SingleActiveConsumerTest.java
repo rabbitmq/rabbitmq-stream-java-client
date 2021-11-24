@@ -18,6 +18,8 @@ import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
@@ -27,7 +29,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -36,15 +40,26 @@ public class SingleActiveConsumerTest {
   String stream;
   TestUtils.ClientFactory cf;
 
+  private static Map<Byte, Boolean> consumerStates(int number) {
+    Map<Byte, Boolean> consumerStates = new ConcurrentHashMap<>(number);
+    IntStream.range(0, number).forEach(i -> consumerStates.put(b(i), false));
+    return consumerStates;
+  }
+
+  private static Map<Byte, AtomicInteger> receivedMessages(int subscriptionCount) {
+    Map<Byte, AtomicInteger> receivedMessages = new ConcurrentHashMap<>(subscriptionCount);
+    IntStream.range(0, subscriptionCount)
+        .forEach(i -> receivedMessages.put(b(i), new AtomicInteger(0)));
+    return receivedMessages;
+  }
+
   @Test
   void secondSubscriptionShouldTakeOverAfterFirstOneUnsubscribes() throws Exception {
     Client writerClient = cf.get();
-    int messageCount = 10000;
+    int messageCount = 5_000;
     AtomicLong lastReceivedOffset = new AtomicLong(0);
-    Map<Byte, Boolean> consumerStates = new ConcurrentHashMap<>();
-    Map<Byte, AtomicInteger> receivedMessages = new ConcurrentHashMap<>();
-    receivedMessages.put(b(0), new AtomicInteger(0));
-    receivedMessages.put(b(1), new AtomicInteger(0));
+    Map<Byte, Boolean> consumerStates = consumerStates(2);
+    Map<Byte, AtomicInteger> receivedMessages = receivedMessages(2);
     CountDownLatch consumerUpdateLatch = new CountDownLatch(2);
     String consumerName = "foo";
     ClientParameters clientParameters =
@@ -85,8 +100,7 @@ public class SingleActiveConsumerTest {
         .containsEntry(b(0), Boolean.TRUE)
         .containsEntry(b(1), Boolean.FALSE);
 
-    waitAtMost(
-        () -> receivedMessages.getOrDefault(b(0), new AtomicInteger(0)).get() == messageCount);
+    waitAtMost(() -> receivedMessages.get(b(0)).get() == messageCount);
 
     assertThat(lastReceivedOffset).hasPositiveValue();
     writerClient.storeOffset(consumerName, stream, lastReceivedOffset.get());
@@ -176,5 +190,113 @@ public class SingleActiveConsumerTest {
 
     client.close();
     assertThat(consumerUpdateCount).hasValue(2);
+  }
+
+  @Test
+  void singleActiveConsumerShouldRolloverWhenAnotherJoinsPartition(TestInfo info) throws Exception {
+    Client writerClient = cf.get();
+    int messageCount = 5_000;
+    Map<Byte, Boolean> consumerStates = consumerStates(2);
+    AtomicLong lastReceivedOffset = new AtomicLong(0);
+    Map<Byte, AtomicInteger> receivedMessages = receivedMessages(2);
+    String superStream = TestUtils.streamName(info);
+    String consumerName = "foo";
+    Connection c = new ConnectionFactory().newConnection();
+    try {
+      TestUtils.declareSuperStreamTopology(c, superStream, 3);
+      // working with the second partition
+      String partition = superStream + "-1";
+
+      Client client =
+          cf.get(
+              new ClientParameters()
+                  .consumerUpdateListener(
+                      (client1, subscriptionId, active) -> {
+                        boolean previousState = consumerStates.get(subscriptionId);
+
+                        OffsetSpecification result;
+
+                        if (previousState == false && active == true) {
+                          long storedOffset = writerClient.queryOffset(consumerName, partition);
+                          result =
+                              storedOffset == 0
+                                  ? OffsetSpecification.first()
+                                  : OffsetSpecification.offset(storedOffset + 1);
+                        } else if (previousState == true && active == false) {
+                          writerClient.storeOffset(
+                              consumerName, partition, lastReceivedOffset.get());
+                          try {
+                            waitAtMost(
+                                () ->
+                                    writerClient.queryOffset(consumerName, partition)
+                                        == lastReceivedOffset.get());
+                          } catch (Exception e) {
+                            throw new RuntimeException(e);
+                          }
+                          result = OffsetSpecification.none();
+                        } else {
+                          throw new IllegalStateException(
+                              "There should no SAC transition from "
+                                  + previousState
+                                  + " to "
+                                  + active);
+                        }
+                        consumerStates.put(subscriptionId, active);
+                        return result;
+                      })
+                  .chunkListener(
+                      (client12, subscriptionId, offset, messageCount1, dataSize) ->
+                          client12.credit(subscriptionId, 1))
+                  .messageListener(
+                      (subscriptionId, offset, chunkTimestamp, message) -> {
+                        lastReceivedOffset.set(offset);
+                        receivedMessages.get(subscriptionId).incrementAndGet();
+                      }));
+      Map<String, String> parameters = new HashMap<>();
+      parameters.put("single-active-consumer", "true");
+      parameters.put("name", consumerName);
+      parameters.put("super-stream", superStream);
+      Response response =
+          client.subscribe(b(0), partition, OffsetSpecification.first(), 2, parameters);
+      assertThat(response.isOk()).isTrue();
+      waitAtMost(() -> consumerStates.get(b(0)) == true);
+
+      TestUtils.publishAndWaitForConfirms(cf, messageCount, partition);
+
+      waitAtMost(() -> receivedMessages.get(b(0)).get() == messageCount);
+      assertThat(lastReceivedOffset).hasPositiveValue();
+      long firstWaveLimit = lastReceivedOffset.get();
+
+      response = client.subscribe(b(1), partition, OffsetSpecification.first(), 2, parameters);
+      assertThat(response.isOk()).isTrue();
+
+      waitAtMost(() -> consumerStates.get(b(0)) == false);
+      waitAtMost(() -> consumerStates.get(b(1)) == true);
+
+      TestUtils.publishAndWaitForConfirms(cf, messageCount, partition);
+
+      waitAtMost(() -> receivedMessages.get(b(1)).get() == messageCount);
+      assertThat(lastReceivedOffset).hasValueGreaterThan(firstWaveLimit);
+
+      // clean unsubscription, storing the offset
+      writerClient.storeOffset(consumerName, partition, lastReceivedOffset.get());
+      waitAtMost(
+          () -> writerClient.queryOffset(consumerName, partition) == lastReceivedOffset.get());
+
+      response = client.unsubscribe(b(1));
+      assertThat(response.isOk()).isTrue();
+      waitAtMost(() -> consumerStates.get(b(0)) == true);
+      assertThat(consumerStates).containsEntry(b(0), true); // should not change when unsubscribing
+
+      response = client.unsubscribe(b(0));
+      assertThat(response.isOk()).isTrue();
+
+      assertThat(receivedMessages.values().stream().mapToInt(AtomicInteger::get).sum())
+          .isEqualTo(messageCount * 2);
+
+    } finally {
+      TestUtils.deleteSuperStreamTopology(c, superStream, 3);
+      c.close();
+    }
   }
 }
