@@ -742,8 +742,7 @@ public class ClientTest {
 
   @ParameterizedTest
   @ValueSource(strings = {"", "some-publisher-reference"})
-  void closingPublisherWhilePublishingShouldNotCloseConnection(String publisherReference)
-      throws Exception {
+  void closingPublisherWhilePublishingShouldNotCloseConnection(String publisherReference) {
     AtomicReference<CountDownLatch> confirmLatch =
         new AtomicReference<>(new CountDownLatch(500_000));
     CountDownLatch closedLatch = new CountDownLatch(1);

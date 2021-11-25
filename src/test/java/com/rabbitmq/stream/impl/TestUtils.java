@@ -362,6 +362,57 @@ public final class TestUtils {
     return metadata("stream", leader, replicas);
   }
 
+  private static String currentVersion(String currentVersion) {
+    // versions built from source: 3.7.0+rc.1.4.gedc5d96
+    if (currentVersion.contains("+")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("+"));
+    }
+    // alpha (snapshot) versions: 3.7.0~alpha.449-1
+    if (currentVersion.contains("~")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("~"));
+    }
+    // alpha (snapshot) versions: 3.7.1-alpha.40
+    if (currentVersion.contains("-")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("-"));
+    }
+    return currentVersion;
+  }
+
+  static boolean atLeastVersion(String expectedVersion, String currentVersion) {
+    if (currentVersion.contains("alpha-stream")) {
+      return true;
+    }
+    try {
+      currentVersion = currentVersion(currentVersion);
+      return "0.0.0".equals(currentVersion) || versionCompare(currentVersion, expectedVersion) >= 0;
+    } catch (RuntimeException e) {
+      LoggerFactory.getLogger(TestUtils.class)
+          .warn("Unable to parse broker version {}", currentVersion, e);
+      throw e;
+    }
+  }
+
+  /**
+   * https://stackoverflow.com/questions/6701948/efficient-way-to-compare-version-strings-in-java
+   */
+  static int versionCompare(String str1, String str2) {
+    String[] vals1 = str1.split("\\.");
+    String[] vals2 = str2.split("\\.");
+    int i = 0;
+    // set index to first non-equal ordinal or length of shortest version string
+    while (i < vals1.length && i < vals2.length && vals1[i].equals(vals2[i])) {
+      i++;
+    }
+    // compare first non-equal ordinal number
+    if (i < vals1.length && i < vals2.length) {
+      int diff = Integer.valueOf(vals1[i]).compareTo(Integer.valueOf(vals2[i]));
+      return Integer.signum(diff);
+    }
+    // the strings are equal or one string is a substring of the other
+    // e.g. "1.2.3" = "1.2.3" or "1.2.3" < "1.2.3.4"
+    return Integer.signum(vals1.length - vals2.length);
+  }
+
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
@@ -418,6 +469,31 @@ public final class TestUtils {
   interface RunnableWithException {
 
     void run() throws Exception;
+  }
+
+  static class CountDownLatchConditions {
+
+    static Condition<CountDownLatch> completed() {
+      return completed(Duration.ofSeconds(10));
+    }
+
+    static Condition<CountDownLatch> completed(int timeoutInSeconds) {
+      return completed(Duration.ofSeconds(timeoutInSeconds));
+    }
+
+    static Condition<CountDownLatch> completed(Duration timeout) {
+      return new Condition<>(
+          latch -> {
+            try {
+              return latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+              Thread.interrupted();
+              throw new RuntimeException(e);
+            }
+          },
+          "completed in %d ms",
+          timeout.toMillis());
+    }
   }
 
   public static class StreamTestInfrastructureExtension
@@ -639,57 +715,6 @@ public final class TestUtils {
         }
       }
     }
-  }
-
-  private static String currentVersion(String currentVersion) {
-    // versions built from source: 3.7.0+rc.1.4.gedc5d96
-    if (currentVersion.contains("+")) {
-      currentVersion = currentVersion.substring(0, currentVersion.indexOf("+"));
-    }
-    // alpha (snapshot) versions: 3.7.0~alpha.449-1
-    if (currentVersion.contains("~")) {
-      currentVersion = currentVersion.substring(0, currentVersion.indexOf("~"));
-    }
-    // alpha (snapshot) versions: 3.7.1-alpha.40
-    if (currentVersion.contains("-")) {
-      currentVersion = currentVersion.substring(0, currentVersion.indexOf("-"));
-    }
-    return currentVersion;
-  }
-
-  static boolean atLeastVersion(String expectedVersion, String currentVersion) {
-    if (currentVersion.contains("alpha-stream")) {
-      return true;
-    }
-    try {
-      currentVersion = currentVersion(currentVersion);
-      return "0.0.0".equals(currentVersion) || versionCompare(currentVersion, expectedVersion) >= 0;
-    } catch (RuntimeException e) {
-      LoggerFactory.getLogger(TestUtils.class)
-          .warn("Unable to parse broker version {}", currentVersion, e);
-      throw e;
-    }
-  }
-
-  /**
-   * https://stackoverflow.com/questions/6701948/efficient-way-to-compare-version-strings-in-java
-   */
-  static int versionCompare(String str1, String str2) {
-    String[] vals1 = str1.split("\\.");
-    String[] vals2 = str2.split("\\.");
-    int i = 0;
-    // set index to first non-equal ordinal or length of shortest version string
-    while (i < vals1.length && i < vals2.length && vals1[i].equals(vals2[i])) {
-      i++;
-    }
-    // compare first non-equal ordinal number
-    if (i < vals1.length && i < vals2.length) {
-      int diff = Integer.valueOf(vals1[i]).compareTo(Integer.valueOf(vals2[i]));
-      return Integer.signum(diff);
-    }
-    // the strings are equal or one string is a substring of the other
-    // e.g. "1.2.3" = "1.2.3" or "1.2.3" < "1.2.3.4"
-    return Integer.signum(vals1.length - vals2.length);
   }
 
   static class CountDownLatchAssert implements AssertDelegateTarget {
