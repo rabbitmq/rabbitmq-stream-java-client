@@ -322,7 +322,6 @@ public class SingleActiveConsumerTest {
           IntStream.range(0, 3).mapToObj(i -> superStream + "-" + i).collect(Collectors.toList());
       ConsumerUpdateListener consumerUpdateListener =
           (client1, subscriptionId, active) -> {
-            System.out.println(subscriptionId + " " + active);
             consumerStates.put(subscriptionId, active);
             return null;
           };
