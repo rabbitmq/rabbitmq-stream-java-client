@@ -308,12 +308,12 @@ class StreamConsumer implements Consumer {
 
   private static class DefaultConsumerUpdateContext implements ConsumerUpdateListener.Context {
 
-    private final Consumer consumer;
+    private final StreamConsumer consumer;
     private final ConsumerUpdateListener.Status status;
     private final ConsumerUpdateListener.Status previousStatus;
 
     private DefaultConsumerUpdateContext(
-        Consumer consumer,
+        StreamConsumer consumer,
         ConsumerUpdateListener.Status status,
         ConsumerUpdateListener.Status previousStatus) {
       this.consumer = consumer;
@@ -327,6 +327,11 @@ class StreamConsumer implements Consumer {
     }
 
     @Override
+    public String stream() {
+      return this.consumer.stream;
+    }
+
+    @Override
     public ConsumerUpdateListener.Status status() {
       return this.status;
     }
@@ -334,6 +339,20 @@ class StreamConsumer implements Consumer {
     @Override
     public ConsumerUpdateListener.Status previousStatus() {
       return this.previousStatus;
+    }
+
+    @Override
+    public String toString() {
+      return "DefaultConsumerUpdateContext{"
+          + "consumer="
+          + consumer
+          + ", stream="
+          + stream()
+          + ", status="
+          + status
+          + ", previousStatus="
+          + previousStatus
+          + '}';
     }
   }
 

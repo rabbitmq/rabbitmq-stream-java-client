@@ -133,11 +133,14 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       throw new IllegalArgumentException("Stream and superStream cannot be set at the same time");
     }
     if (this.messageHandler == null) {
-      throw new IllegalArgumentException("A message handle must be set");
+      throw new IllegalArgumentException("A message handler must be set");
     }
     if (this.name == null
         && (this.autoTrackingStrategy != null || this.manualTrackingStrategy != null)) {
       throw new IllegalArgumentException("A name must be set if a tracking strategy is specified");
+    }
+    if (Utils.isSac(this.subscriptionProperties) && this.name == null) {
+      throw new IllegalArgumentException("A name must be set if single active consumer is enabled");
     }
 
     this.environment.maybeInitializeLocator();
@@ -179,6 +182,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.consumerUpdateListener);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
+      if (Utils.isSac(this.subscriptionProperties)) {
+        this.subscriptionProperties.put("super-stream", this.superStream);
+      }
       consumer =
           new SuperStreamConsumer(this, this.superStream, this.environment, trackingConfiguration);
     }

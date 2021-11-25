@@ -260,6 +260,7 @@ class ConsumersCoordinator {
       } else {
         Map<String, String> properties = new ConcurrentHashMap<>(subscriptionProperties.size() + 1);
         properties.putAll(subscriptionProperties);
+        // we propagate the subscription name, used for monitoring
         properties.put("name", this.offsetTrackingReference);
         this.subscriptionProperties = Collections.unmodifiableMap(properties);
       }

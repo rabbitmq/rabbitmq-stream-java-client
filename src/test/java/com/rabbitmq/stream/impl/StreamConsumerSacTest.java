@@ -163,6 +163,6 @@ public class StreamConsumerSacTest {
     consumer2.close();
 
     // nothing stored on the server side
-    assertThat(cf.get().queryOffset(consumerName, stream)).isZero();
+    assertThat(cf.get().queryOffset(consumerName, stream).getOffset()).isZero();
   }
 }

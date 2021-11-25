@@ -18,11 +18,14 @@ import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -31,10 +34,14 @@ import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -232,5 +239,92 @@ public class SuperStreamConsumerTest {
             assertThat(client.queryOffset(consumerName, p).getOffset())
                 .isGreaterThan(almostLastOffset));
     consumer.close();
+  }
+
+  @Test
+  void sacShouldSpreadAcrossPartitions() throws Exception {
+    declareSuperStreamTopology(connection, superStream, partitionCount);
+    List<String> partitions =
+        IntStream.range(0, partitionCount)
+            .mapToObj(i -> superStream + "-" + i)
+            .collect(Collectors.toList());
+    Map<String, Status> consumerStates = new ConcurrentHashMap<>();
+    String consumerName = "my-app";
+    Function<String, Consumer> consumerCreator =
+        consumer -> {
+          return environment
+              .consumerBuilder()
+              .singleActiveConsumer()
+              .superStream(superStream)
+              .offset(OffsetSpecification.first())
+              .name(consumerName)
+              .manualTrackingStrategy()
+              .builder()
+              .messageHandler((context, message) -> {})
+              .consumerUpdateListener(
+                  new ConsumerUpdateListener() {
+                    @Override
+                    public OffsetSpecification update(Context context) {
+                      consumerStates.put(consumer + context.stream(), context.status());
+                      //                    System.out.println(context);
+                      return null;
+                    }
+                  })
+              .build();
+        };
+
+    Consumer consumer0 = consumerCreator.apply("0");
+
+    waitAtMost(
+        () ->
+            consumerStates.get("0" + partitions.get(0)) == Status.ACTIVE
+                && consumerStates.get("0" + partitions.get(1)) == Status.ACTIVE
+                && consumerStates.get("0" + partitions.get(2)) == Status.ACTIVE);
+
+    Consumer consumer1 = consumerCreator.apply("1");
+
+    waitAtMost(
+        () ->
+            consumerStates.get("0" + partitions.get(0)) == Status.ACTIVE
+                && consumerStates.get("1" + partitions.get(1)) == Status.ACTIVE
+                && consumerStates.get("0" + partitions.get(2)) == Status.ACTIVE);
+
+    Consumer consumer2 = consumerCreator.apply("2");
+
+    waitAtMost(
+        () ->
+            consumerStates.get("0" + partitions.get(0)) == Status.ACTIVE
+                && consumerStates.get("1" + partitions.get(1)) == Status.ACTIVE
+                && consumerStates.get("2" + partitions.get(2)) == Status.ACTIVE);
+
+    waitAtMost(() -> consumerStates.size() == 9);
+    assertThat(consumerStates)
+        .containsEntry("0" + partitions.get(0), Status.ACTIVE)
+        .containsEntry("0" + partitions.get(1), Status.PASSIVE)
+        .containsEntry("0" + partitions.get(2), Status.PASSIVE)
+        .containsEntry("1" + partitions.get(0), Status.PASSIVE)
+        .containsEntry("1" + partitions.get(1), Status.ACTIVE)
+        .containsEntry("1" + partitions.get(2), Status.PASSIVE)
+        .containsEntry("2" + partitions.get(0), Status.PASSIVE)
+        .containsEntry("2" + partitions.get(1), Status.PASSIVE)
+        .containsEntry("2" + partitions.get(2), Status.ACTIVE);
+
+    consumer0.close();
+
+    waitAtMost(
+        () ->
+            consumerStates.get("1" + partitions.get(0)) == Status.ACTIVE
+                && consumerStates.get("2" + partitions.get(1)) == Status.ACTIVE
+                && consumerStates.get("1" + partitions.get(2)) == Status.ACTIVE);
+
+    consumer1.close();
+
+    waitAtMost(
+        () ->
+            consumerStates.get("2" + partitions.get(0)) == Status.ACTIVE
+                && consumerStates.get("2" + partitions.get(1)) == Status.ACTIVE
+                && consumerStates.get("2" + partitions.get(2)) == Status.ACTIVE);
+
+    consumer2.close();
   }
 }

@@ -21,6 +21,8 @@ public interface ConsumerUpdateListener {
 
     Consumer consumer();
 
+    String stream();
+
     Status status();
 
     Status previousStatus();
