@@ -29,6 +29,7 @@ import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -364,13 +365,34 @@ public final class TestUtils {
     return new CountDownLatchAssert(latchReference.get());
   }
 
-  static Condition<Throwable> responseCode(short expectedResponseCode) {
-    String message = "expected code for stream exception is " + expectedResponseCode;
-    return new Condition<>(
-        throwable ->
-            throwable instanceof StreamException
-                && ((StreamException) throwable).getCode() == expectedResponseCode,
-        message);
+  static class ResponseConditions {
+
+    static Condition<Response> ok() {
+      return new Condition<>(Response::isOk, "Response should be OK");
+    }
+
+    static Condition<Response> ko() {
+      return new Condition<>(response -> !response.isOk(), "Response should be OK");
+    }
+
+    static Condition<Response> responseCode(short expectedResponse) {
+      return new Condition<>(
+          response -> response.getResponseCode() == expectedResponse,
+          "response code %s",
+          Utils.formatConstant(expectedResponse));
+    }
+  }
+
+  static class ExceptionConditions {
+
+    static Condition<Throwable> responseCode(short expectedResponseCode) {
+      String message = "code " + Utils.formatConstant(expectedResponseCode);
+      return new Condition<>(
+          throwable ->
+              throwable instanceof StreamException
+                  && ((StreamException) throwable).getCode() == expectedResponseCode,
+          message);
+    }
   }
 
   static Map<String, StreamMetadata> metadata(String stream, Broker leader, List<Broker> replicas) {

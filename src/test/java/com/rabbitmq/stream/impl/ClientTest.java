@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
@@ -581,8 +583,7 @@ public class ClientTest {
   void deleteNonExistingStreamShouldReturnError() {
     String nonExistingStream = UUID.randomUUID().toString();
     Client.Response response = cf.get().delete(nonExistingStream);
-    assertThat(response.isOk()).isFalse();
-    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    assertThat(response).is(ko()).has(responseCode(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
   }
 
   @Test

@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.localhostTls;
@@ -424,7 +425,7 @@ public class StreamEnvironmentTest {
       env.streamCreator().stream(s).maxAge(Duration.ofDays(1)).create();
       assertThatThrownBy(() -> env.streamCreator().stream(s).maxAge(Duration.ofDays(4)).create())
           .isInstanceOf(StreamException.class)
-          .has(TestUtils.responseCode(Constants.RESPONSE_CODE_PRECONDITION_FAILED));
+          .has(responseCode(Constants.RESPONSE_CODE_PRECONDITION_FAILED));
     } finally {
       assertThat(client.delete(s).isOk()).isTrue();
     }

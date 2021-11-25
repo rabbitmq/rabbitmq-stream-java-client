@@ -15,9 +15,9 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Host.diskAlarm;
 import static com.rabbitmq.stream.Host.memoryAlarm;
+import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
-import static com.rabbitmq.stream.impl.TestUtils.responseCode;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
