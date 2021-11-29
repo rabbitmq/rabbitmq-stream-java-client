@@ -44,6 +44,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@TestUtils.SingleActiveConsumer
 public class SingleActiveConsumerTest {
 
   String stream;

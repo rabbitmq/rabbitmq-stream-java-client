@@ -70,6 +70,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.assertj.core.api.AssertDelegateTarget;
 import org.assertj.core.api.Condition;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -827,4 +828,9 @@ public final class TestUtils {
     logger.setLevel(level);
     return initialLevel;
   }
+  
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Tag("single-active-consumer")
+  public @interface SingleActiveConsumer {}
 }

@@ -29,6 +29,7 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.TestUtils.SingleActiveConsumer;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
@@ -242,6 +243,7 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
+  @SingleActiveConsumer
   void sacShouldSpreadAcrossPartitions() throws Exception {
     declareSuperStreamTopology(connection, superStream, partitionCount);
     List<String> partitions =
@@ -332,6 +334,7 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
+  @SingleActiveConsumer
   void sacAutoOffsetTrackingShouldStoreOnRelanbancing() throws Exception {
     declareSuperStreamTopology(connection, superStream, partitionCount);
     int messageCount = 5_000;
