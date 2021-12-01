@@ -57,6 +57,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -75,11 +77,16 @@ import org.junit.jupiter.api.extension.ConditionEvaluationResult;
 import org.junit.jupiter.api.extension.ExecutionCondition;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
+import org.junit.jupiter.api.extension.ExtensionContext.Store.CloseableResource;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class TestUtils {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(TestUtils.class);
 
   private TestUtils() {}
 
@@ -574,9 +581,39 @@ public final class TestUtils {
     }
 
     @Override
-    public void afterAll(ExtensionContext context) throws Exception {
+    public void afterAll(ExtensionContext context) {
       EventLoopGroup eventLoopGroup = eventLoopGroup(context);
-      eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+      ExecutorServiceCloseableResourceWrapper wrapper =
+          context
+              .getRoot()
+              .getStore(Namespace.GLOBAL)
+              .getOrComputeIfAbsent(ExecutorServiceCloseableResourceWrapper.class);
+      wrapper.executorService.submit(
+          () -> {
+            try {
+              eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+            } catch (InterruptedException e) {
+              // happens at the end of the test suite
+              LOGGER.debug("Error while asynchronously closing Netty event loop group", e);
+              Thread.currentThread().interrupt();
+            } catch (Exception e) {
+              LOGGER.warn("Error while asynchronously closing Netty event loop group", e);
+            }
+          });
+    }
+
+    private static class ExecutorServiceCloseableResourceWrapper implements CloseableResource {
+
+      private final ExecutorService executorService;
+
+      private ExecutorServiceCloseableResourceWrapper() {
+        this.executorService = Executors.newCachedThreadPool();
+      }
+
+      @Override
+      public void close() throws Throwable {
+        this.executorService.shutdownNow();
+      }
     }
   }
 
@@ -700,6 +737,7 @@ public final class TestUtils {
         Client client = new Client(new ClientParameters().eventLoopGroup(eventLoopGroup));
         String expectedVersion = annotation.value();
         String brokerVersion = client.brokerVersion();
+        client.close();
         if (atLeastVersion(expectedVersion, brokerVersion)) {
           return ConditionEvaluationResult.enabled(
               "Broker version requirement met, expected "

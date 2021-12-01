@@ -67,6 +67,7 @@ public class ShutdownListenerTest {
         .isNotNull()
         .isEqualTo(Client.ShutdownContext.ShutdownReason.SERVER_CLOSE);
     assertThat(client.isOpen()).isFalse();
+    client.close();
   }
 
   @Test
@@ -89,5 +90,6 @@ public class ShutdownListenerTest {
     assertThat(shutdownLatch.await(10, TimeUnit.SECONDS)).isTrue();
     assertThat(reason.get()).isNotNull().isEqualTo(Client.ShutdownContext.ShutdownReason.UNKNOWN);
     assertThat(client.isOpen()).isFalse();
+    client.close();
   }
 }
