@@ -499,321 +499,327 @@ public class StreamPerfTest implements Callable<Integer> {
 
     ShutdownService shutdownService = new ShutdownService();
 
-    MonitoringContext monitoringContext = new MonitoringContext(this.monitoringPort, meterRegistry);
-    this.monitorings.forEach(m -> m.configure(monitoringContext));
-    monitoringContext.start();
+    try {
 
-    shutdownService.wrap(closeStep("Closing monitoring context", () -> monitoringContext.close()));
+      MonitoringContext monitoringContext =
+          new MonitoringContext(this.monitoringPort, meterRegistry);
+      this.monitorings.forEach(m -> m.configure(monitoringContext));
+      monitoringContext.start();
 
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdownService.close()));
+      shutdownService.wrap(closeStep("Closing monitoring context", monitoringContext::close));
 
-    // FIXME add confirm latency
+      Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdownService.close()));
 
-    ScheduledExecutorService envExecutor =
-        Executors.newScheduledThreadPool(
-            Math.max(Runtime.getRuntime().availableProcessors(), this.producers),
-            new NamedThreadFactory("stream-perf-test-env-"));
+      // FIXME add confirm latency
 
-    shutdownService.wrap(
-        closeStep("Closing environment executor", () -> envExecutor.shutdownNow()));
+      ScheduledExecutorService envExecutor =
+          Executors.newScheduledThreadPool(
+              Math.max(Runtime.getRuntime().availableProcessors(), this.producers),
+              new NamedThreadFactory("stream-perf-test-env-"));
 
-    boolean tls = isTls(this.uris);
-    AddressResolver addrResolver;
-    if (loadBalancer) {
-      int defaultPort = tls ? Client.DEFAULT_TLS_PORT : Client.DEFAULT_PORT;
-      List<Address> addresses =
-          this.uris.stream()
-              .map(
-                  uri -> {
-                    try {
-                      return new URI(uri);
-                    } catch (URISyntaxException e) {
-                      throw new IllegalArgumentException(
-                          "Error while parsing URI " + uri + ": " + e.getMessage());
-                    }
-                  })
-              .map(
-                  uriItem ->
-                      new Address(
-                          uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
-                          uriItem.getPort() == -1 ? defaultPort : uriItem.getPort()))
-              .collect(Collectors.toList());
-      AtomicInteger connectionAttemptCount = new AtomicInteger(0);
-      addrResolver =
-          address -> addresses.get(connectionAttemptCount.getAndIncrement() % addresses.size());
-    } else {
-      if (this.addressResolver == null) {
-        addrResolver = address -> address;
+      shutdownService.wrap(
+          closeStep("Closing environment executor", () -> envExecutor.shutdownNow()));
+
+      boolean tls = isTls(this.uris);
+      AddressResolver addrResolver;
+      if (loadBalancer) {
+        int defaultPort = tls ? Client.DEFAULT_TLS_PORT : Client.DEFAULT_PORT;
+        List<Address> addresses =
+            this.uris.stream()
+                .map(
+                    uri -> {
+                      try {
+                        return new URI(uri);
+                      } catch (URISyntaxException e) {
+                        throw new IllegalArgumentException(
+                            "Error while parsing URI " + uri + ": " + e.getMessage());
+                      }
+                    })
+                .map(
+                    uriItem ->
+                        new Address(
+                            uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
+                            uriItem.getPort() == -1 ? defaultPort : uriItem.getPort()))
+                .collect(Collectors.toList());
+        AtomicInteger connectionAttemptCount = new AtomicInteger(0);
+        addrResolver =
+            address -> addresses.get(connectionAttemptCount.getAndIncrement() % addresses.size());
       } else {
-        addrResolver = this.addressResolver; // should happen only in tests
-      }
-    }
-
-    EnvironmentBuilder environmentBuilder =
-        Environment.builder()
-            .uris(this.uris)
-            .addressResolver(addrResolver)
-            .scheduledExecutorService(envExecutor)
-            .metricsCollector(metricsCollector)
-            .byteBufAllocator(byteBufAllocator)
-            .codec(codec)
-            .maxProducersByConnection(this.producersByConnection)
-            .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
-            .maxConsumersByConnection(this.consumersByConnection);
-
-    ChannelCustomizer channelCustomizer = channel -> {};
-
-    if (tls) {
-      TlsConfiguration tlsConfiguration = environmentBuilder.tls();
-      tlsConfiguration =
-          tlsConfiguration.sslContext(
-              SslContextBuilder.forClient()
-                  .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
-                  .build());
-      environmentBuilder = tlsConfiguration.environmentBuilder();
-      if (!this.sniServerNames.isEmpty()) {
-        channelCustomizer =
-            channelCustomizer.andThen(
-                ch -> {
-                  SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
-                  if (sslHandler != null) {
-                    SSLParameters sslParameters = sslHandler.engine().getSSLParameters();
-                    sslParameters.setServerNames(this.sniServerNames);
-                    sslHandler.engine().setSSLParameters(sslParameters);
-                  }
-                });
-      }
-    }
-
-    Environment environment = environmentBuilder.channelCustomizer(channelCustomizer).build();
-    shutdownService.wrap(closeStep("Closing environment(s)", () -> environment.close()));
-
-    streams = Utils.streams(this.streamCount, this.streams);
-
-    for (String stream : streams) {
-      StreamCreator streamCreator =
-          environment.streamCreator().stream(stream)
-              .maxLengthBytes(this.maxLengthBytes)
-              .maxSegmentSizeBytes(this.maxSegmentSize)
-              .leaderLocator(this.leaderLocator);
-
-      if (this.maxAge != null) {
-        streamCreator.maxAge(this.maxAge);
-      }
-
-      try {
-        streamCreator.create();
-      } catch (StreamException e) {
-        if (e.getCode() == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
-          String message =
-              String.format(
-                  "Warning: stream '%s' already exists, but with different properties than "
-                      + "max-length-bytes=%s, stream-max-segment-size-bytes=%s, queue-leader-locator=%s",
-                  stream, this.maxLengthBytes, this.maxSegmentSize, this.leaderLocator);
-          if (this.maxAge != null) {
-            message += String.format(", max-age=%s", this.maxAge);
-          }
-          this.out.println(message);
+        if (this.addressResolver == null) {
+          addrResolver = address -> address;
         } else {
-          throw e;
+          addrResolver = this.addressResolver; // should happen only in tests
         }
       }
-    }
 
-    if (this.deleteStreams) {
+      EnvironmentBuilder environmentBuilder =
+          Environment.builder()
+              .uris(this.uris)
+              .addressResolver(addrResolver)
+              .scheduledExecutorService(envExecutor)
+              .metricsCollector(metricsCollector)
+              .byteBufAllocator(byteBufAllocator)
+              .codec(codec)
+              .maxProducersByConnection(this.producersByConnection)
+              .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
+              .maxConsumersByConnection(this.consumersByConnection);
+
+      ChannelCustomizer channelCustomizer = channel -> {};
+
+      if (tls) {
+        TlsConfiguration tlsConfiguration = environmentBuilder.tls();
+        tlsConfiguration =
+            tlsConfiguration.sslContext(
+                SslContextBuilder.forClient()
+                    .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
+                    .build());
+        environmentBuilder = tlsConfiguration.environmentBuilder();
+        if (!this.sniServerNames.isEmpty()) {
+          channelCustomizer =
+              channelCustomizer.andThen(
+                  ch -> {
+                    SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
+                    if (sslHandler != null) {
+                      SSLParameters sslParameters = sslHandler.engine().getSSLParameters();
+                      sslParameters.setServerNames(this.sniServerNames);
+                      sslHandler.engine().setSSLParameters(sslParameters);
+                    }
+                  });
+        }
+      }
+
+      Environment environment = environmentBuilder.channelCustomizer(channelCustomizer).build();
+      shutdownService.wrap(closeStep("Closing environment(s)", () -> environment.close()));
+
+      streams = Utils.streams(this.streamCount, this.streams);
+
+      for (String stream : streams) {
+        StreamCreator streamCreator =
+            environment.streamCreator().stream(stream)
+                .maxLengthBytes(this.maxLengthBytes)
+                .maxSegmentSizeBytes(this.maxSegmentSize)
+                .leaderLocator(this.leaderLocator);
+
+        if (this.maxAge != null) {
+          streamCreator.maxAge(this.maxAge);
+        }
+
+        try {
+          streamCreator.create();
+        } catch (StreamException e) {
+          if (e.getCode() == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
+            String message =
+                String.format(
+                    "Warning: stream '%s' already exists, but with different properties than "
+                        + "max-length-bytes=%s, stream-max-segment-size-bytes=%s, queue-leader-locator=%s",
+                    stream, this.maxLengthBytes, this.maxSegmentSize, this.leaderLocator);
+            if (this.maxAge != null) {
+              message += String.format(", max-age=%s", this.maxAge);
+            }
+            this.out.println(message);
+          } else {
+            throw e;
+          }
+        }
+      }
+
+      if (this.deleteStreams) {
+        shutdownService.wrap(
+            closeStep(
+                "Deleting stream(s)",
+                () -> {
+                  for (String stream : streams) {
+                    LOGGER.debug("Deleting {}", stream);
+                    try {
+                      environment.deleteStream(stream);
+                      LOGGER.debug("Deleted {}", stream);
+                    } catch (Exception e) {
+                      LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
+                    }
+                  }
+                }));
+      }
+
+      // FIXME handle metadata update for consumers and publishers
+      // they should at least issue a warning that their stream has been deleted and that they're
+      // now
+      // useless
+
+      List<Producer> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
+      List<Runnable> producerRunnables =
+          IntStream.range(0, this.producers)
+              .mapToObj(
+                  i -> {
+                    Runnable rateLimiterCallback;
+                    if (this.rate > 0) {
+                      RateLimiter rateLimiter = RateLimiter.create(this.rate);
+                      rateLimiterCallback = () -> rateLimiter.acquire(1);
+                    } else {
+                      rateLimiterCallback = () -> {};
+                    }
+
+                    String stream = stream();
+                    ProducerBuilder producerBuilder = environment.producerBuilder();
+
+                    String producerName = this.producerNameStrategy.apply(stream, i + 1);
+                    if (producerName != null && !producerName.trim().isEmpty()) {
+                      producerBuilder =
+                          producerBuilder.name(producerName).confirmTimeout(Duration.ZERO);
+                    }
+
+                    Producer producer =
+                        producerBuilder
+                            .subEntrySize(this.subEntrySize)
+                            .batchSize(this.batchSize)
+                            .compression(
+                                this.compression == Compression.NONE ? null : this.compression)
+                            .maxUnconfirmedMessages(this.confirms)
+                            .stream(stream)
+                            .build();
+
+                    producers.add(producer);
+
+                    return (Runnable)
+                        () -> {
+                          final int msgSize = this.messageSize;
+
+                          ConfirmationHandler confirmationHandler =
+                              confirmationStatus -> {
+                                if (confirmationStatus.isConfirmed()) {
+                                  producerConfirm.increment();
+                                }
+                              };
+                          try {
+                            while (true && !Thread.currentThread().isInterrupted()) {
+                              rateLimiterCallback.run();
+                              // Using current time for interoperability with other tools
+                              // and also across different processes.
+                              // This is good enough to measure duration/latency this way
+                              // in a performance tool.
+                              long creationTime = System.currentTimeMillis();
+                              byte[] payload = new byte[msgSize];
+                              Utils.writeLong(payload, creationTime);
+                              producer.send(
+                                  producer.messageBuilder().addData(payload).build(),
+                                  confirmationHandler);
+                            }
+                          } catch (Exception e) {
+                            if (e instanceof InterruptedException
+                                || (e.getCause() != null
+                                    && e.getCause() instanceof InterruptedException)) {
+                              LOGGER.info("Publisher #{} thread interrupted", i, e);
+                            } else {
+                              LOGGER.warn("Publisher #{} crashed", i, e);
+                            }
+                          }
+                        };
+                  })
+              .collect(Collectors.toList());
+
+      List<Consumer> consumers =
+          Collections.synchronizedList(
+              IntStream.range(0, this.consumers)
+                  .mapToObj(
+                      i -> {
+                        final PerformanceMetrics metrics = this.performanceMetrics;
+
+                        AtomicLong messageCount = new AtomicLong(0);
+                        String stream = stream();
+                        ConsumerBuilder consumerBuilder = environment.consumerBuilder();
+                        consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
+
+                        if (this.storeEvery > 0) {
+                          String consumerName = this.consumerNameStrategy.apply(stream, i + 1);
+                          consumerBuilder =
+                              consumerBuilder
+                                  .name(consumerName)
+                                  .autoTrackingStrategy()
+                                  .messageCountBeforeStorage(this.storeEvery)
+                                  .builder();
+                        }
+
+                        consumerBuilder =
+                            consumerBuilder.messageHandler(
+                                (context, message) -> {
+                                  // at very high throughput ( > 1 M / s), the histogram can
+                                  // become a bottleneck,
+                                  // so we downsample and calculate latency for every x message
+                                  // this should not affect the metric much
+                                  if (messageCount.incrementAndGet() % 100 == 0) {
+                                    try {
+                                      long time = Utils.readLong(message.getBodyAsBinary());
+                                      // see above why we use current time to measure latency
+                                      metrics.latency(
+                                          System.currentTimeMillis() - time, TimeUnit.MILLISECONDS);
+                                    } catch (Exception e) {
+                                      // not able to read the body, maybe not a message from the
+                                      // tool
+                                    }
+                                    metrics.offset(context.offset());
+                                  }
+                                });
+
+                        Consumer consumer = consumerBuilder.build();
+
+                        return consumer;
+                      })
+                  .collect(Collectors.toList()));
+
       shutdownService.wrap(
           closeStep(
-              "Deleting stream(s)",
+              "Closing consumers",
               () -> {
-                for (String stream : streams) {
-                  LOGGER.debug("Deleting {}", stream);
-                  try {
-                    environment.deleteStream(stream);
-                    LOGGER.debug("Deleted {}", stream);
-                  } catch (Exception e) {
-                    LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
-                  }
+                for (Consumer consumer : consumers) {
+                  consumer.close();
                 }
               }));
-    }
 
-    // FIXME handle metadata update for consumers and publishers
-    // they should at least issue a warning that their stream has been deleted and that they're now
-    // useless
-
-    List<Producer> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
-    List<Runnable> producerRunnables =
-        IntStream.range(0, this.producers)
-            .mapToObj(
-                i -> {
-                  Runnable rateLimiterCallback;
-                  if (this.rate > 0) {
-                    RateLimiter rateLimiter = RateLimiter.create(this.rate);
-                    rateLimiterCallback = () -> rateLimiter.acquire(1);
-                  } else {
-                    rateLimiterCallback = () -> {};
-                  }
-
-                  String stream = stream();
-                  ProducerBuilder producerBuilder = environment.producerBuilder();
-
-                  String producerName = this.producerNameStrategy.apply(stream, i + 1);
-                  if (producerName != null && !producerName.trim().isEmpty()) {
-                    producerBuilder =
-                        producerBuilder.name(producerName).confirmTimeout(Duration.ZERO);
-                  }
-
-                  Producer producer =
-                      producerBuilder
-                          .subEntrySize(this.subEntrySize)
-                          .batchSize(this.batchSize)
-                          .compression(
-                              this.compression == Compression.NONE ? null : this.compression)
-                          .maxUnconfirmedMessages(this.confirms)
-                          .stream(stream)
-                          .build();
-
-                  producers.add(producer);
-
-                  return (Runnable)
-                      () -> {
-                        final int msgSize = this.messageSize;
-
-                        ConfirmationHandler confirmationHandler =
-                            confirmationStatus -> {
-                              if (confirmationStatus.isConfirmed()) {
-                                producerConfirm.increment();
-                              }
-                            };
-                        try {
-                          while (true && !Thread.currentThread().isInterrupted()) {
-                            rateLimiterCallback.run();
-                            // Using current time for interoperability with other tools
-                            // and also across different processes.
-                            // This is good enough to measure duration/latency this way
-                            // in a performance tool.
-                            long creationTime = System.currentTimeMillis();
-                            byte[] payload = new byte[msgSize];
-                            Utils.writeLong(payload, creationTime);
-                            producer.send(
-                                producer.messageBuilder().addData(payload).build(),
-                                confirmationHandler);
-                          }
-                        } catch (Exception e) {
-                          if (e instanceof InterruptedException
-                              || (e.getCause() != null
-                                  && e.getCause() instanceof InterruptedException)) {
-                            LOGGER.info("Publisher #{} thread interrupted", i, e);
-                          } else {
-                            LOGGER.warn("Publisher #{} crashed", i, e);
-                          }
-                        }
-                      };
-                })
-            .collect(Collectors.toList());
-
-    List<Consumer> consumers =
-        Collections.synchronizedList(
-            IntStream.range(0, this.consumers)
-                .mapToObj(
-                    i -> {
-                      final PerformanceMetrics metrics = this.performanceMetrics;
-
-                      AtomicLong messageCount = new AtomicLong(0);
-                      String stream = stream();
-                      ConsumerBuilder consumerBuilder = environment.consumerBuilder();
-                      consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
-
-                      if (this.storeEvery > 0) {
-                        String consumerName = this.consumerNameStrategy.apply(stream, i + 1);
-                        consumerBuilder =
-                            consumerBuilder
-                                .name(consumerName)
-                                .autoTrackingStrategy()
-                                .messageCountBeforeStorage(this.storeEvery)
-                                .builder();
-                      }
-
-                      consumerBuilder =
-                          consumerBuilder.messageHandler(
-                              (context, message) -> {
-                                // at very high throughput ( > 1 M / s), the histogram can
-                                // become a bottleneck,
-                                // so we downsample and calculate latency for every x message
-                                // this should not affect the metric much
-                                if (messageCount.incrementAndGet() % 100 == 0) {
-                                  try {
-                                    long time = Utils.readLong(message.getBodyAsBinary());
-                                    // see above why we use current time to measure latency
-                                    metrics.latency(
-                                        System.currentTimeMillis() - time, TimeUnit.MILLISECONDS);
-                                  } catch (Exception e) {
-                                    // not able to read the body, maybe not a message from the tool
-                                  }
-                                  metrics.offset(context.offset());
-                                }
-                              });
-
-                      Consumer consumer = consumerBuilder.build();
-
-                      return consumer;
-                    })
-                .collect(Collectors.toList()));
-
-    shutdownService.wrap(
-        closeStep(
-            "Closing consumers",
-            () -> {
-              for (Consumer consumer : consumers) {
-                consumer.close();
-              }
-            }));
-
-    ExecutorService executorService;
-    if (this.producers > 0) {
-      executorService =
-          Executors.newFixedThreadPool(
-              this.producers, new NamedThreadFactory("stream-perf-test-publishers-"));
-      for (Runnable producer : producerRunnables) {
-        this.out.println("Starting producer");
-        executorService.submit(producer);
+      ExecutorService executorService;
+      if (this.producers > 0) {
+        executorService =
+            Executors.newFixedThreadPool(
+                this.producers, new NamedThreadFactory("stream-perf-test-publishers-"));
+        for (Runnable producer : producerRunnables) {
+          this.out.println("Starting producer");
+          executorService.submit(producer);
+        }
+      } else {
+        executorService = null;
       }
-    } else {
-      executorService = null;
+
+      shutdownService.wrap(
+          closeStep(
+              "Closing producers",
+              () -> {
+                for (Producer p : producers) {
+                  p.close();
+                }
+              }));
+
+      shutdownService.wrap(
+          closeStep(
+              "Closing producers executor service",
+              () -> {
+                if (executorService != null) {
+                  executorService.shutdownNow();
+                }
+              }));
+
+      String metricsHeader = "Arguments: " + String.join(" ", arguments);
+
+      this.performanceMetrics.start(metricsHeader);
+      shutdownService.wrap(closeStep("Closing metrics", () -> this.performanceMetrics.close()));
+
+      CountDownLatch latch = new CountDownLatch(1);
+      Runtime.getRuntime().addShutdownHook(new Thread(() -> latch.countDown()));
+      try {
+        latch.await();
+      } catch (InterruptedException e) {
+        // moving on to the closing sequence
+      }
+    } finally {
+      shutdownService.close();
     }
-
-    shutdownService.wrap(
-        closeStep(
-            "Closing producers",
-            () -> {
-              for (Producer p : producers) {
-                p.close();
-              }
-            }));
-
-    shutdownService.wrap(
-        closeStep(
-            "Closing producers executor service",
-            () -> {
-              if (executorService != null) {
-                executorService.shutdownNow();
-              }
-            }));
-
-    String metricsHeader = "Arguments: " + String.join(" ", arguments);
-
-    this.performanceMetrics.start(metricsHeader);
-    shutdownService.wrap(closeStep("Closing metrics", () -> this.performanceMetrics.close()));
-
-    CountDownLatch latch = new CountDownLatch(1);
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> latch.countDown()));
-    try {
-      latch.await();
-    } catch (InterruptedException e) {
-      // moving on to the closing sequence
-    }
-
-    shutdownService.close();
 
     return 0;
   }
