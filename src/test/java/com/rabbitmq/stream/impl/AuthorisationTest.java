@@ -289,7 +289,8 @@ public class AuthorisationTest {
       configurationClient.storeOffset("configuration", s, 10);
 
       Duration timeToCheckOffsetTracking =
-          waitAtMost(5, () -> configurationClient.queryOffset("configuration", s) == 10);
+          waitAtMost(
+              5, () -> configurationClient.queryOffset("configuration", s).getOffset() == 10);
 
       Client client = client();
 
@@ -300,7 +301,7 @@ public class AuthorisationTest {
       assertThat(configurationClient.queryOffset("default-client", s)).isNotEqualTo(10);
 
       // querying is not even authorised for the default client, it should return 0
-      assertThat(client.queryOffset("configuration", s)).isZero();
+      assertThat(client.queryOffset("configuration", s).getOffset()).isZero();
 
     } finally {
       assertThat(configurationClient.delete(s).isOk()).isTrue();

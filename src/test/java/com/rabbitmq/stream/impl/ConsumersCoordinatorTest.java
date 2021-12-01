@@ -36,6 +36,7 @@ import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
 import com.rabbitmq.stream.impl.Client.MessageListener;
+import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumersPoolInfo;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import java.time.Duration;
@@ -1095,8 +1096,8 @@ public class ConsumersCoordinatorTest {
     long lastStoredOffset = 5;
     long lastReceivedOffset = 10;
     when(client.queryOffset(consumerName, "stream"))
-        .thenReturn((long) 0)
-        .thenReturn(lastStoredOffset);
+        .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, 0L))
+        .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, lastStoredOffset));
 
     ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
         ArgumentCaptor.forClass(OffsetSpecification.class);

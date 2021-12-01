@@ -502,7 +502,8 @@ public class StreamConsumerTest {
     waitAtMost(5, () -> messageCount.get() == storeEvery * 2);
 
     Client client = cf.get();
-    waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
+    waitAtMost(
+        5, () -> client.queryOffset(reference, stream).getOffset() == lastReceivedOffset.get());
 
     int extraMessages = storeEvery / 10;
     IntStream.range(0, extraMessages)
@@ -514,7 +515,8 @@ public class StreamConsumerTest {
 
     waitAtMost(5, () -> messageCount.get() == storeEvery * 2 + extraMessages);
 
-    waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
+    waitAtMost(
+        5, () -> client.queryOffset(reference, stream).getOffset() == lastReceivedOffset.get());
   }
 
   @Test
@@ -550,7 +552,8 @@ public class StreamConsumerTest {
     consumer.close();
 
     Client client = cf.get();
-    waitAtMost(5, () -> client.queryOffset(reference, stream) == lastReceivedOffset.get());
+    waitAtMost(
+        5, () -> client.queryOffset(reference, stream).getOffset() == lastReceivedOffset.get());
   }
 
   @Test

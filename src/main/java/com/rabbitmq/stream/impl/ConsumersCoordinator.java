@@ -29,6 +29,7 @@ import com.rabbitmq.stream.impl.Client.ChunkListener;
 import com.rabbitmq.stream.impl.Client.CreditNotification;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.MetadataListener;
+import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
@@ -647,9 +648,9 @@ class ConsumersCoordinator {
 
         String offsetTrackingReference = subscriptionTracker.offsetTrackingReference;
         if (offsetTrackingReference != null) {
-          long trackedOffset =
+          QueryOffsetResponse queryOffsetResponse =
               client.queryOffset(offsetTrackingReference, subscriptionTracker.stream);
-          if (trackedOffset != 0) {
+          if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
             if (offsetSpecification != null && isInitialSubscription) {
               // subscription call (not recovery), so telling the user their offset specification is
               // ignored
@@ -660,11 +661,11 @@ class ConsumersCoordinator {
             }
             LOGGER.debug(
                 "Using offset {} to start consuming from {} with consumer {} " + "(instead of {})",
-                trackedOffset,
+                queryOffsetResponse.getOffset(),
                 subscriptionTracker.stream,
                 offsetTrackingReference,
                 offsetSpecification);
-            offsetSpecification = OffsetSpecification.offset(trackedOffset + 1);
+            offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
           }
         }
 

@@ -184,9 +184,9 @@ public class StreamPerfTestTest {
     Future<?> run = run(builder().storeEvery(10).consumerNames("consumer-%2$d-on-stream-%1$s"));
     waitUntilStreamExists(s);
     String consumerName = "consumer-1-on-stream-" + s;
-    long offset = client.queryOffset(consumerName, s);
+    long offset = client.queryOffset(consumerName, s).getOffset();
     waitOneSecond();
-    waitAtMost(() -> client.queryOffset(consumerName, s) > offset);
+    waitAtMost(() -> client.queryOffset(consumerName, s).getOffset() > offset);
     run.cancel(true);
     waitRunEnds();
   }
@@ -196,9 +196,9 @@ public class StreamPerfTestTest {
     Future<?> run = run(builder());
     waitUntilStreamExists(s);
     String consumerName = s + "-0"; // default value when offset tracking is enabled
-    assertThat(client.queryOffset(consumerName, s)).isZero();
+    assertThat(client.queryOffset(consumerName, s).getOffset()).isZero();
     waitOneSecond();
-    assertThat(client.queryOffset(consumerName, s)).isZero();
+    assertThat(client.queryOffset(consumerName, s).getOffset()).isZero();
     run.cancel(true);
     waitRunEnds();
   }

@@ -570,7 +570,9 @@ class StreamEnvironment implements Environment {
               offsetTrackingRegistration.closingCallback().run();
               LOGGER.debug("Offset tracking registration closing sequence executed");
             } catch (Exception e) {
-              LOGGER.warn("Error while executing offset tracking registration closing sequence");
+              LOGGER.warn(
+                  "Error while executing offset tracking registration closing sequence: {}",
+                  e.getMessage());
             }
             closingCallable.run();
           };

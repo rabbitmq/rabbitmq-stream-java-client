@@ -17,7 +17,9 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.SubscriptionListener;
+import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -28,28 +30,17 @@ import org.slf4j.LoggerFactory;
 class StreamConsumer implements Consumer {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamConsumer.class);
-
-  private volatile Runnable closingCallback;
-
   private final Runnable closingTrackingCallback;
-
   private final AtomicBoolean closed = new AtomicBoolean(false);
-
   private final String name;
-
   private final String stream;
-
   private final StreamEnvironment environment;
-
-  private volatile Client trackingClient;
-
-  private volatile Status status;
-
-  private volatile long lastRequestedStoredOffset = 0;
-
   private final LongConsumer trackingCallback;
-
   private final Runnable initCallback;
+  private volatile Runnable closingCallback;
+  private volatile Client trackingClient;
+  private volatile Status status;
+  private volatile long lastRequestedStoredOffset = 0;
 
   StreamConsumer(
       String stream,
@@ -195,15 +186,35 @@ class StreamConsumer implements Consumer {
 
   long lastStoredOffset() {
     if (canTrack()) {
+      // the client can be null by now, so we catch any exception
+      QueryOffsetResponse response;
       try {
-        // the client can be null by now, but we catch the exception and return 0
-        // callers should know how to deal with a stored offset of 0
-        return this.trackingClient.queryOffset(this.name, this.stream);
+        response = this.trackingClient.queryOffset(this.name, this.stream);
       } catch (Exception e) {
-        return 0;
+        throw new IllegalStateException(
+            String.format(
+                "Not possible to query offset for consumer %s on stream %s for now",
+                this.name, this.stream),
+            e);
       }
+      if (response.isOk()) {
+        return response.getOffset();
+      } else {
+        throw new StreamException(
+            String.format(
+                "QueryOffset for consumer %s on stream %s returned an error",
+                this.name, this.stream),
+            response.getResponseCode());
+      }
+
+    } else if (this.name == null) {
+      throw new UnsupportedOperationException(
+          "Not possible to query stored offset for a consumer without a name");
     } else {
-      return 0;
+      throw new IllegalStateException(
+          String.format(
+              "Not possible to query offset for consumer %s on stream %s for now",
+              this.name, this.stream));
     }
   }
 

@@ -97,7 +97,7 @@ public class OffsetTrackingTest {
       client.storeOffset(trackingReference, s, storedOffset);
     }
     Thread.sleep(100L); // store offset is fire-and-forget
-    long offset = client.queryOffset(queryReference, s);
+    long offset = client.queryOffset(queryReference, s).getOffset();
     assertThat(offset).as(message).isEqualTo(expectedOffset);
   }
 
@@ -213,7 +213,8 @@ public class OffsetTrackingTest {
                 waitAtMost(
                     5,
                     () ->
-                        lastStoredOffset.get() == consumerReference.get().queryOffset(reference, s),
+                        lastStoredOffset.get()
+                            == consumerReference.get().queryOffset(reference, s).getOffset(),
                     () ->
                         "expecting last stored offset to be "
                             + lastStoredOffset
@@ -249,7 +250,7 @@ public class OffsetTrackingTest {
                                     client.credit(subscriptionId, 1))
                             .messageListener(messageListener));
 
-                long offsetToStartFrom = consumer.queryOffset(reference, s) + 1;
+                long offsetToStartFrom = consumer.queryOffset(reference, s).getOffset() + 1;
                 consumer.subscribe(b(0), s, OffsetSpecification.offset(offsetToStartFrom), 1);
 
                 assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
@@ -330,7 +331,7 @@ public class OffsetTrackingTest {
 
     IntStream.range(0, messageCount).forEach(i -> client.storeOffset("some reference", stream, i));
 
-    waitAtMost(() -> client.queryOffset("some reference", stream) == messageCount - 1);
+    waitAtMost(() -> client.queryOffset("some reference", stream).getOffset() == messageCount - 1);
 
     confirmLatch.set(new CountDownLatch(messageCount));
 

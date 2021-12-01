@@ -1077,7 +1077,7 @@ public class Client implements AutoCloseable {
     channel.writeAndFlush(bb);
   }
 
-  public long queryOffset(String reference, String stream) {
+  public QueryOffsetResponse queryOffset(String reference, String stream) {
     if (reference == null || reference.isEmpty() || reference.length() > 256) {
       throw new IllegalArgumentException(
           "Reference must a non-empty string of less than 256 characters");
@@ -1103,10 +1103,7 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       QueryOffsetResponse response = request.response.get();
-      if (!response.isOk()) {
-        LOGGER.info("Query offset failed with code {}", formatConstant(response.getResponseCode()));
-      }
-      return response.getOffset();
+      return response;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
       throw new StreamException(e);
@@ -1775,7 +1772,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  static class QueryOffsetResponse extends Response {
+  public static class QueryOffsetResponse extends Response {
 
     private final long offset;
 

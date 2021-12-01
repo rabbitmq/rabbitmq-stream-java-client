@@ -174,7 +174,9 @@ public class SuperStreamConsumerTest {
     // offset near the end (the message count per partition minus a few messages)
     long almostLastOffset = messageCount / partitionCount - messageCount / (partitionCount * 10);
     partitions.forEach(
-        p -> assertThat(client.queryOffset(consumerName, p)).isGreaterThan(almostLastOffset));
+        p ->
+            assertThat(client.queryOffset(consumerName, p).getOffset())
+                .isGreaterThan(almostLastOffset));
     consumer.close();
   }
 
@@ -226,7 +228,9 @@ public class SuperStreamConsumerTest {
     // offset near the end (the message count per partition minus a few messages)
     long almostLastOffset = messageCount / partitionCount - messageCount / (partitionCount * 10);
     partitions.forEach(
-        p -> assertThat(client.queryOffset(consumerName, p)).isGreaterThan(almostLastOffset));
+        p ->
+            assertThat(client.queryOffset(consumerName, p).getOffset())
+                .isGreaterThan(almostLastOffset));
     consumer.close();
   }
 }
