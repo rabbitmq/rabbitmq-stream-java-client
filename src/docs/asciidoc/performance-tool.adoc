@@ -237,15 +237,6 @@ java -jar stream-perf-test.jar --streams stream1,stream2,stream3 \
                                --producers 3 --consumers 3
 ----
 
-If you do not want the tool to create and delete streams for a run, because they are already created,
-use the `--pre-declared` option:
-
-----
-java -jar stream-perf-test.jar --streams stream1,stream2,stream3 \
-                               --producers 3 --consumers 3 \
-                               --pre-declared
-----
-
 The stream creation process has the following semantics:
 
 * the tool always tries to create streams.
@@ -253,7 +244,8 @@ The stream creation process has the following semantics:
 as the ones the tool uses (see <<performance-tool-retention,retention>> below), the
 run will start normally as stream creation is idempotent.
 * if the target streams already exist but do not have the exact same properties
-as the ones the tool uses, the creation process will fail, and the run will not start.
+as the ones the tool uses, the run will start normally as well, the tool will output a warning.
+* for any other errors during creation, the run will stop.
 * the streams are not deleted after the run.
 * if you want the tool to delete the streams after a run, use the `--delete-streams` flag.
 
