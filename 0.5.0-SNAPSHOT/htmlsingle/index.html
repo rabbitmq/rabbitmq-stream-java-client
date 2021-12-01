@@ -532,7 +532,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.5.0-SNAPSHOT</span>
-<br><span id="revremark">(86e78a8)</span>
+<br><span id="revremark">(28fff99)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -3642,17 +3642,6 @@ a producer and a consumer on each of them:</p>
 </div>
 </div>
 <div class="paragraph">
-<p>If you do not want the tool to create and delete streams for a run, because they are already created,
-use the <code>--pre-declared</code> option:</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre>java -jar stream-perf-test.jar --streams stream1,stream2,stream3 \
-                               --producers 3 --consumers 3 \
-                               --pre-declared</pre>
-</div>
-</div>
-<div class="paragraph">
 <p>The stream creation process has the following semantics:</p>
 </div>
 <div class="ulist">
@@ -3667,7 +3656,10 @@ run will start normally as stream creation is idempotent.</p>
 </li>
 <li>
 <p>if the target streams already exist but do not have the exact same properties
-as the ones the tool uses, the creation process will fail, and the run will not start.</p>
+as the ones the tool uses, the run will start normally as well, the tool will output a warning.</p>
+</li>
+<li>
+<p>for any other errors during creation, the run will stop.</p>
 </li>
 <li>
 <p>the streams are not deleted after the run.</p>
@@ -4074,7 +4066,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.5.0-SNAPSHOT<br>
-Last updated 2021-11-29 08:40:28 UTC
+Last updated 2021-12-01 10:52:03 UTC
 </div>
 </div>
 </body>
