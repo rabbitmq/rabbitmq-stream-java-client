@@ -195,7 +195,7 @@ class OffsetTrackingCoordinator {
       if (this.count > 0) {
         if (this.clock.time() - this.lastTrackingActivity > this.flushIntervalInNs) {
           long lastStoredOffset = consumer.lastStoredOffset();
-          if (lastStoredOffset < lastProcessedOffset) {
+          if (Long.compareUnsigned(lastStoredOffset, lastProcessedOffset) < 0) {
             this.consumer.store(this.lastProcessedOffset);
             this.lastTrackingActivity = clock.time();
           }
@@ -217,7 +217,7 @@ class OffsetTrackingCoordinator {
     public Runnable closingCallback() {
       return () -> {
         long lastStoredOffset = consumer.lastStoredOffset();
-        if (lastStoredOffset < lastProcessedOffset) {
+        if (Long.compareUnsigned(lastStoredOffset, lastProcessedOffset) < 0) {
           LOGGER.debug("Storing offset before closing");
           this.consumer.store(this.lastProcessedOffset);
         } else {
@@ -254,7 +254,7 @@ class OffsetTrackingCoordinator {
     public void flushIfNecessary() {
       if (this.clock.time() - this.lastTrackingActivity > this.checkIntervalInNs) {
         long lastStoredOffset = consumer.lastStoredOffset();
-        if (lastStoredOffset < lastRequestedOffset) {
+        if (Long.compareUnsigned(lastStoredOffset, lastRequestedOffset) < 0) {
           this.consumer.store(this.lastRequestedOffset);
           this.lastTrackingActivity = clock.time();
         }
