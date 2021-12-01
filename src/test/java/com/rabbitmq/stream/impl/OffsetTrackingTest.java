@@ -16,14 +16,17 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.forEach;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.MessageListener;
+import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import io.vavr.Tuple;
@@ -99,6 +102,14 @@ public class OffsetTrackingTest {
     Thread.sleep(100L); // store offset is fire-and-forget
     long offset = client.queryOffset(queryReference, s).getOffset();
     assertThat(offset).as(message).isEqualTo(expectedOffset);
+  }
+
+  @Test
+  void shouldReturnNoOffsetIfNothingStoredForReference() {
+    QueryOffsetResponse response = cf.get().queryOffset(UUID.randomUUID().toString(), stream);
+    assertThat(response.isOk()).isFalse();
+    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_NO_OFFSET);
+    assertThat(response.getOffset()).isEqualTo(0);
   }
 
   @ParameterizedTest

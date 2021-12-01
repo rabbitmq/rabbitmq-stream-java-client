@@ -13,7 +13,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import java.time.Duration;
 import java.util.Collection;
@@ -91,7 +93,11 @@ class OffsetTrackingCoordinator {
                           }
                           Tracker t = iterator.next();
                           if (t.consumer().isOpen()) {
-                            t.flushIfNecessary();
+                            try {
+                              t.flushIfNecessary();
+                            } catch (Exception e) {
+                              LOGGER.info("Error while flushing tracker: {}", e.getMessage());
+                            }
                           } else {
                             iterator.remove();
                           }
@@ -194,10 +200,18 @@ class OffsetTrackingCoordinator {
     public void flushIfNecessary() {
       if (this.count > 0) {
         if (this.clock.time() - this.lastTrackingActivity > this.flushIntervalInNs) {
-          long lastStoredOffset = consumer.lastStoredOffset();
-          if (Long.compareUnsigned(lastStoredOffset, lastProcessedOffset) < 0) {
-            this.consumer.store(this.lastProcessedOffset);
-            this.lastTrackingActivity = clock.time();
+          try {
+            long lastStoredOffset = consumer.lastStoredOffset();
+            if (Long.compareUnsigned(lastStoredOffset, lastProcessedOffset) < 0) {
+              this.consumer.store(this.lastProcessedOffset);
+              this.lastTrackingActivity = clock.time();
+            }
+          } catch (StreamException e) {
+            if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+              // probably nothing stored yet, let it go
+            } else {
+              throw e;
+            }
           }
         }
       }
@@ -216,15 +230,23 @@ class OffsetTrackingCoordinator {
     @Override
     public Runnable closingCallback() {
       return () -> {
-        long lastStoredOffset = consumer.lastStoredOffset();
-        if (Long.compareUnsigned(lastStoredOffset, lastProcessedOffset) < 0) {
-          LOGGER.debug("Storing offset before closing");
-          this.consumer.store(this.lastProcessedOffset);
-        } else {
-          LOGGER.debug(
-              "Not storing offset before closing because last stored offset after last processed offset: {} > {}",
-              lastStoredOffset,
-              lastProcessedOffset);
+        try {
+          long lastStoredOffset = consumer.lastStoredOffset();
+          if (Long.compareUnsigned(lastStoredOffset, lastProcessedOffset) < 0) {
+            LOGGER.debug("Storing offset before closing");
+            this.consumer.store(this.lastProcessedOffset);
+          } else {
+            LOGGER.debug(
+                "Not storing offset before closing because last stored offset after last processed offset: {} > {}",
+                lastStoredOffset,
+                lastProcessedOffset);
+          }
+        } catch (StreamException e) {
+          if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+            // probably nothing stored yet, let it go
+          } else {
+            throw e;
+          }
         }
       };
     }
@@ -253,10 +275,18 @@ class OffsetTrackingCoordinator {
     @Override
     public void flushIfNecessary() {
       if (this.clock.time() - this.lastTrackingActivity > this.checkIntervalInNs) {
-        long lastStoredOffset = consumer.lastStoredOffset();
-        if (Long.compareUnsigned(lastStoredOffset, lastRequestedOffset) < 0) {
-          this.consumer.store(this.lastRequestedOffset);
-          this.lastTrackingActivity = clock.time();
+        try {
+          long lastStoredOffset = consumer.lastStoredOffset();
+          if (Long.compareUnsigned(lastStoredOffset, lastRequestedOffset) < 0) {
+            this.consumer.store(this.lastRequestedOffset);
+            this.lastTrackingActivity = clock.time();
+          }
+        } catch (StreamException e) {
+          if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+            // probably nothing stored yet, let it go
+          } else {
+            throw e;
+          }
         }
       }
     }
