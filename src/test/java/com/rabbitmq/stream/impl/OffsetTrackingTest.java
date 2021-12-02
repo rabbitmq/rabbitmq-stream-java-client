@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.forEach;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
@@ -106,8 +108,7 @@ public class OffsetTrackingTest {
   @Test
   void shouldReturnNoOffsetIfNothingStoredForReference() {
     QueryOffsetResponse response = cf.get().queryOffset(UUID.randomUUID().toString(), stream);
-    assertThat(response.isOk()).isFalse();
-    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_NO_OFFSET);
+    assertThat(response).is(ko()).has(responseCode(Constants.RESPONSE_CODE_NO_OFFSET));
     assertThat(response.getOffset()).isEqualTo(0);
   }
 
