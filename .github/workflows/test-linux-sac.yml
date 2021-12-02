@@ -1,0 +1,40 @@
+name: Build (Linux)
+
+on:
+  push:
+    branches:
+      - single-active-consumer
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    services:
+      rabbitmq:
+        image: pivotalrabbitmq/rabbitmq-stream:sac
+        env:
+          RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbitmq_stream advertised_host localhost
+        ports:
+          - 5552:5552
+          - 5672:5672
+          - 1883:1883
+          - 61613:61613
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up JDK
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'zulu'
+          java-version: '11'
+      - name: Cache Maven packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+      - name: Enable MQTT and STOMP plugins
+        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_stomp
+      - name: Test
+        run: ./mvnw test -Drabbitmqctl.bin=DOCKER:${{job.services.rabbitmq.id}}
