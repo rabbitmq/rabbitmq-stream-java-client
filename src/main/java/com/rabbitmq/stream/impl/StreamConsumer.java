@@ -64,6 +64,7 @@ class StreamConsumer implements Consumer {
   private volatile long lastRequestedStoredOffset = 0;
   private final AtomicBoolean nothingStoredYet = new AtomicBoolean(true);
   private volatile ConsumerUpdateListener.Status sacStatus;
+  private final OffsetSpecification initialOffsetSpecification;
 
   StreamConsumer(
       String stream,
@@ -83,6 +84,10 @@ class StreamConsumer implements Consumer {
       this.name = name;
       this.stream = stream;
       this.environment = environment;
+      this.initialOffsetSpecification =
+          offsetSpecification == null
+              ? ConsumersCoordinator.DEFAULT_OFFSET_SPECIFICATION
+              : offsetSpecification;
 
       AtomicReference<MessageHandler> decoratedMessageHandler = new AtomicReference<>();
       LongSupplier trackingFlushCallback;
@@ -106,7 +111,7 @@ class StreamConsumer implements Consumer {
         }
 
         this.trackingCallback = trackingConsumerRegistration.trackingCallback();
-        trackingFlushCallback = () -> trackingConsumerRegistration.flush();
+        trackingFlushCallback = trackingConsumerRegistration::flush;
       } else {
         trackingClosingCallback = () -> {};
         this.trackingCallback = Utils.NO_OP_LONG_CONSUMER;
@@ -136,11 +141,23 @@ class StreamConsumer implements Consumer {
                           || context.previousStatus() == ConsumerUpdateListener.Status.PASSIVE)
                       && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
                     LOGGER.debug("Looking up offset (stream {})", this.stream);
-                    StreamConsumer consumer = (StreamConsumer) context.consumer();
-                    long offset = consumer.storedOffset();
-                    LOGGER.debug(
-                        "Stored offset is {}, returning the value + 1 to the server", offset);
-                    return OffsetSpecification.offset(offset + 1);
+                    Consumer consumer = context.consumer();
+                    try {
+                      long offset = consumer.storedOffset();
+                      LOGGER.debug(
+                          "Stored offset is {}, returning the value + 1 to the server", offset);
+                      result = OffsetSpecification.offset(offset + 1);
+                    } catch (StreamException e) {
+                      if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+                        LOGGER.debug(
+                            "No stored offset, using initial offset specification: {}",
+                            this.initialOffsetSpecification);
+                        result = initialOffsetSpecification;
+                      } else {
+                        throw e;
+                      }
+                    }
+                    return result;
                   } else if (context.previousStatus() == ConsumerUpdateListener.Status.ACTIVE
                       && context.status() == ConsumerUpdateListener.Status.PASSIVE) {
                     LOGGER.debug(
@@ -274,9 +291,7 @@ class StreamConsumer implements Consumer {
           "Offset {} stored (consumer {}, stream {})", expectedStoredOffset, this.id, this.stream);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-    } catch (ExecutionException e) {
-      LOGGER.warn("Error while checking offset has been stored", e);
-    } catch (TimeoutException e) {
+    } catch (ExecutionException | TimeoutException e) {
       LOGGER.warn("Error while checking offset has been stored", e);
     }
   }
@@ -466,8 +481,8 @@ class StreamConsumer implements Consumer {
       } else {
         throw new StreamException(
             String.format(
-                "QueryOffset for consumer %s on stream %s returned an error",
-                this.name, this.stream),
+                "QueryOffset for consumer %s on stream %s returned an error (%s)",
+                this.name, this.stream, Utils.formatConstant(response.getResponseCode())),
             response.getResponseCode());
       }
 

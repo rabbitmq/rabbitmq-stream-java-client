@@ -58,8 +58,7 @@ class ConsumersCoordinator {
 
   static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
 
-  private static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION =
-      OffsetSpecification.next();
+  static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ConsumersCoordinator.class);
   private final Random random = new Random();
