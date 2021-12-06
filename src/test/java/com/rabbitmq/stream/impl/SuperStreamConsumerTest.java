@@ -23,12 +23,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.TestUtils.CallableBooleanSupplier;
 import com.rabbitmq.stream.impl.TestUtils.SingleActiveConsumer;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import io.netty.channel.EventLoopGroup;
@@ -81,6 +85,30 @@ public class SuperStreamConsumerTest {
               client.messageBuilder().addData(partition.getBytes(StandardCharsets.UTF_8)).build()));
     }
     latchAssert(publishLatch).completes();
+  }
+
+  private static void waitUntil(CallableBooleanSupplier action) {
+    try {
+      waitAtMost(action);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static OffsetSpecification lastStoredOffset(
+      Consumer consumer, OffsetSpecification defaultValue) {
+    OffsetSpecification offsetSpecification;
+    try {
+      long storedOffset = consumer.storedOffset();
+      offsetSpecification = OffsetSpecification.offset(storedOffset);
+    } catch (StreamException e) {
+      if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+        offsetSpecification = defaultValue;
+      } else {
+        throw e;
+      }
+    }
+    return offsetSpecification;
   }
 
   @BeforeEach
@@ -501,6 +529,218 @@ public class SuperStreamConsumerTest {
                 && receivedMessages.get("2" + partitions.get(1)).get() == messageCount * 2
                 && receivedMessages.get("2" + partitions.get(2)).get() == messageCount * 2);
 
+    consumer2.close();
+
+    assertThat(messageWaveCount).hasValue(5);
+    assertThat(
+            receivedMessages.values().stream()
+                .map(AtomicInteger::get)
+                .mapToInt(Integer::intValue)
+                .sum())
+        .isEqualTo(messageCount * partitionCount * 5);
+    int expectedMessageCountPerPartition = messageCount * messageWaveCount.get();
+    receivedMessagesPerPartitions
+        .values()
+        .forEach(v -> assertThat(v).hasValue(expectedMessageCountPerPartition));
+    Client c = cf.get();
+    partitions.forEach(
+        partition ->
+            assertThat(lastReceivedOffsets.get(partition))
+                .isGreaterThanOrEqualTo(expectedMessageCountPerPartition)
+                .isEqualTo(c.queryOffset(consumerName, partition).getOffset()));
+  }
+
+  @Test
+  @SingleActiveConsumer
+  void sacManualOffsetTrackingShouldTakeOverOnRelanbancing() throws Exception {
+    declareSuperStreamTopology(connection, superStream, partitionCount);
+    int messageCount = 5_000;
+    int storeEvery = messageCount / 100;
+    AtomicInteger messageWaveCount = new AtomicInteger();
+    int superConsumerCount = 3;
+    List<String> partitions =
+        IntStream.range(0, partitionCount)
+            .mapToObj(i -> superStream + "-" + i)
+            .collect(Collectors.toList());
+    Map<String, Boolean> consumerStates =
+        new ConcurrentHashMap<>(partitionCount * superConsumerCount);
+    Map<String, AtomicInteger> receivedMessages =
+        new ConcurrentHashMap<>(partitionCount * superConsumerCount);
+    Map<String, AtomicInteger> receivedMessagesPerPartitions =
+        new ConcurrentHashMap<>(partitionCount);
+    Map<String, Map<String, Consumer>> consumers = new ConcurrentHashMap<>(superConsumerCount);
+    IntStream.range(0, superConsumerCount)
+        .mapToObj(String::valueOf)
+        .forEach(
+            consumer ->
+                partitions.forEach(
+                    partition -> {
+                      consumers.put(consumer, new ConcurrentHashMap<>(partitionCount));
+                      consumerStates.put(consumer + partition, false);
+                      receivedMessages.put(consumer + partition, new AtomicInteger(0));
+                    }));
+    Map<String, Long> lastReceivedOffsets = new ConcurrentHashMap<>();
+    partitions.forEach(
+        partition -> {
+          lastReceivedOffsets.put(partition, 0L);
+          receivedMessagesPerPartitions.put(partition, new AtomicInteger(0));
+        });
+    Runnable publishOnAllPartitions =
+        () -> {
+          partitions.forEach(
+              partition -> TestUtils.publishAndWaitForConfirms(cf, messageCount, partition));
+          messageWaveCount.incrementAndGet();
+        };
+    String consumerName = "my-app";
+
+    OffsetSpecification initialOffsetSpecification = OffsetSpecification.first();
+    Function<String, Consumer> consumerCreator =
+        consumer -> {
+          AtomicInteger received = new AtomicInteger();
+          ConsumerUpdateListener consumerUpdateListener =
+              context -> {
+                consumers.get(consumer).putIfAbsent(context.stream(), context.consumer());
+                consumerStates.put(consumer + context.stream(), context.status() == Status.ACTIVE);
+                OffsetSpecification offsetSpecification = null;
+                if (context.status() == Status.ACTIVE) {
+                  try {
+                    long storedOffset = context.consumer().storedOffset() + 1;
+                    offsetSpecification = OffsetSpecification.offset(storedOffset);
+                  } catch (StreamException e) {
+                    if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+                      offsetSpecification = initialOffsetSpecification;
+                    } else {
+                      throw e;
+                    }
+                  }
+                } else if (context.previousStatus() == Status.ACTIVE
+                    && context.status() == Status.PASSIVE) {
+                  long lastReceivedOffset = lastReceivedOffsets.get(context.stream());
+                  context.consumer().store(lastReceivedOffset);
+                  waitUntil(() -> context.consumer().storedOffset() == lastReceivedOffset);
+                }
+                return offsetSpecification;
+              };
+          return environment
+              .consumerBuilder()
+              .singleActiveConsumer()
+              .superStream(superStream)
+              .offset(initialOffsetSpecification)
+              .name(consumerName)
+              .autoTrackingStrategy()
+              .builder()
+              .consumerUpdateListener(consumerUpdateListener)
+              .messageHandler(
+                  (context, message) -> {
+                    if (received.incrementAndGet() % storeEvery == 0) {
+                      context.storeOffset();
+                    }
+                    lastReceivedOffsets.put(context.stream(), context.offset());
+                    receivedMessagesPerPartitions.get(context.stream()).incrementAndGet();
+                    receivedMessages.get(consumer + context.stream()).incrementAndGet();
+                  })
+              .build();
+        };
+
+    Consumer consumer0 = consumerCreator.apply("0");
+    waitAtMost(
+        () ->
+            consumerStates.get("0" + partitions.get(0))
+                && consumerStates.get("0" + partitions.get(1))
+                && consumerStates.get("0" + partitions.get(2)));
+
+    publishOnAllPartitions.run();
+
+    waitAtMost(
+        () ->
+            receivedMessages.get("0" + partitions.get(0)).get() == messageCount
+                && receivedMessages.get("0" + partitions.get(1)).get() == messageCount
+                && receivedMessages.get("0" + partitions.get(2)).get() == messageCount);
+
+    Consumer consumer1 = consumerCreator.apply("1");
+
+    waitAtMost(
+        () ->
+            consumerStates.get("0" + partitions.get(0))
+                && consumerStates.get("1" + partitions.get(1))
+                && consumerStates.get("0" + partitions.get(2)));
+
+    publishOnAllPartitions.run();
+
+    waitAtMost(
+        () ->
+            receivedMessages.get("0" + partitions.get(0)).get() == messageCount * 2
+                && receivedMessages.get("1" + partitions.get(1)).get() == messageCount
+                && receivedMessages.get("0" + partitions.get(2)).get() == messageCount * 2);
+
+    Consumer consumer2 = consumerCreator.apply("2");
+
+    waitAtMost(
+        () ->
+            consumerStates.get("0" + partitions.get(0))
+                && consumerStates.get("1" + partitions.get(1))
+                && consumerStates.get("2" + partitions.get(2)));
+
+    publishOnAllPartitions.run();
+
+    waitAtMost(
+        () ->
+            receivedMessages.get("0" + partitions.get(0)).get() == messageCount * 3
+                && receivedMessages.get("1" + partitions.get(1)).get() == messageCount * 2
+                && receivedMessages.get("2" + partitions.get(2)).get() == messageCount);
+
+    java.util.function.Consumer<String> storeLastProcessedOffsets =
+        consumerIndex -> {
+          consumers.get(consumerIndex).entrySet().stream()
+              .filter(
+                  partitionToInnerConsumer -> {
+                    // we take only the inner consumers that are active
+                    return consumerStates.get(consumerIndex + partitionToInnerConsumer.getKey());
+                  })
+              .forEach(
+                  entry -> {
+                    String partition = entry.getKey();
+                    Consumer consumer = entry.getValue();
+                    long offset = lastReceivedOffsets.get(partition);
+                    consumer.store(offset);
+                    waitUntil(() -> consumer.storedOffset() == offset);
+                  });
+        };
+    storeLastProcessedOffsets.accept("0");
+    consumer0.close();
+
+    waitAtMost(
+        () ->
+            consumerStates.get("1" + partitions.get(0))
+                && consumerStates.get("2" + partitions.get(1))
+                && consumerStates.get("1" + partitions.get(2)));
+
+    publishOnAllPartitions.run();
+
+    waitAtMost(
+        () ->
+            receivedMessages.get("1" + partitions.get(0)).get() == messageCount
+                && receivedMessages.get("2" + partitions.get(1)).get() == messageCount
+                && receivedMessages.get("1" + partitions.get(2)).get() == messageCount);
+
+    storeLastProcessedOffsets.accept("1");
+    consumer1.close();
+
+    waitAtMost(
+        () ->
+            consumerStates.get("2" + partitions.get(0))
+                && consumerStates.get("2" + partitions.get(1))
+                && consumerStates.get("2" + partitions.get(2)));
+
+    publishOnAllPartitions.run();
+
+    waitAtMost(
+        () ->
+            receivedMessages.get("2" + partitions.get(0)).get() == messageCount
+                && receivedMessages.get("2" + partitions.get(1)).get() == messageCount * 2
+                && receivedMessages.get("2" + partitions.get(2)).get() == messageCount * 2);
+
+    storeLastProcessedOffsets.accept("2");
     consumer2.close();
 
     assertThat(messageWaveCount).hasValue(5);

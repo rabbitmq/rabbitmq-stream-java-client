@@ -19,6 +19,7 @@ import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -184,7 +185,7 @@ class StreamConsumer implements Consumer {
             }
           } else if (trackingConfiguration.manual()) {
             LOGGER.debug("Setting default consumer update listener for manual tracking strategy");
-            this.consumerUpdateListener =
+            ConsumerUpdateListener defaultListener =
                 context -> {
                   OffsetSpecification result = null;
                   // we are not supposed to store offsets with manual tracking strategy
@@ -200,6 +201,7 @@ class StreamConsumer implements Consumer {
                   }
                   return result;
                 };
+            this.consumerUpdateListener = defaultListener;
           } else {
             // no consumer update listener to look up the offset, this is not what we want
             this.consumerUpdateListener = context -> null;

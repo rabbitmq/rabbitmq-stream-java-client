@@ -112,6 +112,16 @@ public class OffsetTrackingTest {
     assertThat(response.getOffset()).isEqualTo(0);
   }
 
+  @Test
+  void storedOffsetCanGoBackward() throws Exception {
+    String reference = UUID.randomUUID().toString();
+    Client client = cf.get();
+    client.storeOffset(reference, stream, 100);
+    waitAtMost(() -> client.queryOffset(reference, stream).getOffset() == 100);
+    client.storeOffset(reference, stream, 50);
+    waitAtMost(() -> client.queryOffset(reference, stream).getOffset() == 50);
+  }
+
   @ParameterizedTest
   @MethodSource
   void consumeAndStore(BiConsumer<String, Client> streamCreator, TestInfo info) throws Exception {

@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
@@ -80,10 +81,14 @@ class SuperStreamConsumer implements Consumer {
                     .builder();
       }
 
-      Consumer consumer =
-          subConsumerBuilder.lazyInit(true).superStream(null).messageHandler(messageHandler).stream(
-                  partition)
-              .build();
+      StreamConsumer consumer =
+          (StreamConsumer)
+              subConsumerBuilder
+                  .lazyInit(true)
+                  .superStream(null)
+                  .messageHandler(messageHandler)
+                  .stream(partition)
+                  .build();
       consumers.put(partition, consumer);
       state.consumer = consumer;
       LOGGER.debug("Created consumer on stream '{}' for super stream '{}'", partition, superStream);
@@ -95,7 +100,7 @@ class SuperStreamConsumer implements Consumer {
   private static final class ConsumerState {
 
     private volatile long offset = 0;
-    private volatile Consumer consumer;
+    private volatile StreamConsumer consumer;
   }
 
   private static final class ManualOffsetTrackingMessageHandler implements MessageHandler {
@@ -134,10 +139,18 @@ class SuperStreamConsumer implements Consumer {
             public void storeOffset() {
               for (ConsumerState state : consumerStates) {
                 if (ManualOffsetTrackingMessageHandler.this.consumerState == state) {
-                  context.storeOffset();
+                  maybeStoreOffset(state, () -> context.storeOffset());
                 } else if (state.offset != 0) {
-                  state.consumer.store(state.offset);
+                  maybeStoreOffset(state, () -> state.consumer.store(state.offset));
                 }
+              }
+            }
+
+            private void maybeStoreOffset(ConsumerState state, Runnable storeAction) {
+              if (state.consumer.isSac() && state.consumer.sacStatus() != Status.ACTIVE) {
+                // do nothing
+              } else {
+                storeAction.run();
               }
             }
 
