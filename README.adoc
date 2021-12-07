@@ -30,7 +30,7 @@ Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-
 
 === Pre-requisites
 
-The library requires Java 8 or more. Java 11 is recommended.
+The library requires Java 8 or later. Java 11 is recommended.
 
 === Documentation
 
