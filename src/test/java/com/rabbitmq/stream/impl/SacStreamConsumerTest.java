@@ -34,7 +34,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 @TestUtils.SingleActiveConsumer
-public class StreamConsumerSacTest {
+public class SacStreamConsumerTest {
 
   String stream;
   EventLoopGroup eventLoopGroup;

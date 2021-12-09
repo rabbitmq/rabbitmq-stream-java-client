@@ -45,7 +45,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 @TestUtils.SingleActiveConsumer
-public class SingleActiveConsumerTest {
+public class SacClientTest {
 
   String stream;
   TestUtils.ClientFactory cf;
