@@ -15,12 +15,16 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
+import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import io.netty.channel.EventLoopGroup;
@@ -31,7 +35,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -46,6 +53,26 @@ public class SuperStreamConsumerTest {
   String superStream;
   String[] routingKeys = null;
   TestUtils.ClientFactory cf;
+
+  @BeforeEach
+  void init(TestInfo info) throws Exception {
+    EnvironmentBuilder environmentBuilder = Environment.builder().eventLoopGroup(eventLoopGroup);
+    environmentBuilder.addressResolver(add -> localhost());
+    environment = environmentBuilder.build();
+    superStream = TestUtils.streamName(info);
+    connection = new ConnectionFactory().newConnection();
+  }
+
+  @AfterEach
+  void tearDown() throws Exception {
+    environment.close();
+    if (routingKeys == null) {
+      deleteSuperStreamTopology(connection, superStream, partitionCount);
+    } else {
+      deleteSuperStreamTopology(connection, superStream, routingKeys);
+    }
+    connection.close();
+  }
 
   private static void publishToPartitions(
       TestUtils.ClientFactory cf, List<String> partitions, int messageCount) {
