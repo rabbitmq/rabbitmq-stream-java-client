@@ -98,9 +98,9 @@ public class Host {
 
   public static Process killStreamLeaderProcess(String stream) throws IOException {
     return rabbitmqctl(
-        "eval 'exit(rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\""
+        "eval 'case rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\""
             + stream
-            + "\">>),kill).'");
+            + "\">>) of {ok, Pid} -> exit(Pid, kill); Pid -> exit(Pid, kill) end.'");
   }
 
   public static String rabbitmqctlCommand() {

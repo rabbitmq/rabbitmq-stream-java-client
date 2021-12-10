@@ -193,7 +193,7 @@ public final class TestUtils {
         try {
           task.run(o);
         } catch (Exception e) {
-          throw new RuntimeException();
+          throw new RuntimeException(e);
         }
       }
 
