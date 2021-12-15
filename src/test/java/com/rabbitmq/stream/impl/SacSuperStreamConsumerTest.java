@@ -124,16 +124,13 @@ public class SacSuperStreamConsumerTest {
                 && consumerStates.get("1" + partitions.get(1)) == Status.ACTIVE
                 && consumerStates.get("2" + partitions.get(2)) == Status.ACTIVE);
 
-    waitAtMost(() -> consumerStates.size() == 9);
+    // all 3 from sub 0 activated, then only 1 from sub 1 & sub 2
+    waitAtMost(() -> consumerStates.size() == 3 + 1 + 1);
     assertThat(consumerStates)
         .containsEntry("0" + partitions.get(0), Status.ACTIVE)
         .containsEntry("0" + partitions.get(1), Status.PASSIVE)
         .containsEntry("0" + partitions.get(2), Status.PASSIVE)
-        .containsEntry("1" + partitions.get(0), Status.PASSIVE)
         .containsEntry("1" + partitions.get(1), Status.ACTIVE)
-        .containsEntry("1" + partitions.get(2), Status.PASSIVE)
-        .containsEntry("2" + partitions.get(0), Status.PASSIVE)
-        .containsEntry("2" + partitions.get(1), Status.PASSIVE)
         .containsEntry("2" + partitions.get(2), Status.ACTIVE);
 
     consumer0.close();
@@ -144,11 +141,11 @@ public class SacSuperStreamConsumerTest {
                 && consumerStates.get("2" + partitions.get(1)) == Status.ACTIVE
                 && consumerStates.get("1" + partitions.get(2)) == Status.ACTIVE);
 
+    waitAtMost(() -> consumerStates.size() == (3 + 1 + 1) + 1 + 1 + 1);
     assertThat(consumerStates)
         .containsEntry("1" + partitions.get(0), Status.ACTIVE)
         .containsEntry("1" + partitions.get(1), Status.PASSIVE)
         .containsEntry("1" + partitions.get(2), Status.ACTIVE)
-        .containsEntry("2" + partitions.get(0), Status.PASSIVE)
         .containsEntry("2" + partitions.get(1), Status.ACTIVE)
         .containsEntry("2" + partitions.get(2), Status.PASSIVE);
 
@@ -725,7 +722,6 @@ public class SacSuperStreamConsumerTest {
     receivedMessagesPerPartitions
         .values()
         .forEach(v -> assertThat(v).hasValue(expectedMessageCountPerPartition));
-    Client c = cf.get();
     partitions.forEach(
         partition ->
             assertThat(lastReceivedOffsets.get(partition))
@@ -738,21 +734,5 @@ public class SacSuperStreamConsumerTest {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
-  }
-
-  private static OffsetSpecification lastStoredOffset(
-      Consumer consumer, OffsetSpecification defaultValue) {
-    OffsetSpecification offsetSpecification;
-    try {
-      long storedOffset = consumer.storedOffset();
-      offsetSpecification = OffsetSpecification.offset(storedOffset);
-    } catch (StreamException e) {
-      if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-        offsetSpecification = defaultValue;
-      } else {
-        throw e;
-      }
-    }
-    return offsetSpecification;
   }
 }

@@ -121,7 +121,7 @@ class StreamConsumer implements Consumer {
       }
 
       if (Utils.isSac(subscriptionProperties)) {
-        this.sacStatus = ConsumerUpdateListener.Status.STARTING;
+        this.sacStatus = ConsumerUpdateListener.Status.PASSIVE;
         MessageHandler existingMessageHandler = decoratedMessageHandler.get();
         MessageHandler messageHandlerWithSac =
             (context, message) -> {
@@ -138,8 +138,7 @@ class StreamConsumer implements Consumer {
             ConsumerUpdateListener defaultListener =
                 context -> {
                   OffsetSpecification result = null;
-                  if ((context.previousStatus() == ConsumerUpdateListener.Status.STARTING
-                          || context.previousStatus() == ConsumerUpdateListener.Status.PASSIVE)
+                  if (context.previousStatus() == ConsumerUpdateListener.Status.PASSIVE
                       && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
                     LOGGER.debug("Looking up offset (stream {})", this.stream);
                     Consumer consumer = context.consumer();
@@ -193,11 +192,22 @@ class StreamConsumer implements Consumer {
                   if (context.previousStatus() == ConsumerUpdateListener.Status.PASSIVE
                       && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
                     LOGGER.debug("Going from passive to active, looking up offset");
-                    StreamConsumer consumer = (StreamConsumer) context.consumer();
-                    long offset = consumer.storedOffset();
-                    LOGGER.debug(
-                        "Stored offset is {}, returning the value + 1 to the server", offset);
-                    result = OffsetSpecification.offset(offset + 1);
+                    Consumer consumer = context.consumer();
+                    try {
+                      long offset = consumer.storedOffset();
+                      LOGGER.debug(
+                          "Stored offset is {}, returning the value + 1 to the server", offset);
+                      result = OffsetSpecification.offset(offset + 1);
+                    } catch (StreamException e) {
+                      if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+                        LOGGER.debug(
+                            "No stored offset, using initial offset specification: {}",
+                            this.initialOffsetSpecification);
+                        result = initialOffsetSpecification;
+                      } else {
+                        throw e;
+                      }
+                    }
                   }
                   return result;
                 };

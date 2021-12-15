@@ -17,7 +17,6 @@ import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,7 +31,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -70,7 +68,6 @@ public class SacClientTest {
     AtomicLong lastReceivedOffset = new AtomicLong(0);
     Map<Byte, Boolean> consumerStates = consumerStates(2);
     Map<Byte, AtomicInteger> receivedMessages = receivedMessages(2);
-    CountDownLatch consumerUpdateLatch = new CountDownLatch(2);
     String consumerName = "foo";
     ClientParameters clientParameters =
         new ClientParameters()
@@ -85,7 +82,6 @@ public class SacClientTest {
             .consumerUpdateListener(
                 (client, subscriptionId, active) -> {
                   consumerStates.put(subscriptionId, active);
-                  consumerUpdateLatch.countDown();
                   long storedOffset = writerClient.queryOffset(consumerName, stream).getOffset();
                   if (storedOffset == 0) {
                     return OffsetSpecification.first();
@@ -104,7 +100,7 @@ public class SacClientTest {
     assertThat(response.isOk()).isTrue();
     response = client.subscribe(b(1), stream, OffsetSpecification.first(), 2, parameters);
     assertThat(response.isOk()).isTrue();
-    latchAssert(consumerUpdateLatch).completes();
+    waitAtMost(() -> consumerStates.get(b(0)));
     assertThat(consumerStates)
         .hasSize(2)
         .containsEntry(b(0), Boolean.TRUE)
@@ -135,7 +131,7 @@ public class SacClientTest {
   }
 
   @Test
-  void consumerUpdateListenerShouldBeCalledInOrder() throws Exception {
+  void consumerUpdateListenerShouldBeCalledOnlyWhenConsumerGetsActivated() throws Exception {
     StringBuffer consumerUpdateHistory = new StringBuffer();
     Client client =
         cf.get(
@@ -158,11 +154,6 @@ public class SacClientTest {
       response =
           client.subscribe(subscriptionId, stream, OffsetSpecification.first(), 2, parameters);
       assertThat(response.isOk()).isTrue();
-      waitAtMost(
-          () ->
-              consumerUpdateHistory
-                  .toString()
-                  .contains(String.format("<%d.%b>", subscriptionId, false)));
     }
 
     for (int i = 0; i < 9; i++) {
@@ -198,10 +189,10 @@ public class SacClientTest {
     assertThat(response.isOk()).isTrue();
     response = client.subscribe(b(1), stream, OffsetSpecification.first(), 2, parameters);
     assertThat(response.isOk()).isTrue();
-    waitAtMost(() -> consumerUpdateCount.get() == 2);
+    waitAtMost(() -> consumerUpdateCount.get() == 1);
 
     client.close();
-    assertThat(consumerUpdateCount).hasValue(2);
+    assertThat(consumerUpdateCount).hasValue(1);
   }
 
   @Test
@@ -301,7 +292,7 @@ public class SacClientTest {
       response = client.unsubscribe(b(1));
       assertThat(response.isOk()).isTrue();
       waitAtMost(() -> consumerStates.get(b(0)) == true);
-      assertThat(consumerStates).containsEntry(b(0), true); // should not change when unsubscribing
+      assertThat(consumerStates).containsEntry(b(1), true); // should not change when unsubscribing
 
       response = client.unsubscribe(b(0));
       assertThat(response.isOk()).isTrue();

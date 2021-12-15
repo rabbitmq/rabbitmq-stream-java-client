@@ -29,7 +29,6 @@ public interface ConsumerUpdateListener {
   }
 
   enum Status {
-    STARTING,
     ACTIVE,
     PASSIVE
   }
