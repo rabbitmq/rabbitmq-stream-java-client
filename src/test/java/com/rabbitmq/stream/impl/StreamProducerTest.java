@@ -377,8 +377,8 @@ public class StreamProducerTest {
 
     environment.deleteStream(s);
 
-    waitAtMost(10, () -> !producer.isOpen());
-    assertThat(errorCodes).isNotEmpty().contains(lastExpectedErrorCode);
+    waitAtMost(() -> !producer.isOpen());
+    waitAtMost(() -> errorCodes.contains(lastExpectedErrorCode));
   }
 
   @ParameterizedTest
