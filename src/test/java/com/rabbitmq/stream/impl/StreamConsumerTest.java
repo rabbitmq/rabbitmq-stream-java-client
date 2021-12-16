@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -553,7 +554,12 @@ public class StreamConsumerTest {
 
     Client client = cf.get();
     waitAtMost(
-        5, () -> client.queryOffset(reference, stream).getOffset() == lastReceivedOffset.get());
+        5,
+        () -> client.queryOffset(reference, stream).getOffset() == lastReceivedOffset.get(),
+        () ->
+            format(
+                "Expecting stored offset %d to be equal to last received offset %d",
+                client.queryOffset(reference, stream).getOffset(), lastReceivedOffset.get()));
   }
 
   @Test
