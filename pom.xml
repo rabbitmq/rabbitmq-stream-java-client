@@ -50,17 +50,17 @@
   <properties>
     <spotless.check.skip>true</spotless.check.skip>
     <slf4j.version>1.7.32</slf4j.version>
-    <logback.version>1.2.8</logback.version>
+    <logback.version>1.2.10</logback.version>
     <netty.version>4.1.72.Final</netty.version>
     <proton-j.version>0.33.10</proton-j.version>
-    <metrics.version>4.2.6</metrics.version>
+    <metrics.version>4.2.7</metrics.version>
     <micrometer.version>1.8.1</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.6.2</picocli.version>
     <jetty.version>9.4.44.v20210927</jetty.version>
     <guava.version>31.0.1-jre</guava.version>
     <commons-compress.version>1.21</commons-compress.version>
-    <zstd-jni.version>1.5.0-5</zstd-jni.version>
+    <zstd-jni.version>1.5.1-1</zstd-jni.version>
     <lz4-java.version>1.8.0</lz4-java.version>
     <snappy-java.version>1.1.8.4</snappy-java.version>
     <junit.jupiter.version>5.8.2</junit.jupiter.version>
