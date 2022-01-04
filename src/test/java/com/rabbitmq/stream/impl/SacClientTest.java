@@ -1,4 +1,4 @@
-// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -19,14 +19,17 @@ import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +38,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
@@ -59,6 +61,10 @@ public class SacClientTest {
     IntStream.range(0, subscriptionCount)
         .forEach(i -> receivedMessages.put(b(i), new AtomicInteger(0)));
     return receivedMessages;
+  }
+
+  private static ClientParameters withConnectionName(String connectionName) {
+    return new ClientParameters().clientProperty("connection_name", connectionName);
   }
 
   @Test
@@ -316,7 +322,7 @@ public class SacClientTest {
     try {
       declareSuperStreamTopology(c, superStream, 3);
       List<String> partitions =
-          IntStream.range(0, 3).mapToObj(i -> superStream + "-" + i).collect(Collectors.toList());
+          IntStream.range(0, 3).mapToObj(i -> superStream + "-" + i).collect(toList());
       ConsumerUpdateListener consumerUpdateListener =
           (client1, subscriptionId, active) -> {
             consumerStates.put(subscriptionId, active);
@@ -393,6 +399,52 @@ public class SacClientTest {
       partitions.forEach(unsubscriptionCallback);
     } finally {
       deleteSuperStreamTopology(c, superStream, 3);
+    }
+  }
+
+  @Test
+  @DisabledIfRabbitMqCtlNotSet
+  void killingConnectionsShouldTriggerConsumerUpdateNotification() throws Exception {
+    Map<String, Boolean> consumerStates = new ConcurrentHashMap<>();
+    List<String> consumerNames = IntStream.range(0, 5).mapToObj(i -> "foo-" + i).collect(toList());
+    for (String consumerName : consumerNames) {
+      Client c0 =
+          cf.get(
+              withConnectionName(consumerName + "-connection-0")
+                  .consumerUpdateListener(
+                      (client, subscriptionId, active) -> {
+                        consumerStates.put(consumerName + "-connection-0", active);
+                        return null;
+                      }));
+      Client c1 =
+          cf.get(
+              withConnectionName(consumerName + "-connection-1")
+                  .consumerUpdateListener(
+                      (client, subscriptionId, active) -> {
+                        consumerStates.put(consumerName + "-connection-1", active);
+                        return null;
+                      }));
+
+      Map<String, String> subscriptionProperties = new HashMap<>();
+      subscriptionProperties.put("single-active-consumer", "true");
+      subscriptionProperties.put("name", consumerName);
+
+      Response response =
+          c0.subscribe(b(0), stream, OffsetSpecification.first(), 2, subscriptionProperties);
+      assertThat(response).is(ok());
+      waitAtMost(() -> consumerStates.containsKey(consumerName + "-connection-0"));
+      response = c1.subscribe(b(0), stream, OffsetSpecification.first(), 2, subscriptionProperties);
+      assertThat(response).is(ok());
+      response = c0.subscribe(b(1), stream, OffsetSpecification.first(), 2, subscriptionProperties);
+      assertThat(response).is(ok());
+    }
+
+    for (String consumerName : consumerNames) {
+      Host.killConnection(consumerName + "-connection-0");
+      waitAtMost(
+          () ->
+              consumerStates.containsKey(consumerName + "-connection-1")
+                  && consumerStates.get(consumerName + "-connection-1"));
     }
   }
 }
