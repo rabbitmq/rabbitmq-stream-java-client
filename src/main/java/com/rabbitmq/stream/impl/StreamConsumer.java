@@ -123,12 +123,25 @@ class StreamConsumer implements Consumer {
       if (Utils.isSac(subscriptionProperties)) {
         this.sacStatus = ConsumerUpdateListener.Status.PASSIVE;
         MessageHandler existingMessageHandler = decoratedMessageHandler.get();
-        MessageHandler messageHandlerWithSac =
-            (context, message) -> {
-              if (sacStatus == ConsumerUpdateListener.Status.ACTIVE) {
-                existingMessageHandler.handle(context, message);
-              }
-            };
+        AtomicBoolean receivedSomething = new AtomicBoolean(false);
+        MessageHandler messageHandlerWithSac;
+        if (trackingConfiguration.auto()) {
+          messageHandlerWithSac =
+              (context, message) -> {
+                if (sacStatus == ConsumerUpdateListener.Status.ACTIVE) {
+                  receivedSomething.set(true);
+                  existingMessageHandler.handle(context, message);
+                }
+              };
+        } else {
+          messageHandlerWithSac =
+              (context, message) -> {
+                if (sacStatus == ConsumerUpdateListener.Status.ACTIVE) {
+                  existingMessageHandler.handle(context, message);
+                }
+              };
+        }
+
         decoratedMessageHandler.set(messageHandlerWithSac);
 
         if (consumerUpdateListener == null
@@ -160,17 +173,21 @@ class StreamConsumer implements Consumer {
                     return result;
                   } else if (context.previousStatus() == ConsumerUpdateListener.Status.ACTIVE
                       && context.status() == ConsumerUpdateListener.Status.PASSIVE) {
-                    LOGGER.debug(
-                        "Storing offset (consumer {}, stream {}) because going from active to passive",
-                        this.id,
-                        this.stream);
-                    long offset = trackingFlushCallback.getAsLong();
-                    LOGGER.debug(
-                        "Making sure offset {} has been stored (consumer {}, stream {})",
-                        offset,
-                        this.id,
-                        this.stream);
-                    waitForOffsetToBeStored(offset);
+                    if (receivedSomething.get()) {
+                      LOGGER.debug(
+                          "Storing offset (consumer {}, stream {}) because going from active to passive",
+                          this.id,
+                          this.stream);
+                      long offset = trackingFlushCallback.getAsLong();
+                      LOGGER.debug(
+                          "Making sure offset {} has been stored (consumer {}, stream {})",
+                          offset,
+                          this.id,
+                          this.stream);
+                      waitForOffsetToBeStored(offset);
+                    } else {
+                      LOGGER.debug("Nothing received yet, no need to store offset");
+                    }
                     result = OffsetSpecification.none();
                   }
                   return result;
@@ -292,7 +309,7 @@ class StreamConsumer implements Consumer {
                 this.name, this.stream, expectedStoredOffset)
             .delayPolicy(
                 BackOffDelayPolicy.fixedWithInitialDelay(
-                    Duration.ofMillis(500), Duration.ofMillis(200)))
+                    Duration.ofMillis(200), Duration.ofMillis(200)))
             .retry(exception -> exception instanceof IllegalStateException)
             .scheduler(environment.scheduledExecutorService())
             .build();

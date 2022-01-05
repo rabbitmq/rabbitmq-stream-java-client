@@ -35,6 +35,8 @@ import com.rabbitmq.stream.impl.TestUtils.SingleActiveConsumer;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import io.netty.channel.EventLoopGroup;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -726,6 +728,87 @@ public class SacSuperStreamConsumerTest {
         partition ->
             assertThat(lastReceivedOffsets.get(partition))
                 .isGreaterThanOrEqualTo(expectedMessageCountPerPartition - 1));
+  }
+
+  @Test
+  void consumerGroupsOnSameSuperStreamShouldBeIndependent() throws Exception {
+    declareSuperStreamTopology(connection, superStream, partitionCount);
+    int messageCount = 20_000;
+    int consumerGroupsCount = 3;
+    List<String> consumerNames =
+        IntStream.range(0, consumerGroupsCount).mapToObj(i -> "my-app-" + i).collect(toList());
+    List<String> partitions =
+        IntStream.range(0, partitionCount).mapToObj(i -> superStream + "-" + i).collect(toList());
+    Map<String, AtomicInteger> receivedMessages = new ConcurrentHashMap<>(consumerGroupsCount);
+    Map<String, AtomicInteger> receivedMessagesPerPartitions =
+        new ConcurrentHashMap<>(consumerGroupsCount * partitionCount);
+    Map<String, Long> lastReceivedOffsets = new ConcurrentHashMap<>();
+    partitions.forEach(
+        partition -> {
+          lastReceivedOffsets.put(partition, 0L);
+          receivedMessagesPerPartitions.put(partition, new AtomicInteger(0));
+        });
+
+    List<Consumer> consumers = new ArrayList<>(consumerGroupsCount * partitionCount);
+    consumerNames.forEach(
+        consumerName -> {
+          receivedMessages.put(consumerName, new AtomicInteger(0));
+          partitions.forEach(
+              partition -> {
+                receivedMessagesPerPartitions.put(partition + consumerName, new AtomicInteger(0));
+                Consumer consumer =
+                    environment
+                        .consumerBuilder()
+                        .singleActiveConsumer()
+                        .superStream(superStream)
+                        .offset(OffsetSpecification.first())
+                        .name(consumerName)
+                        .autoTrackingStrategy()
+                        .builder()
+                        .messageHandler(
+                            (context, message) -> {
+                              lastReceivedOffsets.put(
+                                  context.stream() + consumerName, context.offset());
+                              receivedMessagesPerPartitions
+                                  .get(context.stream() + consumerName)
+                                  .incrementAndGet();
+                              receivedMessages.get(consumerName).incrementAndGet();
+                            })
+                        .build();
+                consumers.add(consumer);
+              });
+        });
+
+    partitions.forEach(
+        partition -> TestUtils.publishAndWaitForConfirms(cf, messageCount, partition));
+
+    int messageTotal = messageCount * partitionCount;
+    consumerNames.forEach(
+        consumerName -> waitUntil(() -> receivedMessages.get(consumerName).get() == messageTotal));
+
+    consumerNames.forEach(
+        consumerName -> {
+          // summing the received messages for the consumer group name
+          assertThat(
+                  receivedMessagesPerPartitions.entrySet().stream()
+                      .filter(e -> e.getKey().endsWith(consumerName))
+                      .mapToInt(e -> e.getValue().get())
+                      .sum())
+              .isEqualTo(messageTotal);
+        });
+
+    Collections.reverse(consumers);
+    consumers.forEach(Consumer::close);
+
+    Client c = cf.get();
+    consumerNames.forEach(
+        consumerName -> {
+          partitions.forEach(
+              partition -> {
+                assertThat(c.queryOffset(consumerName, partition).getOffset())
+                    .isEqualTo(lastReceivedOffsets.get(partition + consumerName));
+              });
+        });
   }
 
   private static void waitUntil(CallableBooleanSupplier action) {

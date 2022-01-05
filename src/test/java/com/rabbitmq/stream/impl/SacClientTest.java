@@ -318,6 +318,7 @@ public class SacClientTest {
     String superStream = streamName(info);
     String consumerName = "foo";
     Connection c = new ConnectionFactory().newConnection();
+    // subscription distribution
     // client 1: 0, 1, 2 / client 2: 3, 4, 5, / client 3: 6, 7, 8
     try {
       declareSuperStreamTopology(c, superStream, 3);
