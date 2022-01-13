@@ -15,6 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,6 +48,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1154,6 +1157,60 @@ public class ConsumersCoordinatorTest {
 
     closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+  }
+
+  @Test
+  void subscribeUnsubscribeInDifferentThreadsShouldNotDeadlock() throws Exception {
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+    when(client.unsubscribe(anyByte())).thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    ExecutorService executorService = Executors.newFixedThreadPool(2);
+
+    try {
+      Runnable subUnsub =
+          () -> {
+            Runnable closingRunnable =
+                coordinator.subscribe(
+                    consumer,
+                    "stream",
+                    OffsetSpecification.first(),
+                    null,
+                    NO_OP_SUBSCRIPTION_LISTENER,
+                    (offset, message) -> {});
+
+            closingRunnable.run();
+          };
+      CountDownLatch latch = new CountDownLatch(2);
+      executorService.submit(
+          () -> {
+            int count = 0;
+            while (count++ < 100) {
+              subUnsub.run();
+            }
+            latch.countDown();
+          });
+      executorService.submit(
+          () -> {
+            int count = 0;
+            while (count++ < 100) {
+              subUnsub.run();
+            }
+            latch.countDown();
+          });
+
+      assertThat(latchAssert(latch)).completes();
+    } finally {
+      executorService.shutdownNow();
+    }
   }
 
   Client.Broker leader() {

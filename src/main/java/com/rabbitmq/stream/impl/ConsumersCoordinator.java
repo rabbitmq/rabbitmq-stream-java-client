@@ -476,7 +476,7 @@ class ConsumersCoordinator {
                 stream);
 
             Set<SubscriptionTracker> affectedSubscriptions;
-            synchronized (ClientSubscriptionsManager.this) {
+            synchronized (this.owner) {
               Set<SubscriptionTracker> subscriptions = streamToStreamSubscriptions.remove(stream);
               if (subscriptions != null && !subscriptions.isEmpty()) {
                 List<SubscriptionTracker> newSubscriptions =
@@ -616,129 +616,137 @@ class ConsumersCoordinator {
               });
     }
 
-    synchronized void add(
+    void add(
         SubscriptionTracker subscriptionTracker,
         OffsetSpecification offsetSpecification,
         boolean isInitialSubscription) {
-      // FIXME check manager is still open (not closed because of connection failure)
-      byte subscriptionId = 0;
-      for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-        if (subscriptionTrackers.get(i) == null) {
-          subscriptionId = (byte) i;
-          break;
-        }
-      }
+      synchronized (this.owner) {
 
-      List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
-
-      LOGGER.debug(
-          "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}",
-          subscriptionTracker.stream,
-          offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
-          subscriptionTracker.offsetTrackingReference);
-      try {
-        // updating data structures before subscribing
-        // (to make sure they are up-to-date in case message would arrive super fast)
-        subscriptionTracker.assign(subscriptionId, this);
-        streamToStreamSubscriptions
-            .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
-            .add(subscriptionTracker);
-        this.subscriptionTrackers =
-            update(previousSubscriptions, subscriptionId, subscriptionTracker);
-
-        String offsetTrackingReference = subscriptionTracker.offsetTrackingReference;
-        if (offsetTrackingReference != null) {
-          QueryOffsetResponse queryOffsetResponse =
-              client.queryOffset(offsetTrackingReference, subscriptionTracker.stream);
-          if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
-            if (offsetSpecification != null && isInitialSubscription) {
-              // subscription call (not recovery), so telling the user their offset specification is
-              // ignored
-              LOGGER.info(
-                  "Requested offset specification {} not used in favor of stored offset found for reference {}",
-                  offsetSpecification,
-                  offsetTrackingReference);
-            }
-            LOGGER.debug(
-                "Using offset {} to start consuming from {} with consumer {} " + "(instead of {})",
-                queryOffsetResponse.getOffset(),
-                subscriptionTracker.stream,
-                offsetTrackingReference,
-                offsetSpecification);
-            offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
+        // FIXME check manager is still open (not closed because of connection failure)
+        byte subscriptionId = 0;
+        for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+          if (subscriptionTrackers.get(i) == null) {
+            subscriptionId = (byte) i;
+            break;
           }
         }
 
-        offsetSpecification =
-            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
+        List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
 
-        Map<String, String> subscriptionProperties = Collections.emptyMap();
-        if (subscriptionTracker.offsetTrackingReference != null) {
-          subscriptionProperties = new HashMap<>(1);
-          subscriptionProperties.put("name", subscriptionTracker.offsetTrackingReference);
+        LOGGER.debug(
+            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}",
+            subscriptionTracker.stream,
+            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
+            subscriptionTracker.offsetTrackingReference);
+        try {
+          // updating data structures before subscribing
+          // (to make sure they are up-to-date in case message would arrive super fast)
+          subscriptionTracker.assign(subscriptionId, this);
+          streamToStreamSubscriptions
+              .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
+              .add(subscriptionTracker);
+          this.subscriptionTrackers =
+              update(previousSubscriptions, subscriptionId, subscriptionTracker);
+
+          String offsetTrackingReference = subscriptionTracker.offsetTrackingReference;
+          if (offsetTrackingReference != null) {
+            QueryOffsetResponse queryOffsetResponse =
+                client.queryOffset(offsetTrackingReference, subscriptionTracker.stream);
+            if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
+              if (offsetSpecification != null && isInitialSubscription) {
+                // subscription call (not recovery), so telling the user their offset specification
+                // is
+                // ignored
+                LOGGER.info(
+                    "Requested offset specification {} not used in favor of stored offset found for reference {}",
+                    offsetSpecification,
+                    offsetTrackingReference);
+              }
+              LOGGER.debug(
+                  "Using offset {} to start consuming from {} with consumer {} "
+                      + "(instead of {})",
+                  queryOffsetResponse.getOffset(),
+                  subscriptionTracker.stream,
+                  offsetTrackingReference,
+                  offsetSpecification);
+              offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
+            }
+          }
+
+          offsetSpecification =
+              offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
+
+          Map<String, String> subscriptionProperties = Collections.emptyMap();
+          if (subscriptionTracker.offsetTrackingReference != null) {
+            subscriptionProperties = new HashMap<>(1);
+            subscriptionProperties.put("name", subscriptionTracker.offsetTrackingReference);
+          }
+
+          SubscriptionContext subscriptionContext =
+              new DefaultSubscriptionContext(offsetSpecification);
+          subscriptionTracker.subscriptionListener.preSubscribe(subscriptionContext);
+          LOGGER.info(
+              "Computed offset specification {}, offset specification used after subscription listener {}",
+              offsetSpecification,
+              subscriptionContext.offsetSpecification());
+
+          // FIXME consider using fewer initial credits
+          Client.Response subscribeResponse =
+              client.subscribe(
+                  subscriptionId,
+                  subscriptionTracker.stream,
+                  subscriptionContext.offsetSpecification(),
+                  10,
+                  subscriptionProperties);
+          if (!subscribeResponse.isOk()) {
+            String message =
+                "Subscription to stream "
+                    + subscriptionTracker.stream
+                    + " failed with code "
+                    + formatConstant(subscribeResponse.getResponseCode());
+            LOGGER.debug(message);
+            throw new StreamException(message);
+          }
+        } catch (RuntimeException e) {
+          subscriptionTracker.assign((byte) -1, null);
+          this.subscriptionTrackers = previousSubscriptions;
+          streamToStreamSubscriptions
+              .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
+              .remove(subscriptionTracker);
+          throw e;
         }
 
-        SubscriptionContext subscriptionContext =
-            new DefaultSubscriptionContext(offsetSpecification);
-        subscriptionTracker.subscriptionListener.preSubscribe(subscriptionContext);
-        LOGGER.info(
-            "Computed offset specification {}, offset specification used after subscription listener {}",
-            offsetSpecification,
-            subscriptionContext.offsetSpecification());
-
-        // FIXME consider using fewer initial credits
-        Client.Response subscribeResponse =
-            client.subscribe(
-                subscriptionId,
-                subscriptionTracker.stream,
-                subscriptionContext.offsetSpecification(),
-                10,
-                subscriptionProperties);
-        if (!subscribeResponse.isOk()) {
-          String message =
-              "Subscription to stream "
-                  + subscriptionTracker.stream
-                  + " failed with code "
-                  + formatConstant(subscribeResponse.getResponseCode());
-          LOGGER.debug(message);
-          throw new StreamException(message);
-        }
-      } catch (RuntimeException e) {
-        subscriptionTracker.assign((byte) -1, null);
-        this.subscriptionTrackers = previousSubscriptions;
-        streamToStreamSubscriptions
-            .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
-            .remove(subscriptionTracker);
-        throw e;
+        LOGGER.debug("Subscribed to {}", subscriptionTracker.stream);
       }
-
-      LOGGER.debug("Subscribed to {}", subscriptionTracker.stream);
     }
 
     synchronized void remove(SubscriptionTracker subscriptionTracker) {
-      // FIXME check manager is still open (not closed because of connection failure)
-      byte subscriptionIdInClient = subscriptionTracker.subscriptionIdInClient;
-      Client.Response unsubscribeResponse = client.unsubscribe(subscriptionIdInClient);
-      if (!unsubscribeResponse.isOk()) {
-        LOGGER.warn(
-            "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
+      synchronized (this.owner) {
+
+        // FIXME check manager is still open (not closed because of connection failure)
+        byte subscriptionIdInClient = subscriptionTracker.subscriptionIdInClient;
+        Client.Response unsubscribeResponse = client.unsubscribe(subscriptionIdInClient);
+        if (!unsubscribeResponse.isOk()) {
+          LOGGER.warn(
+              "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
+              subscriptionTracker.stream,
+              formatConstant(unsubscribeResponse.getResponseCode()),
+              subscriptionIdInClient);
+        }
+        this.subscriptionTrackers = update(this.subscriptionTrackers, subscriptionIdInClient, null);
+        streamToStreamSubscriptions.compute(
             subscriptionTracker.stream,
-            formatConstant(unsubscribeResponse.getResponseCode()),
-            subscriptionIdInClient);
+            (stream, subscriptionsForThisStream) -> {
+              if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
+                // should not happen
+                return null;
+              } else {
+                subscriptionsForThisStream.remove(subscriptionTracker);
+                return subscriptionsForThisStream.isEmpty() ? null : subscriptionsForThisStream;
+              }
+            });
+        this.owner.maybeDisposeManager(this);
       }
-      this.subscriptionTrackers = update(this.subscriptionTrackers, subscriptionIdInClient, null);
-      streamToStreamSubscriptions.compute(
-          subscriptionTracker.stream,
-          (stream, subscriptionsForThisStream) -> {
-            if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
-              // should not happen
-              return null;
-            } else {
-              subscriptionsForThisStream.remove(subscriptionTracker);
-              return subscriptionsForThisStream.isEmpty() ? null : subscriptionsForThisStream;
-            }
-          });
-      this.owner.maybeDisposeManager(this);
     }
 
     private List<SubscriptionTracker> update(
