@@ -1193,7 +1193,7 @@ public class ConsumersCoordinatorTest {
       executorService.submit(
           () -> {
             int count = 0;
-            while (count++ < 100) {
+            while (count++ < 10) {
               subUnsub.run();
             }
             latch.countDown();
@@ -1201,7 +1201,7 @@ public class ConsumersCoordinatorTest {
       executorService.submit(
           () -> {
             int count = 0;
-            while (count++ < 100) {
+            while (count++ < 10) {
               subUnsub.run();
             }
             latch.countDown();

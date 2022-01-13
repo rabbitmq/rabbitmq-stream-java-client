@@ -720,7 +720,7 @@ class ConsumersCoordinator {
       }
     }
 
-    synchronized void remove(SubscriptionTracker subscriptionTracker) {
+    void remove(SubscriptionTracker subscriptionTracker) {
       synchronized (this.owner) {
 
         // FIXME check manager is still open (not closed because of connection failure)
