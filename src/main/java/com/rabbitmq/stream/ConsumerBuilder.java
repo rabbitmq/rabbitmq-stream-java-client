@@ -69,6 +69,8 @@ public interface ConsumerBuilder {
    *
    * <p>Can be used to set the offset specification before subscribing to the stream.
    *
+   * <p>This is an experimental API, subject to change.
+   *
    * @see SubscriptionListener
    * @param subscriptionListener the listener
    * @return this builder instance

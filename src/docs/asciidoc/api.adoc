@@ -899,8 +899,14 @@ no guarantee to be contiguous, the operation may not happen exactly every X mess
 ====== Subscription Listener
 
 The client provides a `SubscriptionListener` interface callback to add behavior before a subscription is created.
-This callback can be used to customize the offset the client computed for the subscription.
+This callback can be used to customize the offset the client library computed for the subscription.
 The callback is called when the consumer is first created and when the client has to re-subscribe (e.g. after a disconnection or a topology change).
+
+[WARNING]
+.Experimental
+====
+This API is experimental, it is subject to change.
+====
 
 It is possible to use the callback to get the last processed offset from an external store, that is not using the server-side offset tracking feature RabbitMQ Stream provides.
 The following code snippet shows how this can be done (note the interaction with the external store is not detailed):

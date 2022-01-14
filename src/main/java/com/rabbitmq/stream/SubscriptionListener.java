@@ -18,6 +18,8 @@ package com.rabbitmq.stream;
  *
  * <p>It is possible to change the computed {@link OffsetSpecification} in {@link
  * #preSubscribe(SubscriptionContext)} by using a custom offset tracking strategy.
+ *
+ * <p>This is an experimental API, subject to change.
  */
 public interface SubscriptionListener {
 
