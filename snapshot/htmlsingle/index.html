@@ -532,7 +532,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.5.0-SNAPSHOT</span>
-<br><span id="revremark">(24cfa94)</span>
+<br><span id="revremark">(59685f6)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2927,8 +2927,23 @@ no guarantee to be contiguous, the operation may not happen exactly every X mess
 <h6 id="subscription-listener"><a class="anchor" href="#subscription-listener"></a>Subscription Listener</h6>
 <div class="paragraph">
 <p>The client provides a <code>SubscriptionListener</code> interface callback to add behavior before a subscription is created.
-This callback can be used to customize the offset the client computed for the subscription.
+This callback can be used to customize the offset the client library computed for the subscription.
 The callback is called when the consumer is first created and when the client has to re-subscribe (e.g. after a disconnection or a topology change).</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="title">Experimental</div>
+<div class="paragraph">
+<p>This API is experimental, it is subject to change.</p>
+</div>
+</td>
+</tr>
+</table>
 </div>
 <div class="paragraph">
 <p>It is possible to use the callback to get the last processed offset from an external store, that is not using the server-side offset tracking feature RabbitMQ Stream provides.
@@ -4066,7 +4081,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.5.0-SNAPSHOT<br>
-Last updated 2022-01-13 12:59:34 UTC
+Last updated 2022-01-14 09:03:15 UTC
 </div>
 </div>
 </body>
