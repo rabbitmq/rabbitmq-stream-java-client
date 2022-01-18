@@ -22,14 +22,19 @@ import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongConsumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 class StreamConsumer implements Consumer {
 
+  private static final AtomicLong ID_SEQUENCE = new AtomicLong(0);
+
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamConsumer.class);
+  private final long id;
   private final Runnable closingTrackingCallback;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final String name;
@@ -52,6 +57,7 @@ class StreamConsumer implements Consumer {
       boolean lazyInit,
       SubscriptionListener subscriptionListener) {
 
+    this.id = ID_SEQUENCE.getAndIncrement();
     try {
       this.name = name;
       this.stream = stream;
@@ -226,5 +232,27 @@ class StreamConsumer implements Consumer {
     RUNNING,
     NOT_AVAILABLE,
     CLOSED
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    StreamConsumer that = (StreamConsumer) o;
+    return id == that.id && stream.equals(that.stream);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(id, stream);
+  }
+
+  @Override
+  public String toString() {
+    return "StreamConsumer{" + "id=" + id + ", stream='" + stream + '\'' + '}';
   }
 }
