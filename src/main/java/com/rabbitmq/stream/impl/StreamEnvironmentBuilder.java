@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -22,6 +22,7 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
+import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
@@ -36,6 +37,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
 import org.slf4j.Logger;
@@ -61,6 +63,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private CompressionCodecFactory compressionCodecFactory;
   private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private boolean lazyInit = false;
+  private Function<ClientConnectionType, String> connectionNamingStrategy =
+      Utils.defaultConnectionNamingStrategy();
 
   public StreamEnvironmentBuilder() {}
 
@@ -298,7 +302,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         maxConsumersByConnection,
         tls,
         byteBufAllocator,
-        lazyInit);
+        lazyInit,
+        connectionNamingStrategy);
   }
 
   static final class DefaultTlsConfiguration implements TlsConfiguration {

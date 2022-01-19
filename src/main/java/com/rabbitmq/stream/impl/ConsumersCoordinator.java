@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -31,6 +31,7 @@ import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.MetadataListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.ShutdownListener;
+import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -64,12 +66,17 @@ class ConsumersCoordinator {
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
   private final ClientFactory clientFactory;
   private final int maxConsumersByConnection;
+  private final Function<ClientConnectionType, String> connectionNamingStrategy;
 
   ConsumersCoordinator(
-      StreamEnvironment environment, int maxConsumersByConnection, ClientFactory clientFactory) {
+      StreamEnvironment environment,
+      int maxConsumersByConnection,
+      Function<ClientConnectionType, String> connectionNamingStrategy,
+      ClientFactory clientFactory) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxConsumersByConnection = maxConsumersByConnection;
+    this.connectionNamingStrategy = connectionNamingStrategy;
   }
 
   private static String keyForClientSubscription(Client.Broker broker) {
@@ -522,7 +529,9 @@ class ConsumersCoordinator {
       ClientFactoryContext clientFactoryContext =
           ClientFactoryContext.fromParameters(
                   clientParameters
-                      .clientProperty("connection_name", "rabbitmq-stream-consumer")
+                      .clientProperty(
+                          "connection_name",
+                          connectionNamingStrategy.apply(ClientConnectionType.CONSUMER))
                       .chunkListener(chunkListener)
                       .creditNotification(creditNotification)
                       .messageListener(messageListener)

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,15 +13,21 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import com.google.common.reflect.TypeToken;
+import com.google.gson.Gson;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 public class Host {
 
-  public static final String DOCKER_PREFIX = "DOCKER:";
+  private static final String DOCKER_PREFIX = "DOCKER:";
+
+  private static final Gson GSON = new Gson();
 
   private static String capture(InputStream is) throws IOException {
     BufferedReader br = new BufferedReader(new InputStreamReader(is));
@@ -93,7 +99,27 @@ public class Host {
   }
 
   public static Process killConnection(String connectionName) throws IOException {
+    List<ConnectionInfo> cs = listConnections();
+    if (cs.stream().filter(c -> connectionName.equals(c.clientProvidedName())).count() != 1) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Could not find 1 connection '%s' in stream connections: %s",
+              connectionName,
+              cs.stream()
+                  .map(ConnectionInfo::clientProvidedName)
+                  .collect(Collectors.joining(", "))));
+    }
     return rabbitmqctl("eval 'rabbit_stream:kill_connection(\"" + connectionName + "\").'");
+  }
+
+  private static List<ConnectionInfo> listConnections() throws IOException {
+    Process process =
+        rabbitmqctl("list_stream_connections --formatter json conn_name,client_properties");
+    return toConnectionInfoList(capture(process.getInputStream()));
+  }
+
+  static List<ConnectionInfo> toConnectionInfoList(String json) {
+    return GSON.fromJson(json, new TypeToken<List<ConnectionInfo>>() {}.getType());
   }
 
   public static Process killStreamLeaderProcess(String stream) throws IOException {
@@ -184,6 +210,35 @@ public class Host {
     @Override
     public void close() throws Exception {
       this.end.call();
+    }
+  }
+
+  public static class ConnectionInfo {
+
+    private String conn_name;
+    private List<List<String>> client_properties;
+
+    public String name() {
+      return this.conn_name;
+    }
+
+    public String clientProvidedName() {
+      return client_properties.stream()
+          .filter(p -> "connection_name".equals(p.get(0)))
+          .findFirst()
+          .get()
+          .get(2);
+    }
+
+    @Override
+    public String toString() {
+      return "ConnectionInfo{"
+          + "conn_name='"
+          + conn_name
+          + '\''
+          + ", client_properties="
+          + client_properties
+          + '}';
     }
   }
 }

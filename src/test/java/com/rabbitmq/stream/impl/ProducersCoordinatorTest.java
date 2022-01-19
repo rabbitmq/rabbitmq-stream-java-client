@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -116,6 +116,7 @@ public class ProducersCoordinatorTest {
             environment,
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
+            type -> "producer-connection",
             clientFactory);
   }
 
@@ -182,6 +183,7 @@ public class ProducersCoordinatorTest {
             environment,
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
+            type -> "producer-connection",
             cf);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -209,6 +211,7 @@ public class ProducersCoordinatorTest {
             environment,
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
+            type -> "producer-connection",
             cf);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);

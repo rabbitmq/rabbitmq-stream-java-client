@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -21,9 +21,13 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.LongConsumer;
 import java.util.function.Predicate;
 import javax.net.ssl.X509TrustManager;
@@ -212,5 +216,24 @@ final class Utils {
     public X509Certificate[] getAcceptedIssuers() {
       return new X509Certificate[0];
     }
+  }
+
+  enum ClientConnectionType {
+    CONSUMER,
+    PRODUCER,
+    LOCATOR
+  }
+
+  static Function<ClientConnectionType, String> defaultConnectionNamingStrategy() {
+    Map<ClientConnectionType, AtomicLong> sequences =
+        new ConcurrentHashMap<>(ClientConnectionType.values().length);
+    Map<ClientConnectionType, String> prefixes =
+        new ConcurrentHashMap<>(ClientConnectionType.values().length);
+    for (ClientConnectionType type : ClientConnectionType.values()) {
+      sequences.put(type, new AtomicLong(0));
+      prefixes.put(type, "rabbitmq-stream-" + type.name().toLowerCase(Locale.ENGLISH) + "-");
+    }
+    return clientConnectionType ->
+        prefixes.get(clientConnectionType) + sequences.get(clientConnectionType);
   }
 }

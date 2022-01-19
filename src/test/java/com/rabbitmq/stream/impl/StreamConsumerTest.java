@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -79,7 +79,8 @@ public class StreamConsumerTest {
             },
             "stream leader process is killed"),
         TestUtils.namedTask(
-            o -> Host.killConnection("rabbitmq-stream-consumer"), "consumer connection is killed"),
+            o -> Host.killConnection("rabbitmq-stream-consumer-0"),
+            "consumer connection is killed"),
         TestUtils.namedTask(
             o -> {
               try {
@@ -373,7 +374,7 @@ public class StreamConsumerTest {
         .build();
 
     // killing the consumer connection to trigger an internal restart
-    Host.killConnection("rabbitmq-stream-consumer");
+    Host.killConnection("rabbitmq-stream-consumer-0");
 
     // no messages should have been received
     assertThat(consumedCount.get()).isZero();
@@ -604,7 +605,7 @@ public class StreamConsumerTest {
     waitAtMost(5, () -> receivedMessages.get() == messageCount);
     assertThat(offsetTracking.get()).isGreaterThanOrEqualTo(messageCount - 1);
 
-    Host.killConnection("rabbitmq-stream-consumer");
+    Host.killConnection("rabbitmq-stream-consumer-0");
     waitAtMost(
         recoveryInitialDelay.multipliedBy(2), () -> subscriptionListenerCallCount.get() == 2);
 
@@ -649,7 +650,7 @@ public class StreamConsumerTest {
         };
     publish.accept(storeEvery * 2 - 100);
     waitAtMost(5, () -> receivedMessages.get() == publishedMessages.get());
-    Host.killConnection("rabbitmq-stream-consumer");
+    Host.killConnection("rabbitmq-stream-consumer-0");
 
     publish.accept(storeEvery * 2);
     producer.send(
@@ -709,7 +710,7 @@ public class StreamConsumerTest {
         };
     publish.accept(storeEvery * 2 - 100);
     waitAtMost(5, () -> receivedMessages.get() == publishedMessages.get());
-    Host.killConnection("rabbitmq-stream-consumer");
+    Host.killConnection("rabbitmq-stream-consumer-0");
 
     publish.accept(storeEvery * 2);
     producer.send(

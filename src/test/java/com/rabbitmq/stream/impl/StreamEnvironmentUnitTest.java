@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -92,6 +92,7 @@ public class StreamEnvironmentUnitTest {
             null,
             ByteBufAllocator.DEFAULT,
             false,
+            type -> "locator-connection",
             cf);
   }
 
@@ -152,6 +153,7 @@ public class StreamEnvironmentUnitTest {
             null,
             ByteBufAllocator.DEFAULT,
             false,
+            type -> "locator-connection",
             cf);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }
@@ -177,6 +179,7 @@ public class StreamEnvironmentUnitTest {
             null,
             ByteBufAllocator.DEFAULT,
             lazyInit,
+            type -> "locator-connection",
             cf);
     verify(cf, times(expectedConnectionCreation)).apply(any(Client.ClientParameters.class));
   }

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -24,6 +24,7 @@ import com.rabbitmq.stream.impl.Client.PublishConfirmListener;
 import com.rabbitmq.stream.impl.Client.PublishErrorListener;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.ShutdownListener;
+import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.Collection;
@@ -35,6 +36,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,16 +50,19 @@ class ProducersCoordinator {
   private final ClientFactory clientFactory;
   private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
   private final int maxProducersByClient, maxTrackingConsumersByClient;
+  private final Function<ClientConnectionType, String> connectionNamingStrategy;
 
   ProducersCoordinator(
       StreamEnvironment environment,
       int maxProducersByClient,
       int maxTrackingConsumersByClient,
+      Function<ClientConnectionType, String> connectionNamingStrategy,
       ClientFactory clientFactory) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxProducersByClient = maxProducersByClient;
     this.maxTrackingConsumersByClient = maxTrackingConsumersByClient;
+    this.connectionNamingStrategy = connectionNamingStrategy;
   }
 
   private static String keyForManagerPool(Client.Broker broker) {
@@ -493,7 +498,9 @@ class ProducersCoordinator {
                       .publishErrorListener(publishErrorListener)
                       .shutdownListener(shutdownListener)
                       .metadataListener(metadataListener)
-                      .clientProperty("connection_name", "rabbitmq-stream-producer"))
+                      .clientProperty(
+                          "connection_name",
+                          connectionNamingStrategy.apply(ClientConnectionType.PRODUCER)))
               .key(owner.name);
       this.client = cf.client(connectionFactoryContext);
       clientInitializedInManager.set(true);

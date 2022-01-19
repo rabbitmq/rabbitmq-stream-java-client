@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -34,6 +34,7 @@ import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
+import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -102,7 +103,8 @@ class StreamEnvironment implements Environment {
       int maxConsumersByConnection,
       DefaultTlsConfiguration tlsConfiguration,
       ByteBufAllocator byteBufAllocator,
-      boolean lazyInit) {
+      boolean lazyInit,
+      Function<ClientConnectionType, String> connectionNamingStrategy) {
     this(
         scheduledExecutorService,
         clientParametersPrototype,
@@ -116,6 +118,7 @@ class StreamEnvironment implements Environment {
         tlsConfiguration,
         byteBufAllocator,
         lazyInit,
+        connectionNamingStrategy,
         cp -> new Client(cp));
   }
 
@@ -132,6 +135,7 @@ class StreamEnvironment implements Environment {
       DefaultTlsConfiguration tlsConfiguration,
       ByteBufAllocator byteBufAllocator,
       boolean lazyInit,
+      Function<ClientConnectionType, String> connectionNamingStrategy,
       Function<Client.ClientParameters, Client> clientFactory) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
@@ -202,10 +206,14 @@ class StreamEnvironment implements Environment {
             this,
             maxProducersByConnection,
             maxTrackingConsumersByConnection,
+            connectionNamingStrategy,
             Utils.coordinatorClientFactory(this));
     this.consumersCoordinator =
         new ConsumersCoordinator(
-            this, maxConsumersByConnection, Utils.coordinatorClientFactory(this));
+            this,
+            maxConsumersByConnection,
+            connectionNamingStrategy,
+            Utils.coordinatorClientFactory(this));
     this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
 
     AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
@@ -231,7 +239,10 @@ class StreamEnvironment implements Environment {
                               newLocatorParameters
                                   .host(address.host())
                                   .port(address.port())
-                                  .clientProperty("connection_name", "rabbitmq-stream-locator"));
+                                  .clientProperty(
+                                      "connection_name",
+                                      connectionNamingStrategy.apply(
+                                          ClientConnectionType.LOCATOR)));
                       LOGGER.debug("Locator connected on {}", address);
                       return newLocator;
                     })
@@ -254,7 +265,9 @@ class StreamEnvironment implements Environment {
                     .duplicate()
                     .host(address.host())
                     .port(address.port())
-                    .clientProperty("connection_name", "rabbitmq-stream-locator")
+                    .clientProperty(
+                        "connection_name",
+                        connectionNamingStrategy.apply(ClientConnectionType.LOCATOR))
                     .shutdownListener(shutdownListenerReference.get());
             try {
               this.locator = clientFactory.apply(locatorParameters);

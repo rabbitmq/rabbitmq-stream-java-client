@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -378,7 +378,7 @@ public class StreamEnvironmentTest {
       String s = streamName(info);
       environment.streamCreator().stream(s).create();
       environment.deleteStream(s);
-      Host.killConnection("rabbitmq-stream-locator");
+      Host.killConnection("rabbitmq-stream-locator-0");
       environment.streamCreator().stream(s).create();
       try {
         Producer producer = environment.producerBuilder().stream(s).build();

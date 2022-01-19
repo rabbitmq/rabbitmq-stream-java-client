@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -143,7 +143,10 @@ public class ConsumersCoordinatorTest {
 
     coordinator =
         new ConsumersCoordinator(
-            environment, ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT, clientFactory);
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            clientFactory);
   }
 
   @AfterEach
@@ -166,7 +169,10 @@ public class ConsumersCoordinatorTest {
                 .client(context);
     ConsumersCoordinator c =
         new ConsumersCoordinator(
-            environment, ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT, cf);
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            cf);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -201,7 +207,10 @@ public class ConsumersCoordinatorTest {
                 .client(context);
     ConsumersCoordinator c =
         new ConsumersCoordinator(
-            environment, ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT, cf);
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            cf);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
