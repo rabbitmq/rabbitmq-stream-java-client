@@ -194,25 +194,24 @@ class ConsumersCoordinator {
   @Override
   public String toString() {
     return ("[ \n"
-            + pools.entrySet().stream()
-                .map(
-                    poolEntry ->
-                        "  { 'broker' : '"
-                            + poolEntry.getKey()
-                            + "', 'clients' : [ "
-                            + poolEntry.getValue().managers.stream()
-                                .map(
-                                    manager ->
-                                        "{ 'consumer_count' : "
-                                            + manager.subscriptionTrackers.stream()
-                                                .filter(Objects::nonNull)
-                                                .count()
-                                            + " }")
-                                .collect(Collectors.joining(", "))
-                            + " ] }")
-                .collect(Collectors.joining(", \n"))
-            + "\n]")
-        .replace("'", "\"");
+        + pools.entrySet().stream()
+            .map(
+                poolEntry ->
+                    "  { \"broker\" : \""
+                        + poolEntry.getKey()
+                        + "\", \"clients\" : [ "
+                        + poolEntry.getValue().managers.stream()
+                            .map(
+                                manager ->
+                                    "{ \"consumer_count\" : "
+                                        + manager.subscriptionTrackers.stream()
+                                            .filter(Objects::nonNull)
+                                            .count()
+                                        + " }")
+                            .collect(Collectors.joining(", "))
+                        + " ] }")
+            .collect(Collectors.joining(", \n"))
+        + "\n]");
   }
 
   /**
@@ -267,10 +266,12 @@ class ConsumersCoordinator {
     synchronized void assign(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
       this.subscriptionIdInClient = subscriptionIdInClient;
       this.manager = manager;
+      this.consumer.setSubscriptionClient(this.manager.client);
     }
 
     synchronized void detachFromManager() {
       this.manager = null;
+      this.consumer.setSubscriptionClient(null);
     }
   }
 

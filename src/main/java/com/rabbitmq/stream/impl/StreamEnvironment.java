@@ -604,13 +604,15 @@ class StreamEnvironment implements Environment {
   @Override
   public String toString() {
     Client locator = this.locator;
-    return "{ locator : "
-        + (locator == null ? "null" : ("'" + locator.getHost() + ":" + locator.getPort() + "'"))
+    return "{ \"locator\" : "
+        + (locator == null ? "null" : ("\"" + locator.connectionName() + "\""))
         + ", "
-        + "'producers' : "
+        + "\"producers\" : "
         + this.producersCoordinator
-        + ", 'consumers' : "
+        + ", \"consumers\" : "
         + this.consumersCoordinator
+        + ", \"offset_tracking\" : "
+        + this.offsetTrackingCoordinator
         + "}";
   }
 

@@ -32,6 +32,7 @@ import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
 import java.time.Duration;
@@ -297,6 +298,12 @@ public class StreamConsumerTest {
                   }
                 })
             .build();
+
+    ConsumerInfo consumerInfo = MonitoringTestUtils.extract(consumer);
+    assertThat(consumerInfo.getId()).isGreaterThanOrEqualTo(0);
+    assertThat(consumerInfo.getStream()).isEqualTo(stream);
+    assertThat(consumerInfo.getSubscriptionClient()).contains(" -> localhost:5552");
+    assertThat(consumerInfo.getTrackingClient()).contains(" -> localhost:5552");
 
     consumerReference.set(consumer);
 

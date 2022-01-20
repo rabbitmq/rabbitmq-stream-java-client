@@ -251,7 +251,9 @@ public class ProducersCoordinatorTest {
 
     CountDownLatch setClientLatch = new CountDownLatch(2 + 2 + 1);
     doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
-    doAnswer(answer(() -> setClientLatch.countDown())).when(trackingConsumer).setClient(client);
+    doAnswer(answer(() -> setClientLatch.countDown()))
+        .when(trackingConsumer)
+        .setTrackingClient(client);
     doAnswer(answer(() -> setClientLatch.countDown()))
         .when(producerClosedAfterDisconnection)
         .setClient(client);
@@ -268,7 +270,7 @@ public class ProducersCoordinatorTest {
     coordinator.registerProducer(producerClosedAfterDisconnection, null, "stream");
 
     verify(producer, times(1)).setClient(client);
-    verify(trackingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setTrackingClient(client);
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
@@ -282,7 +284,7 @@ public class ProducersCoordinatorTest {
     verify(producer, times(2)).setClient(client);
     verify(producer, times(1)).running();
     verify(trackingConsumer, times(1)).unavailable();
-    verify(trackingConsumer, times(2)).setClient(client);
+    verify(trackingConsumer, times(2)).setTrackingClient(client);
     verify(trackingConsumer, times(1)).running();
     verify(producerClosedAfterDisconnection, times(1)).unavailable();
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
@@ -313,7 +315,7 @@ public class ProducersCoordinatorTest {
     coordinator.registerTrackingConsumer(trackingConsumer);
 
     verify(producer, times(1)).setClient(client);
-    verify(trackingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setTrackingClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -325,7 +327,7 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
     verify(trackingConsumer, times(1)).unavailable();
-    verify(trackingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setTrackingClient(client);
     verify(trackingConsumer, never()).running();
     verify(trackingConsumer, never()).closeAfterStreamDeletion();
     assertThat(coordinator.poolSize()).isEqualTo(0);
@@ -373,7 +375,7 @@ public class ProducersCoordinatorTest {
 
     doAnswer(answer(() -> setClientLatch.countDown()))
         .when(movingTrackingConsumer)
-        .setClient(client);
+        .setTrackingClient(client);
 
     doAnswer(answer(() -> setClientLatch.countDown()))
         .when(producerClosedAfterDisconnection)
@@ -392,8 +394,8 @@ public class ProducersCoordinatorTest {
     verify(movingProducer, times(1)).setClient(client);
     verify(fixedProducer, times(1)).setClient(client);
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
-    verify(movingTrackingConsumer, times(1)).setClient(client);
-    verify(fixedTrackingConsumer, times(1)).setClient(client);
+    verify(movingTrackingConsumer, times(1)).setTrackingClient(client);
+    verify(fixedTrackingConsumer, times(1)).setTrackingClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -405,7 +407,7 @@ public class ProducersCoordinatorTest {
     verify(movingProducer, times(2)).setClient(client);
     verify(movingProducer, times(1)).running();
     verify(movingTrackingConsumer, times(1)).unavailable();
-    verify(movingTrackingConsumer, times(2)).setClient(client);
+    verify(movingTrackingConsumer, times(2)).setTrackingClient(client);
     verify(movingTrackingConsumer, times(1)).running();
 
     verify(producerClosedAfterDisconnection, times(1)).unavailable();
@@ -416,7 +418,7 @@ public class ProducersCoordinatorTest {
     verify(fixedProducer, times(1)).setClient(client);
     verify(fixedProducer, never()).running();
     verify(fixedTrackingConsumer, never()).unavailable();
-    verify(fixedTrackingConsumer, times(1)).setClient(client);
+    verify(fixedTrackingConsumer, times(1)).setTrackingClient(client);
     verify(fixedTrackingConsumer, never()).running();
     assertThat(coordinator.poolSize()).isEqualTo(2);
     assertThat(coordinator.clientCount()).isEqualTo(2);
@@ -478,7 +480,7 @@ public class ProducersCoordinatorTest {
     coordinator.registerTrackingConsumer(trackingConsumer);
 
     verify(producer, times(1)).setClient(client);
-    verify(trackingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setTrackingClient(client);
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
@@ -489,7 +491,7 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
     verify(trackingConsumer, times(1)).unavailable();
-    verify(trackingConsumer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setTrackingClient(client);
     verify(trackingConsumer, never()).running();
     verify(trackingConsumer, never()).closeAfterStreamDeletion();
     assertThat(coordinator.poolSize()).isEqualTo(0);

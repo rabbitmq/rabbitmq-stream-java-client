@@ -144,26 +144,25 @@ class ProducersCoordinator {
   @Override
   public String toString() {
     return ("[ \n"
-            + pools.entrySet().stream()
-                .map(
-                    poolEntry ->
-                        "  { 'broker' : '"
-                            + poolEntry.getKey()
-                            + "', 'clients' : [ "
-                            + poolEntry.getValue().managers.stream()
-                                .map(
-                                    manager ->
-                                        "{ 'producer_count' : "
-                                            + manager.producers.size()
-                                            + ", "
-                                            + "  'tracking_consumer_count' : "
-                                            + manager.trackingConsumerTrackers.size()
-                                            + " }")
-                                .collect(Collectors.joining(", "))
-                            + " ] }")
-                .collect(Collectors.joining(", \n"))
-            + "\n]")
-        .replace("'", "\"");
+        + pools.entrySet().stream()
+            .map(
+                poolEntry ->
+                    "  { \"broker\" : \""
+                        + poolEntry.getKey()
+                        + "\", \"clients\" : [ "
+                        + poolEntry.getValue().managers.stream()
+                            .map(
+                                manager ->
+                                    "{ \"producer_count\" : "
+                                        + manager.producers.size()
+                                        + ", "
+                                        + "  \"tracking_consumer_count\" : "
+                                        + manager.trackingConsumerTrackers.size()
+                                        + " }")
+                            .collect(Collectors.joining(", "))
+                        + " ] }")
+            .collect(Collectors.joining(", \n"))
+        + "\n]");
   }
 
   private interface AgentTracker {
@@ -280,7 +279,7 @@ class ProducersCoordinator {
       synchronized (TrackingConsumerTracker.this) {
         this.clientProducersManager = manager;
       }
-      this.consumer.setClient(client);
+      this.consumer.setTrackingClient(client);
     }
 
     @Override

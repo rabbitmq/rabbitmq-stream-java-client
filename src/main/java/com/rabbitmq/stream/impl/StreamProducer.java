@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -36,6 +36,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -52,8 +53,11 @@ import org.slf4j.LoggerFactory;
 
 class StreamProducer implements Producer {
 
+  private static final AtomicLong ID_SEQUENCE = new AtomicLong(0);
+
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamProducer.class);
   private static final ConfirmationHandler NO_OP_CONFIRMATION_HANDLER = confirmationStatus -> {};
+  private final long id;
   private final MessageAccumulator accumulator;
   // FIXME investigate a more optimized data structure to handle pending messages
   private final ConcurrentMap<Long, AccumulatedEntity> unconfirmedMessages;
@@ -87,6 +91,7 @@ class StreamProducer implements Producer {
       Duration confirmTimeout,
       Duration enqueueTimeout,
       StreamEnvironment environment) {
+    this.id = ID_SEQUENCE.getAndIncrement();
     this.environment = environment;
     this.name = name;
     this.stream = stream;
@@ -478,5 +483,37 @@ class StreamProducer implements Producer {
   interface ConfirmationCallback {
 
     int handle(boolean confirmed, short code);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    StreamProducer that = (StreamProducer) o;
+    return id == that.id && stream.equals(that.stream);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(id, stream);
+  }
+
+  @Override
+  public String toString() {
+    Client client = this.client;
+    return "{ "
+        + "\"id\" : "
+        + id
+        + ","
+        + "\"stream\" : \""
+        + stream
+        + "\","
+        + "\"publishing_client\" : "
+        + (client == null ? "null" : ("\"" + client.connectionName() + "\""))
+        + "}";
   }
 }

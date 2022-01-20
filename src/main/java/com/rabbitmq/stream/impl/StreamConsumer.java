@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -44,6 +44,7 @@ class StreamConsumer implements Consumer {
   private final Runnable initCallback;
   private volatile Runnable closingCallback;
   private volatile Client trackingClient;
+  private volatile Client subscriptionClient;
   private volatile Status status;
   private volatile long lastRequestedStoredOffset = 0;
 
@@ -177,8 +178,12 @@ class StreamConsumer implements Consumer {
     return !this.closed.get();
   }
 
-  synchronized void setClient(Client client) {
+  synchronized void setTrackingClient(Client client) {
     this.trackingClient = client;
+  }
+
+  void setSubscriptionClient(Client client) {
+    this.subscriptionClient = client;
   }
 
   synchronized void unavailable() {
@@ -253,6 +258,22 @@ class StreamConsumer implements Consumer {
 
   @Override
   public String toString() {
-    return "StreamConsumer{" + "id=" + id + ", stream='" + stream + '\'' + '}';
+    Client subscriptionClient = this.subscriptionClient;
+    Client trackingClient = this.trackingClient;
+    return "{ "
+        + "\"id\" : "
+        + id
+        + ","
+        + "\"stream\" : \""
+        + stream
+        + "\","
+        + "\"subscription_client\" : "
+        + (subscriptionClient == null
+            ? "null"
+            : ("\"" + subscriptionClient.connectionName() + "\""))
+        + ", "
+        + "\"tracking_client\" : "
+        + (trackingClient == null ? "null" : ("\"" + trackingClient.connectionName() + "\""))
+        + "}";
   }
 }

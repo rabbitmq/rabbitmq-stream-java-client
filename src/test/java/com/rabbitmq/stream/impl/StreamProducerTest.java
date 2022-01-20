@@ -30,6 +30,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
 import com.rabbitmq.stream.impl.StreamProducer.Status;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
@@ -121,6 +122,11 @@ public class StreamProducerTest {
     assertThat(idsSent).hasSameSizeAs(idsConfirmed);
     idsSent.forEach(idSent -> assertThat(idsConfirmed).contains(idSent));
     assertThat(completed).isTrue();
+
+    ProducerInfo info = MonitoringTestUtils.extract(producer);
+    assertThat(info.getId()).isGreaterThanOrEqualTo(0);
+    assertThat(info.getStream()).isEqualTo(stream);
+    assertThat(info.getPublishingClient()).contains(" -> localhost:5552");
   }
 
   @Test

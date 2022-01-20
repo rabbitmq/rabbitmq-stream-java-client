@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -96,6 +96,7 @@ import io.netty.handler.timeout.IdleStateHandler;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
+import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -1235,6 +1236,29 @@ public class Client implements AutoCloseable {
 
   int getPort() {
     return port;
+  }
+
+  String connectionName() {
+    StringBuilder builder = new StringBuilder();
+    SocketAddress localAddress = localAddress();
+    if (localAddress instanceof InetSocketAddress) {
+      InetSocketAddress address = (InetSocketAddress) localAddress;
+      builder.append(address.getHostString()).append(":").append(address.getPort());
+    } else {
+      builder.append("?");
+    }
+    builder.append(" -> ");
+    return builder.append(serverAddress()).toString();
+  }
+
+  private String serverAddress() {
+    SocketAddress remoteAddress = remoteAddress();
+    if (remoteAddress instanceof InetSocketAddress) {
+      InetSocketAddress address = (InetSocketAddress) remoteAddress;
+      return address.getHostString() + ":" + address.getPort();
+    } else {
+      return this.host + ":" + this.port;
+    }
   }
 
   public List<String> route(String routingKey, String superStream) {
