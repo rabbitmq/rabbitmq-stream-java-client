@@ -112,7 +112,7 @@ public class Host {
     return rabbitmqctl("eval 'rabbit_stream:kill_connection(\"" + connectionName + "\").'");
   }
 
-  private static List<ConnectionInfo> listConnections() throws IOException {
+  public static List<ConnectionInfo> listConnections() throws IOException {
     Process process =
         rabbitmqctl("list_stream_connections --formatter json conn_name,client_properties");
     return toConnectionInfoList(capture(process.getInputStream()));

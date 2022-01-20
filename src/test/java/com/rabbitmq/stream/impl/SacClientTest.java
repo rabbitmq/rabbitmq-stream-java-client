@@ -408,6 +408,9 @@ public class SacClientTest {
   void killingConnectionsShouldTriggerConsumerUpdateNotification() throws Exception {
     Map<String, Boolean> consumerStates = new ConcurrentHashMap<>();
     List<String> consumerNames = IntStream.range(0, 5).mapToObj(i -> "foo-" + i).collect(toList());
+
+    int connectionCount = Host.listConnections().size();
+
     for (String consumerName : consumerNames) {
       Client c0 =
           cf.get(
@@ -417,6 +420,7 @@ public class SacClientTest {
                         consumerStates.put(consumerName + "-connection-0", active);
                         return null;
                       }));
+      connectionCount++;
       Client c1 =
           cf.get(
               withConnectionName(consumerName + "-connection-1")
@@ -425,6 +429,7 @@ public class SacClientTest {
                         consumerStates.put(consumerName + "-connection-1", active);
                         return null;
                       }));
+      connectionCount++;
 
       Map<String, String> subscriptionProperties = new HashMap<>();
       subscriptionProperties.put("single-active-consumer", "true");
@@ -439,6 +444,9 @@ public class SacClientTest {
       response = c0.subscribe(b(1), stream, OffsetSpecification.first(), 2, subscriptionProperties);
       assertThat(response).is(ok());
     }
+
+    int cCount = connectionCount;
+    waitAtMost(() -> Host.listConnections().size() == cCount);
 
     for (String consumerName : consumerNames) {
       Host.killConnection(consumerName + "-connection-0");
