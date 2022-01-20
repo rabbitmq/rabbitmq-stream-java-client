@@ -627,14 +627,14 @@ public class StreamConsumerTest {
     AtomicInteger receivedMessages = new AtomicInteger(0);
     int storeEvery = 10_000;
     String reference = "ref-1";
-    CountDownLatch poisonLatch = new CountDownLatch(1);
+    AtomicBoolean receivedPoison = new AtomicBoolean(false);
     environment.consumerBuilder().name(reference).stream(stream)
         .offset(OffsetSpecification.first())
         .messageHandler(
             (context, message) -> {
               receivedMessages.incrementAndGet();
               if ("poison".equals(new String(message.getBodyAsBinary()))) {
-                poisonLatch.countDown();
+                receivedPoison.set(true);
               }
             })
         .autoTrackingStrategy()
@@ -660,9 +660,15 @@ public class StreamConsumerTest {
     Host.killConnection("rabbitmq-stream-consumer-0");
 
     publish.accept(storeEvery * 2);
-    producer.send(
-        producer.messageBuilder().addData("poison".getBytes()).build(), confirmationStatus -> {});
-    latchAssert(poisonLatch).completes();
+    waitAtMost(
+        () -> {
+          producer.send(
+              producer.messageBuilder().addData("poison".getBytes()).build(),
+              confirmationStatus -> {});
+          publishedMessages.incrementAndGet();
+          return receivedPoison.get();
+        });
+
     // we have duplicates because the last stored value is behind and the re-subscription uses it
     assertThat(receivedMessages).hasValueGreaterThan(publishedMessages.get());
   }
