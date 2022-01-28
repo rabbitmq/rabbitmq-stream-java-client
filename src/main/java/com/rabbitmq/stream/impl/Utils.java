@@ -234,6 +234,6 @@ final class Utils {
       prefixes.put(type, "rabbitmq-stream-" + type.name().toLowerCase(Locale.ENGLISH) + "-");
     }
     return clientConnectionType ->
-        prefixes.get(clientConnectionType) + sequences.get(clientConnectionType);
+        prefixes.get(clientConnectionType) + sequences.get(clientConnectionType).getAndIncrement();
   }
 }

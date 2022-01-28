@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
+import static com.rabbitmq.stream.impl.Utils.defaultConnectionNamingStrategy;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -26,11 +27,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import com.rabbitmq.stream.impl.Utils.ExactNodeRetryClientFactory;
 import java.time.Duration;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
 public class UtilsTest {
@@ -72,5 +76,17 @@ public class UtilsTest {
     assertThat(result).isEqualTo(client);
     verify(cf, times(3)).client(any());
     verify(client, times(2)).close();
+  }
+
+  @Test
+  void defaultConnectionNamingStrategyShouldIncrement() {
+    Function<ClientConnectionType, String> strategy = defaultConnectionNamingStrategy();
+    for (ClientConnectionType type : ClientConnectionType.values()) {
+      IntStream.range(0, 10)
+          .forEach(
+              i -> {
+                assertThat(strategy.apply(type)).endsWith("-" + i);
+              });
+    }
   }
 }
