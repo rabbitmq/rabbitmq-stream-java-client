@@ -49,6 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -512,30 +513,51 @@ public class ClientTest {
     client.subscribe(b(1), stream, OffsetSpecification.first(), credit);
 
     CountDownLatch confirmedLatch = new CountDownLatch(publishCount);
+    Set<Long> sent = ConcurrentHashMap.newKeySet(publishCount);
+    Client publisher =
+        cf.get(
+            new Client.ClientParameters()
+                .byteBufAllocator(allocator)
+                .publishConfirmListener(
+                    (publisherId, correlationId) -> {
+                      sent.remove(correlationId);
+                      confirmedLatch.countDown();
+                    }));
+    publisher.declarePublisher(b(1), null, stream);
+    LongConsumer publish =
+        messageId -> {
+          sent.add(messageId);
+          publisher.publish(
+              b(1),
+              Collections.singletonList(
+                  publisher
+                      .messageBuilder()
+                      .addData(("message" + messageId).getBytes(StandardCharsets.UTF_8))
+                      .build()),
+              msg -> messageId);
+        };
     new Thread(
             () -> {
-              Client publisher =
-                  cf.get(
-                      new Client.ClientParameters()
-                          .byteBufAllocator(allocator)
-                          .publishConfirmListener(
-                              (publisherId, correlationId) -> confirmedLatch.countDown()));
               int messageId = 0;
-              publisher.declarePublisher(b(1), null, stream);
               while (messageId < publishCount) {
                 messageId++;
-                publisher.publish(
-                    b(1),
-                    Collections.singletonList(
-                        publisher
-                            .messageBuilder()
-                            .addData(("message" + messageId).getBytes(StandardCharsets.UTF_8))
-                            .build()));
+                publish.accept(messageId);
               }
             })
         .start();
 
-    assertThat(confirmedLatch.await(15, SECONDS)).isTrue();
+    int attempt = 0;
+    while (attempt < 3) {
+      boolean allConfirmed = confirmedLatch.await(15, SECONDS);
+      if (allConfirmed) {
+        break;
+      } else {
+        attempt++;
+        for (Long messageIdNotConfirmed : sent) {
+          publish.accept(messageIdNotConfirmed);
+        }
+      }
+    }
     assertThat(consumedLatch.await(15, SECONDS)).isTrue();
     client.unsubscribe(b(1));
   }
