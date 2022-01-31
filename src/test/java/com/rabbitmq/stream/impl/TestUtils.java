@@ -17,6 +17,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import ch.qos.logback.classic.Level;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -92,6 +93,11 @@ public final class TestUtils {
 
   public static Duration waitAtMost(CallableBooleanSupplier condition) throws Exception {
     return waitAtMost(10, condition, null);
+  }
+
+  public static Duration waitAtMost(CallableBooleanSupplier condition, Supplier<String> message)
+      throws Exception {
+    return waitAtMost(10, condition, message);
   }
 
   public static Duration waitAtMost(Duration timeout, CallableBooleanSupplier condition)
@@ -798,5 +804,13 @@ public final class TestUtils {
         throw new RuntimeException(e);
       }
     }
+  }
+
+  static Level newLoggerLevel(Class<?> c, Level level) {
+    ch.qos.logback.classic.Logger logger =
+        (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(c);
+    Level initialLevel = logger.getEffectiveLevel();
+    logger.setLevel(level);
+    return initialLevel;
   }
 }

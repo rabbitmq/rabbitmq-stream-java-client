@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.ConfirmationStatus;
@@ -333,58 +334,66 @@ public class StreamProducerTest {
   @ParameterizedTest
   @ValueSource(ints = {1, 7})
   void producerShouldBeClosedWhenStreamIsDeleted(int subEntrySize, TestInfo info) throws Exception {
-    String s = streamName(info);
-    environment.streamCreator().stream(s).create();
+    Level initialLogLevel = TestUtils.newLoggerLevel(ProducersCoordinator.class, Level.DEBUG);
+    try {
+      String s = streamName(info);
+      environment.streamCreator().stream(s).create();
 
-    StreamProducer producer =
-        (StreamProducer) environment.producerBuilder().subEntrySize(subEntrySize).stream(s).build();
+      StreamProducer producer =
+          (StreamProducer)
+              environment.producerBuilder().subEntrySize(subEntrySize).stream(s).build();
 
-    AtomicInteger published = new AtomicInteger(0);
-    AtomicInteger confirmed = new AtomicInteger(0);
-    AtomicInteger errored = new AtomicInteger(0);
-    Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
+      AtomicInteger published = new AtomicInteger(0);
+      AtomicInteger confirmed = new AtomicInteger(0);
+      AtomicInteger errored = new AtomicInteger(0);
+      Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
 
-    short lastExpectedErrorCode = Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
-    AtomicBoolean continuePublishing = new AtomicBoolean(true);
-    Thread publishThread =
-        new Thread(
-            () -> {
-              ConfirmationHandler confirmationHandler =
-                  confirmationStatus -> {
-                    if (confirmationStatus.isConfirmed()) {
-                      confirmed.incrementAndGet();
-                    } else {
-                      errored.incrementAndGet();
-                      errorCodes.add(confirmationStatus.getCode());
-                      if (confirmationStatus.getCode() == lastExpectedErrorCode) {
-                        continuePublishing.set(false);
+      short lastExpectedErrorCode = Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
+      AtomicBoolean continuePublishing = new AtomicBoolean(true);
+      Thread publishThread =
+          new Thread(
+              () -> {
+                ConfirmationHandler confirmationHandler =
+                    confirmationStatus -> {
+                      if (confirmationStatus.isConfirmed()) {
+                        confirmed.incrementAndGet();
+                      } else {
+                        errored.incrementAndGet();
+                        errorCodes.add(confirmationStatus.getCode());
+                        if (confirmationStatus.getCode() == lastExpectedErrorCode) {
+                          continuePublishing.set(false);
+                        }
                       }
-                    }
-                  };
-              while (continuePublishing.get()) {
-                try {
-                  producer.send(
-                      producer
-                          .messageBuilder()
-                          .addData("".getBytes(StandardCharsets.UTF_8))
-                          .build(),
-                      confirmationHandler);
-                  published.incrementAndGet();
-                } catch (StreamException e) {
-                  // OK
+                    };
+                while (continuePublishing.get()) {
+                  try {
+                    producer.send(
+                        producer
+                            .messageBuilder()
+                            .addData("".getBytes(StandardCharsets.UTF_8))
+                            .build(),
+                        confirmationHandler);
+                    published.incrementAndGet();
+                  } catch (StreamException e) {
+                    // OK
+                  }
                 }
-              }
-            });
-    publishThread.start();
+              });
+      publishThread.start();
 
-    Thread.sleep(1000L);
+      Thread.sleep(1000L);
 
-    assertThat(producer.isOpen()).isTrue();
+      assertThat(producer.isOpen()).isTrue();
 
-    environment.deleteStream(s);
+      environment.deleteStream(s);
 
-    waitAtMost(() -> !producer.isOpen());
-    waitAtMost(() -> errorCodes.contains(lastExpectedErrorCode));
+      waitAtMost(() -> !producer.isOpen());
+      waitAtMost(
+          () -> errorCodes.contains(lastExpectedErrorCode),
+          () -> errorCodes + " should contain " + lastExpectedErrorCode);
+    } finally {
+      TestUtils.newLoggerLevel(ProducersCoordinator.class, initialLogLevel);
+    }
   }
 
   @ParameterizedTest
