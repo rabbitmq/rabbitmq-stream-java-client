@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.TestUtils.waitMs;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -96,14 +97,6 @@ public class StreamConsumerTest {
               Thread.sleep(recoveryInitialDelay.toMillis() * 2);
             },
             "broker is restarted"));
-  }
-
-  private static void waitMs(long waitTime) {
-    try {
-      Thread.sleep(waitTime);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   @BeforeEach

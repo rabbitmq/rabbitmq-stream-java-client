@@ -17,6 +17,7 @@ import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.stream.Collectors.toList;
@@ -24,16 +25,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
+import com.rabbitmq.stream.impl.Client.CreditNotification;
+import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -454,6 +462,116 @@ public class SacClientTest {
           () ->
               consumerStates.containsKey(consumerName + "-connection-1")
                   && consumerStates.get(consumerName + "-connection-1"));
+    }
+  }
+
+  @Test
+  void superStreamRebalancingShouldWorkWhilePublishing(TestInfo info) throws Exception {
+    Map<Byte, Boolean> consumerStates = consumerStates(3 * 3);
+    String superStream = streamName(info);
+    String consumerName = "foo";
+    Connection c = new ConnectionFactory().newConnection();
+    AtomicBoolean keepPublishing = new AtomicBoolean(true);
+    try {
+      declareSuperStreamTopology(c, superStream, 3);
+      // we use the second partition because a rebalancing occurs
+      // when the second consumer joins
+      String partitionInUse = superStream + "-1";
+
+      Client publisher = cf.get();
+      publisher.declarePublisher(b(0), null, partitionInUse);
+      new Thread(
+              () -> {
+                while (keepPublishing.get()) {
+                  publisher.publish(
+                      b(0),
+                      Collections.singletonList(
+                          publisher
+                              .messageBuilder()
+                              .addData("hello".getBytes(StandardCharsets.UTF_8))
+                              .build()));
+                  TestUtils.waitMs(10);
+                }
+              })
+          .start();
+
+      AtomicLong lastDispatchedOffset = new AtomicLong(0);
+      ConsumerUpdateListener consumerUpdateListener =
+          (client1, subscriptionId, active) -> {
+            consumerStates.put(subscriptionId, active);
+            return lastDispatchedOffset.get() == 0
+                ? OffsetSpecification.first()
+                : OffsetSpecification.offset(lastDispatchedOffset.get());
+          };
+      CountDownLatch receivedMessagesLatch = new CountDownLatch(100);
+      MessageListener messageListener =
+          (subscriptionId, offset, chunkTimestamp, message) -> {
+            lastDispatchedOffset.set(offset);
+            receivedMessagesLatch.countDown();
+          };
+      AtomicInteger creditNotificationResponseCode = new AtomicInteger();
+      // we keep track of credit errors
+      // with the amount of initial credit and the rebalancing,
+      // the first subscriber is likely to have in-flight credit commands
+      // when it becomes inactive. The server should then sends some credit
+      // notifications to tell the client it's not supposed to ask for credits
+      // for this subscription.
+      CreditNotification creditNotification =
+          (subscriptionId, responseCode) -> creditNotificationResponseCode.set(responseCode);
+      ClientParameters clientParameters =
+          new ClientParameters()
+              .chunkListener(
+                  (client, subscriptionId, offset, messageCount, dataSize) ->
+                      client.credit(subscriptionId, 1))
+              .messageListener(messageListener)
+              .creditNotification(creditNotification)
+              .consumerUpdateListener(consumerUpdateListener);
+      Client client1 = cf.get(clientParameters);
+      Map<String, String> subscriptionProperties = new HashMap<>();
+      subscriptionProperties.put("single-active-consumer", "true");
+      subscriptionProperties.put("name", consumerName);
+      subscriptionProperties.put("super-stream", superStream);
+      AtomicInteger subscriptionCounter = new AtomicInteger(0);
+      AtomicReference<Client> client = new AtomicReference<>();
+      Consumer<String> subscriptionCallback =
+          partition -> {
+            Response response =
+                client
+                    .get()
+                    .subscribe(
+                        b(subscriptionCounter.getAndIncrement()),
+                        partition,
+                        OffsetSpecification.first(),
+                        10,
+                        subscriptionProperties);
+            assertThat(response).is(ok());
+          };
+
+      client.set(client1);
+      subscriptionCallback.accept(partitionInUse);
+
+      waitAtMost(() -> consumerStates.get(b(0)));
+
+      latchAssert(receivedMessagesLatch).completes();
+
+      Client client2 = cf.get(clientParameters);
+
+      client.set(client2);
+      subscriptionCallback.accept(partitionInUse);
+
+      waitAtMost(() -> consumerStates.get(b(1)));
+
+      waitAtMost(
+          () ->
+              creditNotificationResponseCode.get() == Constants.RESPONSE_CODE_PRECONDITION_FAILED);
+
+      Response response = client1.unsubscribe(b(0));
+      assertThat(response).is(ok());
+      response = client2.unsubscribe(b(1));
+      assertThat(response).is(ok());
+    } finally {
+      keepPublishing.set(false);
+      deleteSuperStreamTopology(c, superStream, 3);
     }
   }
 }

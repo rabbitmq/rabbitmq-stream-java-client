@@ -828,7 +828,15 @@ public final class TestUtils {
     logger.setLevel(level);
     return initialLevel;
   }
-  
+
+  static void waitMs(long waitTime) {
+    try {
+      Thread.sleep(waitTime);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Tag("single-active-consumer")
