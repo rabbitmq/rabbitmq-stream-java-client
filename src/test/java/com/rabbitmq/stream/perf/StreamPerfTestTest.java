@@ -321,9 +321,9 @@ public class StreamPerfTestTest {
         run(
             builder()
                 .deleteStreams()
-                .monitoring(true)
+                .monitoring()
                 .monitoringPort(monitoringPort)
-                .prometheus(true));
+                .prometheus());
     waitUntilStreamExists(s);
     waitOneSecond();
 
@@ -520,8 +520,8 @@ public class StreamPerfTestTest {
       return this;
     }
 
-    ArgumentsBuilder monitoring(boolean monitoring) {
-      arguments.put("monitoring", String.valueOf(monitoring));
+    ArgumentsBuilder monitoring() {
+      arguments.put("monitoring", "");
       return this;
     }
 
@@ -530,8 +530,8 @@ public class StreamPerfTestTest {
       return this;
     }
 
-    ArgumentsBuilder prometheus(boolean prometheus) {
-      arguments.put("prometheus", String.valueOf(prometheus));
+    ArgumentsBuilder prometheus() {
+      arguments.put("prometheus", "");
       return this;
     }
 
