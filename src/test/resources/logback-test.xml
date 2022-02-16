@@ -6,7 +6,7 @@
     </appender>
 
     <logger name="com.rabbitmq.stream" level="warn" />
-    <logger name="com.rabbitmq.stream.perf" level="debug" />
+    <logger name="com.rabbitmq.stream.perf" level="info" />
     <logger name="com.rabbitmq.stream.perf.Version" level="error" />
     <logger name="org.eclipse.jetty" level="warn" />
 
