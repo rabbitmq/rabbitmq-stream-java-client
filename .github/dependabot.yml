@@ -7,3 +7,7 @@ updates:
     schedule:
       interval: "daily"
     open-pull-requests-limit: 20
+    ignore:
+      - dependency-name: "com.swiftmq:swiftmq-client"
+      - dependency-name: "org.eclipse.jetty:jetty-servlet"
+        versions: ["10.x", "11.x"]
