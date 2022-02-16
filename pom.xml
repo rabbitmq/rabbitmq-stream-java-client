@@ -74,7 +74,7 @@
     <paho.version>1.2.5</paho.version>
     <maven.compiler.plugin.version>3.8.1</maven.compiler.plugin.version>
     <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
-    <spring-boot-maven-plugin.version>2.5.1</spring-boot-maven-plugin.version>
+    <spring-boot-maven-plugin.version>2.6.3</spring-boot-maven-plugin.version>
     <checksum.maven.plugin.version>1.11</checksum.maven.plugin.version>
     <maven.gpg.plugin.version>1.6</maven.gpg.plugin.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
