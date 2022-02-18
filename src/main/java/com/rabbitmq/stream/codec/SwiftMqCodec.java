@@ -405,7 +405,7 @@ public class SwiftMqCodec implements Codec {
           try {
             AMQPType[] array = ((AMQPArray) value).getValue();
             if (array.length > 0) {
-              // far-fetch
+              // far-fetched
               if (array[0] instanceof AMQPByte) {
                 byte[] result = new byte[array.length];
                 for (int i = 0; i < array.length; i++) {
