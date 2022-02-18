@@ -19,21 +19,28 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Codec.EncodedMessage;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.amqp.UnsignedByte;
 import com.rabbitmq.stream.amqp.UnsignedInteger;
 import com.rabbitmq.stream.amqp.UnsignedLong;
 import com.rabbitmq.stream.amqp.UnsignedShort;
+import com.rabbitmq.stream.codec.QpidProtonCodec.QpidProtonAmqpMessageWrapper;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -69,6 +76,18 @@ public class CodecsTest {
         when(mock(Codec.class).messageBuilder()).thenReturn(new WrapperMessageBuilder()).getMock(),
         new QpidProtonCodec(),
         new SwiftMqCodec());
+  }
+
+  static Stream<Codec> codecs() {
+    return Stream.of(new QpidProtonCodec(), new SwiftMqCodec());
+  }
+
+  static Stream<MessageBuilder> messageBuilders() {
+    return Stream.of(
+        new QpidProtonMessageBuilder(),
+        new SwiftMqMessageBuilder(),
+        new WrapperMessageBuilder(),
+        new SimpleCodec().messageBuilder());
   }
 
   @ParameterizedTest
@@ -493,12 +512,28 @@ public class CodecsTest {
             action -> assertThatThrownBy(action).isInstanceOf(UnsupportedOperationException.class));
   }
 
-  static Stream<MessageBuilder> messageBuilders() {
-    return Stream.of(
-        new QpidProtonMessageBuilder(),
-        new SwiftMqMessageBuilder(),
-        new WrapperMessageBuilder(),
-        new SimpleCodec().messageBuilder());
+  @ParameterizedTest
+  @MethodSource("codecs")
+  void supportAmqpValueBody(Codec codec) {
+    Function<Object, Message> encodeDecode =
+        content -> {
+          org.apache.qpid.proton.message.Message nativeMessage =
+              org.apache.qpid.proton.message.Message.Factory.create();
+          nativeMessage.setBody(new AmqpValue(content));
+          QpidProtonAmqpMessageWrapper wrapper =
+              new QpidProtonAmqpMessageWrapper(true, 1L, nativeMessage);
+          EncodedMessage encoded = new QpidProtonCodec().encode(wrapper);
+          byte[] encodedData = new byte[encoded.getSize()];
+          System.arraycopy(encoded.getData(), 0, encodedData, 0, encoded.getSize());
+          Message decodedMessage = codec.decode(encodedData);
+          return decodedMessage;
+        };
+
+    Message m1 = encodeDecode.apply("hello".getBytes(StandardCharsets.UTF_8));
+    assertThat(m1.getBodyAsBinary()).asString(StandardCharsets.UTF_8).isEqualTo("hello");
+
+    Message m2 = encodeDecode.apply("a string is not an array of byte");
+    assertThatThrownBy(() -> m2.getBodyAsBinary()).isInstanceOf(IllegalStateException.class);
   }
 
   @ParameterizedTest

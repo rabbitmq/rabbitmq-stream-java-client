@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import org.apache.qpid.proton.amqp.*;
+import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
 import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
@@ -464,7 +465,20 @@ public class QpidProtonCodec implements Codec {
 
     @Override
     public byte[] getBodyAsBinary() {
-      return message.getBody() == null ? null : ((Data) message.getBody()).getValue().getArray();
+      if (message.getBody() == null) {
+        return null;
+      } else if (message.getBody() instanceof Data) {
+        return ((Data) message.getBody()).getValue().getArray();
+      } else if (message.getBody() instanceof AmqpValue) {
+        AmqpValue value = (AmqpValue) message.getBody();
+        if (value.getValue() instanceof byte[]) {
+          return (byte[]) value.getValue();
+        }
+      }
+      throw new IllegalStateException(
+          "Body cannot by returned as array of bytes: "
+              + message.getBody()
+              + ". Use #getBody() to get native representation.");
     }
 
     @Override

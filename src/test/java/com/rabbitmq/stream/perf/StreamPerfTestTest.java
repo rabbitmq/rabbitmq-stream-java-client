@@ -318,12 +318,7 @@ public class StreamPerfTestTest {
   void monitoringShouldReturnValidEndpoint() throws Exception {
     int monitoringPort = randomNetworkPort();
     Future<?> run =
-        run(
-            builder()
-                .deleteStreams()
-                .monitoring()
-                .monitoringPort(monitoringPort)
-                .prometheus());
+        run(builder().deleteStreams().monitoring().monitoringPort(monitoringPort).prometheus());
     waitUntilStreamExists(s);
     waitOneSecond();
 

@@ -395,12 +395,45 @@ public class SwiftMqCodec implements Codec {
 
     @Override
     public byte[] getBodyAsBinary() {
-      return amqpMessage.getData().get(0).getValue();
+      if (amqpMessage.getData() != null) {
+        return amqpMessage.getData().get(0).getValue();
+      } else if (amqpMessage.getAmqpValue() != null) {
+        AMQPType value = amqpMessage.getAmqpValue().getValue();
+        if (value instanceof AMQPBinary) {
+          return ((AMQPBinary) value).getValue();
+        } else if (value instanceof AMQPArray) {
+          try {
+            AMQPType[] array = ((AMQPArray) value).getValue();
+            if (array.length > 0) {
+              // far-fetch
+              if (array[0] instanceof AMQPByte) {
+                byte[] result = new byte[array.length];
+                for (int i = 0; i < array.length; i++) {
+                  result[i] = ((AMQPByte) array[i]).getValue();
+                }
+                return result;
+              }
+            }
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+        }
+      } else if (amqpMessage.getData() == null && amqpMessage.getAmqpValue() == null) {
+        return null;
+      }
+      throw new IllegalStateException(
+          "Body cannot by returned as array of bytes. Use #getBody() to get native representation.");
     }
 
     @Override
     public Object getBody() {
-      return body;
+      if (amqpMessage.getData() != null) {
+        return amqpMessage.getData();
+      } else if (amqpMessage.getAmqpValue() != null) {
+        return amqpMessage.getAmqpValue();
+      } else {
+        return null;
+      }
     }
 
     @Override
