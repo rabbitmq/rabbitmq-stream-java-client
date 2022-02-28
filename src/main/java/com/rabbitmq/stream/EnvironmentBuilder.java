@@ -162,6 +162,7 @@ public interface EnvironmentBuilder {
    *
    * @param requestedHeartbeat
    * @return this builder instance
+   * @see <a href="https://rabbitmq.com/stream.html#protocol">See stream plugin documentation</a>
    */
   EnvironmentBuilder requestedHeartbeat(Duration requestedHeartbeat);
 
@@ -172,6 +173,7 @@ public interface EnvironmentBuilder {
    *
    * @param requestedMaxFrameSize
    * @return this builder instance
+   * @see <a href="https://rabbitmq.com/stream.html#protocol">See stream plugin documentation</a>
    */
   EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
 
