@@ -40,7 +40,7 @@ public class MetadataTest {
 
   @ValueSource(ints = {1, 2, 3, 4, 5})
   @ParameterizedTest
-  void metadataExistingStreams(int streamCount, TestInfo info) throws Exception {
+  void metadataExistingStreams(int streamCount, TestInfo info) {
     Client streamClient = cf.get();
     String[] streams =
         IntStream.range(0, streamCount)

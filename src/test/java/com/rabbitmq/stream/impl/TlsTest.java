@@ -24,6 +24,7 @@ import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
@@ -34,6 +35,9 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -106,7 +110,8 @@ public class TlsTest {
 
   static String clientCertificateFile() {
     return System.getProperty(
-        "client.certificate", "/tmp/tls-gen/basic/result/client_certificate.pem");
+        "client.certificate",
+        "/tmp/tls-gen/basic/result/client_" + hostname() + "_certificate.pem");
   }
 
   static PrivateKey clientKey() throws Exception {
@@ -131,7 +136,8 @@ public class TlsTest {
   }
 
   static String clientKeyFile() {
-    return System.getProperty("client.key", "/tmp/tls-gen/basic/result/client_key.pem");
+    return System.getProperty(
+        "client.key", "/tmp/tls-gen/basic/result/client_" + hostname() + "_key.pem");
   }
 
   static X509Certificate loadCertificate(String file) throws Exception {
@@ -314,5 +320,17 @@ public class TlsTest {
   void clientShouldContainServerAdvertisedTlsPort() {
     Client client = cf.get(new ClientParameters().sslContext(alwaysTrustSslContext()));
     assertThat(client.serverAdvertisedPort()).isEqualTo(Client.DEFAULT_TLS_PORT);
+  }
+
+  private static String hostname() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      try {
+        return Host.hostname();
+      } catch (IOException ex) {
+        throw new RuntimeException(ex);
+      }
+    }
   }
 }
