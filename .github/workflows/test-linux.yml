@@ -31,12 +31,12 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '11'
-#      - name: Cache Maven packages
-#        uses: actions/cache@v2
-#        with:
-#          path: ~/.m2
-#          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-#          restore-keys: ${{ runner.os }}-m2
+      - name: Cache Maven packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
       - name: Enable MQTT and STOMP plugins
         run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_stomp
       - name: Test
