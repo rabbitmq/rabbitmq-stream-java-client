@@ -53,7 +53,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -106,7 +105,6 @@ public class OffsetTrackingTest {
   }
 
   @Test
-  @Disabled
   void shouldReturnNoOffsetIfNothingStoredForReference() {
     QueryOffsetResponse response = cf.get().queryOffset(UUID.randomUUID().toString(), stream);
     assertThat(response.isOk()).isFalse();
