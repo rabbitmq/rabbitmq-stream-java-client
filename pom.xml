@@ -467,6 +467,7 @@
           <java>
             <excludes>
               <exclude>src/test/java/com/rabbitmq/stream/docs/*.java</exclude>
+              <exclude>src/test/java/SanityCheck.java</exclude>
             </excludes>
             <googleJavaFormat>
               <version>1.13.0</version>
