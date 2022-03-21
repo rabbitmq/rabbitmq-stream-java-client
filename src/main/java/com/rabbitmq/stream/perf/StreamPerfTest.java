@@ -340,6 +340,13 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "false")
   private boolean environmentVariables;
 
+  @CommandLine.Option(
+      names = {"--rpc-timeout", "-rt"},
+      description = "RPC timeout in seconds",
+      defaultValue = "10",
+      converter = Utils.PositiveIntegerTypeConverter.class)
+  private int rpcTimeout;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -562,7 +569,8 @@ public class StreamPerfTest implements Callable<Integer> {
               .codec(codec)
               .maxProducersByConnection(this.producersByConnection)
               .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
-              .maxConsumersByConnection(this.consumersByConnection);
+              .maxConsumersByConnection(this.consumersByConnection)
+              .rpcTimeout(Duration.ofSeconds(this.rpcTimeout));
 
       ChannelCustomizer channelCustomizer = channel -> {};
 
