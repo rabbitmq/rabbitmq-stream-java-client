@@ -34,6 +34,7 @@ import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
 import com.rabbitmq.stream.impl.Client.MessageListener;
@@ -293,6 +294,34 @@ public class ConsumersCoordinatorTest {
                     NO_OP_SUBSCRIPTION_LISTENER,
                     (offset, message) -> {}))
         .isInstanceOf(StreamDoesNotExistException.class);
+  }
+
+  @Test
+  void subscribePropagateExceptionWhenClientSubscriptionFails() {
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+    String exceptionMessage = "Could not get response in 10000 ms";
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenThrow(new StreamException(exceptionMessage));
+
+    assertThatThrownBy(
+            () ->
+                coordinator.subscribe(
+                    consumer,
+                    "stream",
+                    OffsetSpecification.first(),
+                    null,
+                    NO_OP_SUBSCRIPTION_LISTENER,
+                    (offset, message) -> {}))
+        .isInstanceOf(StreamException.class)
+        .hasMessage(exceptionMessage);
+    assertThat(MonitoringTestUtils.extract(coordinator)).isEmpty();
   }
 
   @Test

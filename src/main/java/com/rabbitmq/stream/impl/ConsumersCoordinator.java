@@ -126,8 +126,12 @@ class ConsumersCoordinator {
                         .host(newNode.getHost())
                         .port(newNode.getPort())));
 
-    managerPool.add(subscriptionTracker, offsetSpecification, true);
-
+    try {
+      managerPool.add(subscriptionTracker, offsetSpecification, true);
+    } catch (RuntimeException e) {
+      managerPool.clean();
+      throw e;
+    }
     return subscriptionTracker::cancel;
   }
 
@@ -266,7 +270,13 @@ class ConsumersCoordinator {
     synchronized void assign(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
       this.subscriptionIdInClient = subscriptionIdInClient;
       this.manager = manager;
-      this.consumer.setSubscriptionClient(this.manager.client);
+      if (this.manager == null) {
+        if (consumer != null) {
+          this.consumer.setSubscriptionClient(null);
+        }
+      } else {
+        this.consumer.setSubscriptionClient(this.manager.client);
+      }
     }
 
     synchronized void detachFromManager() {
@@ -350,6 +360,12 @@ class ConsumersCoordinator {
         ClientSubscriptionsManager manager = new ClientSubscriptionsManager(this, clientParameters);
         managers.add(manager);
         manager.add(subscriptionTracker, offsetSpecification, isInitialSubscription);
+      }
+    }
+
+    private synchronized void clean() {
+      for (ClientSubscriptionsManager manager : managers) {
+        maybeDisposeManager(manager);
       }
     }
 
