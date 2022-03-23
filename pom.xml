@@ -90,6 +90,7 @@
     <jruby.version>9.3.3.0</jruby.version>
     <jmh.version>1.34</jmh.version>
     <spotless.version>2.21.0</spotless.version>
+    <google-java-format.version>1.15.0</google-java-format.version>
     <jacoco.version>0.8.7</jacoco.version>
     <!-- to sign artifacts when releasing -->
     <gpg.keyname>6026DFCA</gpg.keyname>
@@ -470,7 +471,7 @@
               <exclude>src/test/java/SanityCheck.java</exclude>
             </excludes>
             <googleJavaFormat>
-              <version>1.13.0</version>
+              <version>${google-java-format.version}</version>
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
