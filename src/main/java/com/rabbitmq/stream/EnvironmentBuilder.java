@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
@@ -101,6 +102,14 @@ public interface EnvironmentBuilder {
 
   EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator);
 
+  /**
+   * Compression codec factory to use for compression in sub-entry batching.
+   *
+   * @param compressionCodecFactory
+   * @return this builder instance
+   * @see ProducerBuilder#subEntrySize(int)
+   * @see ProducerBuilder#compression(Compression)
+   */
   EnvironmentBuilder compressionCodecFactory(CompressionCodecFactory compressionCodecFactory);
 
   /**

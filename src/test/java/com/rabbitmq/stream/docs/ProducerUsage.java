@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -17,6 +17,7 @@ package com.rabbitmq.stream.docs;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.compression.Compression;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
@@ -108,6 +109,29 @@ public class ProducerUsage {
             nextPublishingId++;
         }
         // end::producer-queries-last-publishing-id[]
+    }
+
+    void producerSubEntryBatching() {
+        Environment environment = Environment.builder().build();
+        // tag::producer-sub-entry-batching[]
+        Producer producer = environment.producerBuilder()
+            .stream("my-stream")
+            .batchSize(100) // <1>
+            .subEntrySize(10) // <2>
+            .build();
+        // end::producer-sub-entry-batching[]
+    }
+
+    void producerSubEntryBatchingCompression() {
+        Environment environment = Environment.builder().build();
+        // tag::producer-sub-entry-batching-and-compression[]
+        Producer producer = environment.producerBuilder()
+            .stream("my-stream")
+            .batchSize(100) // <1>
+            .subEntrySize(10) // <2>
+            .compression(Compression.ZSTD) // <3>
+            .build();
+        // end::producer-sub-entry-batching-and-compression[]
     }
 
     boolean moreContent(long publishingId) {

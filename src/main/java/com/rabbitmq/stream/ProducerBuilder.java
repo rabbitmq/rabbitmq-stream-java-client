@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -49,6 +49,20 @@ public interface ProducerBuilder {
    */
   ProducerBuilder subEntrySize(int subEntrySize);
 
+  /**
+   * Compression algorithm to use to compress a batch of sub-entries.
+   *
+   * <p>Compression can take advantage of similarity in messages to significantly reduce the size of
+   * the sub-entry batch. This translates to less bandwidth and storage used, at the cost of more
+   * CPU usage to compress and decompress on the client side. Note the server is not involved in the
+   * compression/decompression process.
+   *
+   * <p>Default is no compression.
+   *
+   * @param compression
+   * @return this builder instance
+   * @see Compression
+   */
   ProducerBuilder compression(Compression compression);
 
   /**

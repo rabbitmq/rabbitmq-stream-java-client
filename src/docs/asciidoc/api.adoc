@@ -362,11 +362,19 @@ The following table sums up the main settings to create a `Producer`:
 |100
 
 |`subEntrySize`
-|[[producer-sub-entry-size-configuration-entry]]The number of messages to put in a sub-entry. A sub-entry is one "slot" in a publishing
+|[[producer-sub-entry-size-configuration-entry]]The number of messages to put in a sub-entry.
+A sub-entry is one "slot" in a publishing
 frame, meaning outbound messages are not only batched in publishing frames, but in sub-entries
-as well. Use this feature to increase throughput at the cost of increased latency and
+as well.
+Use this feature to increase throughput at the cost of increased latency and
 potential duplicated messages even when deduplication is enabled.
+See the <<sub-entry-batching-and-compression, dedicated section>> for more information.
 |1 (meaning no use of sub-entry batching)
+
+|`compression`
+|Compression algorithm to use when sub-entry batching is in use.
+See the <<sub-entry-batching-and-compression, dedicated section>> for more information.
+|Compression.NONE
 
 |`maxUnconfirmedMessages`
 |The maximum number of unconfirmed outbound messages. `Producer#send` will start
@@ -501,7 +509,7 @@ on 2 client-side elements: the _producer name_ and the _message publishing ID_.
 .Deduplication is not guaranteed when using sub-entries batching
 ====
 It is not possible to guarantee deduplication when
-<<producer-sub-entry-size-configuration-entry, sub-entry batching>> is in use.
+<<sub-entry-batching-and-compression, sub-entry batching>> is in use.
 Sub-entry batching is disabled by default and it does not prevent from
 batching messages in a single publish frame, which can already provide
 very high throughput.
@@ -622,6 +630,81 @@ include::{test-examples}/ProducerUsage.java[tag=producer-queries-last-publishing
 <3> Query last publishing ID for this producer and increment it
 <4> Scroll to the content for the next publishing ID
 <5> Set the message publishing
+
+[[sub-entry-batching-and-compression]]
+===== Sub-Entry Batching and Compression
+
+RabbitMQ Stream provides a special mode to publish, store, and dispatch messages: sub-entry batching.
+This mode increases throughput at the cost of increased latency and potential duplicated messages even when deduplication is enabled.
+It also allows using compression to reduce bandwidth and storage if messages are reasonably similar, at the cost of increasing CPU usage on the client side.
+
+Sub-entry batching consists in squeezing several messages – a batch – in the slot that is usually used for one message.
+This means outbound messages are not only batched in publishing frames, but in sub-entries as well.
+
+You can enable sub-entry batching by setting the `ProducerBuilder#subEntrySize` parameter to a value greater than 1, like in the following snippet:
+
+.Enabling sub-entry batching
+[source,java,indent=0]
+--------
+include::{test-examples}/ProducerUsage.java[tag=producer-sub-entry-batching]
+--------
+<1> Set batch size to 100 (the default)
+<2> Set sub-entry size to 10
+
+Reasonable values for the sub-entry size usually go from 10 to a few dozens.
+
+A sub-entry batch will go directly to disc after it reached the broker, so the publishing client has complete control over it.
+This is the occasion to take advantage of the similarity of messages and compress them.
+There is no compression by default but you can choose among several algorithms with the `ProducerBuilder#compression(Compression)` method:
+
+.Enabling compression of sub-entry messages
+[source,java,indent=0]
+--------
+include::{test-examples}/ProducerUsage.java[tag=producer-sub-entry-batching-and-compression]
+--------
+<1> Set batch size to 100 (the default)
+<2> Set sub-entry size to 10
+<3> Use the Zstandard compression algorithm
+
+Note the messages in a sub-entry are compressed altogether to benefit from their potential similarity, not one by one.
+
+The following table lists the supported algorithms, general information about them, and the respective implementations used by default.
+
+[%header,cols=3*]
+|===
+|Algorithm
+|Overview
+|Implementation used
+
+|https://en.wikipedia.org/wiki/Gzip[gzip]
+|Has a high compression ratio but is slow compared to other algorithms.
+|JDK implementation
+
+|https://en.wikipedia.org/wiki/Snappy_(compression)[Snappy]
+|Aims for reasonable compression ratio and very high speeds.
+|https://github.com/xerial/snappy-java[Xerial Snappy] (framed)
+
+|https://en.wikipedia.org/wiki/LZ4_(compression_algorithm)[LZ4]
+|Aims for good trade-off between speed and compression ratio.
+|https://github.com/lz4/lz4-java[LZ4 Java] (framed)
+
+|https://en.wikipedia.org/wiki/Zstd[zstd] (Zstandard)
+|Aims for high compression ratio and high speed, especially for decompression.
+|https://github.com/luben/zstd-jni[zstd-jni]
+|===
+
+You are encouraged to test and evaluate the compression algorithms depending on your needs.
+
+The compression libraries are pluggable thanks to the `EnvironmentBuilder#compressionCodecFactory(CompressionCodecFactory)` method.
+
+
+[NOTE]
+.Consumers, sub-entry batching, and compression
+====
+There is no configuration required for consumers with regard to sub-entry batching and compression.
+The broker dispatches messages to client libraries: they are supposed to figure out the format of messages, extract them from their sub-entry, and decompress them if necessary.
+So when you set up sub-entry batching and compression in your publishers, the consuming applications must use client libraries that support this mode, which is the case for the stream Java client.
+====
 
 ==== Consumer
 
