@@ -369,11 +369,11 @@ public final class TestUtils {
   static class ResponseConditions {
 
     static Condition<Response> ok() {
-      return new Condition<>(Response::isOk, "Response should be OK");
+      return new Condition<>(Response::isOk, "OK");
     }
 
     static Condition<Response> ko() {
-      return new Condition<>(response -> !response.isOk(), "Response should be OK");
+      return new Condition<>(response -> !response.isOk(), "KO");
     }
 
     static Condition<Response> responseCode(short expectedResponse) {

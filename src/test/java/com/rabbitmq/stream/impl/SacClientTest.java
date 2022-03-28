@@ -13,7 +13,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
@@ -573,5 +575,18 @@ public class SacClientTest {
       keepPublishing.set(false);
       deleteSuperStreamTopology(c, superStream, 3);
     }
+  }
+
+  @Test
+  void singleActiveConsumerMustHaveName() {
+    Client client = cf.get();
+    Response response =
+        client.subscribe(
+            b(0),
+            stream,
+            OffsetSpecification.first(),
+            10,
+            Collections.singletonMap("single-active-consumer", "true"));
+    assertThat(response).is(ko()).has(responseCode(Constants.RESPONSE_CODE_PRECONDITION_FAILED));
   }
 }
