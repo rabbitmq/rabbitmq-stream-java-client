@@ -492,7 +492,7 @@ public class SacClientTest {
                               .messageBuilder()
                               .addData("hello".getBytes(StandardCharsets.UTF_8))
                               .build()));
-                  TestUtils.waitMs(10);
+                  TestUtils.waitMs(1);
                 }
               })
           .start();
