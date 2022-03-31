@@ -32,7 +32,7 @@ public interface RoutingStrategy {
    *
    * @param message
    * @param metadata
-   * @return
+   * @return the list of streams to route messages to
    */
   List<String> route(Message message, Metadata metadata);
 

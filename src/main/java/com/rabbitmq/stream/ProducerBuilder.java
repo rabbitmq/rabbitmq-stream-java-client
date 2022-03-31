@@ -171,7 +171,7 @@ public interface ProducerBuilder {
      * Enable the "hash" routing strategy with a specific hash algorithm.
      *
      * @param hash
-     * @return
+     * @return the routing configuration instance
      */
     RoutingConfiguration hash(ToIntFunction<String> hash);
 
