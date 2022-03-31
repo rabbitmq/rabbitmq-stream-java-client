@@ -881,8 +881,12 @@ made of 2 chunks:
 [[consumer-offset-tracking]]
 ===== Tracking the Offset for a Consumer
 
-A consumer can track the offset it has reached in a stream. This allows a new incarnation
-of the consumer to restart consuming where it left off. Offset tracking works in 2 steps:
+RabbitMQ Stream provides server-side offset tracking.
+This means a consumer can track the offset it has reached in a stream.
+It allows a new incarnation of the consumer to restart consuming where it left off.
+All of this without an extra datastore, as the broker stores the offset tracking information.
+
+Offset tracking works in 2 steps:
 
 * the consumer must have a *name*. The name is set with `ConsumerBuilder#name(String)`. The name
 can be any value (under 256 characters) and is expected to be unique (from the application
@@ -1057,3 +1061,81 @@ Let's take the example of a named consumer with an offset tracking strategy that
 When a glitch happens and triggers the re-subscription, the server-side stored offset can be quite behind what the application actually processed.
 Using this server-side stored offset can lead to duplicates, whereas using the in-memory, application-specific offset tracking variable is more accurate.
 A custom `SubscriptionListener` lets the application developer uses what's best for the application if the computed value is not optimal.
+
+===== Single Active Consumer
+
+When the single active consumer feature is enabled for several consumer instances sharing the same stream and name, only one of these instances will be active at a time and so will receive messages.
+The other instances will be idle.
+
+The single active consumer feature provides 2 benefits:
+
+* Messages are processed in order: there is only one consumer at a time.
+* Consumption continuity is maintained: a consumer from the group will take over if the active one stops or crashes.
+
+A typical sequence of events would be the following:
+
+* Several instances of the same consuming application start up.
+* Each application instance registers a single active consumer.
+The consumer instances share the same name.
+* The broker makes the first registered consumer the active one.
+* The active consumer receives and processes messages, the other consumer instances remain idle.
+* The active consumer stops or crashes.
+* The broker chooses the consumer next in line to become the new active one.
+* The new active consumer starts receiving messages.
+
+Note there can be several groups of single active consumers on the same stream.
+What makes them different from each other is the name used by the consumers.
+The broker deals with them independently.
+Let's use an example.
+Imagine 2 different `app-1` and `app-2` applications consuming from the same stream, with 3 identical instances each.
+Each instance registers 1 single active consumer with the name of the application.
+We end up with 3 `app-1` consumers and 3 `app-2` consumers, 1 active consumer in each group, so overall 6 consumers and 2 active ones, all of this on the same stream.
+
+Let's see now the API for single active consumer.
+
+====== Enabling Single Active Consumer
+
+Use the `ConsumerBuilder#singleActiveConsumer()` method to enable the feature:
+
+.Enabling single active consumer
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=enabling-single-active-consumer]
+--------
+<1> Set the consumer name (mandatory to enable single active consumer)
+<2> Enable single active consumer
+
+With the configuration above, the consumer will take part in the `application-1` group on the `my-stream` stream.
+If the consumer instance is the first in a group, it will get messages as soon as there are some available. If it is not the first in the group, it will remain idle until it is its turn to be active (likely when all the instances registered before it are gone).
+
+====== Offset Tracking
+
+Single active consumer and offset tracking work together: when the active consumer goes away, another consumer takes over and resumes when the former active left off.
+Well, this is how things should work and luckily this is what happens when using <<consumer-offset-tracking, server-side offset tracking>>.
+So as long as you use <<consumer-automatic-offset-tracking, automatic offset tracking>> or <<consumer-manual-offset-tracking, manual offset tracking>>, the handoff between a former active consumer and the new one will go well.
+
+The story is different is you are using an external store for offset tracking.
+In this case you need to tell the client library where to resume from and you can do this by implementing the `ConsumerUpdateListener` API.
+
+====== Reacting to Consumer State Change
+
+The broker notifies a consumer that becomes active before dispatching messages to it.
+The broker expects a response from the consumer and this response contains the offset the dispatching should start from.
+So this is the consumer's responsibility to compute the appropriate offset, not the broker's.
+The default behavior is to look up the last stored offset for the consumer on the stream.
+This works when server-side offset tracking is in use, but it does not when the application chose to use an external store for offset tracking.
+In this case, it is possible to use the `ConsumerBuilder#consumerUpdateListener(ConsumerUpdateListener)` method like demonstrated in the following snippet:
+
+.Fetching the last stored offset from an external store in the consumer update listener callback
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=sac-consumer-update-listener]
+--------
+<1> Set the consumer name (mandatory to enable single active consumer)
+<2> Enable single active consumer
+<3> Set the consumer update listener
+<4> Fetch last offset from external store
+<5> Return the offset to resume from to the broker
+<6> Set also the subscription listener when using an external store
+
+Note you also have to set up a <<consumer-subscription-listener, subscription listener>> when using an external store for offset tracking.
