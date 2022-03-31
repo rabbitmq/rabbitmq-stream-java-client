@@ -134,7 +134,7 @@ public class ConsumerUsage {
         .stream("my-stream")
         .subscriptionListener(subscriptionContext -> {  // <1>
             long offset = getOffsetFromExternalStore();  // <2>
-            subscriptionContext.offsetSpecification(OffsetSpecification.offset(offset));  // <3>
+            subscriptionContext.offsetSpecification(OffsetSpecification.offset(offset + 1));  // <3>
         })
         .messageHandler((context, message) -> {
             // message handling code...
