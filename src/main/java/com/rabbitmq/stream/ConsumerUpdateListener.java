@@ -44,28 +44,28 @@ public interface ConsumerUpdateListener {
     /**
      * The consumer instance.
      *
-     * @return
+     * @return the consumer instance
      */
     Consumer consumer();
 
     /**
      * The stream (partition in a super stream) involved.
      *
-     * @return
+     * @return the stream
      */
     String stream();
 
     /**
      * The new status of the consumer.
      *
-     * @return
+     * @return the new status
      */
     Status status();
 
     /**
      * The previous status of the consumer.
      *
-     * @return
+     * @return the previous status
      */
     Status previousStatus();
   }
