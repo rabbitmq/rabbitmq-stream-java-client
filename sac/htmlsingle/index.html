@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(1481930)</span>
+<br><span id="revremark">(f09a3dd)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -626,7 +626,10 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </li>
 <li><a href="#consuming-from-a-super-stream">Consuming From a Super Stream</a>
 <ul class="sectlevel5">
+<li><a href="#super-stream-consumer-in-practice">Super Stream Consumer in Practice</a></li>
+<li><a href="#declaring-a-super-stream-consumer">Declaring a Super Stream Consumer</a></li>
 <li><a href="#offset-tracking-2">Offset Tracking</a></li>
+<li><a href="#super-stream-sac">Single Active Consumer Support</a></li>
 </ul>
 </li>
 </ul>
@@ -3466,6 +3469,11 @@ In essence, a super stream is a partitioned stream that brings scalability compa
 <p>The stream Java client uses the same programming model for super streams as with individual streams, that is the <code>Producer</code>, <code>Consumer</code>, <code>Message</code>, etc API are still valid when super streams are in use.
 Application code should not be impacted whether it uses individual or super streams.</p>
 </div>
+<div class="paragraph">
+<p>Consuming applications can use super streams and <a href="#single-active-consumer">single active consumer</a> at the same time.
+The 2 features combined make sure only one consumer instance consumes from an individual stream at a time.
+In this configuration, super streams provide scalability and single active consumer provides the guarantee that messages of an individual stream are processed in order.</p>
+</div>
 <div class="sect4">
 <h5 id="topology"><a class="anchor" href="#topology"></a>Topology</h5>
 <div class="paragraph">
@@ -3669,7 +3677,37 @@ The publishing ID values are spread across the streams but this does affect the 
 <div class="sect4">
 <h5 id="consuming-from-a-super-stream"><a class="anchor" href="#consuming-from-a-super-stream"></a>Consuming From a Super Stream</h5>
 <div class="paragraph">
-<p>A super stream consumer is not much different from a single stream consumer.
+<p>A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
+The programming model is the same as with regular consumers for the application developer: their main job is to provide the application code to process messages, that is a <code>MessageHandler</code> instance.
+The configuration is different though and this section covers its subtleties.
+But let&#8217;s focus on the behavior of a super stream consumer first.</p>
+</div>
+<div class="sect5">
+<h6 id="super-stream-consumer-in-practice"><a class="anchor" href="#super-stream-consumer-in-practice"></a>Super Stream Consumer in Practice</h6>
+<div class="paragraph">
+<p>Imagine you have a super stream made of 3 partitions (individual streams).
+You start an instance of your application, that itself creates a super stream consumer for this super stream.
+The super stream consumer will create 3 consumers internally, one for each partition, and messages will flow in your <code>MessageHandler</code>.</p>
+</div>
+<div class="paragraph">
+<p>Imagine now that you start another instance of your application.
+It will do the exact same thing as previously and the 2 instances will process the exact same messages in parallel.
+This may be not what you want: the messages will be processed twice!</p>
+</div>
+<div class="paragraph">
+<p>Having one instance of your application may be enough: the data are spread across several streams automatically and the messages from the different partitions are processed in parallel from a single OS process.</p>
+</div>
+<div class="paragraph">
+<p>But if you want to scale the processing across several OS processes (or bare-metal machines, or virtual machines) and you don&#8217;t want your messages to be processed several times as illustrated above, you&#8217;ll have to enable the <strong>single active consumer</strong> feature on your super stream consumer.</p>
+</div>
+<div class="paragraph">
+<p>The next subsections cover the basic settings of a super stream consumer and a <a href="#super-stream-sac">dedicated section</a> covers how super stream consumers and single active consumer play together.</p>
+</div>
+</div>
+<div class="sect5">
+<h6 id="declaring-a-super-stream-consumer"><a class="anchor" href="#declaring-a-super-stream-consumer"></a>Declaring a Super Stream Consumer</h6>
+<div class="paragraph">
+<p>Declaring a super stream consumer is not much different from declaring a single stream consumer.
 The <code>ConsumerBuilder#superStream(String)</code> must be used to set the super stream to consume from:</p>
 </div>
 <div class="listingblock">
@@ -3698,7 +3736,9 @@ consumer.close();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 </table>
 </div>
 <div class="paragraph">
-<p>A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.</p>
+<p>That&#8217;s all.
+The super stream consumer will take of the details (partitions lookup, coordination of the single consumers, etc).</p>
+</div>
 </div>
 <div class="sect5">
 <h6 id="offset-tracking-2"><a class="anchor" href="#offset-tracking-2"></a>Offset Tracking</h6>
@@ -3724,6 +3764,10 @@ A call to <code>MessageHandler.Context#storeOffset()</code> will store the curre
 </li>
 </ul>
 </div>
+</div>
+<div class="sect5">
+<h6 id="super-stream-sac"><a class="anchor" href="#super-stream-sac"></a>Single Active Consumer Support</h6>
+
 </div>
 </div>
 </div>
@@ -4497,7 +4541,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-04-05 13:14:25 UTC
+Last updated 2022-04-05 14:26:19 UTC
 </div>
 </div>
 </body>
