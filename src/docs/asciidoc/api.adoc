@@ -1062,6 +1062,7 @@ When a glitch happens and triggers the re-subscription, the server-side stored o
 Using this server-side stored offset can lead to duplicates, whereas using the in-memory, application-specific offset tracking variable is more accurate.
 A custom `SubscriptionListener` lets the application developer uses what's best for the application if the computed value is not optimal.
 
+[[single-active-consumer]]
 ===== Single Active Consumer
 
 When the single active consumer feature is enabled for several consumer instances sharing the same stream and name, only one of these instances will be active at a time and so will receive messages.

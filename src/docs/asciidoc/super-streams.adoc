@@ -15,6 +15,10 @@ In essence, a super stream is a partitioned stream that brings scalability compa
 The stream Java client uses the same programming model for super streams as with individual streams, that is the `Producer`, `Consumer`, `Message`, etc API are still valid when super streams are in use.
 Application code should not be impacted whether it uses individual or super streams.
 
+Consuming applications can use super streams and <<api.adoc#single-active-consumer, single active consumer>> at the same time.
+The 2 features combined make sure only one consumer instance consumes from an individual stream at a time.
+In this configuration, super streams provide scalability and single active consumer provides the guarantee that messages of an individual stream are processed in order.
+
 ===== Topology
 
 A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
@@ -162,7 +166,30 @@ The publishing ID values are spread across the streams but this does affect the 
 
 ===== Consuming From a Super Stream
 
-A super stream consumer is not much different from a single stream consumer.
+A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
+The programming model is the same as with regular consumers for the application developer: their main job is to provide the application code to process messages, that is a `MessageHandler` instance.
+The configuration is different though and this section covers its subtleties.
+But let's focus on the behavior of a super stream consumer first.
+
+====== Super Stream Consumer in Practice
+
+Imagine you have a super stream made of 3 partitions (individual streams).
+You start an instance of your application, that itself creates a super stream consumer for this super stream.
+The super stream consumer will create 3 consumers internally, one for each partition, and messages will flow in your `MessageHandler`.
+
+Imagine now that you start another instance of your application.
+It will do the exact same thing as previously and the 2 instances will process the exact same messages in parallel.
+This may be not what you want: the messages will be processed twice!
+
+Having one instance of your application may be enough: the data are spread across several streams automatically and the messages from the different partitions are processed in parallel from a single OS process.
+
+But if you want to scale the processing across several OS processes (or bare-metal machines, or virtual machines) and you don't want your messages to be processed several times as illustrated above, you'll have to enable the *single active consumer* feature on your super stream consumer.
+
+The next subsections cover the basic settings of a super stream consumer and a <<super-stream-sac, dedicated section>> covers how super stream consumers and single active consumer play together.
+
+====== Declaring a Super Stream Consumer
+
+Declaring a super stream consumer is not much different from declaring a single stream consumer.
 The `ConsumerBuilder#superStream(String)` must be used to set the super stream to consume from:
 
 .Declaring a super stream consumer
@@ -173,7 +200,8 @@ include::{test-examples}/SuperStreamUsage.java[tag=consumer-simple]
 <1> Set the super stream name
 <2> Close the consumer when it is no longer necessary
 
-A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
+That's all.
+The super stream consumer will take of the details (partitions lookup, coordination of the single consumers, etc).
 
 ====== Offset Tracking
 
@@ -189,5 +217,8 @@ Making the client divide `messageCountBeforeStorage` by the number of partitions
 A good rule of thumb is to then multiply the expected per-stream `messageCountBeforeStorage` by the number of partitions, to avoid storing offsets too often. So the default being 10,000, it can be set to 30,000 for a 3-partition super stream.
 * *manual offset tracking*: the `MessageHandler.Context#storeOffset()` method must be used, the `Consumer#store(long)` will fail, because an offset value has a meaning only in one stream, not in other streams.
 A call to `MessageHandler.Context#storeOffset()` will store the current message offset in _its_ stream, but also the offset of the last dispatched message for the other streams of the super stream.
+
+[[super-stream-sac]]
+====== Single Active Consumer Support
 
 
