@@ -3,6 +3,14 @@
 A RabbitMQ 3.9+ node with the stream plugin enabled is required. The easiest way
 to get up and running is to use Docker.
 
+==== Single Active Consumer
+
+Use the `pivotalrabbitmq/rabbitmq-stream:sac` Docker image.
+
+Use generic Unix package from https://github.com/rabbitmq/rabbitmq-server-binaries-dev/releases (with `alpha-stream-sac` in the name).
+
+(TODO: remove this section when merging)
+
 ==== With Docker
 
 There are different ways to make the broker visible to the client application when running
@@ -91,6 +99,60 @@ Refer to the https://rabbitmq.com/stream.html[stream plugin documentation] for m
 === Dependencies
 
 Use your favorite build management tool to add the client dependencies to your project.
+
+==== Single Active Consumer
+
+Add the appropriate repository:
+
+.Single Active Consumer repository declaration for Maven
+[source,xml,subs="attributes,specialcharacters"]
+----
+<repositories>
+
+  <repository>
+    <id>github</id>
+    <url>https://maven.pkg.github.com/rabbitmq/rabbitmq-stream-java-client</url>
+    <snapshots><enabled>true</enabled></snapshots>
+    <releases><enabled>false</enabled></releases>
+  </repository>
+
+</repositories>
+----
+
+.Single Active Consumer repository declaration for Gradle:
+[source,groovy,subs="attributes,specialcharacters"]
+----
+repositories {
+  maven { url 'https://maven.pkg.github.com/rabbitmq/rabbitmq-stream-java-client' }
+  mavenCentral()
+}
+----
+
+Set up the dependency:
+
+.pom.xml
+[source,xml,subs="attributes,specialcharacters"]
+----
+<dependencies>
+
+  <dependency>
+    <groupId>com.rabbitmq</groupId>
+    <artifactId>stream-client-sac</artifactId>
+    <version>{project-version}</version>
+  </dependency>
+
+</dependencies>
+----
+
+.build.gradle
+[source,groovy,subs="attributes,specialcharacters"]
+----
+dependencies {
+  compile "com.rabbitmq:stream-client-sac:{project-version}"
+}
+----
+
+(TODO: remove this section when merging)
 
 ==== Maven
 
