@@ -12,7 +12,7 @@ these streams.
 The client ships also with a
 https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/htmlsingle/#the-performance-tool[performance tool].
 
-Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/[documentation]
+Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/htmlsingle/[documentation]
 (https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/pdf/index.pdf[PDF])
 to find out more.
 
