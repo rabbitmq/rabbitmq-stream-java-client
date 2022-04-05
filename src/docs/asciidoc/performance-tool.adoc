@@ -9,6 +9,14 @@ Snapshots are on https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/re
 
 === Using the Performance Tool
 
+==== For Single Active Consumer Branch
+
+Use the `pivotalrabbitmq/stream-perf-test:sac` Docker image.
+
+Use JAR binary from https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases (with `stream-perf-test-sac` in the name).
+
+(TODO: remove this section when merging)
+
 ==== With Docker
 
 The performance tool is available as a
