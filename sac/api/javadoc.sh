@@ -1,0 +1,1 @@
+/home/acogoluegnes/.sdkman/candidates/java/17.0.2-zulu/bin/javadoc --no-module-directories @options @packages

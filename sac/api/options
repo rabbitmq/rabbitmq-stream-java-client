@@ -1,0 +1,28 @@
+-classpath
+'/home/acogoluegnes/.m2/repository/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar:/home/acogoluegnes/.m2/repository/io/netty/netty-transport/4.1.75.Final/netty-transport-4.1.75.Final.jar:/home/acogoluegnes/.m2/repository/io/netty/netty-common/4.1.75.Final/netty-common-4.1.75.Final.jar:/home/acogoluegnes/.m2/repository/io/netty/netty-buffer/4.1.75.Final/netty-buffer-4.1.75.Final.jar:/home/acogoluegnes/.m2/repository/io/netty/netty-resolver/4.1.75.Final/netty-resolver-4.1.75.Final.jar:/home/acogoluegnes/.m2/repository/io/netty/netty-codec/4.1.75.Final/netty-codec-4.1.75.Final.jar:/home/acogoluegnes/.m2/repository/io/netty/netty-handler/4.1.75.Final/netty-handler-4.1.75.Final.jar:/home/acogoluegnes/.m2/repository/com/swiftmq/swiftmq-client/12.2.2/swiftmq-client-12.2.2.jar:/home/acogoluegnes/.m2/repository/org/magicwerk/brownies-collections/0.9.13/brownies-collections-0.9.13.jar:/home/acogoluegnes/.m2/repository/org/dom4j/dom4j/2.1.3/dom4j-2.1.3.jar:/home/acogoluegnes/.m2/repository/com/thoughtworks/xstream/xstream/1.4.16/xstream-1.4.16.jar:/home/acogoluegnes/.m2/repository/io/github/x-stream/mxparser/1.2.1/mxparser-1.2.1.jar:/home/acogoluegnes/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/acogoluegnes/.m2/repository/javax/jms/jms-api/1.1-rev-1/jms-api-1.1-rev-1.jar:/home/acogoluegnes/.m2/repository/org/jline/jline/3.10.0/jline-3.10.0.jar:/home/acogoluegnes/.m2/repository/org/apache/qpid/proton-j/0.33.10/proton-j-0.33.10.jar:/home/acogoluegnes/.m2/repository/info/picocli/picocli/4.6.3/picocli-4.6.3.jar:/home/acogoluegnes/.m2/repository/ch/qos/logback/logback-classic/1.2.11/logback-classic-1.2.11.jar:/home/acogoluegnes/.m2/repository/ch/qos/logback/logback-core/1.2.11/logback-core-1.2.11.jar:/home/acogoluegnes/.m2/repository/io/dropwizard/metrics/metrics-core/4.2.9/metrics-core-4.2.9.jar:/home/acogoluegnes/.m2/repository/io/micrometer/micrometer-core/1.8.4/micrometer-core-1.8.4.jar:/home/acogoluegnes/.m2/repository/org/hdrhistogram/HdrHistogram/2.1.12/HdrHistogram-2.1.12.jar:/home/acogoluegnes/.m2/repository/io/micrometer/micrometer-registry-prometheus/1.8.4/micrometer-registry-prometheus-1.8.4.jar:/home/acogoluegnes/.m2/repository/io/prometheus/simpleclient_common/0.12.0/simpleclient_common-0.12.0.jar:/home/acogoluegnes/.m2/repository/io/prometheus/simpleclient/0.12.0/simpleclient-0.12.0.jar:/home/acogoluegnes/.m2/repository/io/prometheus/simpleclient_tracer_otel/0.12.0/simpleclient_tracer_otel-0.12.0.jar:/home/acogoluegnes/.m2/repository/io/prometheus/simpleclient_tracer_common/0.12.0/simpleclient_tracer_common-0.12.0.jar:/home/acogoluegnes/.m2/repository/io/prometheus/simpleclient_tracer_otel_agent/0.12.0/simpleclient_tracer_otel_agent-0.12.0.jar:/home/acogoluegnes/.m2/repository/com/google/guava/guava/31.1-jre/guava-31.1-jre.jar:/home/acogoluegnes/.m2/repository/com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.jar:/home/acogoluegnes/.m2/repository/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar:/home/acogoluegnes/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/acogoluegnes/.m2/repository/org/checkerframework/checker-qual/3.12.0/checker-qual-3.12.0.jar:/home/acogoluegnes/.m2/repository/com/google/errorprone/error_prone_annotations/2.11.0/error_prone_annotations-2.11.0.jar:/home/acogoluegnes/.m2/repository/com/google/j2objc/j2objc-annotations/1.3/j2objc-annotations-1.3.jar:/home/acogoluegnes/.m2/repository/org/eclipse/jetty/jetty-servlet/9.4.46.v20220331/jetty-servlet-9.4.46.v20220331.jar:/home/acogoluegnes/.m2/repository/org/eclipse/jetty/jetty-security/9.4.46.v20220331/jetty-security-9.4.46.v20220331.jar:/home/acogoluegnes/.m2/repository/org/eclipse/jetty/jetty-server/9.4.46.v20220331/jetty-server-9.4.46.v20220331.jar:/home/acogoluegnes/.m2/repository/javax/servlet/javax.servlet-api/3.1.0/javax.servlet-api-3.1.0.jar:/home/acogoluegnes/.m2/repository/org/eclipse/jetty/jetty-http/9.4.46.v20220331/jetty-http-9.4.46.v20220331.jar:/home/acogoluegnes/.m2/repository/org/eclipse/jetty/jetty-io/9.4.46.v20220331/jetty-io-9.4.46.v20220331.jar:/home/acogoluegnes/.m2/repository/org/eclipse/jetty/jetty-util-ajax/9.4.46.v20220331/jetty-util-ajax-9.4.46.v20220331.jar:/home/acogoluegnes/.m2/repository/org/eclipse/jetty/jetty-util/9.4.46.v20220331/jetty-util-9.4.46.v20220331.jar:/home/acogoluegnes/.m2/repository/org/apache/commons/commons-compress/1.21/commons-compress-1.21.jar:/home/acogoluegnes/.m2/repository/com/github/luben/zstd-jni/1.5.2-2/zstd-jni-1.5.2-2.jar:/home/acogoluegnes/.m2/repository/org/lz4/lz4-java/1.8.0/lz4-java-1.8.0.jar:/home/acogoluegnes/.m2/repository/org/xerial/snappy/snappy-java/1.1.8.4/snappy-java-1.1.8.4.jar'
+-encoding
+'UTF-8'
+-protected
+-quiet
+-source
+'8'
+-sourcepath
+'/tmp/rabbitmq-stream-java-client/src/main/java'
+-Xdoclint:none
+-author
+-bottom
+'Copyright &#169; 2022 <a href="https://www.rabbitmq.com">VMware, Inc. or its affiliates.</a>. All rights reserved.'
+-charset
+'UTF-8'
+-d
+'/tmp/rabbitmq-stream-java-client/target/site/apidocs'
+-docencoding
+'UTF-8'
+-doctitle
+'RabbitMQ Stream Java Client 0.6.0-SNAPSHOT API'
+-linkoffline
+'https://docs.oracle.com/javase/8/docs/api' '/tmp/rabbitmq-stream-java-client/target/javadoc-bundle-options'
+-use
+-version
+-windowtitle
+'RabbitMQ Stream Java Client 0.6.0-SNAPSHOT API'
