@@ -157,7 +157,7 @@ repositories {
 
 For snapshots, with Maven:
 
-.Snaphost repository declaration for Maven
+.Snapshot repository declaration for Maven
 [source,xml,subs="attributes,specialcharacters"]
 ----
 <repositories>
@@ -174,7 +174,7 @@ For snapshots, with Maven:
 
 For snapshots, with Gradle:
 
-.Snaphost repository declaration for Gradle:
+.Snapshot repository declaration for Gradle:
 [source,groovy,subs="attributes,specialcharacters"]
 ----
 repositories {
