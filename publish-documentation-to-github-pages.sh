@@ -26,4 +26,4 @@ git add $RELEASE_VERSION/
 
 git commit -m "$MESSAGE"
 git push origin gh-pages
-git checkout main
+git checkout single-active-consumer
