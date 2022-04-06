@@ -91,7 +91,7 @@
     <jmh.version>1.35</jmh.version>
     <spotless.version>2.22.0</spotless.version>
     <google-java-format.version>1.15.0</google-java-format.version>
-    <jacoco.version>0.8.7</jacoco.version>
+    <jacoco.version>0.8.8</jacoco.version>
     <!-- to sign artifacts when releasing -->
     <gpg.keyname>6026DFCA</gpg.keyname>
     <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
