@@ -171,6 +171,7 @@ The programming model is the same as with regular consumers for the application 
 The configuration is different though and this section covers its subtleties.
 But let's focus on the behavior of a super stream consumer first.
 
+[[super-stream-consumer-in-practice]]
 ====== Super Stream Consumer in Practice
 
 Imagine you have a super stream made of 3 partitions (individual streams).
@@ -221,4 +222,30 @@ A call to `MessageHandler.Context#storeOffset()` will store the current message 
 [[super-stream-sac]]
 ====== Single Active Consumer Support
 
+As <<super-stream-consumer-in-practice, stated previously>>, super stream consumers and single active consumer provide scalability and the guarantee that messages of an individual stream are processed in order.
+Let's take an example with a 3-partition super stream:
 
+* You have an application that creates a super stream consumer instance with single active consumer enabled.
+* You start 3 instances of this application. An instance in this case is a JVM process, which can be in a Docker container, a virtual machine, or a bare-metal server.
+* As the super stream has 3 partitions, each application instance will create a super stream consumer that maintains internally 3 consumer instances.
+That is 9 Java instances of consumer overall.
+* The broker and the different application instances coordinate so that only 1 consumer instance for a given partition receives messages at a time.
+So among these 9 consumer instances, only 3 are actually _active_, the other ones are idle or _inactive_.
+* If one of the application instances stops, the broker will _rebalance_ its active consumer to one of the other instances.
+
+After this overview, let's see the API and the configuration details.
+
+The following snippet shows how to declare a single active consumer on a super stream with the `ConsumerBuilder#superStream(String)` and `ConsumerBuilder#singleActiveConsumer()` methods:
+
+.Enabling single active consumer on a super stream
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=sac-simple]
+--------
+<1> Set the super stream name
+<2> Set the consumer name (mandatory to enable single active consumer)
+<2> Enable single active consumer
+
+Note it is mandatory to specify a name for the consumer.
+This name will be used to identify the _group_ of consumer instances and make sure only one is active for each partition.
+The name is also the reference for offset tracking.

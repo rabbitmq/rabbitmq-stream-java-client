@@ -1137,6 +1137,3 @@ include::{test-examples}/ConsumerUsage.java[tag=sac-consumer-update-listener]
 <3> Set the consumer update listener
 <4> Fetch last offset from external store
 <5> Return the offset to resume from to the broker
-<6> Set also the subscription listener when using an external store
-
-Note you also have to set up a <<consumer-subscription-listener, subscription listener>> when using an external store for offset tracking.

@@ -96,4 +96,20 @@ public class SuperStreamUsage {
        consumer.close();  // <2>
        // end::consumer-simple[]
    }
+
+    void sacConsumerSimple() {
+        Environment environment = Environment.builder().build();
+        // tag::sac-simple[]
+        Consumer consumer = environment.consumerBuilder()
+            .superStream("invoices")  // <1>
+            .name("application-1")  // <2>
+            .singleActiveConsumer()  // <3>
+            .messageHandler((context, message) -> {
+                // message processing
+            })
+            .build();
+        // ...
+        consumer.close();  // <2>
+        // end::sac-simple[]
+    }
 }

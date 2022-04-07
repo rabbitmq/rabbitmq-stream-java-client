@@ -179,10 +179,6 @@ public class ConsumerUsage {
           long offset = getOffsetFromExternalStore();  // <4>
           return OffsetSpecification.offset(offset + 1); // <5>
         })
-        .subscriptionListener(subscriptionContext -> {  // <6>
-          long offset = getOffsetFromExternalStore();
-          subscriptionContext.offsetSpecification(OffsetSpecification.offset(offset + 1));
-        })
         .messageHandler((context, message) -> {
           // message handling code...
 
