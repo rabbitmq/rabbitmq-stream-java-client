@@ -1022,11 +1022,7 @@ The client provides a `SubscriptionListener` interface callback to add behavior 
 This callback can be used to customize the offset the client library computed for the subscription.
 The callback is called when the consumer is first created and when the client has to re-subscribe (e.g. after a disconnection or a topology change).
 
-[WARNING]
-.Experimental
-====
-This API is experimental, it is subject to change.
-====
+WARNING: This API is *experimental*, it is subject to change.
 
 It is possible to use the callback to get the last processed offset from an external store, that is not using the server-side offset tracking feature RabbitMQ Stream provides.
 The following code snippet shows how this can be done (note the interaction with the external store is not detailed):
@@ -1064,6 +1060,8 @@ A custom `SubscriptionListener` lets the application developer uses what's best 
 
 [[single-active-consumer]]
 ===== Single Active Consumer
+
+WARNING: Single Active Consumer requires *RabbitMQ 3.11* or more.
 
 When the single active consumer feature is enabled for several consumer instances sharing the same stream and name, only one of these instances will be active at a time and so will receive messages.
 The other instances will be idle.

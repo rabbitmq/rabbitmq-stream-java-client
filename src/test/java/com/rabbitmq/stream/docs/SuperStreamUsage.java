@@ -109,7 +109,6 @@ public class SuperStreamUsage {
             })
             .build();
         // ...
-        consumer.close();  // <2>
         // end::sac-simple[]
     }
 }
