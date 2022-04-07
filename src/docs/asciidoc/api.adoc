@@ -964,7 +964,7 @@ include::{test-examples}/ConsumerUsage.java[tag=manual-tracking-defaults]
 --------
 <1> Set the consumer name (mandatory for offset tracking)
 <2> Use manual tracking with defaults
-<3> Store at the current offset on some condition
+<3> Store the current offset on some condition
 
 Manual tracking has only one setting: the *check interval*. The client checks
 that the last requested stored offset has been actually stored at the
@@ -1116,6 +1116,7 @@ So as long as you use <<consumer-automatic-offset-tracking, automatic offset tra
 The story is different is you are using an external store for offset tracking.
 In this case you need to tell the client library where to resume from and you can do this by implementing the `ConsumerUpdateListener` API.
 
+[[consumer-update-listener]]
 ====== Reacting to Consumer State Change
 
 The broker notifies a consumer that becomes active before dispatching messages to it.

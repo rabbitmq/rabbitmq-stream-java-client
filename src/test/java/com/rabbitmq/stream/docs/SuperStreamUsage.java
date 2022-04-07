@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -16,8 +16,8 @@ package com.rabbitmq.stream.docs;
 
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.NoOffsetException;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.RoutingStrategy;
 import java.util.Collections;
@@ -97,7 +97,7 @@ public class SuperStreamUsage {
        // end::consumer-simple[]
    }
 
-    void sacConsumerSimple() {
+    void sacSimple() {
         Environment environment = Environment.builder().build();
         // tag::sac-simple[]
         Consumer consumer = environment.consumerBuilder()
@@ -111,4 +111,78 @@ public class SuperStreamUsage {
         // ...
         // end::sac-simple[]
     }
+
+    void sacManualOffsetTracking() {
+        Environment environment = Environment.builder().build();
+        long lastProcessedOffsetForThisStream = 0;
+        // tag::sac-manual-offset-tracking[]
+        Consumer consumer =
+            environment.consumerBuilder()
+                .superStream("invoices")  // <1>
+                .name("application-1")  // <2>
+                .singleActiveConsumer()  // <3>
+                .manualTrackingStrategy()  // <4>
+                .builder()
+                .consumerUpdateListener(context -> {  // <5>
+                   if(context.isActive()) {  // <6>
+                       try {
+                           return OffsetSpecification.offset(
+                               context.consumer().storedOffset() + 1
+                           );
+                       } catch (NoOffsetException e) {
+                           return OffsetSpecification.next();
+                       }
+                   } else {
+                       context.consumer().store(lastProcessedOffsetForThisStream);  // <7>
+                       return null;
+                   }
+                })
+                .messageHandler((context, message) -> {
+                    // message handling code...
+
+                    if (conditionToStore()) {
+                        context.storeOffset();  // <8>
+                    }
+                })
+                .build();
+        // ...
+        // end::sac-manual-offset-tracking[]
+    }
+
+    boolean conditionToStore() {
+        return true;
+    }
+
+  void sacExternalOffsetTracking() {
+    Environment environment = Environment.builder().build();
+    // tag::sac-external-offset-tracking[]
+    Consumer consumer = environment.consumerBuilder()
+        .superStream("invoices")  // <1>
+        .name("application-1")  // <2>
+        .singleActiveConsumer()  // <3>
+        .manualTrackingStrategy()  // <4>
+        .builder()
+        .consumerUpdateListener(context -> {  // <5>
+          if (context.isActive()) {  // <6>
+            long offset = getOffsetFromExternalStore();
+            return OffsetSpecification.offset(offset + 1);
+          }
+          return null;  // <7>
+        })
+        .messageHandler((context, message) -> {
+          // message handling code...
+
+          storeOffsetInExternalStore(context.stream(), context.offset());  // <8>
+        })
+        .build();
+    // end::sac-external-offset-tracking[]
+  }
+
+  void storeOffsetInExternalStore(String stream, long offset) {
+
+  }
+
+  long getOffsetFromExternalStore() {
+    return 0L;
+  }
 }
