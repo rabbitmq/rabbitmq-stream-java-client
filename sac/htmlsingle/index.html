@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(9dde5fd)</span>
+<br><span id="revremark">(32a9670)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -609,7 +609,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <ul class="sectlevel5">
 <li><a href="#enabling-single-active-consumer">Enabling Single Active Consumer</a></li>
 <li><a href="#offset-tracking">Offset Tracking</a></li>
-<li><a href="#reacting-to-consumer-state-change">Reacting to Consumer State Change</a></li>
+<li><a href="#consumer-update-listener">Reacting to Consumer State Change</a></li>
 </ul>
 </li>
 </ul>
@@ -3065,7 +3065,7 @@ the offset at some point:</p>
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Store at the current offset on some condition</td>
+<td>Store the current offset on some condition</td>
 </tr>
 </table>
 </div>
@@ -3387,7 +3387,7 @@ In this case you need to tell the client library where to resume from and you ca
 </div>
 </div>
 <div class="sect5">
-<h6 id="reacting-to-consumer-state-change"><a class="anchor" href="#reacting-to-consumer-state-change"></a>Reacting to Consumer State Change</h6>
+<h6 id="consumer-update-listener"><a class="anchor" href="#consumer-update-listener"></a>Reacting to Consumer State Change</h6>
 <div class="paragraph">
 <p>The broker notifies a consumer that becomes active before dispatching messages to it.
 The broker expects a response from the consumer and this response contains the offset the dispatching should start from.
@@ -3841,6 +3841,161 @@ So among these 9 consumer instances, only 3 are actually <em>active</em>, the ot
 <p>Note it is mandatory to specify a name for the consumer.
 This name will be used to identify the <em>group</em> of consumer instances and make sure only one is active for each partition.
 The name is also the reference for offset tracking.</p>
+</div>
+<div class="paragraph">
+<p>The example above uses by default <a href="#consumer-automatic-offset-tracking">automatic offset tracking</a>.
+With this strategy, the client library takes care of offset tracking when consumers become active or inactive.
+It looks up the latest stored offset when a consumer becomes active to start consuming at the appropriate offset and it stores the last dispatched offset when a consumer becomes inactive.</p>
+</div>
+<div class="paragraph">
+<p>The story is not the same with <a href="#consumer-manual-offset-tracking">manual offset tracking</a> as the client library does not know which offset it should store when a consumer becomes inactive.
+The application developer can use the <a href="#consumer-update-listener"><code>ConsumerUpdateListener)</code> callback</a> to react appropriately when a consumer changes state.
+The following snippet illustrates the use of the <code>ConsumerUpdateListener</code> callback:</p>
+</div>
+<div class="listingblock">
+<div class="title">Using manual offset tracking for a super stream single active consumer</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer =
+    environment.consumerBuilder()
+        .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+        .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
+        .singleActiveConsumer()  <i class="conum" data-value="3"></i><b>(3)</b>
+        .manualTrackingStrategy()  <i class="conum" data-value="4"></i><b>(4)</b>
+        .builder()
+        .consumerUpdateListener(context -&gt; {  <i class="conum" data-value="5"></i><b>(5)</b>
+           <span class="keyword">if</span>(context.isActive()) {  <i class="conum" data-value="6"></i><b>(6)</b>
+               <span class="keyword">try</span> {
+                   <span class="keyword">return</span> OffsetSpecification.offset(
+                       context.consumer().storedOffset() + <span class="integer">1</span>
+                   );
+               } <span class="keyword">catch</span> (NoOffsetException e) {
+                   <span class="keyword">return</span> OffsetSpecification.next();
+               }
+           } <span class="keyword">else</span> {
+               context.consumer().store(lastProcessedOffsetForThisStream);  <i class="conum" data-value="7"></i><b>(7)</b>
+               <span class="keyword">return</span> <span class="predefined-constant">null</span>;
+           }
+        })
+        .messageHandler((context, message) -&gt; {
+            <span class="comment">// message handling code...</span>
+
+            <span class="keyword">if</span> (conditionToStore()) {
+                context.storeOffset();  <i class="conum" data-value="8"></i><b>(8)</b>
+            }
+        })
+        .build();
+<span class="comment">// ...</span></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the super stream name</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Set the consumer name (mandatory to enable single active consumer)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Enable single active consumer</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Enable manual offset tracking strategy</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Set <code>ConsumerUpdateListener</code></td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Return stored offset + 1 or default when consumer becomes active</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="7"></i><b>7</b></td>
+<td>Store last processed offset for the stream when consumer becomes inactive</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="8"></i><b>8</b></td>
+<td>Store the current offset on some condition</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The <code>ConsumerUpdateListener</code> callback must return the offset to start consuming from when a consumer becomes active.
+This is what the code above does: it checks if the consumer is active with <code>ConsumerUpdateListener.Context#isActive()</code> and looks up the last stored offset.
+If there is no stored offset yet, it returns a default value, <code>OffsetSpecification#next()</code> here.</p>
+</div>
+<div class="paragraph">
+<p>When a consumer becomes inactive, it should store the last processed offset, as another consumer instance will take over elsewhere.
+It is expected this other consumer runs the exact same code, so it will execute the same sequence when it becomes active (looking up the stored offset, returning the value + 1).</p>
+</div>
+<div class="paragraph">
+<p>Note the <code>ConsumerUpdateListener</code> is called for a <em>partition</em>, that is an individual stream.
+The application code should take care of maintaining a reference of the last processed offset for each partition of the super stream, e.g. with a <code>Map&lt;String, Long&gt;</code> (partition-to-offset map).
+To do so, the <code>context</code> parameter of the <code>MessageHandler</code> and <code>ConsumerUpdateListener</code> callbacks provide a <code>stream()</code> method.</p>
+</div>
+<div class="listingblock">
+<div class="title">Using external offset tracking for a super stream single active consumer</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer = environment.consumerBuilder()
+    .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
+    .singleActiveConsumer()  <i class="conum" data-value="3"></i><b>(3)</b>
+    .manualTrackingStrategy()  <i class="conum" data-value="4"></i><b>(4)</b>
+    .builder()
+    .consumerUpdateListener(context -&gt; {  <i class="conum" data-value="5"></i><b>(5)</b>
+      <span class="keyword">if</span> (context.isActive()) {  <i class="conum" data-value="6"></i><b>(6)</b>
+        <span class="type">long</span> offset = getOffsetFromExternalStore();
+        <span class="keyword">return</span> OffsetSpecification.offset(offset + <span class="integer">1</span>);
+      }
+      <span class="keyword">return</span> <span class="predefined-constant">null</span>;  <i class="conum" data-value="7"></i><b>(7)</b>
+    })
+    .messageHandler((context, message) -&gt; {
+      <span class="comment">// message handling code...</span>
+
+      storeOffsetInExternalStore(context.stream(), context.offset());  <i class="conum" data-value="8"></i><b>(8)</b>
+    })
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the super stream name</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Set the consumer name (mandatory to enable single active consumer)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Enable single active consumer</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Disable automatic offset tracking strategy</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Set <code>ConsumerUpdateListener</code></td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Use external store for stored offset when consumer becomes active</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="7"></i><b>7</b></td>
+<td>Assume offset already stored when consumer becomes inactive</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="8"></i><b>8</b></td>
+<td>Use external store for offset tracking</td>
+</tr>
+</table>
 </div>
 </div>
 </div>
@@ -4615,7 +4770,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-04-07 09:21:36 UTC
+Last updated 2022-04-07 15:47:32 UTC
 </div>
 </div>
 </body>
