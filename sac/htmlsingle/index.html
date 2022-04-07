@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(f09a3dd)</span>
+<br><span id="revremark">(fd57873)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -3398,10 +3398,6 @@ In this case, it is possible to use the <code>ConsumerBuilder#consumerUpdateList
       <span class="type">long</span> offset = getOffsetFromExternalStore();  <i class="conum" data-value="4"></i><b>(4)</b>
       <span class="keyword">return</span> OffsetSpecification.offset(offset + <span class="integer">1</span>); <i class="conum" data-value="5"></i><b>(5)</b>
     })
-    .subscriptionListener(subscriptionContext -&gt; {  <i class="conum" data-value="6"></i><b>(6)</b>
-      <span class="type">long</span> offset = getOffsetFromExternalStore();
-      subscriptionContext.offsetSpecification(OffsetSpecification.offset(offset + <span class="integer">1</span>));
-    })
     .messageHandler((context, message) -&gt; {
       <span class="comment">// message handling code...</span>
 
@@ -3432,14 +3428,7 @@ In this case, it is possible to use the <code>ConsumerBuilder#consumerUpdateList
 <td><i class="conum" data-value="5"></i><b>5</b></td>
 <td>Return the offset to resume from to the broker</td>
 </tr>
-<tr>
-<td><i class="conum" data-value="6"></i><b>6</b></td>
-<td>Set also the subscription listener when using an external store</td>
-</tr>
 </table>
-</div>
-<div class="paragraph">
-<p>Note you also have to set up a <a href="#consumer-subscription-listener">subscription listener</a> when using an external store for offset tracking.</p>
 </div>
 </div>
 </div>
@@ -3767,7 +3756,73 @@ A call to <code>MessageHandler.Context#storeOffset()</code> will store the curre
 </div>
 <div class="sect5">
 <h6 id="super-stream-sac"><a class="anchor" href="#super-stream-sac"></a>Single Active Consumer Support</h6>
-
+<div class="paragraph">
+<p>As <a href="#super-stream-consumer-in-practice">stated previously</a>, super stream consumers and single active consumer provide scalability and the guarantee that messages of an individual stream are processed in order.
+Let&#8217;s take an example with a 3-partition super stream:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>You have an application that creates a super stream consumer instance with single active consumer enabled.</p>
+</li>
+<li>
+<p>You start 3 instances of this application. An instance in this case is a JVM process, which can be in a Docker container, a virtual machine, or a bare-metal server.</p>
+</li>
+<li>
+<p>As the super stream has 3 partitions, each application instance will create a super stream consumer that maintains internally 3 consumer instances.
+That is 9 Java instances of consumer overall.</p>
+</li>
+<li>
+<p>The broker and the different application instances coordinate so that only 1 consumer instance for a given partition receives messages at a time.
+So among these 9 consumer instances, only 3 are actually <em>active</em>, the other ones are idle or <em>inactive</em>.</p>
+</li>
+<li>
+<p>If one of the application instances stops, the broker will <em>rebalance</em> its active consumer to one of the other instances.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>After this overview, let&#8217;s see the API and the configuration details.</p>
+</div>
+<div class="paragraph">
+<p>The following snippet shows how to declare a single active consumer on a super stream with the <code>ConsumerBuilder#superStream(String)</code> and <code>ConsumerBuilder#singleActiveConsumer()</code> methods:</p>
+</div>
+<div class="listingblock">
+<div class="title">Enabling single active consumer on a super stream</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer = environment.consumerBuilder()
+    .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
+    .singleActiveConsumer()  <i class="conum" data-value="3"></i><b>(3)</b>
+    .messageHandler((context, message) -&gt; {
+        <span class="comment">// message processing</span>
+    })
+    .build();
+<span class="comment">// ...</span>
+consumer.close();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the super stream name</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Set the consumer name (mandatory to enable single active consumer)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Enable single active consumer</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Note it is mandatory to specify a name for the consumer.
+This name will be used to identify the <em>group</em> of consumer instances and make sure only one is active for each partition.
+The name is also the reference for offset tracking.</p>
+</div>
 </div>
 </div>
 </div>
@@ -4541,7 +4596,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-04-05 14:26:19 UTC
+Last updated 2022-04-07 07:46:57 UTC
 </div>
 </div>
 </body>
