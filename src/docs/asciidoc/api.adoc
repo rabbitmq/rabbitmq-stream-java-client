@@ -784,6 +784,11 @@ The following table sums up the main settings to create a `Consumer`:
 |`ManualTrackingStrategy#checkInterval`
 |Interval to check if the last requested stored offset has been actually stored.
 |`Duration.ofSeconds(5)`
+
+|subscriptionListener
+|A <<consumer-subscription-listener, callback>> before the subscription is created.
+Useful when using an external store for offset tracking.
+|`null`
 |===
 
 [NOTE]
@@ -979,6 +984,7 @@ This means one must be careful when basing some decision on offset values, like
 a modulo to perform an operation every X messages. As the message offsets have
 no guarantee to be contiguous, the operation may not happen exactly every X messages.
 
+[[consumer-subscription-listener]]
 ====== Subscription Listener
 
 The client provides a `SubscriptionListener` interface callback to add behavior before a subscription is created.
