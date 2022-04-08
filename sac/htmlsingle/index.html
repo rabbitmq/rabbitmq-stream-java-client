@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(32a9670)</span>
+<br><span id="revremark">(4f74c40)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2785,6 +2785,12 @@ a separate thread (e.g. with an asynchronous <code>ExecutorService</code>).</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Interval to check if the last requested stored offset has been actually stored.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>Duration.ofSeconds(5)</code></p></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">noTrackingStrategy</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Disable server-side offset tracking even if a name is provided.
+Useful when <a href="#single-active-consumer">single active consumer</a> is enabled and an external store is used for offset tracking.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+</tr>
 </tbody>
 </table>
 <div class="admonitionblock note">
@@ -3403,9 +3409,10 @@ In this case, it is possible to use the <code>ConsumerBuilder#consumerUpdateList
     .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
     .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
     .singleActiveConsumer()  <i class="conum" data-value="2"></i><b>(2)</b>
-    .consumerUpdateListener(context -&gt; {  <i class="conum" data-value="3"></i><b>(3)</b>
-      <span class="type">long</span> offset = getOffsetFromExternalStore();  <i class="conum" data-value="4"></i><b>(4)</b>
-      <span class="keyword">return</span> OffsetSpecification.offset(offset + <span class="integer">1</span>); <i class="conum" data-value="5"></i><b>(5)</b>
+    .noTrackingStrategy()  <i class="conum" data-value="3"></i><b>(3)</b>
+    .consumerUpdateListener(context -&gt; {  <i class="conum" data-value="4"></i><b>(4)</b>
+      <span class="type">long</span> offset = getOffsetFromExternalStore();  <i class="conum" data-value="5"></i><b>(5)</b>
+      <span class="keyword">return</span> OffsetSpecification.offset(offset + <span class="integer">1</span>); <i class="conum" data-value="6"></i><b>(6)</b>
     })
     .messageHandler((context, message) -&gt; {
       <span class="comment">// message handling code...</span>
@@ -3427,15 +3434,19 @@ In this case, it is possible to use the <code>ConsumerBuilder#consumerUpdateList
 </tr>
 <tr>
 <td><i class="conum" data-value="3"></i><b>3</b></td>
-<td>Set the consumer update listener</td>
+<td>Disable server-side offset tracking</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Fetch last offset from external store</td>
+<td>Set the consumer update listener</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="5"></i><b>5</b></td>
-<td>Return the offset to resume from to the broker</td>
+<td>Fetch last offset from external store</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Return the offset to resume consuming from to the broker</td>
 </tr>
 </table>
 </div>
@@ -3937,6 +3948,11 @@ It is expected this other consumer runs the exact same code, so it will execute 
 The application code should take care of maintaining a reference of the last processed offset for each partition of the super stream, e.g. with a <code>Map&lt;String, Long&gt;</code> (partition-to-offset map).
 To do so, the <code>context</code> parameter of the <code>MessageHandler</code> and <code>ConsumerUpdateListener</code> callbacks provide a <code>stream()</code> method.</p>
 </div>
+<div class="paragraph">
+<p>RabbitMQ Stream provides server-side offset tracking, but it is possible to use an external store to track offsets for streams.
+The <code>ConsumerUpdateListener</code> callback is still your friend in this case.
+The following snippet shows how to leverage it when an external store is in use:</p>
+</div>
 <div class="listingblock">
 <div class="title">Using external offset tracking for a super stream single active consumer</div>
 <div class="content">
@@ -3944,8 +3960,7 @@ To do so, the <code>context</code> parameter of the <code>MessageHandler</code> 
     .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
     .name(<span class="string"><span class="delimiter">&quot;</span><span class="content">application-1</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
     .singleActiveConsumer()  <i class="conum" data-value="3"></i><b>(3)</b>
-    .manualTrackingStrategy()  <i class="conum" data-value="4"></i><b>(4)</b>
-    .builder()
+    .noTrackingStrategy()  <i class="conum" data-value="4"></i><b>(4)</b>
     .consumerUpdateListener(context -&gt; {  <i class="conum" data-value="5"></i><b>(5)</b>
       <span class="keyword">if</span> (context.isActive()) {  <i class="conum" data-value="6"></i><b>(6)</b>
         <span class="type">long</span> offset = getOffsetFromExternalStore();
@@ -3977,7 +3992,7 @@ To do so, the <code>context</code> parameter of the <code>MessageHandler</code> 
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Disable automatic offset tracking strategy</td>
+<td>Disable server-side offset tracking</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="5"></i><b>5</b></td>
@@ -3996,6 +4011,33 @@ To do so, the <code>context</code> parameter of the <code>MessageHandler</code> 
 <td>Use external store for offset tracking</td>
 </tr>
 </table>
+</div>
+<div class="paragraph">
+<p>Here are the takeaway points of this code:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Even though there is no server-side offset tracking to use it, the consumer must still have a name to identify the group it belongs to.
+The external offset tracking mechanism is free to use the same name or not.</p>
+</li>
+<li>
+<p>Calling <code>ConsumerBuilder#noTrackingStrategy()</code> is necessary to disable server-side offset tracking, or the automatic tracking strategy will kick in.</p>
+</li>
+<li>
+<p>The snippet does not provide the details, but the offset tracking mechanism seems to store the offset for each message.
+The external store must be able to cope with the message rate in a real-world scenario.</p>
+</li>
+<li>
+<p>The <code>ConsumerUpdateListener</code> callback returns the last stored offset + 1 when the consumer becomes active.
+This way the broker will resume the dispatching at this location in the stream.</p>
+</li>
+<li>
+<p>A well-behaved <code>ConsumerUpdateListener</code> must make sure the last processed offset is stored when the consumer becomes inactive, so that the consumer that will take over can look up the offset and resume consuming at the right location.
+Our <code>ConsumerUpdateListener</code> does not do anything when the consumer becomes inactive (it returns <code>null</code>): it can afford this because the offset is stored for each message.
+Make sure to store the last processed offset when the consumer becomes inactive to avoid duplicates when the consumption resumes elsewhere.</p>
+</li>
+</ul>
 </div>
 </div>
 </div>
@@ -4770,7 +4812,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-04-07 15:47:32 UTC
+Last updated 2022-04-08 09:18:49 UTC
 </div>
 </div>
 </body>
