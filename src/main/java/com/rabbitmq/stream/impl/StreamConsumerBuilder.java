@@ -37,6 +37,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private String name;
   private DefaultAutoTrackingStrategy autoTrackingStrategy;
   private DefaultManualTrackingStrategy manualTrackingStrategy;
+  private boolean noTrackingStrategy = false;
   private boolean lazyInit = false;
   private SubscriptionListener subscriptionListener = subscriptionContext -> {};
   private Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
@@ -109,6 +110,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   public ManualTrackingStrategy manualTrackingStrategy() {
     this.manualTrackingStrategy = new DefaultManualTrackingStrategy(this);
     this.autoTrackingStrategy = null;
+    this.noTrackingStrategy = false;
     return this.manualTrackingStrategy;
   }
 
@@ -116,7 +118,16 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   public AutoTrackingStrategy autoTrackingStrategy() {
     this.autoTrackingStrategy = new DefaultAutoTrackingStrategy(this);
     this.manualTrackingStrategy = null;
+    this.noTrackingStrategy = false;
     return this.autoTrackingStrategy;
+  }
+
+  @Override
+  public ConsumerBuilder noTrackingStrategy() {
+    this.noTrackingStrategy = true;
+    this.autoTrackingStrategy = null;
+    this.manualTrackingStrategy = null;
+    return this;
   }
 
   StreamConsumerBuilder lazyInit(boolean lazyInit) {
@@ -136,6 +147,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       throw new IllegalArgumentException("A message handler must be set");
     }
     if (this.name == null
+        && !this.noTrackingStrategy
         && (this.autoTrackingStrategy != null || this.manualTrackingStrategy != null)) {
       throw new IllegalArgumentException("A name must be set if a tracking strategy is specified");
     }
@@ -157,13 +169,14 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       trackingConfiguration =
           new TrackingConfiguration(
               true, false, -1, Duration.ZERO, this.manualTrackingStrategy.checkInterval);
+    } else if (this.noTrackingStrategy) {
+      trackingConfiguration = DISABLED_TRACKING_CONFIGURATION;
     } else if (this.name != null) {
       // the default tracking strategy
       trackingConfiguration =
           new TrackingConfiguration(true, true, 10_000, Duration.ofSeconds(5), Duration.ZERO);
     } else {
-      trackingConfiguration =
-          new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
+      trackingConfiguration = DISABLED_TRACKING_CONFIGURATION;
     }
 
     Consumer consumer;
@@ -190,6 +203,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     }
     return consumer;
   }
+
+  private static final TrackingConfiguration DISABLED_TRACKING_CONFIGURATION =
+      new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
 
   static class TrackingConfiguration {
 

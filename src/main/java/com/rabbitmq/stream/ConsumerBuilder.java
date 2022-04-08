@@ -141,6 +141,17 @@ public interface ConsumerBuilder {
   AutoTrackingStrategy autoTrackingStrategy();
 
   /**
+   * Disable server-side offset tracking.
+   *
+   * <p>Useful when {@link #singleActiveConsumer()} is enabled and an external store is used for
+   * offset tracking. This avoids automatic server-side offset tracking to kick in.
+   *
+   * @return this builder instance
+   * @since 0.6.0
+   */
+  ConsumerBuilder noTrackingStrategy();
+
+  /**
    * Create the configured {@link Consumer}
    *
    * @return the configured consumer

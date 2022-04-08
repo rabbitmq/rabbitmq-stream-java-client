@@ -175,7 +175,7 @@ public class SacStreamConsumerTest {
   }
 
   @Test
-  void customTrackingSecondConsumerShouldTakeOverWhereTheFirstOneLeftOff() throws Exception {
+  void externalTrackingSecondConsumerShouldTakeOverWhereTheFirstOneLeftOff() throws Exception {
     int messageCount = 10000;
     Map<Integer, AtomicInteger> receivedMessages = new ConcurrentHashMap<>();
     receivedMessages.put(0, new AtomicInteger(0));
@@ -192,8 +192,7 @@ public class SacStreamConsumerTest {
                   receivedMessages.get(0).incrementAndGet();
                 })
             .offset(OffsetSpecification.first())
-            .manualTrackingStrategy()
-            .builder()
+            .noTrackingStrategy()
             .consumerUpdateListener(context -> OffsetSpecification.offset(lastReceivedOffset.get()))
             .build();
 
@@ -207,8 +206,7 @@ public class SacStreamConsumerTest {
                   receivedMessages.get(1).incrementAndGet();
                 })
             .offset(OffsetSpecification.first())
-            .manualTrackingStrategy()
-            .builder()
+            .noTrackingStrategy()
             .consumerUpdateListener(context -> OffsetSpecification.offset(lastReceivedOffset.get()))
             .build();
 

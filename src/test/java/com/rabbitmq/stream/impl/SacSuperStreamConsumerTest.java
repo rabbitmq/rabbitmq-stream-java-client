@@ -32,7 +32,6 @@ import com.rabbitmq.stream.impl.TestUtils.CallableBooleanSupplier;
 import com.rabbitmq.stream.impl.TestUtils.SingleActiveConsumer;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import io.netty.channel.EventLoopGroup;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -619,9 +618,7 @@ public class SacSuperStreamConsumerTest {
               .superStream(superStream)
               .offset(initialOffsetSpecification)
               .name(consumerName)
-              .manualTrackingStrategy()
-              .checkInterval(Duration.ZERO) // no background task for this consumer
-              .builder()
+              .noTrackingStrategy()
               .consumerUpdateListener(consumerUpdateListener)
               .messageHandler(
                   (context, message) -> {

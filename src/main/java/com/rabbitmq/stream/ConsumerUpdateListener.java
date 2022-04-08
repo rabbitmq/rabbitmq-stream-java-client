@@ -27,11 +27,18 @@ package com.rabbitmq.stream;
  *
  * @see ConsumerBuilder#singleActiveConsumer()
  * @see ConsumerBuilder#manualTrackingStrategy()
+ * @see ConsumerBuilder#noTrackingStrategy()
  */
 public interface ConsumerUpdateListener {
 
   /**
    * Callback when the consumer status change.
+   *
+   * <p>The method <em>must</em> return the offset specification to resume consumption from when the
+   * consumer becomes active. The broker will use the value to initialize the dispatching of
+   * messages from the appropriate location.
+   *
+   * <p>The broker ignores the returned value when the consumer becomes inactive.
    *
    * @param context information on the status change
    * @return the offset specification to consume from if the status is active
