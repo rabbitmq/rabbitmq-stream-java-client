@@ -282,6 +282,10 @@ Note the `ConsumerUpdateListener` is called for a _partition_, that is an indivi
 The application code should take care of maintaining a reference of the last processed offset for each partition of the super stream, e.g. with a `Map<String, Long>` (partition-to-offset map).
 To do so, the `context` parameter of the `MessageHandler` and `ConsumerUpdateListener` callbacks provide a `stream()` method.
 
+RabbitMQ Stream provides server-side offset tracking, but it is possible to use an external store to track offsets for streams.
+The `ConsumerUpdateListener` callback is still your friend in this case.
+The following snippet shows how to leverage it when an external store is in use:
+
 .Using external offset tracking for a super stream single active consumer
 [source,java,indent=0]
 --------
@@ -290,9 +294,21 @@ include::{test-examples}/SuperStreamUsage.java[tag=sac-external-offset-tracking]
 <1> Set the super stream name
 <2> Set the consumer name (mandatory to enable single active consumer)
 <3> Enable single active consumer
-<4> Disable automatic offset tracking strategy
+<4> Disable server-side offset tracking
 <5> Set `ConsumerUpdateListener`
 <6> Use external store for stored offset when consumer becomes active
 <7> Assume offset already stored when consumer becomes inactive
 <8> Use external store for offset tracking
 
+Here are the takeaway points of this code:
+
+* Even though there is no server-side offset tracking to use it, the consumer must still have a name to identify the group it belongs to.
+The external offset tracking mechanism is free to use the same name or not.
+* Calling `ConsumerBuilder#noTrackingStrategy()` is necessary to disable server-side offset tracking, or the automatic tracking strategy will kick in.
+* The snippet does not provide the details, but the offset tracking mechanism seems to store the offset for each message.
+The external store must be able to cope with the message rate in a real-world scenario.
+* The `ConsumerUpdateListener` callback returns the last stored offset + 1 when the consumer becomes active.
+This way the broker will resume the dispatching at this location in the stream.
+* A well-behaved `ConsumerUpdateListener` must make sure the last processed offset is stored when the consumer becomes inactive, so that the consumer that will take over can look up the offset and resume consuming at the right location.
+Our `ConsumerUpdateListener` does not do anything when the consumer becomes inactive (it returns `null`): it can afford this because the offset is stored for each message.
+Make sure to store the last processed offset when the consumer becomes inactive to avoid duplicates when the consumption resumes elsewhere.

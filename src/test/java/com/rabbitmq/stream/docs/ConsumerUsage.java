@@ -175,9 +175,10 @@ public class ConsumerUsage {
         .stream("my-stream")
         .name("application-1")  // <1>
         .singleActiveConsumer()  // <2>
-        .consumerUpdateListener(context -> {  // <3>
-          long offset = getOffsetFromExternalStore();  // <4>
-          return OffsetSpecification.offset(offset + 1); // <5>
+        .noTrackingStrategy()  // <3>
+        .consumerUpdateListener(context -> {  // <4>
+          long offset = getOffsetFromExternalStore();  // <5>
+          return OffsetSpecification.offset(offset + 1); // <6>
         })
         .messageHandler((context, message) -> {
           // message handling code...

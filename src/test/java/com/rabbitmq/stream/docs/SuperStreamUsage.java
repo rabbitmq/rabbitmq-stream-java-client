@@ -160,8 +160,7 @@ public class SuperStreamUsage {
         .superStream("invoices")  // <1>
         .name("application-1")  // <2>
         .singleActiveConsumer()  // <3>
-        .manualTrackingStrategy()  // <4>
-        .builder()
+        .noTrackingStrategy()  // <4>
         .consumerUpdateListener(context -> {  // <5>
           if (context.isActive()) {  // <6>
             long offset = getOffsetFromExternalStore();

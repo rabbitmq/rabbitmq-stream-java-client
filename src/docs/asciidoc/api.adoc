@@ -812,6 +812,11 @@ The following table sums up the main settings to create a `Consumer`:
 |Interval to check if the last requested stored offset has been actually stored.
 |`Duration.ofSeconds(5)`
 
+|noTrackingStrategy
+|Disable server-side offset tracking even if a name is provided.
+Useful when <<single-active-consumer, single active consumer>> is enabled and an external store is used for offset tracking.
+|`false`
+
 |subscriptionListener
 |A <<consumer-subscription-listener, callback>> before the subscription is created.
 Useful when using an external store for offset tracking.
@@ -1133,6 +1138,7 @@ include::{test-examples}/ConsumerUsage.java[tag=sac-consumer-update-listener]
 --------
 <1> Set the consumer name (mandatory to enable single active consumer)
 <2> Enable single active consumer
-<3> Set the consumer update listener
-<4> Fetch last offset from external store
-<5> Return the offset to resume from to the broker
+<3> Disable server-side offset tracking
+<4> Set the consumer update listener
+<5> Fetch last offset from external store
+<6> Return the offset to resume consuming from to the broker
