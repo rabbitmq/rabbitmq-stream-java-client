@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -143,8 +144,9 @@ public class StreamProducerUnitTest {
     "0,1000,7",
   })
   void confirmTimeoutTaskShouldFailMessagesAfterTimeout(
-      long confirmTimeoutMs, long waitTime, int subEntrySize) throws Exception {
+      long confirmTimeoutMs, long waitTimeMs, int subEntrySize) throws Exception {
     Duration confirmTimeout = Duration.ofMillis(confirmTimeoutMs);
+    Duration waitTime = Duration.ofMillis(waitTimeMs);
     clock.refresh();
     int messageCount = 500;
     int confirmedPart = messageCount / 10;
@@ -189,13 +191,14 @@ public class StreamProducerUnitTest {
 
     executorService.scheduleAtFixedRate(() -> clock.refresh(), 100, 100, TimeUnit.MILLISECONDS);
 
-    Thread.sleep(waitTime);
+    Thread.sleep(waitTime.toMillis());
     assertThat(confirmedCount.get()).isEqualTo(expectedConfirmed);
     if (confirmTimeout.isZero()) {
       assertThat(erroredCount.get()).isZero();
       assertThat(responseCodes).isEmpty();
     } else {
-      assertThat(erroredCount.get()).isEqualTo(messageCount - expectedConfirmed);
+      waitAtMost(
+          waitTime.multipliedBy(2), () -> erroredCount.get() == (messageCount - expectedConfirmed));
       assertThat(responseCodes).hasSize(1).contains(Constants.CODE_PUBLISH_CONFIRM_TIMEOUT);
     }
   }

@@ -1,4 +1,2 @@
-/**
- * Performance tool for RabbitMQ Stream.
- */
+/** Performance tool for RabbitMQ Stream. */
 package com.rabbitmq.stream.perf;
