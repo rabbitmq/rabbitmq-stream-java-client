@@ -1087,6 +1087,44 @@ The consumer instances share the same name.
 * The broker chooses the consumer next in line to become the new active one.
 * The new active consumer starts receiving messages.
 
+The next figures illustrates this mechanism.
+There can be only one active consumer:
+
+.The first registered consumer is active, the next ones are inactive
+[ditaa]
+....
+                    +----------+
+             +------+ consumer + Active
+             |      +----------+
+             |
++--------+   |      +=---------+
++ stream +---+------+ consumer + Inactive
++--------+   |      +----------+
+             |
+             |      +=---------+
+             +------+ consumer + Inactive
+                    +----------+
+....
+
+The broker rolls over to another consumer when the active one stops or crashes:
+
+.When the active consumer stops, the next in line becomes active
+[ditaa]
+....
+                    +=---------+
+                    | consumer + Closed
+                    +----------+
+
++--------+          +----------+
++ stream +---+------+ consumer + Active
++--------+   |      +----------+
+             |
+             |      +=---------+
+             +------+ consumer + Inactive
+                    +----------+
+....
+
+
 Note there can be several groups of single active consumers on the same stream.
 What makes them different from each other is the name used by the consumers.
 The broker deals with them independently.

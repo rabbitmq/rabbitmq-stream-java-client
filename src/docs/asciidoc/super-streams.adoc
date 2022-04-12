@@ -228,9 +228,61 @@ Let's take an example with a 3-partition super stream:
 * You start 3 instances of this application. An instance in this case is a JVM process, which can be in a Docker container, a virtual machine, or a bare-metal server.
 * As the super stream has 3 partitions, each application instance will create a super stream consumer that maintains internally 3 consumer instances.
 That is 9 Java instances of consumer overall.
+Such a super stream consumer is a _composite consumer_.
 * The broker and the different application instances coordinate so that only 1 consumer instance for a given partition receives messages at a time.
 So among these 9 consumer instances, only 3 are actually _active_, the other ones are idle or _inactive_.
 * If one of the application instances stops, the broker will _rebalance_ its active consumer to one of the other instances.
+
+The following figure illustrates how the consumer instances spread across the super stream partitions and which ones are active or inactive:
+
+.Consumer instances spread across the super stream partitions and are activated accordingly
+[ditaa]
+....
+                                        +-------------------+
+                                        |+-----------------+|
+                                        |+cGRE consumer    ||Active
+                                        |+-----------------+|
+                                        |                   |
+                                        |+-----------------+|
+                                        |+cPNK consumer    ||Inactive
+                                        |+-----------------+|
+                                        |                   |
+                                        |+-----------------+|
+                                        |+cBLU consumer    ||Inactive
+                                        |+-----------------+|
+              +--------------------+    +-------------------+
+              |                    |     Composite Consumer
+              |cGRE invoices–0     |
+              |                    |    +-------------------+
+              +--------------------+    |+-----------------+|
+                                        |+cGRE consumer    ||Inactive
+                                        |+-----------------+|
+  invoices    +--------------------+    |                   |
+              |                    |    |+-----------------+|
+              |cPNK invoices–1     |    |+cPNK consumer    ||Active
+              |                    |    |+-----------------+|
+super stream  +--------------------+    |                   |
+                                        |+-----------------+|
+                                        |+cBLU consumer    ||Inactive
+              +--------------------+    |+-----------------+|
+              |                    |    +-------------------+
+              |cBLU invoices–2     |     Composite Consumer
+              |                    |
+              +--------------------+    +-------------------+
+                                        |+-----------------+|
+                                        |+cGRE consumer    ||Inactive
+                                        |+-----------------+|
+                                        |                   |
+                                        |+-----------------+|
+                                        |+cPNK consumer    ||Inactive
+                                        |+-----------------+|
+                                        |                   |
+                                        |+-----------------+|
+                                        |+cBLU consumer    ||Active
+                                        |+-----------------+|
+                                        +-------------------+
+                                         Composite Consumer
+....
 
 After this overview, let's see the API and the configuration details.
 
