@@ -425,22 +425,22 @@
 
         </configuration>
         <executions>
-          <execution>
-            <id>generate-pdf</id>
-            <phase>pre-site</phase>
-            <goals>
-              <goal>process-asciidoc</goal>
-            </goals>
-            <configuration>
-              <backend>pdf</backend>
-              <attributes>
-                <title-page />
-                <toc />
-                <toclevels>4</toclevels>
-                <pagenums />
-              </attributes>
-            </configuration>
-          </execution>
+<!--          <execution>-->
+<!--            <id>generate-pdf</id>-->
+<!--            <phase>pre-site</phase>-->
+<!--            <goals>-->
+<!--              <goal>process-asciidoc</goal>-->
+<!--            </goals>-->
+<!--            <configuration>-->
+<!--              <backend>pdf</backend>-->
+<!--              <attributes>-->
+<!--                <title-page />-->
+<!--                <toc />-->
+<!--                <toclevels>4</toclevels>-->
+<!--                <pagenums />-->
+<!--              </attributes>-->
+<!--            </configuration>-->
+<!--          </execution>-->
           <execution>
             <id>generate-html</id>
             <phase>pre-site</phase>
