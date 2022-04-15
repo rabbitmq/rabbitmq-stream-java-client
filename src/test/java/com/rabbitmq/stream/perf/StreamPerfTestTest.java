@@ -417,7 +417,7 @@ public class StreamPerfTestTest {
                 .storeEvery(10)
                 .streamCount(2)
                 .superStreams()
-                .superStreamsPartitions(3)
+                .superStreamPartitions(3)
                 .singleActiveConsumer()
                 .storeEvery(10)
                 .consumerNames(consumerName)
@@ -629,8 +629,8 @@ public class StreamPerfTestTest {
       return this;
     }
 
-    ArgumentsBuilder superStreamsPartitions(int partitions) {
-      arguments.put("super-streams-partitions", String.valueOf(partitions));
+    ArgumentsBuilder superStreamPartitions(int partitions) {
+      arguments.put("super-stream-partitions", String.valueOf(partitions));
       return this;
     }
 

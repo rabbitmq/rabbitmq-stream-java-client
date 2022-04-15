@@ -47,6 +47,7 @@ When a super stream is in use, the stream Java client queries this information t
 From the application code point of view, using a super stream is mostly configuration-based.
 Some logic must also be provided to extract routing information from messages.
 
+[[super-stream-producer]]
 ===== Publishing to a Super Stream
 
 When the topology of a super stream like the one described above has been set, creating a producer for it is straightforward:

@@ -411,6 +411,7 @@ The accepted values for `--offset` are `first`, `last`, `next` (the default),
 an unsigned long for a given offset, and an ISO 8601 formatted timestamp
 (eg. `2020-06-03T07:45:54Z`).
 
+[[performance-tool-offset-tracking]]
 ===== Offset Tracking (Consumer)
 
 A consumer can <<api.adoc#consumer-offset-tracking,track the point>> it has reached
@@ -498,6 +499,72 @@ java -jar stream-perf-test.jar --uris rabbitmq-stream://my-load-balancer:5552 \
 ----
 
 The same blog post covers why a https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer[load balancer can make things more complicated] for client applications like the performance tool and how https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#client-workaround-with-a-load-balancer[they can mitigate these issues].
+
+[[performance-tool-sac]]
+===== Single Active Consumer
+
+If the `--single-active-consumer` flag is set, the performance tool will create <<api.adoc#single-active-consumer, single active consumer>> instances.
+This means that if there are more consumers than streams, there will be only one active consumer at a time on a stream, _if they share the same name_.
+Note <<performance-tool-offset-tracking, offset tracking>> gets enabled automatically if it's not with `--single-active-consumer` (using 10,000 for `--store-every`).
+Let's see a couple of examples.
+
+In the following command we have 1 producer publishing to 1 stream and 3 consumers on this stream.
+As `--single-active-consumer` is used, only one of these consumers will be active at a time.
+
+----
+java -jar stream-perf-test.jar --producers 1 --consumers 3 --single-active-consumer \
+                               --consumer-names my-app
+----
+
+Note we use a fixed value for the consumer names: if they don't have the same name, the broker will not consider them as a group of consumers, so they will all get messages, like regular consumers.
+
+In the following example we have 2 producers for 2 streams and 6 consumers overall (3 for each stream).
+Note the consumers have the same name on their streams with the use of `--consumer-names my-app-%s`, as `%s` is a <<consumer-names, placeholder for the stream name>>.
+
+----
+java -jar stream-perf-test.jar --producers 2 --consumers 6 --stream-count 2 \
+                               --single-active-consumer --consumer-names my-app-%s
+----
+
+
+===== Super Streams
+
+The performance tool has a `--super-streams` flag to enable <<super-streams.adoc#super-streams, super streams>> on the publisher and consumer sides.
+This support is meant to be used with the <<performance-tool-sac, `--single-active-consumer` flag>>, to <<super-streams.adoc#super-stream-sac, benefit from both features>>.
+We recommend reading the appropriate sections of the documentation to understand the semantics of the flags before using them.
+Let's see some examples.
+
+The example below creates 1 producer and 3 consumers on the default `stream`, which is now a _super stream_ because of the `--super-streams` flag:
+
+----
+java -jar stream-perf-test.jar --producers 1 --consumers 3 --single-active-consumer \
+                               --super-streams --consumer-names my-app
+----
+
+The performance tool creates 3 individual streams by default, they are the partitions of the super stream.
+They are named `stream-0`, `stream-1`, and `stream-2`, after the name of the super stream, `stream`.
+The producer will publish to each of them, using a <<super-streams.adoc#super-stream-producer, hash-based routing strategy>>.
+
+A consumer is _composite_ with `--super-streams`: it creates a consumer instance for each partition.
+This is 9 consumer instances overall – 3 composite consumers and 3 partitions – spread evenly across the partitions, but with only one active at a time on a given stream.
+
+Note we use a fixed consumer name so that the broker considers the consumers belong to the same group and enforce the single active consumer behavior.
+
+The next example is more convoluted.
+We are going to work with 2 super streams (`--stream-count 2` and `--super-streams`).
+Each super stream will have 5 partitions (`--super-stream-partitions 5`), so this is 10 streams overall (`stream-1-0` to `stream-1-4` and `stream-2-0` to `stream-2-4`).
+Here is the command line:
+
+----
+java -jar stream-perf-test.jar --producers 2 --consumers 6 --stream-count 2 \
+                               --super-streams --super-stream-partitions 5 \
+                               --single-active-consumer \
+                               --consumer-names my-app-%s
+----
+
+We see also that each super stream has 1 producer (`--producers 2`) and 3 consumers (`--consumers 6`).
+The composite consumers will spread their consumer instances across the partitions.
+Each partition will have 3 consumers but only 1 active at a time with `--single-active-consumer` and `--consumer-names my-app-%s` (the consumers on a given stream have the same name, so the broker make sure only one consumes at a time).
 
 ===== Monitoring
 

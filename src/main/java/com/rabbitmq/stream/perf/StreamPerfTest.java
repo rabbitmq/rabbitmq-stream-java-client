@@ -377,7 +377,7 @@ public class StreamPerfTest implements Callable<Integer> {
   private boolean superStreams;
 
   @CommandLine.Option(
-      names = {"--super-streams-partitions", "-ssp"},
+      names = {"--super-stream-partitions", "-ssp"},
       description = "number of partitions for the super streams",
       defaultValue = "3",
       converter = Utils.PositiveIntegerTypeConverter.class)
