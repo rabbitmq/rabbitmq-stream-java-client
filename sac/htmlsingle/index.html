@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(32746d6)</span>
+<br><span id="revremark">(90ab4ca)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -617,7 +617,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#super-streams">Super Streams (Partitioned Streams)</a>
 <ul class="sectlevel4">
 <li><a href="#topology">Topology</a></li>
-<li><a href="#publishing-to-a-super-stream">Publishing to a Super Stream</a>
+<li><a href="#super-stream-producer">Publishing to a Super Stream</a>
 <ul class="sectlevel5">
 <li><a href="#resolving-routes-with-bindings">Resolving Routes with Bindings</a></li>
 <li><a href="#using-a-custom-routing-strategy">Using a Custom Routing Strategy</a></li>
@@ -666,9 +666,11 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <ul class="sectlevel4">
 <li><a href="#performance-tool-retention">Retention</a></li>
 <li><a href="#offset-consumer">Offset (Consumer)</a></li>
-<li><a href="#offset-tracking-consumer">Offset Tracking (Consumer)</a></li>
+<li><a href="#performance-tool-offset-tracking">Offset Tracking (Consumer)</a></li>
 <li><a href="#consumer-names">Consumer Names</a></li>
 <li><a href="#producer-names">Producer Names</a></li>
+<li><a href="#performance-tool-sac">Single Active Consumer</a></li>
+<li><a href="#super-streams-2">Super Streams</a></li>
 <li><a href="#monitoring">Monitoring</a></li>
 <li><a href="#using-environment-variables-as-options">Using Environment Variables as Options</a></li>
 <li><a href="#logging">Logging</a></li>
@@ -3541,7 +3543,7 @@ Some logic must also be provided to extract routing information from messages.</
 </div>
 </div>
 <div class="sect4">
-<h5 id="publishing-to-a-super-stream"><a class="anchor" href="#publishing-to-a-super-stream"></a>Publishing to a Super Stream</h5>
+<h5 id="super-stream-producer"><a class="anchor" href="#super-stream-producer"></a>Publishing to a Super Stream</h5>
 <div class="paragraph">
 <p>When the topology of a super stream like the one described above has been set, creating a producer for it is straightforward:</p>
 </div>
@@ -4637,7 +4639,7 @@ an unsigned long for a given offset, and an ISO 8601 formatted timestamp
 </div>
 </div>
 <div class="sect4">
-<h5 id="offset-tracking-consumer"><a class="anchor" href="#offset-tracking-consumer"></a>Offset Tracking (Consumer)</h5>
+<h5 id="performance-tool-offset-tracking"><a class="anchor" href="#performance-tool-offset-tracking"></a>Offset Tracking (Consumer)</h5>
 <div class="paragraph">
 <p>A consumer can <a href="#consumer-offset-tracking">track the point</a> it has reached
 in a stream to be able to restart where it left off in a new incarnation.
@@ -4733,6 +4735,87 @@ difference that the default pattern is empty (i.e. no deduplication).</p>
 </div>
 <div class="paragraph">
 <p>The run will start one producer and will use the <code>stream-1</code> producer reference (default stream is <code>stream</code> and the number of the producer is 1.)</p>
+</div>
+</div>
+<div class="sect4">
+<h5 id="performance-tool-sac"><a class="anchor" href="#performance-tool-sac"></a>Single Active Consumer</h5>
+<div class="paragraph">
+<p>If the <code>--single-active-consumer</code> flag is set, the performance tool will create <a href="#single-active-consumer">single active consumer</a> instances.
+This means that if there are more consumers than streams, there will be only one active consumer at a time on a stream, <em>if they share the same name</em>.
+Note <a href="#performance-tool-offset-tracking">offset tracking</a> gets enabled automatically if it&#8217;s not with <code>--single-active-consumer</code> (using 10,000 for <code>--store-every</code>).
+Let&#8217;s see a couple of examples.</p>
+</div>
+<div class="paragraph">
+<p>In the following command we have 1 producer publishing to 1 stream and 3 consumers on this stream.
+As <code>--single-active-consumer</code> is used, only one of these consumers will be active at a time.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --producers 1 --consumers 3 --single-active-consumer \
+                               --consumer-names my-app</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Note we use a fixed value for the consumer names: if they don&#8217;t have the same name, the broker will not consider them as a group of consumers, so they will all get messages, like regular consumers.</p>
+</div>
+<div class="paragraph">
+<p>In the following example we have 2 producers for 2 streams and 6 consumers overall (3 for each stream).
+Note the consumers have the same name on their streams with the use of <code>--consumer-names my-app-%s</code>, as <code>%s</code> is a <a href="#consumer-names">placeholder for the stream name</a>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --producers 2 --consumers 6 --stream-count 2 \
+                               --single-active-consumer --consumer-names my-app-%s</pre>
+</div>
+</div>
+</div>
+<div class="sect4">
+<h5 id="super-streams-2"><a class="anchor" href="#super-streams-2"></a>Super Streams</h5>
+<div class="paragraph">
+<p>The performance tool has a <code>--super-streams</code> flag to enable <a href="#super-streams">super streams</a> on the publisher and consumer sides.
+This support is meant to be used with the <a href="#performance-tool-sac"><code>--single-active-consumer</code> flag</a>, to <a href="#super-stream-sac">benefit from both features</a>.
+We recommend reading the appropriate sections of the documentation to understand the semantics of the flags before using them.
+Let&#8217;s see some examples.</p>
+</div>
+<div class="paragraph">
+<p>The example below creates 1 producer and 3 consumers on the default <code>stream</code>, which is now a <em>super stream</em> because of the <code>--super-streams</code> flag:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --producers 1 --consumers 3 --single-active-consumer \
+                               --super-streams --consumer-names my-app</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The performance tool creates 3 individual streams by default, they are the partitions of the super stream.
+They are named <code>stream-0</code>, <code>stream-1</code>, and <code>stream-2</code>, after the name of the super stream, <code>stream</code>.
+The producer will publish to each of them, using a <a href="#super-stream-producer">hash-based routing strategy</a>.</p>
+</div>
+<div class="paragraph">
+<p>A consumer is <em>composite</em> with <code>--super-streams</code>: it creates a consumer instance for each partition.
+This is 9 consumer instances overall – 3 composite consumers and 3 partitions – spread evenly across the partitions, but with only one active at a time on a given stream.</p>
+</div>
+<div class="paragraph">
+<p>Note we use a fixed consumer name so that the broker considers the consumers belong to the same group and enforce the single active consumer behavior.</p>
+</div>
+<div class="paragraph">
+<p>The next example is more convoluted.
+We are going to work with 2 super streams (<code>--stream-count 2</code> and <code>--super-streams</code>).
+Each super stream will have 5 partitions (<code>--super-stream-partitions 5</code>), so this is 10 streams overall (<code>stream-1-0</code> to <code>stream-1-4</code> and <code>stream-2-0</code> to <code>stream-2-4</code>).
+Here is the command line:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --producers 2 --consumers 6 --stream-count 2 \
+                               --super-streams --super-stream-partitions 5 \
+                               --single-active-consumer \
+                               --consumer-names my-app-%s</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>We see also that each super stream has 1 producer (<code>--producers 2</code>) and 3 consumers (<code>--consumers 6</code>).
+The composite consumers will spread their consumer instances across the partitions.
+Each partition will have 3 consumers but only 1 active at a time with <code>--single-active-consumer</code> and <code>--consumer-names my-app-%s</code> (the consumers on a given stream have the same name, so the broker make sure only one consumes at a time).</p>
 </div>
 </div>
 <div class="sect4">
@@ -4859,7 +4942,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-04-14 15:55:13 UTC
+Last updated 2022-04-15 13:36:36 UTC
 </div>
 </div>
 </body>
