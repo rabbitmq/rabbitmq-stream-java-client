@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(90ab4ca)</span>
+<br><span id="revremark">(e4c459c)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -660,6 +660,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#publishing-batch-size">Publishing Batch Size</a></li>
 <li><a href="#unconfirmed-messages">Unconfirmed Messages</a></li>
 <li><a href="#message-size">Message Size</a></li>
+<li><a href="#performance-tool-connection-pooling">Connection Pooling</a></li>
 </ul>
 </li>
 <li><a href="#advanced-usage">Advanced Usage</a>
@@ -4576,6 +4577,32 @@ a long in each message to calculate the latency. Note also the actual size of a 
 slightly higher, as the body is wrapped in an <a href="#working-with-complex-messages">AMQP 1.0 message</a>.</p>
 </div>
 </div>
+<div class="sect4">
+<h5 id="performance-tool-connection-pooling"><a class="anchor" href="#performance-tool-connection-pooling"></a>Connection Pooling</h5>
+<div class="paragraph">
+<p>The performance tool does not use connection pooling by default: each producer and consumer has its own connection.
+This can be appropriate to reach maximum throughput in performance test runs, as producers and consumers do not share connections.
+But it may not always reflect what applications do, as they may have slow producers and not-so-busy consumers, so sharing connections becomes interesting to save some resources.</p>
+</div>
+<div class="paragraph">
+<p>It is possible to configure connection pooling with the <code>--producers-by-connection</code> and <code>--consumers-by-connection</code> options.
+They accept a value between 1 and 255, the default being 1 (no connection pooling).</p>
+</div>
+<div class="paragraph">
+<p>In the following example we use 10 streams with 1 producer and 1 consumer on each of them.
+As the rate is low, we can re-use connections:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --producers 10 --consumers 10 --stream-count 10 \
+                               --rate 1000 \
+                               --producers-by-connection 50 --consumers-by-connection 50</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>We end up using 2 connections for the producers and consumers with connection pooling, instead of 20.</p>
+</div>
+</div>
 </div>
 <div class="sect3">
 <h4 id="advanced-usage"><a class="anchor" href="#advanced-usage"></a>Advanced Usage</h4>
@@ -4817,6 +4844,11 @@ Here is the command line:</p>
 The composite consumers will spread their consumer instances across the partitions.
 Each partition will have 3 consumers but only 1 active at a time with <code>--single-active-consumer</code> and <code>--consumer-names my-app-%s</code> (the consumers on a given stream have the same name, so the broker make sure only one consumes at a time).</p>
 </div>
+<div class="paragraph">
+<p>Note the performance tool does not use <a href="#performance-tool-connection-pooling">connection pooling</a> by default.
+The command above opens a significant number of connections – 30 just for consumers – and may not reflect exactly how applications are deployed in the real world.
+Don&#8217;t hesitate to use the <code>--producers-by-connection</code> and <code>--consumers-by-connection</code> options to make the runs as close to your workloads as possible.</p>
+</div>
 </div>
 <div class="sect4">
 <h5 id="monitoring"><a class="anchor" href="#monitoring"></a>Monitoring</h5>
@@ -4942,7 +4974,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-04-15 13:36:36 UTC
+Last updated 2022-04-15 15:08:24 UTC
 </div>
 </div>
 </body>
