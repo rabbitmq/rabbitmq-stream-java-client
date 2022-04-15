@@ -332,6 +332,26 @@ Note the message body size cannot be smaller that 8 bytes, as the performance to
 a long in each message to calculate the latency. Note also the actual size of a message will be
 slightly higher, as the body is wrapped in an <<api.adoc#working-with-complex-messages,AMQP 1.0 message>>.
 
+===== Connection Pooling
+
+The performance tool does not use connection pooling by default: each producer and consumer has its own connection.
+This can be appropriate to reach maximum throughput in performance test runs, as producers and consumers do not share connections.
+But it may not always reflect what applications do, as they may have slow producers and not-so-busy consumers, so sharing connections becomes interesting to save some resources.
+
+It is possible to configure connection pooling with the `--producers-by-connection` and `--consumers-by-connection` options.
+They accept a value between 1 and 255, the default being 1 (no connection pooling).
+
+In the following example we use 10 streams with 1 producer and 1 consumer on each of them.
+As the rate is low, we can re-use connections:
+
+----
+java -jar stream-perf-test.jar --producers 10 --consumers 10 --stream-count 10 \
+                               --rate 1000 \
+                               --producers-by-connection 50 --consumers-by-connection 50
+----
+
+We end up using 2 connections for the producers and consumers with connection pooling, instead of 20.
+
 ==== Advanced Usage
 
 [[performance-tool-retention]]
