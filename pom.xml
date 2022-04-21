@@ -98,7 +98,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <finalName>stream-perf-test</finalName>
     <maven.packagecloud.wagon.version>0.0.6</maven.packagecloud.wagon.version>
-    <nexus-staging-maven-plugin.version>1.6.12</nexus-staging-maven-plugin.version>
+    <nexus-staging-maven-plugin.version>1.6.13</nexus-staging-maven-plugin.version>
   </properties>
 
   <dependencies>
