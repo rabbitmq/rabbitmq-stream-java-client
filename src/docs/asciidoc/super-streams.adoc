@@ -119,6 +119,29 @@ Note the client caches results, it does not query the broker for every message.
 The solution that provides the most control over routing is using a custom routing strategy.
 This should be needed only for specific cases.
 
+Here is an excerpt of the `RoutingStrategy` interface:
+
+.The routing strategy interface
+[source,java,indent=0]
+--------
+public interface RoutingStrategy {
+
+  /** Where to route a message. */
+  List<String> route(Message message, Metadata metadata);
+
+  /** Metadata on the super stream. */
+  interface Metadata {
+
+    List<String> partitions();
+
+    List<String> route(String routingKey);
+  }
+}
+--------
+
+Note it is possible to route a message to several streams or even nowhere.
+The "hash" routing strategy always routes to 1 stream and the "key" routing strategy can route to several streams.
+
 The following code sample shows how to implement a simplistic round-robin `RoutingStrategy` and use it in the producer.
 Note this implementation should not be used in production as the modulo operation is not sign-safe for simplicity's sake.
 
@@ -129,6 +152,8 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-custom-routing-strat
 --------
 <1> No need to set the routing key extraction logic
 <2> Set the custom routing strategy
+
+
 
 ====== Deduplication
 
