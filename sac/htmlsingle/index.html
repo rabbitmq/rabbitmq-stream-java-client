@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(e4c459c)</span>
+<br><span id="revremark">(0121c44)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -3665,6 +3665,31 @@ Note the client caches results, it does not query the broker for every message.<
 This should be needed only for specific cases.</p>
 </div>
 <div class="paragraph">
+<p>Here is an excerpt of the <code>RoutingStrategy</code> interface:</p>
+</div>
+<div class="listingblock">
+<div class="title">The routing strategy interface</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="directive">public</span> <span class="type">interface</span> <span class="class">RoutingStrategy</span> {
+
+  <span class="comment">/** Where to route a message. */</span>
+  <span class="predefined-type">List</span>&lt;<span class="predefined-type">String</span>&gt; route(Message message, Metadata metadata);
+
+  <span class="comment">/** Metadata on the super stream. */</span>
+  <span class="type">interface</span> <span class="class">Metadata</span> {
+
+    <span class="predefined-type">List</span>&lt;<span class="predefined-type">String</span>&gt; partitions();
+
+    <span class="predefined-type">List</span>&lt;<span class="predefined-type">String</span>&gt; route(<span class="predefined-type">String</span> routingKey);
+  }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Note it is possible to route a message to several streams or even nowhere.
+The "hash" routing strategy always routes to 1 stream and the "key" routing strategy can route to several streams.</p>
+</div>
+<div class="paragraph">
 <p>The following code sample shows how to implement a simplistic round-robin <code>RoutingStrategy</code> and use it in the producer.
 Note this implementation should not be used in production as the modulo operation is not sign-safe for simplicity&#8217;s sake.</p>
 </div>
@@ -4974,7 +4999,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-04-15 15:08:24 UTC
+Last updated 2022-04-25 09:35:33 UTC
 </div>
 </div>
 </body>
