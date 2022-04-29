@@ -89,7 +89,7 @@
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jruby.version>9.3.4.0</jruby.version>
     <jmh.version>1.35</jmh.version>
-    <spotless.version>2.22.2</spotless.version>
+    <spotless.version>2.22.3</spotless.version>
     <google-java-format.version>1.15.0</google-java-format.version>
     <jacoco.version>0.8.8</jacoco.version>
     <!-- to sign artifacts when releasing -->
