@@ -80,6 +80,8 @@ public interface StreamCreator {
      * overall less than 1000 queues, or a random node, if there are overall more than 1000 queues.
      *
      * <p>Available as of RabbitMQ 3.10.
+     *
+     * Default value for RabbitMQ 3.10+.
      */
     BALANCED("balanced"),
 
@@ -94,6 +96,8 @@ public interface StreamCreator {
      * The stream leader will be on the node with the least number of stream leaders.
      *
      * <p>Deprecated as of RabbitMQ 3.10, same as {@link LeaderLocator#BALANCED}.
+     *
+     * Default value for RabbitMQ 3.9.
      */
     LEAST_LEADERS("least-leaders");
 

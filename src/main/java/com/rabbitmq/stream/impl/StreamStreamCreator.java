@@ -25,7 +25,7 @@ class StreamStreamCreator implements StreamCreator {
 
   private final StreamEnvironment environment;
   private final Client.StreamParametersBuilder streamParametersBuilder =
-      new Client.StreamParametersBuilder().leaderLocator(LeaderLocator.CLIENT_LOCAL);
+      new Client.StreamParametersBuilder().leaderLocator(LeaderLocator.LEAST_LEADERS);
   private String stream;
 
   StreamStreamCreator(StreamEnvironment environment) {
