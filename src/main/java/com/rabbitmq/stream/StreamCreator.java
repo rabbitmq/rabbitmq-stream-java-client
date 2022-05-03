@@ -67,13 +67,34 @@ public interface StreamCreator {
 
   /** The leader locator strategy. */
   enum LeaderLocator {
-    /** The stream leader will be on the node the client is connected to. */
+
+    /**
+     * The stream leader will be on the node the client is connected to.
+     *
+     * <p>This is the default value.
+     */
     CLIENT_LOCAL("client-local"),
 
-    /** The stream leader will be a random node of the cluster. */
+    /**
+     * The leader will be the node hosting the minimum number of stream leaders, if there are
+     * overall less than 1000 queues, or a random node, if there are overall more than 1000 queues.
+     *
+     * <p>Available as of RabbitMQ 3.10.
+     */
+    BALANCED("balanced"),
+
+    /**
+     * The stream leader will be a random node of the cluster.
+     *
+     * <p>Deprecated as of RabbitMQ 3.10, same as {@link LeaderLocator#BALANCED}.
+     */
     RANDOM("random"),
 
-    /** The stream leader will be on the node with the least number of stream leaders. */
+    /**
+     * The stream leader will be on the node with the least number of stream leaders.
+     *
+     * <p>Deprecated as of RabbitMQ 3.10, same as {@link LeaderLocator#BALANCED}.
+     */
     LEAST_LEADERS("least-leaders");
 
     String value;
