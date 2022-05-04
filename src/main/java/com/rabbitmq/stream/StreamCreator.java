@@ -81,7 +81,7 @@ public interface StreamCreator {
      *
      * <p>Available as of RabbitMQ 3.10.
      *
-     * Default value for RabbitMQ 3.10+.
+     * <p>Default value for RabbitMQ 3.10+.
      */
     BALANCED("balanced"),
 
@@ -97,7 +97,7 @@ public interface StreamCreator {
      *
      * <p>Deprecated as of RabbitMQ 3.10, same as {@link LeaderLocator#BALANCED}.
      *
-     * Default value for RabbitMQ 3.9.
+     * <p>Default value for RabbitMQ 3.9.
      */
     LEAST_LEADERS("least-leaders");
 
