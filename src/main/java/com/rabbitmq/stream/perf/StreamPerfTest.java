@@ -666,7 +666,7 @@ public class StreamPerfTest implements Callable<Integer> {
                       rateLimiterCallback = () -> {};
                     }
 
-                    String stream = stream();
+                    String stream = stream(this.streams, i);
                     ProducerBuilder producerBuilder = environment.producerBuilder();
 
                     String producerName = this.producerNameStrategy.apply(stream, i + 1);
@@ -732,7 +732,7 @@ public class StreamPerfTest implements Callable<Integer> {
                         final PerformanceMetrics metrics = this.performanceMetrics;
 
                         AtomicLong messageCount = new AtomicLong(0);
-                        String stream = stream();
+                        String stream = stream(streams, i);
                         ConsumerBuilder consumerBuilder = environment.consumerBuilder();
                         consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
 
@@ -889,7 +889,7 @@ public class StreamPerfTest implements Callable<Integer> {
     this.monitorings = monitorings;
   }
 
-  private String stream() {
-    return streams.get(streamDispatching++ % streams.size());
+  private static String stream(List<String> streams, int i) {
+    return streams.get(i % streams.size());
   }
 }
