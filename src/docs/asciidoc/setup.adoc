@@ -5,9 +5,9 @@ to get up and running is to use Docker.
 
 ==== For Single Active Consumer Branch
 
-Use the `pivotalrabbitmq/rabbitmq-stream:sac` Docker image.
+Use the `pivotalrabbitmq/rabbitmq-stream` Docker image.
 
-Use the generic Unix package from https://github.com/rabbitmq/rabbitmq-server-binaries-dev/releases (with `alpha-stream-sac` in the name).
+Use the generic Unix package from https://github.com/rabbitmq/rabbitmq-server-binaries-dev/releases (with `alpha-stream` in the name).
 
 (TODO: remove this section when merging)
 
