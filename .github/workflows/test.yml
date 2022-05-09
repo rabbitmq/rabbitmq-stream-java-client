@@ -14,7 +14,7 @@ jobs:
 
     services:
       rabbitmq:
-        image: pivotalrabbitmq/rabbitmq-stream
+        image: pivotalrabbitmq/rabbitmq-dev:3.10
         env:
           RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbitmq_stream advertised_host localhost
         ports:
@@ -37,8 +37,8 @@ jobs:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}-v2
           restore-keys: ${{ runner.os }}-m2
-      - name: Enable MQTT and STOMP plugins
-        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_stomp
+      - name: Enable Stream, MQTT and STOMP plugins
+        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_stream rabbitmq_mqtt rabbitmq_stomp
       - name: Clean corrupted Maven repository
         run: rm -rf ~/.m2/repository/net/bytebuddy
       - name: Test
