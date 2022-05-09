@@ -1,4 +1,4 @@
-  name: Test SAC branch against RabbitMQ 3.11 alpha
+name: Test SAC branch against RabbitMQ 3.11 alpha
 
 on:
   push:
