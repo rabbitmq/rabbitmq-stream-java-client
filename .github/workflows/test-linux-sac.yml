@@ -7,11 +7,11 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     services:
       rabbitmq:
-        image: pivotalrabbitmq/rabbitmq-stream:sac
+        image: pivotalrabbitmq/rabbitmq-stream
         env:
           RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbitmq_stream advertised_host localhost
         ports:
