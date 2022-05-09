@@ -348,7 +348,6 @@ public class StreamProducerTest {
       AtomicInteger errored = new AtomicInteger(0);
       Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
 
-      short lastExpectedErrorCode = Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
       AtomicBoolean continuePublishing = new AtomicBoolean(true);
       Thread publishThread =
           new Thread(
@@ -360,9 +359,6 @@ public class StreamProducerTest {
                       } else {
                         errored.incrementAndGet();
                         errorCodes.add(confirmationStatus.getCode());
-                        if (confirmationStatus.getCode() == lastExpectedErrorCode) {
-                          continuePublishing.set(false);
-                        }
                       }
                     };
                 while (continuePublishing.get()) {
@@ -388,9 +384,10 @@ public class StreamProducerTest {
       environment.deleteStream(s);
 
       waitAtMost(() -> !producer.isOpen());
+      continuePublishing.set(false);
       waitAtMost(
-          () -> errorCodes.contains(lastExpectedErrorCode),
-          () -> errorCodes + " should contain " + lastExpectedErrorCode);
+          () -> !errorCodes.isEmpty(),
+          () -> "The producer should have received negative publish confirms");
     } finally {
       TestUtils.newLoggerLevel(ProducersCoordinator.class, initialLogLevel);
     }
