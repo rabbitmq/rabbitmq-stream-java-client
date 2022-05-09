@@ -48,7 +48,7 @@ this is perfect for experimenting locally.
 .Running the broker and performance tool with the host network driver
 ----
 # run the broker
-docker run -it --rm --name rabbitmq --network host rabbitmq:3.9
+docker run -it --rm --name rabbitmq --network host rabbitmq:3.10
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
@@ -73,7 +73,7 @@ can be done by defining a network and running the containers in this network.
 # create a network
 docker network create stream-perf-test
 # run the broker
-docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:3.9
+docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:3.10
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
