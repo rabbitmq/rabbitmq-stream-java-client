@@ -1,0 +1,45 @@
+name: Test against 3.9 stable
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    services:
+      rabbitmq:
+        image: rabbitmq-stream:3.9
+        env:
+          RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbitmq_stream advertised_host localhost
+        ports:
+          - 5552:5552
+          - 5672:5672
+          - 1883:1883
+          - 61613:61613
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up JDK
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'zulu'
+          java-version: '11'
+      - name: Cache Maven packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}-v2
+          restore-keys: ${{ runner.os }}-m2
+      - name: Enable Stream, MQTT and STOMP plugins
+        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_stream rabbitmq_mqtt rabbitmq_stomp
+      - name: Clean corrupted Maven repository
+        run: rm -rf ~/.m2/repository/net/bytebuddy
+      - name: Test
+        run: ./mvnw test -Drabbitmqctl.bin=DOCKER:${{job.services.rabbitmq.id}}
