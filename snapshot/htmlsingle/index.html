@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(54d81cb)</span>
+<br><span id="revremark">(1cdd3d8)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -772,7 +772,7 @@ is also supported on the publisher side.</p>
 <div class="sectionbody">
 <div class="paragraph">
 <p>The RabbitMQ Stream Java Client implements the
-<a href="https://github.com/rabbitmq/rabbitmq-server/blob/v3.9.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
+<a href="https://github.com/rabbitmq/rabbitmq-server/blob/v3.10.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
 and avoids dealing with low-level concerns by providing high-level functionalities
 to build fast, efficient, and robust client applications.</p>
 </div>
@@ -907,7 +907,7 @@ same host).</p>
 <div class="content">
 <pre>docker run -it --rm --name rabbitmq -p 5552:5552 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.9</pre>
+    rabbitmq:3.10</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -919,7 +919,7 @@ ports for other protocols:</p>
 <div class="content">
 <pre>docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.9-management</pre>
+    rabbitmq:3.10-management</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -946,7 +946,7 @@ this is perfect for experimenting locally.</p>
 <div class="listingblock">
 <div class="title">Running RabbitMQ Stream with the host network driver</div>
 <div class="content">
-<pre>docker run -it --rm --name rabbitmq --network host rabbitmq:3.9</pre>
+<pre>docker run -it --rm --name rabbitmq --network host rabbitmq:3.10</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -3595,7 +3595,7 @@ this is perfect for experimenting locally.</p>
 <div class="title">Running the broker and performance tool with the host network driver</div>
 <div class="content">
 <pre># run the broker
-docker run -it --rm --name rabbitmq --network host rabbitmq:3.9
+docker run -it --rm --name rabbitmq --network host rabbitmq:3.10
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
@@ -3632,7 +3632,7 @@ can be done by defining a network and running the containers in this network.</p
 <pre># create a network
 docker network create stream-perf-test
 # run the broker
-docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:3.9
+docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:3.10
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
@@ -4285,7 +4285,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-05-09 06:10:05 UTC
+Last updated 2022-05-09 08:34:54 UTC
 </div>
 </div>
 </body>
