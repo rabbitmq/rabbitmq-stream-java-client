@@ -224,14 +224,14 @@ final class Utils {
     LOCATOR
   }
 
-  static Function<ClientConnectionType, String> defaultConnectionNamingStrategy() {
+  static Function<ClientConnectionType, String> defaultConnectionNamingStrategy(String prefix) {
     Map<ClientConnectionType, AtomicLong> sequences =
         new ConcurrentHashMap<>(ClientConnectionType.values().length);
     Map<ClientConnectionType, String> prefixes =
         new ConcurrentHashMap<>(ClientConnectionType.values().length);
     for (ClientConnectionType type : ClientConnectionType.values()) {
       sequences.put(type, new AtomicLong(0));
-      prefixes.put(type, "rabbitmq-stream-" + type.name().toLowerCase(Locale.ENGLISH) + "-");
+      prefixes.put(type, prefix + type.name().toLowerCase(Locale.ENGLISH) + "-");
     }
     return clientConnectionType ->
         prefixes.get(clientConnectionType) + sequences.get(clientConnectionType).getAndIncrement();

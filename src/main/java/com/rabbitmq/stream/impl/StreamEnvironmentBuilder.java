@@ -47,6 +47,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamEnvironmentBuilder.class);
 
+  private String id = "rabbitmq-stream";
   private final Client.ClientParameters clientParameters = new Client.ClientParameters();
   private final DefaultTlsConfiguration tls = new DefaultTlsConfiguration(this);
   private ScheduledExecutorService scheduledExecutorService;
@@ -63,8 +64,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private CompressionCodecFactory compressionCodecFactory;
   private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private boolean lazyInit = false;
-  private Function<ClientConnectionType, String> connectionNamingStrategy =
-      Utils.defaultConnectionNamingStrategy();
+  private Function<ClientConnectionType, String> connectionNamingStrategy;
 
   public StreamEnvironmentBuilder() {}
 
@@ -132,6 +132,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
   public EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup) {
     this.clientParameters.eventLoopGroup(eventLoopGroup);
+    return this;
+  }
+
+  @Override
+  public EnvironmentBuilder id(String id) {
+    this.id = id;
     return this;
   }
 
@@ -290,6 +296,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     } else {
       this.clientParameters.compressionCodecFactory(this.compressionCodecFactory);
     }
+    this.id = this.id == null ? "rabbitmq-stream" : this.id;
+    this.connectionNamingStrategy = Utils.defaultConnectionNamingStrategy(this.id + "-");
     return new StreamEnvironment(
         scheduledExecutorService,
         clientParameters,

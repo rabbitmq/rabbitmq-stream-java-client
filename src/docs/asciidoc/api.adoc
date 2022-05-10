@@ -199,6 +199,11 @@ a new connection is open. The value must be between 1 and 255.
 |To delay the connection opening until necessary.
 |false
 
+|`id`
+|Informational ID for the environment instance.
+Used as a prefix for connection names.
+|`rabbitmq-stream`
+
 |`tls`
 |Configuration helper for TLS.
 |TLS is enabled if a `rabbitmq-stream+tls` URI is provided.

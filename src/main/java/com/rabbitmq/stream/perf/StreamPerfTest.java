@@ -561,6 +561,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
       EnvironmentBuilder environmentBuilder =
           Environment.builder()
+              .id("stream-perf-test")
               .uris(this.uris)
               .addressResolver(addrResolver)
               .scheduledExecutorService(envExecutor)

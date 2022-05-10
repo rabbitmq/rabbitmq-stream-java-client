@@ -100,6 +100,17 @@ public interface EnvironmentBuilder {
    */
   EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
 
+  /**
+   * Informational ID for this environment instance.
+   *
+   * <p>This is currently used as a prefix for connection names. The broker does not enforce any
+   * kind of uniqueness based on this property. Default to <code>rabbitmq-stream</code>.
+   *
+   * @param id
+   * @return this builder instance
+   */
+  EnvironmentBuilder id(String id);
+
   EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator);
 
   /**
