@@ -453,6 +453,10 @@ class StreamConsumer implements Consumer {
 
   void setSubscriptionClient(Client client) {
     this.subscriptionClient = client;
+    if (client == null && this.isSac()) {
+      // we lost the connection
+      this.sacActive = false;
+    }
   }
 
   synchronized void unavailable() {
