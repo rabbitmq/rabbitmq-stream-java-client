@@ -80,7 +80,8 @@ public class UtilsTest {
 
   @Test
   void defaultConnectionNamingStrategyShouldIncrement() {
-    Function<ClientConnectionType, String> strategy = defaultConnectionNamingStrategy();
+    Function<ClientConnectionType, String> strategy =
+        defaultConnectionNamingStrategy("rabbitmq-stream-");
     for (ClientConnectionType type : ClientConnectionType.values()) {
       IntStream.range(0, 10)
           .forEach(
