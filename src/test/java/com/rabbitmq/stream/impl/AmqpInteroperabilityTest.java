@@ -103,10 +103,10 @@ public class AmqpInteroperabilityTest {
                         assertThat(m.getMessageAnnotations().get("x-basic-delivery-mode"))
                             .isEqualTo(UnsignedByte.valueOf("2"))),
                 ptc(
-                    b -> b.expiration(String.valueOf(timestamp.getTime() * 2)),
+                    b -> b.expiration(String.valueOf(60_000)),
                     m ->
                         assertThat(m.getMessageAnnotations().get("x-basic-expiration"))
-                            .isEqualTo(String.valueOf(timestamp.getTime() * 2))),
+                            .isEqualTo(String.valueOf(60_000))),
                 ptc(
                     b -> b.messageId("message id"),
                     m ->
