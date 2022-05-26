@@ -84,7 +84,7 @@
     <maven.jar.plugin.version>3.2.2</maven.jar.plugin.version>
     <asciidoctor.maven.plugin.version>2.2.2</asciidoctor.maven.plugin.version>
     <asciidoctorj.version>2.5.3</asciidoctorj.version>
-    <asciidoctorj.pdf.version>1.6.2</asciidoctorj.pdf.version>
+    <asciidoctorj.pdf.version>2.0.3</asciidoctorj.pdf.version>
     <asciidoctorj.diagram.version>2.2.1</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jruby.version>9.3.4.0</jruby.version>
