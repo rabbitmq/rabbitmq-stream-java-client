@@ -72,7 +72,7 @@ will pick a new URI randomly in case of disconnection.
 ===== Understanding Connection Logic
 
 Creating the environment to connect to a cluster node works usually seamlessly.
-Creating publishers and consumers can cause problems as the client uses hints from the cluster to locate the nodes where stream leaders and replicas are located to connect to the appropriate nodes.
+Creating publishers and consumers can cause problems as the client uses hints from the cluster to find the nodes where stream leaders and replicas are located to connect to the appropriate nodes.
 
 These connection hints can be accurate or less appropriate depending on the infrastructure.
 If you hit some connection problems at some point – like hostnames impossible to resolve for client applications - this https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/[blog post] should help you understand what is going on and fix the issues.
@@ -204,6 +204,10 @@ a new connection is open. The value must be between 1 and 255.
 Used as a prefix for connection names.
 |`rabbitmq-stream`
 
+|`addressResolver`
+|Contract to change resolved node address to connect to.
+|Pass-through (no-op)
+
 |`tls`
 |Configuration helper for TLS.
 |TLS is enabled if a `rabbitmq-stream+tls` URI is provided.
@@ -225,6 +229,24 @@ and does not use a client private key. **Only for development**.
 |Disabled by default.
 |===
 
+===== When a Load Balancer is in Use
+
+A load balancer can misguide the client when it tries to connect to nodes that host stream leaders and replicas.
+The https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/["Connecting to Streams"] blog post covers why client applications must connect to the appropriate nodes in a cluster and how a https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer[load balancer can make things complicated] for them.
+
+The `EnvironmentBuilder#addressResolver(AddressResolver)` method allows intercepting the node resolution after metadata hints and before connection.
+Applications can use this hook to ignore metadata hints and always use the load balancer, as illustrated in the following snippet:
+
+.Using a custom address resolver to always use a load balancer
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=address-resolver]
+--------
+<1> Set the load balancer address
+<2> Use load balancer address for initial connection
+<3> Ignore metadata hints, always use load balancer
+
+The blog post covers the https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#client-workaround-with-a-load-balancer[underlying details of this workaround].
 
 ===== Managing Streams
 

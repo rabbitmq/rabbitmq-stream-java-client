@@ -477,6 +477,20 @@ java -jar stream-perf-test.jar --producer-names %s-%d
 
 The run will start one producer and will use the `stream-1` producer reference (default stream is `stream` and the number of the producer is 1.)
 
+===== Load Balancer in Front of the Cluster
+
+A load balancer can misguide the performance tool when it tries to connect to nodes that host stream leaders and replicas.
+The https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/["Connecting to Streams"] blog post covers why client applications must connect to the appropriate nodes in a cluster.
+
+Use the `--load-balancer` flag to make sure the performance tool always goes through the load balancer that sits in front of your cluster:
+
+----
+java -jar stream-perf-test.jar --uris rabbitmq-stream://my-load-balancer:5552 \
+                               --load-balancer
+----
+
+The same blog post covers why a https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer[load balancer can make things more complicated] for client applications like the performance tool and how https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#client-workaround-with-a-load-balancer[they can mitigate these issues].
+
 ===== Monitoring
 
 The tool can expose some runtime information on HTTP.

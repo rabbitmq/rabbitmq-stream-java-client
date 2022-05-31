@@ -14,6 +14,7 @@
 
 package com.rabbitmq.stream.docs;
 
+import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Environment;
 
@@ -84,6 +85,17 @@ public class EnvironmentUsage {
             .environmentBuilder()
             .build();
         // end::environment-creation-with-tls-trust-everything[]
+    }
+
+    void addressResolver() throws Exception {
+        // tag::address-resolver[]
+        Address entryPoint = new Address("my-load-balancer", 5552);  // <1>
+        Environment environment = Environment.builder()
+            .host(entryPoint.host())  // <2>
+            .port(entryPoint.port())  // <2>
+            .addressResolver(address -> entryPoint)  // <3>
+            .build();
+        // end::address-resolver[]
     }
 
     void createStream() {
