@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(4c7cd75)</span>
+<br><span id="revremark">(f817efe)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -573,6 +573,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#understanding-connection-logic">Understanding Connection Logic</a></li>
 <li><a href="#enabling-tls">Enabling TLS</a></li>
 <li><a href="#configuring-the-environment">Configuring the Environment</a></li>
+<li><a href="#when-a-load-balancer-is-in-use">When a Load Balancer is in Use</a></li>
 <li><a href="#managing-streams">Managing Streams</a></li>
 </ul>
 </li>
@@ -657,6 +658,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#offset-tracking-consumer">Offset Tracking (Consumer)</a></li>
 <li><a href="#consumer-names">Consumer Names</a></li>
 <li><a href="#producer-names">Producer Names</a></li>
+<li><a href="#load-balancer-in-front-of-the-cluster">Load Balancer in Front of the Cluster</a></li>
 <li><a href="#monitoring">Monitoring</a></li>
 <li><a href="#using-environment-variables-as-options">Using Environment Variables as Options</a></li>
 <li><a href="#logging">Logging</a></li>
@@ -1450,7 +1452,7 @@ will pick a new URI randomly in case of disconnection.</p>
 <h5 id="understanding-connection-logic"><a class="anchor" href="#understanding-connection-logic"></a>Understanding Connection Logic</h5>
 <div class="paragraph">
 <p>Creating the environment to connect to a cluster node works usually seamlessly.
-Creating publishers and consumers can cause problems as the client uses hints from the cluster to locate the nodes where stream leaders and replicas are located to connect to the appropriate nodes.</p>
+Creating publishers and consumers can cause problems as the client uses hints from the cluster to find the nodes where stream leaders and replicas are located to connect to the appropriate nodes.</p>
 </div>
 <div class="paragraph">
 <p>These connection hints can be accurate or less appropriate depending on the infrastructure.
@@ -1658,6 +1660,11 @@ Used as a prefix for connection names.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>rabbitmq-stream</code></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>addressResolver</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Contract to change resolved node address to connect to.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Pass-through (no-op)</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Configuration helper for TLS.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">TLS is enabled if a <code>rabbitmq-stream+tls</code> URI is provided.</p></td>
@@ -1683,6 +1690,47 @@ and does not use a client private key. <strong>Only for development</strong>.</p
 </tr>
 </tbody>
 </table>
+</div>
+<div class="sect4">
+<h5 id="when-a-load-balancer-is-in-use"><a class="anchor" href="#when-a-load-balancer-is-in-use"></a>When a Load Balancer is in Use</h5>
+<div class="paragraph">
+<p>A load balancer can misguide the client when it tries to connect to nodes that host stream leaders and replicas.
+The <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/">"Connecting to Streams"</a> blog post covers why client applications must connect to the appropriate nodes in a cluster and how a <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer">load balancer can make things complicated</a> for them.</p>
+</div>
+<div class="paragraph">
+<p>The <code>EnvironmentBuilder#addressResolver(AddressResolver)</code> method allows intercepting the node resolution after metadata hints and before connection.
+Applications can use this hook to ignore metadata hints and always use the load balancer, as illustrated in the following snippet:</p>
+</div>
+<div class="listingblock">
+<div class="title">Using a custom address resolver to always use a load balancer</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Address entryPoint = <span class="keyword">new</span> Address(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-load-balancer</span><span class="delimiter">&quot;</span></span>, <span class="integer">5552</span>);  <i class="conum" data-value="1"></i><b>(1)</b>
+Environment environment = Environment.builder()
+    .host(entryPoint.host())  <i class="conum" data-value="2"></i><b>(2)</b>
+    .port(entryPoint.port())  <i class="conum" data-value="2"></i><b>(2)</b>
+    .addressResolver(address -&gt; entryPoint)  <i class="conum" data-value="3"></i><b>(3)</b>
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the load balancer address</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Use load balancer address for initial connection</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Ignore metadata hints, always use load balancer</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The blog post covers the <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#client-workaround-with-a-load-balancer">underlying details of this workaround</a>.</p>
+</div>
 </div>
 <div class="sect4">
 <h5 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h5>
@@ -4168,6 +4216,25 @@ difference that the default pattern is empty (i.e. no deduplication).</p>
 </div>
 </div>
 <div class="sect4">
+<h5 id="load-balancer-in-front-of-the-cluster"><a class="anchor" href="#load-balancer-in-front-of-the-cluster"></a>Load Balancer in Front of the Cluster</h5>
+<div class="paragraph">
+<p>A load balancer can misguide the performance tool when it tries to connect to nodes that host stream leaders and replicas.
+The <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/">"Connecting to Streams"</a> blog post covers why client applications must connect to the appropriate nodes in a cluster.</p>
+</div>
+<div class="paragraph">
+<p>Use the <code>--load-balancer</code> flag to make sure the performance tool always goes through the load balancer that sits in front of your cluster:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --uris rabbitmq-stream://my-load-balancer:5552 \
+                               --load-balancer</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The same blog post covers why a <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer">load balancer can make things more complicated</a> for client applications like the performance tool and how <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#client-workaround-with-a-load-balancer">they can mitigate these issues</a>.</p>
+</div>
+</div>
+<div class="sect4">
 <h5 id="monitoring"><a class="anchor" href="#monitoring"></a>Monitoring</h5>
 <div class="paragraph">
 <p>The tool can expose some runtime information on HTTP.
@@ -4291,7 +4358,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-05-30 18:51:40 UTC
+Last updated 2022-05-31 15:01:41 UTC
 </div>
 </div>
 </body>
