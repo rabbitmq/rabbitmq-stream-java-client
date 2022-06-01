@@ -34,7 +34,5 @@ jobs:
           cache: 'maven'
       - name: Enable Stream, MQTT and STOMP plugins
         run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_stream rabbitmq_mqtt rabbitmq_stomp
-      - name: Clean corrupted Maven repository
-        run: rm -rf ~/.m2/repository/net/bytebuddy
       - name: Test
         run: ./mvnw test -Drabbitmqctl.bin=DOCKER:${{job.services.rabbitmq.id}}

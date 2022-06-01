@@ -1,4 +1,4 @@
-name: Test against 3.9 stable
+name: Test against 3.10 stable
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
 
     services:
       rabbitmq:
-        image: rabbitmq:3.9
+        image: rabbitmq:3.10
         env:
           RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbitmq_stream advertised_host localhost
         ports:
@@ -34,7 +34,5 @@ jobs:
           cache: 'maven'
       - name: Enable Stream, MQTT and STOMP plugins
         run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_stream rabbitmq_mqtt rabbitmq_stomp
-      - name: Clean corrupted Maven repository
-        run: rm -rf ~/.m2/repository/net/bytebuddy
       - name: Test
         run: ./mvnw test -Drabbitmqctl.bin=DOCKER:${{job.services.rabbitmq.id}}
