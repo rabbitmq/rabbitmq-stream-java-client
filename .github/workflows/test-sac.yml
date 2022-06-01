@@ -23,17 +23,18 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+  - uses: actions/setup-java@v3
+    with:
+      distribution: 'temurin'
+      java-version: '11'
+      cache: 'gradle'
+
       - name: Set up JDK
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v3
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
-      - name: Cache Maven packages
-        uses: actions/cache@v2
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+          cache: 'maven'
       - name: Enable MQTT and STOMP plugins
         run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_stomp
       - name: Test

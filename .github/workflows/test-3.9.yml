@@ -27,16 +27,11 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Set up JDK
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v3
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
-      - name: Cache Maven packages
-        uses: actions/cache@v2
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}-v2
-          restore-keys: ${{ runner.os }}-m2
+          cache: 'maven'
       - name: Enable Stream, MQTT and STOMP plugins
         run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_stream rabbitmq_mqtt rabbitmq_stomp
       - name: Clean corrupted Maven repository
