@@ -1,4 +1,4 @@
-// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -341,6 +341,26 @@ public class StreamPerfTestTest {
     waitRunEnds();
   }
 
+  @Test
+  void publishConfirmLatencyShouldBeIncludedWhenOptionIsEnabled() throws Exception {
+    Future<?> run = run(builder().confirmLatency());
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(consoleOutput()).contains("confirm latency");
+  }
+
+  @Test
+  void publishConfirmLatencyShouldNotBeIncludedWhenOptionIsDisabled() throws Exception {
+    Future<?> run = run(builder());
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(consoleOutput()).doesNotContain("confirm latency");
+  }
+
   private static HttpResponse httpRequest(String urlString) throws Exception {
     URL url = new URL(urlString);
     HttpURLConnection con = (HttpURLConnection) url.openConnection();
@@ -436,6 +456,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder memoryReport() {
       arguments.put("memory-report", "");
+      return this;
+    }
+
+    ArgumentsBuilder confirmLatency() {
+      arguments.put("confirm-latency", "");
       return this;
     }
 

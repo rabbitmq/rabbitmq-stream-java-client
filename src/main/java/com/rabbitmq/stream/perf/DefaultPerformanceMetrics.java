@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -35,6 +35,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -45,7 +46,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   private static final Logger LOGGER = LoggerFactory.getLogger(DefaultPerformanceMetrics.class);
 
   private final MetricRegistry metricRegistry;
-  private final Timer latency;
+  private final Timer latency, confirmLatency;
   private final boolean summaryFile;
   private final PrintWriter out;
   private final boolean includeByteRates;
@@ -60,6 +61,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
       String metricsPrefix,
       boolean summaryFile,
       boolean includeByteRates,
+      boolean confirmLatency,
       Supplier<String> memoryReportSupplier,
       PrintWriter out) {
     this.summaryFile = summaryFile;
@@ -98,6 +100,17 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
             .distributionStatisticExpiry(Duration.ofSeconds(1))
             .serviceLevelObjectives()
             .register(meterRegistry);
+    if (confirmLatency) {
+      this.confirmLatency =
+          Timer.builder(metricsPrefix + ".confirm_latency")
+              .description("publish confirm latency")
+              .publishPercentiles(0.5, 0.75, 0.95, 0.99)
+              .distributionStatisticExpiry(Duration.ofSeconds(1))
+              .serviceLevelObjectives()
+              .register(meterRegistry);
+    } else {
+      this.confirmLatency = null;
+    }
   }
 
   private long getPublishedCount() {
@@ -117,6 +130,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     String metricConsumed = "rabbitmqStreamConsumed";
     String metricChunkSize = "rabbitmqStreamChunk_size";
     String metricLatency = "rabbitmqStreamLatency";
+    String metricConfirmLatency = "rabbitmqStreamConfirm_latency";
     String metricWrittenBytes = "rabbitmqStreamWritten_bytes";
     String metricReadBytes = "rabbitmqStreamRead_bytes";
 
@@ -128,6 +142,10 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                 metricConsumed,
                 metricChunkSize,
                 metricLatency));
+
+    if (confirmLatency()) {
+      allMetrics.add(metricConfirmLatency);
+    }
 
     Map<String, String> metersNamesAndLabels = new LinkedHashMap<>();
     metersNamesAndLabels.put(metricPublished, "published");
@@ -184,14 +202,16 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
         histogram -> String.format("chunk size %.0f", histogram.getSnapshot().getMean());
 
     com.codahale.metrics.Timer latency = metricRegistry.getTimers().get(metricLatency);
+    com.codahale.metrics.Timer confirmLatency =
+        confirmLatency() ? metricRegistry.getTimers().get(metricConfirmLatency) : null;
 
     Function<Number, Number> convertDuration =
         in -> in instanceof Long ? in.longValue() / 1_000_000 : in.doubleValue() / 1_000_000;
-    Function<com.codahale.metrics.Timer, String> formatLatency =
-        timer -> {
+    BiFunction<String, com.codahale.metrics.Timer, String> formatLatency =
+        (name, timer) -> {
           Snapshot snapshot = timer.getSnapshot();
           return String.format(
-              "latency min/median/75th/95th/99th %.0f/%.0f/%.0f/%.0f/%.0f ms",
+              name + " min/median/75th/95th/99th %.0f/%.0f/%.0f/%.0f/%.0f ms",
               convertDuration.apply(snapshot.getMin()),
               convertDuration.apply(snapshot.getMedian()),
               convertDuration.apply(snapshot.get75thPercentile()),
@@ -229,7 +249,12 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                                     .compute(lastValue, currentValue, duration));
                             lastMetersValues.put(meterName, currentValue);
                           });
-                  builder.append(formatLatency.apply(latency)).append(", ");
+                  if (confirmLatency()) {
+                    builder
+                        .append(formatLatency.apply("confirm latency", confirmLatency))
+                        .append(", ");
+                  }
+                  builder.append(formatLatency.apply("latency", latency)).append(", ");
                   builder.append(formatChunkSize.apply(chunkSize));
                   this.out.println(builder);
                   String memoryReport = this.memoryReportSupplier.get();
@@ -270,15 +295,20 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
                 }
               };
 
-          Function<com.codahale.metrics.Timer, String> formatLatencySummary =
-              histogram ->
+          BiFunction<String, com.codahale.metrics.Timer, String> formatLatencySummary =
+              (name, histogram) ->
                   String.format(
-                      "latency 95th %.0f ms",
+                      name + " 95th %.0f ms",
                       convertDuration.apply(latency.getSnapshot().get95thPercentile()));
 
           StringBuilder builder = new StringBuilder("Summary: ");
           meters.entrySet().forEach(entry -> builder.append(formatMeterSummary.apply(entry)));
-          builder.append(formatLatencySummary.apply(latency)).append(", ");
+          if (confirmLatency()) {
+            builder
+                .append(formatLatencySummary.apply("confirm latency", confirmLatency))
+                .append(", ");
+          }
+          builder.append(formatLatencySummary.apply("latency", latency)).append(", ");
           builder.append(formatChunkSize.apply(chunkSize));
           this.out.println();
           this.out.println(builder);
@@ -370,6 +400,11 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   }
 
   @Override
+  public void confirmLatency(long latency, TimeUnit unit) {
+    this.confirmLatency.record(latency, unit);
+  }
+
+  @Override
   public void offset(long offset) {
     this.offset = offset;
   }
@@ -377,6 +412,10 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   @Override
   public void close() throws Exception {
     this.closingSequence.close();
+  }
+
+  private boolean confirmLatency() {
+    return this.confirmLatency != null;
   }
 
   private interface FormatCallback {

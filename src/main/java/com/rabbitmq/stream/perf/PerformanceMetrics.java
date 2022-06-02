@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -20,6 +20,8 @@ interface PerformanceMetrics extends AutoCloseable {
   void start(String description) throws Exception;
 
   void latency(long latency, TimeUnit unit);
+
+  void confirmLatency(long latency, TimeUnit unit);
 
   void offset(long offset);
 }

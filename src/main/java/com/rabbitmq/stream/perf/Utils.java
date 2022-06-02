@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -276,6 +276,17 @@ class Utils {
     }
 
     return spec;
+  }
+
+  static int downSamplingDivisor(int rate) {
+    int divisor;
+    if (rate > 0) {
+      divisor = rate > 100 ? 100 : 1; // no downsampling for small rates
+    } else {
+      // no rate limitation, downsampling
+      divisor = 100;
+    }
+    return divisor;
   }
 
   static class ByteCapacityTypeConverter implements CommandLine.ITypeConverter<ByteCapacity> {

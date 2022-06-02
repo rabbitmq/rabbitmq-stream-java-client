@@ -347,6 +347,12 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.PositiveIntegerTypeConverter.class)
   private int rpcTimeout;
 
+  @CommandLine.Option(
+      names = {"--confirm-latency", "-cl"},
+      description = "evaluate confirm latency",
+      defaultValue = "false")
+  private boolean confirmLatency;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -499,6 +505,7 @@ public class StreamPerfTest implements Callable<Integer> {
             metricsPrefix,
             this.summaryFile,
             this.includeByteRates,
+            this.confirmLatency,
             memoryReportSupplier,
             this.out);
 
@@ -649,11 +656,6 @@ public class StreamPerfTest implements Callable<Integer> {
                 }));
       }
 
-      // FIXME handle metadata update for consumers and publishers
-      // they should at least issue a warning that their stream has been deleted and that they're
-      // now
-      // useless
-
       List<Producer> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
       List<Runnable> producerRunnables =
           IntStream.range(0, this.producers)
@@ -686,18 +688,48 @@ public class StreamPerfTest implements Callable<Integer> {
                             .stream(stream)
                             .build();
 
+                    AtomicLong messageCount = new AtomicLong(0);
+                    ConfirmationHandler confirmationHandler;
+                    if (this.confirmLatency) {
+                      final PerformanceMetrics metrics = this.performanceMetrics;
+                      final int divisor = Utils.downSamplingDivisor(this.rate);
+                      confirmationHandler =
+                          confirmationStatus -> {
+                            if (confirmationStatus.isConfirmed()) {
+                              producerConfirm.increment();
+                              // at very high throughput ( > 1 M / s), the histogram can
+                              // become a bottleneck,
+                              // so we downsample and calculate latency for every x message
+                              // this should not affect the metric much
+                              if (messageCount.incrementAndGet() % divisor == 0) {
+                                try {
+                                  long time =
+                                      Utils.readLong(
+                                          confirmationStatus.getMessage().getBodyAsBinary());
+                                  // see below why we use current time to measure latency
+                                  metrics.confirmLatency(
+                                      System.currentTimeMillis() - time, TimeUnit.MILLISECONDS);
+                                } catch (Exception e) {
+                                  // not able to read the body, something wrong?
+                                }
+                              }
+                            }
+                          };
+                    } else {
+                      confirmationHandler =
+                          confirmationStatus -> {
+                            if (confirmationStatus.isConfirmed()) {
+                              producerConfirm.increment();
+                            }
+                          };
+                    }
+
                     producers.add(producer);
 
                     return (Runnable)
                         () -> {
                           final int msgSize = this.messageSize;
 
-                          ConfirmationHandler confirmationHandler =
-                              confirmationStatus -> {
-                                if (confirmationStatus.isConfirmed()) {
-                                  producerConfirm.increment();
-                                }
-                              };
                           try {
                             while (true && !Thread.currentThread().isInterrupted()) {
                               rateLimiterCallback.run();
@@ -747,6 +779,9 @@ public class StreamPerfTest implements Callable<Integer> {
                                   .builder();
                         }
 
+                        // we assume the publishing rate is the same order as the consuming rate
+                        // we actually don't want to downsample for low rates
+                        final int divisor = Utils.downSamplingDivisor(this.rate);
                         consumerBuilder =
                             consumerBuilder.messageHandler(
                                 (context, message) -> {
@@ -754,7 +789,7 @@ public class StreamPerfTest implements Callable<Integer> {
                                   // become a bottleneck,
                                   // so we downsample and calculate latency for every x message
                                   // this should not affect the metric much
-                                  if (messageCount.incrementAndGet() % 100 == 0) {
+                                  if (messageCount.incrementAndGet() % 100 == divisor) {
                                     try {
                                       long time = Utils.readLong(message.getBodyAsBinary());
                                       // see above why we use current time to measure latency

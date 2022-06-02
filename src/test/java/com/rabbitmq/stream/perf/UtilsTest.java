@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -287,6 +287,16 @@ public class UtilsTest {
   void buildCommandSpec() {
     CommandSpec spec = Utils.buildCommandSpec(new TestCommand());
     assertThat(spec.optionsMap()).hasSize(4).containsKeys("AAA", "B", "C", "OFFSET");
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "0,100",
+    "50,1",
+    "1000,100",
+  })
+  void testDownSamplingDivisor(int rate, int expected) {
+    assertThat(Utils.downSamplingDivisor(rate)).isEqualTo(expected);
   }
 
   @ParameterizedTest
