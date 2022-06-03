@@ -299,7 +299,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
               (name, histogram) ->
                   String.format(
                       name + " 95th %.0f ms",
-                      convertDuration.apply(latency.getSnapshot().get95thPercentile()));
+                      convertDuration.apply(histogram.getSnapshot().get95thPercentile()));
 
           StringBuilder builder = new StringBuilder("Summary: ");
           meters.entrySet().forEach(entry -> builder.append(formatMeterSummary.apply(entry)));
