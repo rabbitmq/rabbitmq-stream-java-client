@@ -1141,7 +1141,9 @@ public class Client implements AutoCloseable {
       request.block();
       QueryPublisherSequenceResponse response = request.response.get();
       if (!response.isOk()) {
-        LOGGER.info("Query publisher sequence failed with code {}", formatConstant(response.getResponseCode()));
+        LOGGER.info(
+            "Query publisher sequence failed with code {}",
+            formatConstant(response.getResponseCode()));
       }
       return response.getSequence();
     } catch (RuntimeException e) {

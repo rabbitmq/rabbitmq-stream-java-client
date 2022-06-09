@@ -789,7 +789,7 @@ public class StreamPerfTest implements Callable<Integer> {
                                   // become a bottleneck,
                                   // so we downsample and calculate latency for every x message
                                   // this should not affect the metric much
-                                  if (messageCount.incrementAndGet() % 100 == divisor) {
+                                  if (messageCount.incrementAndGet() % divisor == 0) {
                                     try {
                                       long time = Utils.readLong(message.getBodyAsBinary());
                                       // see above why we use current time to measure latency
