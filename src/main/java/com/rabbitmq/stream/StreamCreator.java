@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -18,6 +18,9 @@ import java.time.Duration;
 /** API to configure and create a stream. */
 public interface StreamCreator {
 
+  /** Segment size is limited to 3 GB. */
+  ByteCapacity MAX_SEGMENT_SIZE = ByteCapacity.from("3GB");
+
   /**
    * The name of the stream
    *
@@ -36,6 +39,8 @@ public interface StreamCreator {
 
   /**
    * The maximum size of each stream segments.
+   *
+   * <p>Maximum size is {@link StreamCreator#MAX_SEGMENT_SIZE} (3 GB).
    *
    * @param byteCapacity
    * @return this creator instance

@@ -101,7 +101,10 @@ public class StreamPerfTestTest {
   }
 
   private void waitRunEnds(int expectedExitCode) throws Exception {
-    waitAtMost(20, () -> exitCode.get() == expectedExitCode);
+    waitAtMost(
+        20,
+        () -> exitCode.get() == expectedExitCode,
+        () -> "Expected " + expectedExitCode + " exit code, got " + exitCode.get());
   }
 
   private void waitRunEnds() throws Exception {
@@ -266,13 +269,21 @@ public class StreamPerfTestTest {
     Future<?> run =
         run(
             builder()
-                .maxLengthBytes(ByteCapacity.GB(42)) // different than already existing stream
+                .maxLengthBytes(ByteCapacity.GB(42)) // different from already existing stream
                 .streamMaxSegmentSizeBytes(ByteCapacity.MB(500))
                 .leaderLocator(LeaderLocator.LEAST_LEADERS));
     waitOneSecond();
     run.cancel(true);
     waitRunEnds();
     assertThat(consoleOutput()).contains("Warning: stream '" + s + "'");
+  }
+
+  @Test
+  void exceedingMaxSegmentSizeLimitShouldGenerateError() throws Exception {
+    run(builder().streamMaxSegmentSizeBytes(ByteCapacity.TB(1)));
+    waitRunEnds(2);
+    assertThat(consoleErrorOutput()).contains("The maximum segment size cannot be more than 3GB");
+    checkErrIsEmpty = false;
   }
 
   @Test

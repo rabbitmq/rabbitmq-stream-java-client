@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -110,7 +110,7 @@ public final class TestUtils {
     return waitAtMost(timeoutInSeconds, condition, null);
   }
 
-  static Duration waitAtMost(
+  public static Duration waitAtMost(
       int timeoutInSeconds, CallableBooleanSupplier condition, Supplier<String> message)
       throws Exception {
     if (condition.getAsBoolean()) {

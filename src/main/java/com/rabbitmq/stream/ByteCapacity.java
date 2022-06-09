@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -16,12 +16,13 @@ package com.rabbitmq.stream;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** API to easily configure byte capacities. */
-public class ByteCapacity {
+public class ByteCapacity implements Comparable<ByteCapacity> {
 
   private static final String UNIT_MB = "mb";
   private static final int KILOBYTES_MULTIPLIER = 1000;
@@ -124,7 +125,29 @@ public class ByteCapacity {
   }
 
   @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    ByteCapacity that = (ByteCapacity) o;
+    return bytes == that.bytes;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(bytes);
+  }
+
+  @Override
   public String toString() {
     return this.input;
+  }
+
+  @Override
+  public int compareTo(ByteCapacity other) {
+    return Long.compare(this.bytes, other.bytes);
   }
 }

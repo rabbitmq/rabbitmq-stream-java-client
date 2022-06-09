@@ -87,6 +87,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.ParameterException;
+import picocli.CommandLine.Spec;
 
 @CommandLine.Command(
     name = "stream-perf-test",
@@ -104,6 +106,8 @@ public class StreamPerfTest implements Callable<Integer> {
         }
       };
   private final String[] arguments;
+
+  @Spec CommandSpec spec; // injected by picocli
 
   @CommandLine.Mixin
   private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
@@ -220,12 +224,21 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.ByteCapacityTypeConverter.class)
   private ByteCapacity maxLengthBytes;
 
+  private ByteCapacity maxSegmentSize;
+
   @CommandLine.Option(
       names = {"--stream-max-segment-size-bytes", "-smssb"},
       description = "max size of segments",
       defaultValue = "500mb",
       converter = Utils.ByteCapacityTypeConverter.class)
-  private ByteCapacity maxSegmentSize;
+  public void setMaxSegmentSize(ByteCapacity in) {
+    if (in != null && in.compareTo(StreamCreator.MAX_SEGMENT_SIZE) > 0) {
+      throw new ParameterException(
+          spec.commandLine(),
+          "The maximum segment size cannot be more than " + StreamCreator.MAX_SEGMENT_SIZE);
+    }
+    this.maxSegmentSize = in;
+  }
 
   @CommandLine.Option(
       names = {"--max-age", "-ma"},
