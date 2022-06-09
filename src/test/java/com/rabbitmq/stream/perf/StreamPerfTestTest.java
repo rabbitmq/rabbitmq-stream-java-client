@@ -79,7 +79,7 @@ public class StreamPerfTestTest {
   }
 
   ArgumentsBuilder builder() {
-    return new ArgumentsBuilder().stream(s).rate(100);
+    return new ArgumentsBuilder().stream(s).rate(1000);
   }
 
   @BeforeEach
@@ -348,17 +348,22 @@ public class StreamPerfTestTest {
     waitOneSecond();
     run.cancel(true);
     waitRunEnds();
-    assertThat(consoleOutput()).contains("confirm latency");
+    assertThat(consoleOutput())
+        .contains("confirm latency")
+        .doesNotContain("confirm latency 95th 0 ms");
   }
 
   @Test
-  void publishConfirmLatencyShouldNotBeIncludedWhenOptionIsDisabled() throws Exception {
+  void confirmLatencyShouldBeIncluded() throws Exception {
     Future<?> run = run(builder());
     waitUntilStreamExists(s);
     waitOneSecond();
     run.cancel(true);
     waitRunEnds();
-    assertThat(consoleOutput()).doesNotContain("confirm latency");
+    assertThat(consoleOutput())
+        .contains("latency 95th")
+        .doesNotContain("latency 95th 0 ms")
+        .doesNotContain("confirm latency");
   }
 
   private static HttpResponse httpRequest(String urlString) throws Exception {
