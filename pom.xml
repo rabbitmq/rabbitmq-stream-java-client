@@ -357,6 +357,11 @@
           <source>8</source>
           <additionalOptions>-Xdoclint:none</additionalOptions>
           <additionalJOption>${javadoc.joption}</additionalJOption>
+          <links>
+            <link>https://netty.io/4.1/api/</link>
+            <link>https://www.javadoc.io/doc/io.dropwizard.metrics/metrics-core/${metrics.version}/</link>
+            <link>https://javadoc.io/doc/io.micrometer/micrometer-core/${micrometer.version}/</link>
+          </links>
         </configuration>
       </plugin>
 
