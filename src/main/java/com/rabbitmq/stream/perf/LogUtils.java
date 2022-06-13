@@ -1,4 +1,4 @@
-// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -27,7 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.LoggerFactory;
 
-public class LogUtils {
+class LogUtils {
 
   static void configureLog() throws IOException {
     String loggers =

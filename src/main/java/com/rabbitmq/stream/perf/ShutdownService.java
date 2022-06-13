@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * <p>From
  * https://github.com/rabbitmq/rabbitmq-perf-test/blob/main/src/main/java/com/rabbitmq/perf/ShutdownService.java.
  */
-public class ShutdownService implements AutoCloseable {
+class ShutdownService implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ShutdownService.class);
 
