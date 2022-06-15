@@ -99,6 +99,9 @@
     <finalName>stream-perf-test</finalName>
     <maven.packagecloud.wagon.version>0.0.6</maven.packagecloud.wagon.version>
     <nexus-staging-maven-plugin.version>1.6.13</nexus-staging-maven-plugin.version>
+
+    <maven.javadoc.skip>true</maven.javadoc.skip>
+    <gpg.skip>true</gpg.skip>
   </properties>
 
   <dependencies>
@@ -356,13 +359,19 @@
           <quiet>true</quiet>
           <source>8</source>
           <additionalOptions>-Xdoclint:none</additionalOptions>
-          <additionalJOption>${javadoc.joption}</additionalJOption>
           <links>
             <link>https://netty.io/4.1/api/</link>
             <link>https://www.javadoc.io/doc/io.dropwizard.metrics/metrics-core/${metrics.version}/</link>
             <link>https://javadoc.io/doc/io.micrometer/micrometer-core/${micrometer.version}/</link>
           </links>
         </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
 
       <plugin>
@@ -447,6 +456,37 @@
       </plugin>
 
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-gpg-plugin</artifactId>
+        <version>${maven.gpg.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>sign-artifacts</id>
+            <phase>package</phase>
+            <goals>
+              <goal>sign</goal>
+            </goals>
+            <configuration>
+              <keyname>${gpg.keyname}</keyname>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>${maven-source-plugin.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>buildnumber-maven-plugin</artifactId>
         <version>${buildnumber.plugin.version}</version>
@@ -456,13 +496,6 @@
           <revisionOnScmFailure>unknown</revisionOnScmFailure>
           <shortRevisionLength>7</shortRevisionLength>
         </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <version>3.0.0</version>
-
       </plugin>
 
       <plugin>
@@ -680,65 +713,10 @@
     </profile>
     <profile>
       <id>snapshots</id>
-      <build>
-        <plugins>
-
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-source-plugin</artifactId>
-            <version>${maven-source-plugin.version}</version>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-javadoc-plugin</artifactId>
-            <version>${maven-javadoc-plugin.version}</version>
-            <configuration>
-              <quiet>true</quiet>
-              <source>8</source>
-              <additionalOptions>-Xdoclint:none</additionalOptions>
-              <additionalJOption>${javadoc.joption}</additionalJOption>
-              <links>
-                <link>https://netty.io/4.1/api/</link>
-                <link>https://www.javadoc.io/doc/io.dropwizard.metrics/metrics-core/${metrics.version}/</link>
-                <link>https://javadoc.io/doc/io.micrometer/micrometer-core/${micrometer.version}/</link>
-              </links>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-gpg-plugin</artifactId>
-            <version>${maven.gpg.plugin.version}</version>
-            <executions>
-              <execution>
-                <id>sign-artifacts</id>
-                <phase>package</phase>
-                <goals>
-                  <goal>sign</goal>
-                </goals>
-                <configuration>
-                  <keyname>${gpg.keyname}</keyname>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-
-        </plugins>
-      </build>
+      <properties>
+        <maven.javadoc.skip>false</maven.javadoc.skip>
+        <gpg.skip>false</gpg.skip>
+      </properties>
       <distributionManagement>
         <snapshotRepository>
           <id>ossrh</id>
@@ -749,65 +727,10 @@
 
     <profile>
       <id>milestone</id>
-      <build>
-        <plugins>
-
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-source-plugin</artifactId>
-            <version>${maven-source-plugin.version}</version>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-javadoc-plugin</artifactId>
-            <version>${maven-javadoc-plugin.version}</version>
-            <configuration>
-              <quiet>true</quiet>
-              <source>8</source>
-              <additionalOptions>-Xdoclint:none</additionalOptions>
-              <additionalJOption>${javadoc.joption}</additionalJOption>
-              <links>
-                <link>https://netty.io/4.1/api/</link>
-                <link>https://www.javadoc.io/doc/io.dropwizard.metrics/metrics-core/${metrics.version}/</link>
-                <link>https://javadoc.io/doc/io.micrometer/micrometer-core/${micrometer.version}/</link>
-              </links>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-gpg-plugin</artifactId>
-            <version>${maven.gpg.plugin.version}</version>
-            <executions>
-              <execution>
-                <id>sign-artifacts</id>
-                <phase>package</phase>
-                <goals>
-                  <goal>sign</goal>
-                </goals>
-                <configuration>
-                  <keyname>${gpg.keyname}</keyname>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-
-        </plugins>
-      </build>
+      <properties>
+        <maven.javadoc.skip>false</maven.javadoc.skip>
+        <gpg.skip>false</gpg.skip>
+      </properties>
       <distributionManagement>
         <repository>
           <id>packagecloud-rabbitmq-maven-milestones</id>
@@ -818,6 +741,10 @@
 
     <profile>
       <id>release</id>
+      <properties>
+        <maven.javadoc.skip>false</maven.javadoc.skip>
+        <gpg.skip>false</gpg.skip>
+      </properties>
       <build>
         <plugins>
 
@@ -833,61 +760,6 @@
               <stagingProgressTimeoutMinutes>20</stagingProgressTimeoutMinutes>
             </configuration>
           </plugin>
-
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-source-plugin</artifactId>
-            <version>${maven-source-plugin.version}</version>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-javadoc-plugin</artifactId>
-            <version>${maven-javadoc-plugin.version}</version>
-            <configuration>
-              <quiet>true</quiet>
-              <source>8</source>
-              <additionalOptions>-Xdoclint:none</additionalOptions>
-              <additionalJOption>${javadoc.joption}</additionalJOption>
-              <links>
-                <link>https://netty.io/4.1/api/</link>
-                <link>https://www.javadoc.io/doc/io.dropwizard.metrics/metrics-core/${metrics.version}/</link>
-                <link>https://javadoc.io/doc/io.micrometer/micrometer-core/${micrometer.version}/</link>
-              </links>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-gpg-plugin</artifactId>
-            <version>${maven.gpg.plugin.version}</version>
-            <executions>
-              <execution>
-                <id>sign-artifacts</id>
-                <phase>package</phase>
-                <goals>
-                  <goal>sign</goal>
-                </goals>
-                <configuration>
-                  <keyname>${gpg.keyname}</keyname>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-
         </plugins>
       </build>
       <distributionManagement>

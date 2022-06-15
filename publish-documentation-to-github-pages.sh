@@ -5,7 +5,7 @@
 MESSAGE=$(git log -1 --pretty=%B)
 ./mvnw clean buildnumber:create pre-site
 
-./mvnw javadoc:javadoc
+./mvnw javadoc:javadoc -Dmaven.javadoc.skip=false
 
 RELEASE_VERSION=$(cat pom.xml | grep -oPm1 "(?<=<version>)[^<]+")
 
