@@ -1,1 +1,1 @@
-/java17/bin/javadoc --no-module-directories @options @packages
+/java17/bin/javadoc @options @packages
