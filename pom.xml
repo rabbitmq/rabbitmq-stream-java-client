@@ -87,7 +87,7 @@
     <asciidoctorj.pdf.version>2.1.2</asciidoctorj.pdf.version>
     <asciidoctorj.diagram.version>2.2.3</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
-    <jruby.version>9.3.4.0</jruby.version>
+    <jruby.version>9.3.5.0</jruby.version>
     <jmh.version>1.35</jmh.version>
     <spotless.version>2.22.8</spotless.version>
     <google-java-format.version>1.15.0</google-java-format.version>
