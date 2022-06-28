@@ -112,12 +112,6 @@ public final class TestUtils {
     return waitAtMost(timeoutInSeconds, condition, null);
   }
 
-  //  public static Duration waitAtMost(
-  //      int timeoutInSeconds, CallableBooleanSupplier condition, Supplier<String> message)
-  //      throws Exception {
-  //    return waitAtMost(timeoutInSeconds, condition, message, true);
-  //  }
-
   public static Duration waitAtMost(
       int timeoutInSeconds, CallableBooleanSupplier condition, Supplier<String> message)
       throws Exception {
