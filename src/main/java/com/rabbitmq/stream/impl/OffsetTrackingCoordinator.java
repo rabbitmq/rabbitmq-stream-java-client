@@ -15,7 +15,6 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 
-import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
@@ -233,8 +232,8 @@ class OffsetTrackingCoordinator {
           }
           result = lastProcessedOffset.get();
         } catch (NoOffsetException e) {
-            this.consumer.store(this.lastProcessedOffset.get());
-            result = lastProcessedOffset.get();
+          this.consumer.store(this.lastProcessedOffset.get());
+          result = lastProcessedOffset.get();
         }
         this.lastTrackingActivity = clock.time();
         return result;

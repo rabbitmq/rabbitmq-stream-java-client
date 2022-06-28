@@ -31,6 +31,7 @@ import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
@@ -875,19 +876,8 @@ public class StreamConsumerTest {
             .checkInterval(Duration.ZERO)
             .builder()
             .build();
-    Client client = cf.get();
-    assertThat(client.queryOffset(ref, stream).getResponseCode())
-        .isEqualTo(Constants.RESPONSE_CODE_NO_OFFSET);
+    assertThatThrownBy(() -> consumer.storedOffset()).isInstanceOf(NoOffsetException.class);
     consumer.store(0);
-    waitAtMost(
-        5,
-        () -> {
-          QueryOffsetResponse response = client.queryOffset(ref, stream);
-          return response.isOk() && response.getOffset() == 0;
-        },
-        () ->
-            format(
-                "Expecting stored offset %d to be equal to last received offset %d",
-                client.queryOffset(ref, stream).getOffset(), 0));
+    waitAtMost(() -> consumer.storedOffset() == 0);
   }
 }

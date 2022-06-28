@@ -14,7 +14,6 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
-import static com.rabbitmq.stream.impl.Utils.isSac;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
@@ -287,6 +286,11 @@ class StreamConsumer implements Consumer {
                     }
                   } catch (StreamException e) {
                     if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+                      LOGGER.debug(
+                          "No stored offset for consumer {} on {}, expecting {}",
+                          this.id,
+                          this.stream,
+                          expectedStoredOffset);
                       throw new IllegalStateException();
                     } else {
                       throw e;

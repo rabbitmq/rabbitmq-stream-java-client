@@ -18,6 +18,8 @@ import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.TestUtils.wrap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
@@ -27,8 +29,10 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -174,9 +178,14 @@ public class SuperStreamConsumerTest {
     // offset near the end (the message count per partition minus a few messages)
     long almostLastOffset = messageCount / partitionCount - messageCount / (partitionCount * 10);
     partitions.forEach(
-        p ->
-            assertThat(client.queryOffset(consumerName, p).getOffset())
-                .isGreaterThan(almostLastOffset));
+        wrap(
+            p -> {
+              waitAtMost(
+                  () -> {
+                    QueryOffsetResponse response = client.queryOffset(consumerName, p);
+                    return response.isOk() && response.getOffset() > almostLastOffset;
+                  });
+            }));
     consumer.close();
   }
 
@@ -211,9 +220,6 @@ public class SuperStreamConsumerTest {
                   messagesReceived.get(partition).incrementAndGet();
                   lastOffsets.put(partition, context.offset());
                   totalCount.incrementAndGet();
-                  if (totalCount.get() % 50 == 0) {
-                    context.storeOffset();
-                  }
                   consumeLatch.countDown();
                 })
             .build();
@@ -228,9 +234,69 @@ public class SuperStreamConsumerTest {
     // offset near the end (the message count per partition minus a few messages)
     long almostLastOffset = messageCount / partitionCount - messageCount / (partitionCount * 10);
     partitions.forEach(
-        p ->
-            assertThat(client.queryOffset(consumerName, p).getOffset())
-                .isGreaterThan(almostLastOffset));
+        wrap(
+            p -> {
+              waitAtMost(
+                  () -> {
+                    QueryOffsetResponse response = client.queryOffset(consumerName, p);
+                    return response.isOk() && response.getOffset() > almostLastOffset;
+                  });
+            }));
     consumer.close();
+  }
+
+  @Test
+  void autoOffsetTrackingShouldStoreOffsetZero() throws Exception {
+    declareSuperStreamTopology(connection, superStream, partitionCount);
+    Client client = cf.get();
+    List<String> partitions = client.partitions(superStream);
+    int messageCount = partitionCount;
+    publishToPartitions(cf, partitions, messageCount);
+    ConcurrentMap<String, AtomicInteger> messagesReceived = new ConcurrentHashMap<>(partitionCount);
+    ConcurrentMap<String, Long> lastOffsets = new ConcurrentHashMap<>(partitionCount);
+    partitions.forEach(
+        p -> {
+          messagesReceived.put(p, new AtomicInteger(0));
+        });
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    String consumerName = "my-app";
+    AtomicInteger totalCount = new AtomicInteger();
+    Consumer consumer =
+        environment
+            .consumerBuilder()
+            .superStream(superStream)
+            .offset(OffsetSpecification.first())
+            .name(consumerName)
+            .autoTrackingStrategy()
+            .flushInterval(Duration.ofHours(1)) // long enough
+            .builder()
+            .messageHandler(
+                (context, message) -> {
+                  String partition = new String(message.getBodyAsBinary());
+                  messagesReceived.get(partition).incrementAndGet();
+                  lastOffsets.put(partition, context.offset());
+                  totalCount.incrementAndGet();
+                  consumeLatch.countDown();
+                })
+            .build();
+    latchAssert(consumeLatch).completes();
+    assertThat(messagesReceived).hasSize(partitionCount);
+    partitions.forEach(
+        p -> {
+          assertThat(messagesReceived).containsKey(p);
+          assertThat(messagesReceived.get(p).get()).isEqualTo(messageCount / partitionCount);
+        });
+    consumer.close();
+    partitions.forEach(
+        wrap(
+            p -> {
+              assertThat(lastOffsets.get(p)).isZero();
+              waitAtMost(
+                  () -> {
+                    QueryOffsetResponse response = client.queryOffset(consumerName, p);
+                    return response.isOk()
+                        && response.getOffset() == lastOffsets.get(p).longValue();
+                  });
+            }));
   }
 }

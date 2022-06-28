@@ -653,7 +653,7 @@ class StreamEnvironment implements Environment {
       closingSequence =
           () -> {
             try {
-              LOGGER.debug("Executing offset tracking registration closing sequence");
+              LOGGER.debug("Executing offset tracking registration closing sequence ");
               offsetTrackingRegistration.closingCallback().run();
               LOGGER.debug("Offset tracking registration closing sequence executed");
             } catch (Exception e) {

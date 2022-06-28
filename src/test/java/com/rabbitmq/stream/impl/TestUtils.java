@@ -112,6 +112,12 @@ public final class TestUtils {
     return waitAtMost(timeoutInSeconds, condition, null);
   }
 
+  //  public static Duration waitAtMost(
+  //      int timeoutInSeconds, CallableBooleanSupplier condition, Supplier<String> message)
+  //      throws Exception {
+  //    return waitAtMost(timeoutInSeconds, condition, message, true);
+  //  }
+
   public static Duration waitAtMost(
       int timeoutInSeconds, CallableBooleanSupplier condition, Supplier<String> message)
       throws Exception {
@@ -487,6 +493,16 @@ public final class TestUtils {
   public interface CallableConsumer<T> {
 
     void accept(T t) throws Exception;
+  }
+
+  static <T> java.util.function.Consumer<T> wrap(CallableConsumer<T> action) {
+    return t -> {
+      try {
+        action.accept(t);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    };
   }
 
   @FunctionalInterface
