@@ -628,7 +628,6 @@ public class StreamConsumerTest {
         5,
         () -> {
           QueryOffsetResponse response = client.queryOffset(reference, stream);
-          System.out.println(response.isOk());
           return response.isOk() && response.getOffset() == lastReceivedOffset.get();
         },
         () ->
