@@ -236,7 +236,6 @@ class ConsumersCoordinator {
     private volatile boolean hasReceivedSomething = false;
     private volatile byte subscriptionIdInClient;
     private volatile ClientSubscriptionsManager manager;
-    private volatile boolean closing = false;
 
     private SubscriptionTracker(
         StreamConsumer consumer,
@@ -254,17 +253,12 @@ class ConsumersCoordinator {
     }
 
     synchronized void cancel() {
-      this.closing = true;
       if (this.manager != null) {
         LOGGER.debug("Removing consumer from manager " + this.consumer);
         this.manager.remove(this);
       } else {
         LOGGER.debug("No manager to remove consumer from");
       }
-    }
-
-    boolean isClosing() {
-      return this.closing;
     }
 
     synchronized void assign(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
@@ -420,7 +414,7 @@ class ConsumersCoordinator {
           (client, subscriptionId, offset, messageCount, dataSize) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
-            if (subscriptionTracker != null && !subscriptionTracker.isClosing()) {
+            if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
               client.credit(subscriptionId, 1);
             } else {
               LOGGER.debug(

@@ -95,6 +95,13 @@ class StreamConsumer implements Consumer {
         messageHandlerWithOrWithoutTracking = messageHandler;
       }
 
+      MessageHandler closedAwareMessageHandler =
+          (context, message) -> {
+            if (!closed.get()) {
+              messageHandlerWithOrWithoutTracking.handle(context, message);
+            }
+          };
+
       Runnable init =
           () -> {
             this.closingCallback =
@@ -104,7 +111,7 @@ class StreamConsumer implements Consumer {
                     offsetSpecification,
                     this.name,
                     subscriptionListener,
-                    messageHandlerWithOrWithoutTracking);
+                    closedAwareMessageHandler);
 
             this.status = Status.RUNNING;
           };

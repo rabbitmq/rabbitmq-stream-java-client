@@ -186,6 +186,51 @@ public class StreamConsumerTest {
   }
 
   @Test
+  void closeOnCondition() throws Exception {
+    int messageCount = 50_000;
+    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    Client client =
+        cf.get(
+            new Client.ClientParameters()
+                .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
+
+    client.declarePublisher(b(1), null, stream);
+    IntStream.range(0, messageCount)
+        .forEach(
+            i ->
+                client.publish(
+                    b(1),
+                    Collections.singletonList(
+                        client.messageBuilder().addData("".getBytes()).build())));
+
+    assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+    int messagesToProcess = 20_000;
+
+    CountDownLatch consumeLatch = new CountDownLatch(1);
+    AtomicInteger receivedMessages = new AtomicInteger();
+    AtomicInteger processedMessages = new AtomicInteger();
+
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
+            .messageHandler(
+                (context, message) -> {
+                  if (receivedMessages.incrementAndGet() <= messagesToProcess) {
+                    processedMessages.incrementAndGet();
+                  }
+                  if (receivedMessages.get() == messagesToProcess) {
+                    consumeLatch.countDown();
+                  }
+                })
+            .build();
+
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    consumer.close();
+    assertThat(processedMessages).hasValue(messagesToProcess);
+  }
+
+  @Test
   void creatingConsumerOnNonExistingStreamShouldThrowException() {
     String nonExistingStream = UUID.randomUUID().toString();
     assertThatThrownBy(
