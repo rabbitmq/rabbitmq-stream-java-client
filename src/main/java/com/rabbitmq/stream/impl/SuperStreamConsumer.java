@@ -14,7 +14,6 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
@@ -147,7 +146,7 @@ class SuperStreamConsumer implements Consumer {
             }
 
             private void maybeStoreOffset(ConsumerState state, Runnable storeAction) {
-              if (state.consumer.isSac() && state.consumer.sacStatus() != Status.ACTIVE) {
+              if (state.consumer.isSac() && !state.consumer.sacActive()) {
                 // do nothing
               } else {
                 storeAction.run();

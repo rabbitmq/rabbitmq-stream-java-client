@@ -16,7 +16,6 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 
 import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
@@ -259,7 +258,7 @@ class OffsetTrackingCoordinator {
     @Override
     public Runnable closingCallback() {
       return () -> {
-        if (this.consumer.isSac() && this.consumer.sacStatus() != Status.ACTIVE) {
+        if (this.consumer.isSac() && !this.consumer.sacActive()) {
           LOGGER.debug("Not storing offset on closing because consumer is a non-active SAC");
         } else {
           if (this.lastProcessedOffset == null) {

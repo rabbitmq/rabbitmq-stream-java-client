@@ -25,7 +25,6 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -82,7 +81,16 @@ public class SacSuperStreamConsumerTest {
   void sacShouldSpreadAcrossPartitions() throws Exception {
     List<String> partitions =
         IntStream.range(0, partitionCount).mapToObj(i -> superStream + "-" + i).collect(toList());
-    Map<String, Status> consumerStates = new ConcurrentHashMap<>();
+    Map<String, Boolean> consumerStates = new ConcurrentHashMap<>();
+    int superConsumerCount = 3;
+    IntStream.range(0, superConsumerCount)
+        .mapToObj(String::valueOf)
+        .forEach(
+            consumer ->
+                partitions.forEach(
+                    partition -> {
+                      consumerStates.put(consumer + partition, false);
+                    }));
     String consumerName = "my-app";
     Function<String, Consumer> consumerCreator =
         consumer ->
@@ -97,7 +105,7 @@ public class SacSuperStreamConsumerTest {
                 .messageHandler((context, message) -> {})
                 .consumerUpdateListener(
                     context -> {
-                      consumerStates.put(consumer + context.stream(), context.status());
+                      consumerStates.put(consumer + context.stream(), context.isActive());
                       return null;
                     })
                 .build();
@@ -106,58 +114,56 @@ public class SacSuperStreamConsumerTest {
 
     waitAtMost(
         () ->
-            consumerStates.get("0" + partitions.get(0)) == Status.ACTIVE
-                && consumerStates.get("0" + partitions.get(1)) == Status.ACTIVE
-                && consumerStates.get("0" + partitions.get(2)) == Status.ACTIVE);
+            consumerStates.get("0" + partitions.get(0))
+                && consumerStates.get("0" + partitions.get(1))
+                && consumerStates.get("0" + partitions.get(2)));
 
     Consumer consumer1 = consumerCreator.apply("1");
 
     waitAtMost(
         () ->
-            consumerStates.get("0" + partitions.get(0)) == Status.ACTIVE
-                && consumerStates.get("1" + partitions.get(1)) == Status.ACTIVE
-                && consumerStates.get("0" + partitions.get(2)) == Status.ACTIVE);
+            consumerStates.get("0" + partitions.get(0))
+                && consumerStates.get("1" + partitions.get(1))
+                && consumerStates.get("0" + partitions.get(2)));
 
     Consumer consumer2 = consumerCreator.apply("2");
 
     waitAtMost(
         () ->
-            consumerStates.get("0" + partitions.get(0)) == Status.ACTIVE
-                && consumerStates.get("1" + partitions.get(1)) == Status.ACTIVE
-                && consumerStates.get("2" + partitions.get(2)) == Status.ACTIVE);
+            consumerStates.get("0" + partitions.get(0))
+                && consumerStates.get("1" + partitions.get(1))
+                && consumerStates.get("2" + partitions.get(2)));
 
     // all 3 from sub 0 activated, then only 1 from sub 1 & sub 2
-    waitAtMost(() -> consumerStates.size() == 3 + 1 + 1);
     assertThat(consumerStates)
-        .containsEntry("0" + partitions.get(0), Status.ACTIVE)
-        .containsEntry("0" + partitions.get(1), Status.PASSIVE)
-        .containsEntry("0" + partitions.get(2), Status.PASSIVE)
-        .containsEntry("1" + partitions.get(1), Status.ACTIVE)
-        .containsEntry("2" + partitions.get(2), Status.ACTIVE);
+        .containsEntry("0" + partitions.get(0), Boolean.TRUE)
+        .containsEntry("0" + partitions.get(1), Boolean.FALSE)
+        .containsEntry("0" + partitions.get(2), Boolean.FALSE)
+        .containsEntry("1" + partitions.get(1), Boolean.TRUE)
+        .containsEntry("2" + partitions.get(2), Boolean.TRUE);
 
     consumer0.close();
 
     waitAtMost(
         () ->
-            consumerStates.get("1" + partitions.get(0)) == Status.ACTIVE
-                && consumerStates.get("2" + partitions.get(1)) == Status.ACTIVE
-                && consumerStates.get("1" + partitions.get(2)) == Status.ACTIVE);
+            consumerStates.get("1" + partitions.get(0))
+                && consumerStates.get("2" + partitions.get(1))
+                && consumerStates.get("1" + partitions.get(2)));
 
-    waitAtMost(() -> consumerStates.size() == (3 + 1 + 1) + 1 + 1 + 1);
     assertThat(consumerStates)
-        .containsEntry("1" + partitions.get(0), Status.ACTIVE)
-        .containsEntry("1" + partitions.get(1), Status.PASSIVE)
-        .containsEntry("1" + partitions.get(2), Status.ACTIVE)
-        .containsEntry("2" + partitions.get(1), Status.ACTIVE)
-        .containsEntry("2" + partitions.get(2), Status.PASSIVE);
+        .containsEntry("1" + partitions.get(0), Boolean.TRUE)
+        .containsEntry("1" + partitions.get(1), Boolean.FALSE)
+        .containsEntry("1" + partitions.get(2), Boolean.TRUE)
+        .containsEntry("2" + partitions.get(1), Boolean.TRUE)
+        .containsEntry("2" + partitions.get(2), Boolean.FALSE);
 
     consumer1.close();
 
     waitAtMost(
         () ->
-            consumerStates.get("2" + partitions.get(0)) == Status.ACTIVE
-                && consumerStates.get("2" + partitions.get(1)) == Status.ACTIVE
-                && consumerStates.get("2" + partitions.get(2)) == Status.ACTIVE);
+            consumerStates.get("2" + partitions.get(0))
+                && consumerStates.get("2" + partitions.get(1))
+                && consumerStates.get("2" + partitions.get(2)));
 
     consumer2.close();
   }
@@ -205,7 +211,7 @@ public class SacSuperStreamConsumerTest {
               new CompositeConsumerUpdateListener();
           consumerUpdateListener.add(
               context -> {
-                consumerStates.put(consumer + context.stream(), context.status() == Status.ACTIVE);
+                consumerStates.put(consumer + context.stream(), context.isActive());
                 return null;
               });
           return environment
@@ -395,9 +401,9 @@ public class SacSuperStreamConsumerTest {
           ConsumerUpdateListener consumerUpdateListener =
               context -> {
                 consumers.get(consumer).putIfAbsent(context.stream(), context.consumer());
-                consumerStates.put(consumer + context.stream(), context.status() == Status.ACTIVE);
+                consumerStates.put(consumer + context.stream(), context.isActive());
                 OffsetSpecification offsetSpecification = null;
-                if (context.status() == Status.ACTIVE) {
+                if (context.isActive()) {
                   try {
                     long storedOffset = context.consumer().storedOffset() + 1;
                     offsetSpecification = OffsetSpecification.offset(storedOffset);
@@ -408,8 +414,7 @@ public class SacSuperStreamConsumerTest {
                       throw e;
                     }
                   }
-                } else if (context.previousStatus() == Status.ACTIVE
-                    && context.status() == Status.PASSIVE) {
+                } else {
                   long lastReceivedOffset = lastReceivedOffsets.get(context.stream());
                   context.consumer().store(lastReceivedOffset);
                   waitUntil(() -> context.consumer().storedOffset() == lastReceivedOffset);
@@ -602,9 +607,9 @@ public class SacSuperStreamConsumerTest {
           ConsumerUpdateListener consumerUpdateListener =
               context -> {
                 consumers.get(consumer).putIfAbsent(context.stream(), context.consumer());
-                consumerStates.put(consumer + context.stream(), context.status() == Status.ACTIVE);
+                consumerStates.put(consumer + context.stream(), context.isActive());
                 OffsetSpecification offsetSpecification = null;
-                if (context.status() == Status.ACTIVE) {
+                if (context.isActive()) {
                   Long lastReceivedOffset = lastReceivedOffsets.get(context.stream());
                   offsetSpecification =
                       lastReceivedOffset == null

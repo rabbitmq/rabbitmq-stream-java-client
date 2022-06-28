@@ -19,7 +19,6 @@ import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -64,7 +63,8 @@ class StreamConsumer implements Consumer {
   private volatile Status status;
   private volatile long lastRequestedStoredOffset = 0;
   private final AtomicBoolean nothingStoredYet = new AtomicBoolean(true);
-  private volatile ConsumerUpdateListener.Status sacStatus;
+  private volatile boolean sacActive;
+  private final boolean sac;
   private final OffsetSpecification initialOffsetSpecification;
 
   StreamConsumer(
@@ -120,15 +120,16 @@ class StreamConsumer implements Consumer {
         decoratedMessageHandler.set(messageHandler);
       }
 
+      this.sacActive = false;
       if (Utils.isSac(subscriptionProperties)) {
-        this.sacStatus = ConsumerUpdateListener.Status.PASSIVE;
+        this.sac = true;
         MessageHandler existingMessageHandler = decoratedMessageHandler.get();
         AtomicBoolean receivedSomething = new AtomicBoolean(false);
         MessageHandler messageHandlerWithSac;
         if (trackingConfiguration.auto()) {
           messageHandlerWithSac =
               (context, message) -> {
-                if (sacStatus == ConsumerUpdateListener.Status.ACTIVE) {
+                if (this.sacActive) {
                   receivedSomething.set(true);
                   existingMessageHandler.handle(context, message);
                 }
@@ -136,7 +137,7 @@ class StreamConsumer implements Consumer {
         } else {
           messageHandlerWithSac =
               (context, message) -> {
-                if (sacStatus == ConsumerUpdateListener.Status.ACTIVE) {
+                if (this.sacActive) {
                   existingMessageHandler.handle(context, message);
                 }
               };
@@ -151,8 +152,7 @@ class StreamConsumer implements Consumer {
             ConsumerUpdateListener defaultListener =
                 context -> {
                   OffsetSpecification result = null;
-                  if (context.previousStatus() == ConsumerUpdateListener.Status.PASSIVE
-                      && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
+                  if (context.isActive()) {
                     LOGGER.debug("Looking up offset (stream {})", this.stream);
                     Consumer consumer = context.consumer();
                     try {
@@ -171,8 +171,7 @@ class StreamConsumer implements Consumer {
                       }
                     }
                     return result;
-                  } else if (context.previousStatus() == ConsumerUpdateListener.Status.ACTIVE
-                      && context.status() == ConsumerUpdateListener.Status.PASSIVE) {
+                  } else {
                     if (receivedSomething.get()) {
                       LOGGER.debug(
                           "Storing offset (consumer {}, stream {}) because going from active to passive",
@@ -185,8 +184,6 @@ class StreamConsumer implements Consumer {
                           this.id,
                           this.stream);
                       waitForOffsetToBeStored(offset);
-                    } else {
-                      LOGGER.debug("Nothing received yet, no need to store offset");
                     }
                     result = OffsetSpecification.none();
                   }
@@ -206,8 +203,7 @@ class StreamConsumer implements Consumer {
                   OffsetSpecification result = null;
                   // we are not supposed to store offsets with manual tracking strategy
                   // so we just look up the last stored offset when we go from passive to active
-                  if (context.previousStatus() == ConsumerUpdateListener.Status.PASSIVE
-                      && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
+                  if (context.isActive()) {
                     LOGGER.debug("Going from passive to active, looking up offset");
                     Consumer consumer = context.consumer();
                     try {
@@ -239,7 +235,7 @@ class StreamConsumer implements Consumer {
 
       } else {
         this.consumerUpdateListener = null;
-        this.sacStatus = null;
+        this.sac = false;
       }
 
       MessageHandler computedMessageHandler = decoratedMessageHandler.get();
@@ -355,18 +351,21 @@ class StreamConsumer implements Consumer {
 
   OffsetSpecification consumerUpdate(boolean active) {
     LOGGER.debug(
-        "Consumer {} from stream {} with name {} received consumer update notification, active = {}, current state is {}",
+        "Consumer {} from stream {} with name {} received consumer update notification, active = {}",
         this.id,
         this.stream,
         this.name,
-        active,
-        this.sacStatus);
+        active);
 
-    ConsumerUpdateListener.Status previousStatus = this.sacStatus;
-    this.sacStatus =
-        active ? ConsumerUpdateListener.Status.ACTIVE : ConsumerUpdateListener.Status.PASSIVE;
-    ConsumerUpdateListener.Context context =
-        new DefaultConsumerUpdateContext(this, this.sacStatus, previousStatus);
+    if (this.sacActive == active) {
+      LOGGER.warn(
+          "Previous and new status are the same ({}), there should be no consumer update in this case.",
+          active);
+    }
+
+    this.sacActive = active;
+
+    ConsumerUpdateListener.Context context = new DefaultConsumerUpdateContext(this, active);
 
     LOGGER.debug("Calling consumer update listener");
     OffsetSpecification result = null;
@@ -387,16 +386,11 @@ class StreamConsumer implements Consumer {
   private static class DefaultConsumerUpdateContext implements ConsumerUpdateListener.Context {
 
     private final StreamConsumer consumer;
-    private final ConsumerUpdateListener.Status status;
-    private final ConsumerUpdateListener.Status previousStatus;
+    private final boolean active;
 
-    private DefaultConsumerUpdateContext(
-        StreamConsumer consumer,
-        ConsumerUpdateListener.Status status,
-        ConsumerUpdateListener.Status previousStatus) {
+    private DefaultConsumerUpdateContext(StreamConsumer consumer, boolean active) {
       this.consumer = consumer;
-      this.status = status;
-      this.previousStatus = previousStatus;
+      this.active = active;
     }
 
     @Override
@@ -410,36 +404,22 @@ class StreamConsumer implements Consumer {
     }
 
     @Override
-    public ConsumerUpdateListener.Status status() {
-      return this.status;
-    }
-
-    @Override
-    public ConsumerUpdateListener.Status previousStatus() {
-      return this.previousStatus;
+    public boolean isActive() {
+      return this.active;
     }
 
     @Override
     public String toString() {
-      return "DefaultConsumerUpdateContext{"
-          + "consumer="
-          + consumer
-          + ", stream="
-          + stream()
-          + ", status="
-          + status
-          + ", previousStatus="
-          + previousStatus
-          + '}';
+      return "DefaultConsumerUpdateContext{" + "consumer=" + consumer + ", active=" + active + '}';
     }
   }
 
   boolean isSac() {
-    return this.sacStatus != null;
+    return this.sac;
   }
 
-  ConsumerUpdateListener.Status sacStatus() {
-    return this.sacStatus;
+  boolean sacActive() {
+    return this.sacActive;
   }
 
   private boolean canTrack() {

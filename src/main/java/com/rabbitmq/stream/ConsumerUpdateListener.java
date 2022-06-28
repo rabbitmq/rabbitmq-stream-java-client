@@ -56,22 +56,10 @@ public interface ConsumerUpdateListener {
     String stream();
 
     /**
-     * The new status of the consumer.
+     * Whether the consumer is active or not.
      *
-     * @return the new status
+     * @return active flag
      */
-    Status status();
-
-    /**
-     * The previous status of the consumer.
-     *
-     * @return the previous status
-     */
-    Status previousStatus();
-  }
-
-  enum Status {
-    ACTIVE,
-    PASSIVE
+    boolean isActive();
   }
 }
