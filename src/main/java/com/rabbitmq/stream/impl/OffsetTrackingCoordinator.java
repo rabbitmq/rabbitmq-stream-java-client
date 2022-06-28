@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.offsetBefore;
+
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.StreamException;
@@ -25,6 +27,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import org.slf4j.Logger;
@@ -176,7 +179,7 @@ class OffsetTrackingCoordinator {
     private final long flushIntervalInNs;
     private final LocalClock clock;
     private volatile long count = 0;
-    private volatile long lastProcessedOffset = 0;
+    private volatile AtomicLong lastProcessedOffset = null;
     private volatile long lastTrackingActivity = 0;
 
     private AutoTrackingTracker(
@@ -193,24 +196,31 @@ class OffsetTrackingCoordinator {
           context.storeOffset();
           lastTrackingActivity = clock.time();
         }
-        lastProcessedOffset = context.offset();
+        if (lastProcessedOffset == null) {
+          lastProcessedOffset = new AtomicLong(context.offset());
+        } else {
+          lastProcessedOffset.set(context.offset());
+        }
       };
     }
 
     public void flushIfNecessary() {
       if (this.count > 0) {
         if (this.clock.time() - this.lastTrackingActivity > this.flushIntervalInNs) {
-          try {
-            long lastStoredOffset = consumer.lastStoredOffset();
-            if (Long.compareUnsigned(lastStoredOffset, lastProcessedOffset) < 0) {
-              this.consumer.store(this.lastProcessedOffset);
+          if (lastProcessedOffset != null) {
+            try {
+              long lastStoredOffset = consumer.lastStoredOffset();
+              if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
+                this.consumer.store(this.lastProcessedOffset.get());
+              }
               this.lastTrackingActivity = clock.time();
-            }
-          } catch (StreamException e) {
-            if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-              // probably nothing stored yet, let it go
-            } else {
-              throw e;
+            } catch (StreamException e) {
+              if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+                this.consumer.store(this.lastProcessedOffset.get());
+                this.lastTrackingActivity = clock.time();
+              } else {
+                throw e;
+              }
             }
           }
         }
@@ -230,22 +240,21 @@ class OffsetTrackingCoordinator {
     @Override
     public Runnable closingCallback() {
       return () -> {
-        try {
-          long lastStoredOffset = consumer.lastStoredOffset();
-          if (Long.compareUnsigned(lastStoredOffset, lastProcessedOffset) < 0) {
-            LOGGER.debug("Storing offset before closing");
-            this.consumer.store(this.lastProcessedOffset);
-          } else {
-            LOGGER.debug(
-                "Not storing offset before closing because last stored offset after last processed offset: {} > {}",
-                lastStoredOffset,
-                lastProcessedOffset);
-          }
-        } catch (StreamException e) {
-          if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-            // probably nothing stored yet, let it go
-          } else {
-            throw e;
+        if (this.lastProcessedOffset == null) {
+          LOGGER.debug("Not storing anything as nothing has been processed.");
+        } else {
+          try {
+            long lastStoredOffset = consumer.lastStoredOffset();
+            if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
+              LOGGER.debug("Storing {} offset before closing", this.lastProcessedOffset);
+              this.consumer.store(this.lastProcessedOffset.get());
+            }
+          } catch (StreamException e) {
+            if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+              LOGGER.debug(
+                  "Nothing stored yet, storing {} offset before closing", this.lastProcessedOffset);
+              this.consumer.store(this.lastProcessedOffset.get());
+            }
           }
         }
       };
@@ -277,13 +286,14 @@ class OffsetTrackingCoordinator {
       if (this.clock.time() - this.lastTrackingActivity > this.checkIntervalInNs) {
         try {
           long lastStoredOffset = consumer.lastStoredOffset();
-          if (Long.compareUnsigned(lastStoredOffset, lastRequestedOffset) < 0) {
+          if (offsetBefore(lastStoredOffset, lastRequestedOffset)) {
             this.consumer.store(this.lastRequestedOffset);
             this.lastTrackingActivity = clock.time();
           }
         } catch (StreamException e) {
           if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-            // probably nothing stored yet, let it go
+            this.consumer.store(this.lastRequestedOffset);
+            this.lastTrackingActivity = clock.time();
           } else {
             throw e;
           }

@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
 import static com.rabbitmq.stream.impl.Utils.defaultConnectionNamingStrategy;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -89,5 +90,16 @@ public class UtilsTest {
                 assertThat(strategy.apply(type)).endsWith("-" + i);
               });
     }
+  }
+
+  @Test
+  void testOffsetBefore() {
+    assertThat(offsetBefore(1, 2)).isTrue();
+    assertThat(offsetBefore(2, 2)).isFalse();
+    assertThat(offsetBefore(Long.MAX_VALUE - 1, Long.MAX_VALUE)).isTrue();
+    assertThat(offsetBefore(Long.MAX_VALUE, Long.MAX_VALUE)).isFalse();
+    assertThat(offsetBefore(Long.MAX_VALUE, Long.MAX_VALUE + 1)).isTrue();
+    assertThat(offsetBefore(Long.MAX_VALUE + 10, Long.MAX_VALUE + 10)).isFalse();
+    assertThat(offsetBefore(Long.MAX_VALUE + 10, Long.MAX_VALUE + 20)).isTrue();
   }
 }

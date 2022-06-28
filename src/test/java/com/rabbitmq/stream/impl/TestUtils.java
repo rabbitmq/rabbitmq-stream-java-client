@@ -119,17 +119,29 @@ public final class TestUtils {
     int waitTime = 100;
     int waitedTime = 0;
     int timeoutInMs = timeoutInSeconds * 1000;
+    Exception exception = null;
     while (waitedTime <= timeoutInMs) {
       Thread.sleep(waitTime);
       waitedTime += waitTime;
-      if (condition.getAsBoolean()) {
-        return Duration.ofMillis(waitedTime);
+      try {
+        if (condition.getAsBoolean()) {
+          return Duration.ofMillis(waitedTime);
+        }
+        exception = null;
+      } catch (Exception e) {
+        exception = e;
       }
     }
+    String msg;
     if (message == null) {
-      fail("Waited " + timeoutInSeconds + " second(s), condition never got true");
+      msg = "Waited " + timeoutInSeconds + " second(s), condition never got true";
     } else {
-      fail("Waited " + timeoutInSeconds + " second(s), " + message.get());
+      msg = "Waited " + timeoutInSeconds + " second(s), " + message.get();
+    }
+    if (exception == null) {
+      fail(msg);
+    } else {
+      fail(msg, exception);
     }
     return Duration.ofMillis(waitedTime);
   }

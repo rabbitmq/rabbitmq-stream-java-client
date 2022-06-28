@@ -236,4 +236,8 @@ final class Utils {
     return clientConnectionType ->
         prefixes.get(clientConnectionType) + sequences.get(clientConnectionType).getAndIncrement();
   }
+
+  static boolean offsetBefore(long x, long y) {
+    return Long.compareUnsigned(x, y) < 0;
+  }
 }

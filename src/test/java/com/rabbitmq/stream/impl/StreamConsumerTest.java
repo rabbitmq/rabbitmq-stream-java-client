@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
@@ -32,6 +33,7 @@ import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
@@ -529,6 +531,33 @@ public class StreamConsumerTest {
   }
 
   @Test
+  void autoTrackingShouldStoreOffsetZeroAfterInactivity() throws Exception {
+    String reference = "ref-1";
+    AtomicLong lastReceivedOffset = new AtomicLong(-1);
+    environment.consumerBuilder().name(reference).stream(stream)
+        .offset(OffsetSpecification.first())
+        .messageHandler((context, message) -> lastReceivedOffset.set(context.offset()))
+        .autoTrackingStrategy()
+        .flushInterval(Duration.ofSeconds(1).plusMillis(100))
+        .builder()
+        .build();
+
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    producer.send(
+        producer.messageBuilder().addData("".getBytes()).build(), confirmationStatus -> {});
+
+    waitAtMost(() -> lastReceivedOffset.get() == 0);
+
+    Client client = cf.get();
+    waitAtMost(
+        5,
+        () -> {
+          QueryOffsetResponse response = client.queryOffset(reference, stream);
+          return response.isOk() && response.getOffset() == lastReceivedOffset.get();
+        });
+  }
+
+  @Test
   void autoTrackingShouldStoreAfterClosing() throws Exception {
     int storeEvery = 10_000;
     int messageCount = storeEvery * 5 - 100;
@@ -563,7 +592,45 @@ public class StreamConsumerTest {
     Client client = cf.get();
     waitAtMost(
         5,
-        () -> client.queryOffset(reference, stream).getOffset() == lastReceivedOffset.get(),
+        () -> {
+          QueryOffsetResponse response = client.queryOffset(reference, stream);
+          return response.isOk() && response.getOffset() == lastReceivedOffset.get();
+        },
+        () ->
+            format(
+                "Expecting stored offset %d to be equal to last received offset %d",
+                client.queryOffset(reference, stream).getOffset(), lastReceivedOffset.get()));
+  }
+
+  @Test
+  void autoTrackingShouldStoreOffsetZeroOnClosing() throws Exception {
+    String reference = "ref-1";
+    AtomicLong lastReceivedOffset = new AtomicLong(-1);
+    Consumer consumer =
+        environment.consumerBuilder().name(reference).stream(stream)
+            .offset(OffsetSpecification.first())
+            .messageHandler(
+                (context, message) -> {
+                  lastReceivedOffset.set(context.offset());
+                })
+            .autoTrackingStrategy()
+            .flushInterval(Duration.ofHours(1)) // long flush interval
+            .builder()
+            .build();
+
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    producer.send(
+        producer.messageBuilder().addData("".getBytes()).build(), confirmationStatus -> {});
+    waitAtMost(() -> lastReceivedOffset.get() == 0);
+    consumer.close();
+    Client client = cf.get();
+    waitAtMost(
+        5,
+        () -> {
+          QueryOffsetResponse response = client.queryOffset(reference, stream);
+          System.out.println(response.isOk());
+          return response.isOk() && response.getOffset() == lastReceivedOffset.get();
+        },
         () ->
             format(
                 "Expecting stored offset %d to be equal to last received offset %d",
@@ -732,5 +799,33 @@ public class StreamConsumerTest {
     // no duplicates because the custom offset tracking overrides the stored offset in the
     // subscription listener
     assertThat(receivedMessages).hasValue(publishedMessages.get() + 1);
+  }
+
+  @Test
+  void offsetZeroShouldBeStored() throws Exception {
+    String ref = "ref-1";
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .name(ref)
+            .offset(OffsetSpecification.first())
+            .messageHandler((context, message) -> {})
+            .manualTrackingStrategy()
+            .checkInterval(Duration.ZERO)
+            .builder()
+            .build();
+    Client client = cf.get();
+    assertThat(client.queryOffset(ref, stream).getResponseCode())
+        .isEqualTo(Constants.RESPONSE_CODE_NO_OFFSET);
+    consumer.store(0);
+    waitAtMost(
+        5,
+        () -> {
+          QueryOffsetResponse response = client.queryOffset(ref, stream);
+          return response.isOk() && response.getOffset() == 0;
+        },
+        () ->
+            format(
+                "Expecting stored offset %d to be equal to last received offset %d",
+                client.queryOffset(ref, stream).getOffset(), 0));
   }
 }

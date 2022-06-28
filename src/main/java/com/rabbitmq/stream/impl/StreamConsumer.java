@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.offsetBefore;
+
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
@@ -47,6 +49,7 @@ class StreamConsumer implements Consumer {
   private volatile Client subscriptionClient;
   private volatile Status status;
   private volatile long lastRequestedStoredOffset = 0;
+  private final AtomicBoolean nothingStoredYet = new AtomicBoolean(true);
 
   StreamConsumer(
       String stream,
@@ -130,7 +133,8 @@ class StreamConsumer implements Consumer {
   public void store(long offset) {
     trackingCallback.accept(offset);
     if (canTrack()) {
-      if (Long.compareUnsigned(this.lastRequestedStoredOffset, offset) < 0) {
+      if (offsetBefore(this.lastRequestedStoredOffset, offset)
+          || nothingStoredYet.compareAndSet(true, false)) {
         try {
           this.trackingClient.storeOffset(this.name, this.stream, offset);
           this.lastRequestedStoredOffset = offset;
