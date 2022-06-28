@@ -228,7 +228,7 @@ class OffsetTrackingCoordinator {
       } else {
         long result;
         try {
-          long lastStoredOffset = consumer.lastStoredOffset();
+          long lastStoredOffset = consumer.storedOffset();
           if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
             this.consumer.store(this.lastProcessedOffset.get());
           }
@@ -275,7 +275,7 @@ class OffsetTrackingCoordinator {
                   }
                 };
             try {
-              long lastStoredOffset = consumer.lastStoredOffset();
+              long lastStoredOffset = consumer.storedOffset();
               if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
                 LOGGER.debug("Storing {} offset before closing", this.lastProcessedOffset);
                 storageOperation.run();
@@ -318,7 +318,7 @@ class OffsetTrackingCoordinator {
     public void flushIfNecessary() {
       if (this.clock.time() - this.lastTrackingActivity > this.checkIntervalInNs) {
         try {
-          long lastStoredOffset = consumer.lastStoredOffset();
+          long lastStoredOffset = consumer.storedOffset();
           if (offsetBefore(lastStoredOffset, lastRequestedOffset)) {
             this.consumer.store(this.lastRequestedOffset);
             this.lastTrackingActivity = clock.time();

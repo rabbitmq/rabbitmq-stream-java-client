@@ -163,6 +163,12 @@ class SuperStreamConsumer implements Consumer {
   }
 
   @Override
+  public long storedOffset() {
+    throw new UnsupportedOperationException(
+        "Consumer#storedOffset() does not work for super streams");
+  }
+
+  @Override
   public void close() {
     for (Entry<String, Consumer> entry : consumers.entrySet()) {
       LOGGER.debug(

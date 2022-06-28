@@ -19,7 +19,6 @@ import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -138,7 +137,7 @@ class StreamConsumer implements Consumer {
                       && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
                     LOGGER.debug("Looking up offset (stream {})", this.stream);
                     StreamConsumer consumer = (StreamConsumer) context.consumer();
-                    long offset = consumer.lastStoredOffset();
+                    long offset = consumer.storedOffset();
                     LOGGER.debug(
                         "Stored offset is {}, returning the value + 1 to the server", offset);
                     return OffsetSpecification.offset(offset + 1);
@@ -177,7 +176,7 @@ class StreamConsumer implements Consumer {
                       && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
                     LOGGER.debug("Going from passive to active, looking up offset");
                     StreamConsumer consumer = (StreamConsumer) context.consumer();
-                    long offset = consumer.lastStoredOffset();
+                    long offset = consumer.storedOffset();
                     LOGGER.debug(
                         "Stored offset is {}, returning the value + 1 to the server", offset);
                     result = OffsetSpecification.offset(offset + 1);
@@ -238,7 +237,7 @@ class StreamConsumer implements Consumer {
         AsyncRetry.asyncRetry(
                 () -> {
                   try {
-                    long lastStoredOffset = lastStoredOffset();
+                    long lastStoredOffset = storedOffset();
                     boolean stored = lastStoredOffset == expectedStoredOffset;
                     LOGGER.debug(
                         "Last stored offset from consumer {} on {} is {}, expecting {}",
@@ -448,7 +447,8 @@ class StreamConsumer implements Consumer {
     this.status = Status.RUNNING;
   }
 
-  long lastStoredOffset() {
+  @Override
+  public long storedOffset() {
     if (canTrack()) {
       // the client can be null by now, so we catch any exception
       QueryOffsetResponse response;

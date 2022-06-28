@@ -33,4 +33,6 @@ public interface Consumer extends AutoCloseable {
   /** Close the consumer. */
   @Override
   void close();
+
+  long storedOffset();
 }

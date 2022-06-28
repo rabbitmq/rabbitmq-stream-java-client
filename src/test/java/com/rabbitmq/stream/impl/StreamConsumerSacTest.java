@@ -109,6 +109,72 @@ public class StreamConsumerSacTest {
   }
 
   @Test
+  void manualTrackingSecondConsumerShouldTakeOverWhereTheFirstOneLeftOff() throws Exception {
+    int messageCount = 10000;
+    int storeEvery = 1000;
+    Map<Integer, AtomicInteger> receivedMessages = new ConcurrentHashMap<>();
+    receivedMessages.put(0, new AtomicInteger(0));
+    receivedMessages.put(1, new AtomicInteger(0));
+    AtomicLong lastReceivedOffset = new AtomicLong(0);
+    String consumerName = "foo";
+
+    Consumer consumer1 =
+        environment.consumerBuilder().stream(stream)
+            .name(consumerName)
+            .singleActiveConsumer()
+            .messageHandler(
+                (context, message) -> {
+                  lastReceivedOffset.set(context.offset());
+                  int count = receivedMessages.get(0).incrementAndGet();
+                  if (count % storeEvery == 0) {
+                    context.storeOffset();
+                  }
+                })
+            .offset(OffsetSpecification.first())
+            .manualTrackingStrategy()
+            .builder()
+            .build();
+
+    Consumer consumer2 =
+        environment.consumerBuilder().stream(stream)
+            .name(consumerName)
+            .singleActiveConsumer()
+            .messageHandler(
+                (context, message) -> {
+                  lastReceivedOffset.set(context.offset());
+                  int count = receivedMessages.get(1).incrementAndGet();
+                  if (count % storeEvery == 0) {
+                    context.storeOffset();
+                  }
+                })
+            .offset(OffsetSpecification.first())
+            .manualTrackingStrategy()
+            .builder()
+            .build();
+
+    publishAndWaitForConfirms(cf, messageCount, stream);
+    waitAtMost(() -> receivedMessages.getOrDefault(0, new AtomicInteger(0)).get() == messageCount);
+
+    assertThat(lastReceivedOffset).hasPositiveValue();
+    assertThat(receivedMessages.get(1)).hasValue(0);
+
+    long firstWaveLimit = lastReceivedOffset.get();
+
+    consumer1.store(firstWaveLimit);
+    waitAtMost(() -> consumer1.storedOffset() == firstWaveLimit);
+
+    consumer1.close();
+
+    publishAndWaitForConfirms(cf, messageCount, stream);
+
+    waitAtMost(() -> receivedMessages.getOrDefault(0, new AtomicInteger(1)).get() == messageCount);
+    assertThat(lastReceivedOffset).hasValueGreaterThan(firstWaveLimit);
+    assertThat(receivedMessages.get(0)).hasValue(messageCount);
+
+    consumer2.close();
+  }
+
+  @Test
   void customTrackingSecondConsumerShouldTakeOverWhereTheFirstOneLeftOff() throws Exception {
     int messageCount = 10000;
     Map<Integer, AtomicInteger> receivedMessages = new ConcurrentHashMap<>();

@@ -130,7 +130,7 @@ public class OffsetTrackingCoordinatorTest {
   void autoShouldStoreLastProcessedOffsetOnClosing() {
     Duration checkInterval = Duration.ofMillis(100);
     OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
-    when(consumer.lastStoredOffset()).thenReturn(5L);
+    when(consumer.storedOffset()).thenReturn(5L);
 
     Registration registration =
         coordinator.registerTrackingConsumer(
@@ -148,7 +148,7 @@ public class OffsetTrackingCoordinatorTest {
   void autoShouldNotStoreLastProcessedOffsetOnClosingIfBehindStoredOffset() {
     Duration checkInterval = Duration.ofMillis(100);
     OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
-    when(consumer.lastStoredOffset()).thenReturn(15L);
+    when(consumer.storedOffset()).thenReturn(15L);
 
     Registration registration =
         coordinator.registerTrackingConsumer(
@@ -200,7 +200,7 @@ public class OffsetTrackingCoordinatorTest {
 
     long storedOffset = 10;
 
-    when(consumer.lastStoredOffset()).thenReturn(storedOffset);
+    when(consumer.storedOffset()).thenReturn(storedOffset);
 
     Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
@@ -223,7 +223,7 @@ public class OffsetTrackingCoordinatorTest {
 
     int storeEvery = 10;
 
-    when(consumer.lastStoredOffset()).thenReturn((long) storeEvery - 1);
+    when(consumer.storedOffset()).thenReturn((long) storeEvery - 1);
 
     Duration autoFlushInterval = Duration.ofMillis(checkInterval.toMillis() * 2);
     Consumer<Context> postProcessedMessageCallback =
@@ -252,7 +252,7 @@ public class OffsetTrackingCoordinatorTest {
     int extraMessages = 3;
 
     long expectedLastStoredOffset = storeEvery + extraMessages - 1;
-    when(consumer.lastStoredOffset()).thenReturn((long) (storeEvery - 1));
+    when(consumer.storedOffset()).thenReturn((long) (storeEvery - 1));
 
     ArgumentCaptor<Long> lastStoredOffsetCaptor = ArgumentCaptor.forClass(Long.class);
     CountDownLatch flushLatch = new CountDownLatch(1);
@@ -285,7 +285,7 @@ public class OffsetTrackingCoordinatorTest {
     OffsetTrackingCoordinator coordinator = new OffsetTrackingCoordinator(env, checkInterval);
 
     long lastStoredOffset = 50;
-    when(consumer.lastStoredOffset()).thenReturn(lastStoredOffset);
+    when(consumer.storedOffset()).thenReturn(lastStoredOffset);
 
     LongConsumer storeCallback =
         coordinator
@@ -309,7 +309,7 @@ public class OffsetTrackingCoordinatorTest {
 
     long lastRequestedOffset = 50;
     long lastStoredOffset = 40;
-    when(consumer.lastStoredOffset()).thenReturn(lastStoredOffset);
+    when(consumer.storedOffset()).thenReturn(lastStoredOffset);
 
     ArgumentCaptor<Long> lastStoredOffsetCaptor = ArgumentCaptor.forClass(Long.class);
     CountDownLatch storeLatch = new CountDownLatch(1);
