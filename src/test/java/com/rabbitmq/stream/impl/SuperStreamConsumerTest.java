@@ -519,6 +519,6 @@ public class SuperStreamConsumerTest {
         partition ->
             assertThat(lastReceivedOffsets.get(partition))
                 .isGreaterThanOrEqualTo(expectedMessageCountPerPartition)
-                .isEqualTo(c.queryOffset(consumerName, partition)));
+                .isEqualTo(c.queryOffset(consumerName, partition).getOffset()));
   }
 }

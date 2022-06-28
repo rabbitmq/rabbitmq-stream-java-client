@@ -114,7 +114,9 @@ public class SingleActiveConsumerTest {
 
     assertThat(lastReceivedOffset).hasPositiveValue();
     writerClient.storeOffset(consumerName, stream, lastReceivedOffset.get());
-    waitAtMost(() -> writerClient.queryOffset(consumerName, stream).getOffset() == lastReceivedOffset.get());
+    waitAtMost(
+        () ->
+            writerClient.queryOffset(consumerName, stream).getOffset() == lastReceivedOffset.get());
 
     long firstWaveLimit = lastReceivedOffset.get();
     response = client.unsubscribe(b(0));
@@ -227,7 +229,8 @@ public class SingleActiveConsumerTest {
                         OffsetSpecification result;
 
                         if (previousState == false && active == true) {
-                          long storedOffset = writerClient.queryOffset(consumerName, partition).getOffset();
+                          long storedOffset =
+                              writerClient.queryOffset(consumerName, partition).getOffset();
                           result =
                               storedOffset == 0
                                   ? OffsetSpecification.first()
@@ -291,7 +294,9 @@ public class SingleActiveConsumerTest {
       // clean unsubscription, storing the offset
       writerClient.storeOffset(consumerName, partition, lastReceivedOffset.get());
       waitAtMost(
-          () -> writerClient.queryOffset(consumerName, partition).getOffset() == lastReceivedOffset.get());
+          () ->
+              writerClient.queryOffset(consumerName, partition).getOffset()
+                  == lastReceivedOffset.get());
 
       response = client.unsubscribe(b(1));
       assertThat(response.isOk()).isTrue();

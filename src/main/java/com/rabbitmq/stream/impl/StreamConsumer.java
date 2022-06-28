@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 import static com.rabbitmq.stream.impl.Utils.isSac;
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.ConsumerUpdateListener.Status;
@@ -206,6 +207,7 @@ class StreamConsumer implements Consumer {
 
       Runnable init =
           () -> {
+            this.status = Status.INITIALIZING;
             this.closingCallback =
                 environment.registerConsumer(
                     this,
@@ -235,18 +237,26 @@ class StreamConsumer implements Consumer {
     CompletableFuture<Boolean> storedTask =
         AsyncRetry.asyncRetry(
                 () -> {
-                  long lastStoredOffset = lastStoredOffset();
-                  boolean stored = lastStoredOffset == expectedStoredOffset;
-                  LOGGER.debug(
-                      "Last stored offset from consumer {} on {} is {}, expecting {}",
-                      this.id,
-                      this.stream,
-                      lastStoredOffset,
-                      expectedStoredOffset);
-                  if (!stored) {
-                    throw new IllegalStateException();
-                  } else {
-                    return true;
+                  try {
+                    long lastStoredOffset = lastStoredOffset();
+                    boolean stored = lastStoredOffset == expectedStoredOffset;
+                    LOGGER.debug(
+                        "Last stored offset from consumer {} on {} is {}, expecting {}",
+                        this.id,
+                        this.stream,
+                        lastStoredOffset,
+                        expectedStoredOffset);
+                    if (!stored) {
+                      throw new IllegalStateException();
+                    } else {
+                      return true;
+                    }
+                  } catch (StreamException e) {
+                    if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+                      throw new IllegalStateException();
+                    } else {
+                      throw e;
+                    }
                   }
                 })
             .description(
@@ -390,7 +400,8 @@ class StreamConsumer implements Consumer {
   }
 
   private boolean canTrack() {
-    return this.status == Status.RUNNING && this.name != null;
+    return (this.status == Status.INITIALIZING || this.status == Status.RUNNING)
+        && this.name != null;
   }
 
   @Override
@@ -476,6 +487,7 @@ class StreamConsumer implements Consumer {
   }
 
   enum Status {
+    INITIALIZING,
     RUNNING,
     NOT_AVAILABLE,
     CLOSED
