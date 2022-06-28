@@ -423,7 +423,8 @@ public class Client implements AutoCloseable {
       } else if (saslAuthenticateResponse.isAuthenticationFailure()) {
         throw new AuthenticationFailureException(
             "Unexpected response code during authentication: "
-                + formatConstant(saslAuthenticateResponse.getResponseCode()));
+                + formatConstant(saslAuthenticateResponse.getResponseCode()),
+            saslAuthenticateResponse.getResponseCode());
       } else {
         throw new StreamException(
             "Unexpected response code during authentication: "

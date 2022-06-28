@@ -21,6 +21,7 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.SubscriptionListener;
@@ -160,15 +161,11 @@ class StreamConsumer implements Consumer {
                       LOGGER.debug(
                           "Stored offset is {}, returning the value + 1 to the server", offset);
                       result = OffsetSpecification.offset(offset + 1);
-                    } catch (StreamException e) {
-                      if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-                        LOGGER.debug(
-                            "No stored offset, using initial offset specification: {}",
-                            this.initialOffsetSpecification);
-                        result = initialOffsetSpecification;
-                      } else {
-                        throw e;
-                      }
+                    } catch (NoOffsetException e) {
+                      LOGGER.debug(
+                          "No stored offset, using initial offset specification: {}",
+                          this.initialOffsetSpecification);
+                      result = initialOffsetSpecification;
                     }
                     return result;
                   } else {
@@ -211,15 +208,11 @@ class StreamConsumer implements Consumer {
                       LOGGER.debug(
                           "Stored offset is {}, returning the value + 1 to the server", offset);
                       result = OffsetSpecification.offset(offset + 1);
-                    } catch (StreamException e) {
-                      if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-                        LOGGER.debug(
-                            "No stored offset, using initial offset specification: {}",
-                            this.initialOffsetSpecification);
-                        result = initialOffsetSpecification;
-                      } else {
-                        throw e;
-                      }
+                    } catch (NoOffsetException e) {
+                      LOGGER.debug(
+                          "No stored offset, using initial offset specification: {}",
+                          this.initialOffsetSpecification);
+                      result = initialOffsetSpecification;
                     }
                   }
                   return result;
@@ -487,6 +480,11 @@ class StreamConsumer implements Consumer {
       }
       if (response.isOk()) {
         return response.getOffset();
+      } else if (response.getResponseCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+        throw new NoOffsetException(
+            String.format(
+                "No offset stored for consumer %s on stream %s (%s)",
+                this.name, this.stream, Utils.formatConstant(response.getResponseCode())));
       } else {
         throw new StreamException(
             String.format(

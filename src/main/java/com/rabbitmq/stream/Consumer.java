@@ -39,6 +39,7 @@ public interface Consumer extends AutoCloseable {
    *
    * @return stored offset
    * @since 0.6.0
+   * @throws NoOffsetException if no offset is stored for this name on the stream
    */
   long storedOffset();
 }

@@ -22,13 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.TestUtils.CallableBooleanSupplier;
 import com.rabbitmq.stream.impl.TestUtils.SingleActiveConsumer;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
@@ -407,12 +406,8 @@ public class SacSuperStreamConsumerTest {
                   try {
                     long storedOffset = context.consumer().storedOffset() + 1;
                     offsetSpecification = OffsetSpecification.offset(storedOffset);
-                  } catch (StreamException e) {
-                    if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-                      offsetSpecification = initialOffsetSpecification;
-                    } else {
-                      throw e;
-                    }
+                  } catch (NoOffsetException e) {
+                    offsetSpecification = initialOffsetSpecification;
                   }
                 } else {
                   long lastReceivedOffset = lastReceivedOffsets.get(context.stream());
@@ -563,7 +558,7 @@ public class SacSuperStreamConsumerTest {
   }
 
   @Test
-  void sacCustomOffsetTrackingShouldTakeOverOnRelanbancing() throws Exception {
+  void sacExternalOffsetTrackingShouldTakeOverOnRelanbancing() throws Exception {
     declareSuperStreamTopology(connection, superStream, partitionCount);
     int messageCount = 5_000;
     AtomicInteger messageWaveCount = new AtomicInteger();

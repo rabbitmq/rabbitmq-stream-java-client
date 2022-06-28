@@ -17,7 +17,7 @@ import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import java.time.Duration;
 import java.util.Collection;
@@ -232,13 +232,9 @@ class OffsetTrackingCoordinator {
             this.consumer.store(this.lastProcessedOffset.get());
           }
           result = lastProcessedOffset.get();
-        } catch (StreamException e) {
-          if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+        } catch (NoOffsetException e) {
             this.consumer.store(this.lastProcessedOffset.get());
             result = lastProcessedOffset.get();
-          } else {
-            throw e;
-          }
         }
         this.lastTrackingActivity = clock.time();
         return result;
@@ -279,13 +275,11 @@ class OffsetTrackingCoordinator {
                 LOGGER.debug("Storing {} offset before closing", this.lastProcessedOffset);
                 storageOperation.run();
               }
-            } catch (StreamException e) {
-              if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+            } catch (NoOffsetException e) {
                 LOGGER.debug(
                     "Nothing stored yet, storing {} offset before closing",
                     this.lastProcessedOffset);
                 storageOperation.run();
-              }
             }
           }
         }
@@ -322,13 +316,9 @@ class OffsetTrackingCoordinator {
             this.consumer.store(this.lastRequestedOffset);
             this.lastTrackingActivity = clock.time();
           }
-        } catch (StreamException e) {
-          if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+        } catch (NoOffsetException e) {
             this.consumer.store(this.lastRequestedOffset);
             this.lastTrackingActivity = clock.time();
-          } else {
-            throw e;
-          }
         }
       }
     }

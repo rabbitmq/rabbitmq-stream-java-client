@@ -21,4 +21,8 @@ public class AuthenticationFailureException extends StreamException {
   public AuthenticationFailureException(String message) {
     super(message);
   }
+
+  public AuthenticationFailureException(String message, short errorCode) {
+    super(message, errorCode);
+  }
 }
