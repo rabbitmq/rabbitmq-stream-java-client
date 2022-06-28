@@ -26,8 +26,12 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class MonitoringContext {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(MonitoringContext.class);
 
   private final int monitoringPort;
   private final CompositeMeterRegistry meterRegistry;
@@ -70,14 +74,17 @@ class MonitoringContext {
           new ContextHandlerCollection(contextHandlers.toArray(new ContextHandler[0]));
       server.setHandler(contextHandler);
 
-      server.setStopTimeout(1000);
+      server.setStopTimeout(10000);
       server.start();
     }
   }
 
   void close() throws Exception {
     if (server != null) {
+      LOGGER.debug("Closing Jetty server");
+      long start = System.currentTimeMillis();
       server.stop();
+      LOGGER.debug("Closed Jetty server in {} ms", (System.currentTimeMillis() - start));
     }
   }
 

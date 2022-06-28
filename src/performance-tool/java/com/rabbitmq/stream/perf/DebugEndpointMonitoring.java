@@ -1,4 +1,4 @@
-// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -26,8 +28,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import picocli.CommandLine.Option;
@@ -54,7 +54,6 @@ class DebugEndpointMonitoring implements Monitoring {
                 HttpServletRequest request,
                 HttpServletResponse response)
                 throws IOException {
-
               ThreadInfo[] threadInfos =
                   ManagementFactory.getThreadMXBean().dumpAllThreads(true, true);
               String content = formatter.format(threadInfos);
