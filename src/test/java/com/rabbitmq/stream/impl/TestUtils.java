@@ -267,7 +267,12 @@ public final class TestUtils {
   static void declareSuperStreamTopology(Connection connection, String superStream, String... rks)
       throws Exception {
     try (Channel ch = connection.createChannel()) {
-      ch.exchangeDeclare(superStream, BuiltinExchangeType.DIRECT, true);
+      ch.exchangeDeclare(
+          superStream,
+          BuiltinExchangeType.DIRECT,
+          true,
+          false,
+          Collections.singletonMap("x-super-stream", true));
 
       List<Tuple2<String, Integer>> bindings = new ArrayList<>(rks.length);
       for (int i = 0; i < rks.length; i++) {
