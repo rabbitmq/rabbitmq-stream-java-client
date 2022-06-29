@@ -609,7 +609,12 @@ class Utils {
 
   static void declareSuperStreamExchangeAndBindings(
       Channel channel, String superStream, List<String> streams) throws Exception {
-    channel.exchangeDeclare(superStream, BuiltinExchangeType.DIRECT, true);
+    channel.exchangeDeclare(
+        superStream,
+        BuiltinExchangeType.DIRECT,
+        true,
+        false,
+        Collections.singletonMap("x-super-stream", true));
 
     for (int i = 0; i < streams.size(); i++) {
       channel.queueBind(
