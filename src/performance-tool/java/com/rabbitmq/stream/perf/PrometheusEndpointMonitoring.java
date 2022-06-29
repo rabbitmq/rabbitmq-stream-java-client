@@ -1,4 +1,4 @@
-// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -15,9 +15,9 @@ package com.rabbitmq.stream.perf;
 
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import picocli.CommandLine.Option;
@@ -47,7 +47,6 @@ class PrometheusEndpointMonitoring implements Monitoring {
                 HttpServletRequest request,
                 HttpServletResponse response)
                 throws IOException {
-
               String scraped = registry.scrape();
 
               response.setStatus(HttpServletResponse.SC_OK);
