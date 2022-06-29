@@ -275,10 +275,9 @@ class OffsetTrackingCoordinator {
                 storageOperation.run();
               }
             } catch (NoOffsetException e) {
-                LOGGER.debug(
-                    "Nothing stored yet, storing {} offset before closing",
-                    this.lastProcessedOffset);
-                storageOperation.run();
+              LOGGER.debug(
+                  "Nothing stored yet, storing {} offset before closing", this.lastProcessedOffset);
+              storageOperation.run();
             }
           }
         }
@@ -316,8 +315,8 @@ class OffsetTrackingCoordinator {
             this.lastTrackingActivity = clock.time();
           }
         } catch (NoOffsetException e) {
-            this.consumer.store(this.lastRequestedOffset);
-            this.lastTrackingActivity = clock.time();
+          this.consumer.store(this.lastRequestedOffset);
+          this.lastTrackingActivity = clock.time();
         }
       }
     }

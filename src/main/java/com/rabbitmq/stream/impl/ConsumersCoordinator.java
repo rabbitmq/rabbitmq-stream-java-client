@@ -468,6 +468,7 @@ class ConsumersCoordinator {
           (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
+
             if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
               subscriptionTracker.offset = offset;
               subscriptionTracker.hasReceivedSomething = true;

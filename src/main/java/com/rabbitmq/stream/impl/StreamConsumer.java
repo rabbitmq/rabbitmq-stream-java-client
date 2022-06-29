@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
+
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
