@@ -368,7 +368,7 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
-  void subscribeShouldSubscribeToStreamAndDispatchesMessage_UnsubscribeShouldUnsubscribe() {
+  void subscribeShouldSubscribeToStreamAndDispatchMessage_UnsubscribeShouldUnsubscribe() {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
@@ -410,7 +410,7 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
-  void subscribeShouldSubscribeToStreamAndDispatchesMessageWithManySubscriptions() {
+  void subscribeShouldSubscribeToStreamAndDispatchMessageWithManySubscriptions() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
 
     when(clientFactory.client(any())).thenReturn(client);
