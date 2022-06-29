@@ -469,7 +469,7 @@ class ConsumersCoordinator {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
 
-            if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
+            if (subscriptionTracker != null) {
               subscriptionTracker.offset = offset;
               subscriptionTracker.hasReceivedSomething = true;
               subscriptionTracker.messageHandler.handle(

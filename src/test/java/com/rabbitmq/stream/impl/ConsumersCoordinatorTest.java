@@ -397,8 +397,6 @@ public class ConsumersCoordinatorTest {
             anyMap()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
 
-    when(consumer.isOpen()).thenReturn(true);
-
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     AtomicInteger trackingClosingCallbackCalls = new AtomicInteger();
     Runnable closingRunnable =
@@ -444,8 +442,6 @@ public class ConsumersCoordinatorTest {
             anyInt(),
             anyMap()))
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
-
-    when(consumer.isOpen()).thenReturn(true);
 
     Map<Byte, Integer> messageHandlerCalls = new ConcurrentHashMap<>();
     List<Runnable> closingRunnables = new ArrayList<>();
