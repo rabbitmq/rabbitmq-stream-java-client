@@ -134,11 +134,15 @@ public class RoutePartitionsTest {
   void partitionsReturnsCorrectOrder() throws Exception {
     String[] partitionNames = {"z", "y", "x"};
     declareSuperStreamTopology(connection, superStream, partitionNames);
-    Client client = cf.get();
-    List<String> streams = client.partitions(superStream);
-    assertThat(streams)
-        .hasSize(partitions)
-        .containsSequence(
-            Arrays.stream(partitionNames).map(p -> superStream + "-" + p).toArray(String[]::new));
+    try {
+      Client client = cf.get();
+      List<String> streams = client.partitions(superStream);
+      assertThat(streams)
+          .hasSize(partitions)
+          .containsSequence(
+              Arrays.stream(partitionNames).map(p -> superStream + "-" + p).toArray(String[]::new));
+    } finally {
+      deleteSuperStreamTopology(connection, superStream, partitionNames);
+    }
   }
 }
