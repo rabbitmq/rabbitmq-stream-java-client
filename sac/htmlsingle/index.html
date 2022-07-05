@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(b155ac1)</span>
+<br><span id="revremark">(a1727fd)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -559,7 +559,6 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </li>
 <li><a href="#dependencies">Dependencies</a>
 <ul class="sectlevel3">
-<li><a href="#for-single-active-consumer-branch-2">For Single Active Consumer Branch</a></li>
 <li><a href="#maven">Maven</a></li>
 <li><a href="#gradle">Gradle</a></li>
 </ul>
@@ -644,7 +643,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <ul class="sectlevel2">
 <li><a href="#using-the-performance-tool">Using the Performance Tool</a>
 <ul class="sectlevel3">
-<li><a href="#for-single-active-consumer-branch-3">For Single Active Consumer Branch</a></li>
+<li><a href="#for-single-active-consumer-branch-2">For Single Active Consumer Branch</a></li>
 <li><a href="#with-docker-2">With Docker</a>
 <ul class="sectlevel4">
 <li><a href="#with-docker-host-network-driver-2">With Docker Host Network Driver</a></li>
@@ -1040,67 +1039,6 @@ this is perfect for experimenting locally.</p>
 <p>Use your favorite build management tool to add the client dependencies to your project.</p>
 </div>
 <div class="sect3">
-<h4 id="for-single-active-consumer-branch-2"><a class="anchor" href="#for-single-active-consumer-branch-2"></a>For Single Active Consumer Branch</h4>
-<div class="paragraph">
-<p>Add the appropriate repository:</p>
-</div>
-<div class="listingblock">
-<div class="title">Single Active Consumer repository declaration for Maven</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="xml"><span class="tag">&lt;repositories&gt;</span>
-
-  <span class="tag">&lt;repository&gt;</span>
-    <span class="tag">&lt;id&gt;</span>rabbitmq-maven-snapshots<span class="tag">&lt;/id&gt;</span>
-    <span class="tag">&lt;url&gt;</span>https://dl.cloudsmith.io/public/rabbitmq/maven-snapshots/maven/<span class="tag">&lt;/url&gt;</span>
-    <span class="tag">&lt;snapshots&gt;</span>
-      <span class="tag">&lt;enabled&gt;</span>true<span class="tag">&lt;/enabled&gt;</span>
-      <span class="tag">&lt;updatePolicy&gt;</span>always<span class="tag">&lt;/updatePolicy&gt;</span>
-    <span class="tag">&lt;/snapshots&gt;</span>
-    <span class="tag">&lt;releases&gt;</span><span class="tag">&lt;enabled&gt;</span>false<span class="tag">&lt;/enabled&gt;</span><span class="tag">&lt;/releases&gt;</span>
-  <span class="tag">&lt;/repository&gt;</span>
-
-<span class="tag">&lt;/repositories&gt;</span></code></pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Single Active Consumer repository declaration for Gradle:</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="groovy">repositories {
-  maven { url <span class="string"><span class="delimiter">'</span><span class="content">https://dl.cloudsmith.io/public/rabbitmq/maven-snapshots/maven/</span><span class="delimiter">'</span></span> }
-  mavenCentral()
-}</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Set up the dependency:</p>
-</div>
-<div class="listingblock">
-<div class="title">pom.xml</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="xml"><span class="tag">&lt;dependencies&gt;</span>
-
-  <span class="tag">&lt;dependency&gt;</span>
-    <span class="tag">&lt;groupId&gt;</span>com.rabbitmq<span class="tag">&lt;/groupId&gt;</span>
-    <span class="tag">&lt;artifactId&gt;</span>stream-client-sac<span class="tag">&lt;/artifactId&gt;</span>
-    <span class="tag">&lt;version&gt;</span>0.6.0-SNAPSHOT<span class="tag">&lt;/version&gt;</span>
-  <span class="tag">&lt;/dependency&gt;</span>
-
-<span class="tag">&lt;/dependencies&gt;</span></code></pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">build.gradle</div>
-<div class="content">
-<pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">com.rabbitmq:stream-client-sac:0.6.0-SNAPSHOT</span><span class="delimiter">&quot;</span></span>
-}</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>(TODO: remove this section when merging)</p>
-</div>
-</div>
-<div class="sect3">
 <h4 id="maven"><a class="anchor" href="#maven"></a>Maven</h4>
 <div class="listingblock">
 <div class="title">pom.xml</div>
@@ -1109,7 +1047,7 @@ this is perfect for experimenting locally.</p>
 
   <span class="tag">&lt;dependency&gt;</span>
     <span class="tag">&lt;groupId&gt;</span>com.rabbitmq<span class="tag">&lt;/groupId&gt;</span>
-    <span class="tag">&lt;artifactId&gt;</span>stream-client<span class="tag">&lt;/artifactId&gt;</span>
+    <span class="tag">&lt;artifactId&gt;</span>stream-client-sac<span class="tag">&lt;/artifactId&gt;</span>
     <span class="tag">&lt;version&gt;</span>0.6.0-SNAPSHOT<span class="tag">&lt;/version&gt;</span>
   <span class="tag">&lt;/dependency&gt;</span>
 
@@ -1126,7 +1064,7 @@ this is perfect for experimenting locally.</p>
 <div class="title">build.gradle</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">com.rabbitmq:stream-client:0.6.0-SNAPSHOT</span><span class="delimiter">&quot;</span></span>
+  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">com.rabbitmq:stream-client-sac:0.6.0-SNAPSHOT</span><span class="delimiter">&quot;</span></span>
 }</code></pre>
 </div>
 </div>
@@ -4226,7 +4164,7 @@ It can be built separately as well.</p>
 <div class="sect2">
 <h3 id="using-the-performance-tool"><a class="anchor" href="#using-the-performance-tool"></a>Using the Performance Tool</h3>
 <div class="sect3">
-<h4 id="for-single-active-consumer-branch-3"><a class="anchor" href="#for-single-active-consumer-branch-3"></a>For Single Active Consumer Branch</h4>
+<h4 id="for-single-active-consumer-branch-2"><a class="anchor" href="#for-single-active-consumer-branch-2"></a>For Single Active Consumer Branch</h4>
 <div class="paragraph">
 <p>Use the <code>pivotalrabbitmq/stream-perf-test:sac</code> Docker image.</p>
 </div>
@@ -5087,7 +5025,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-07-05 07:26:22 UTC
+Last updated 2022-07-05 07:39:22 UTC
 </div>
 </div>
 </body>
