@@ -101,14 +101,14 @@ Use your favorite build management tool to add the client dependencies to your p
 
   <dependency>
     <groupId>com.rabbitmq</groupId>
-    <artifactId>stream-client</artifactId>
+    <artifactId>{project-artifact-id}</artifactId>
     <version>{project-version}</version>
   </dependency>
 
 </dependencies>
 ----
 
-Milestones and snapshots require to declare the <<milestones-and-snapshots,appropriate repository>>.
+Snapshots require to declare the <<snapshots,appropriate repository>>.
 
 ==== Gradle
 
@@ -116,46 +116,19 @@ Milestones and snapshots require to declare the <<milestones-and-snapshots,appro
 [source,groovy,subs="attributes,specialcharacters"]
 ----
 dependencies {
-  compile "com.rabbitmq:stream-client:{project-version}"
+  compile "com.rabbitmq:{project-artifact-id}:{project-version}"
 }
 ----
 
-Milestones and snapshots require to declare the <<milestones-and-snapshots,appropriate repository>>.
+Snapshots require to declare the <<snapshots,appropriate repository>>.
 
-[[milestones-and-snapshots]]
-=== Milestones and Snapshots
+[[snapshots]]
+=== Snapshots
 
-Releases are available from Maven Central, which does not require specific declaration. Milestones and snapshots are available from repositories which must be declared in the dependency management configuration.
+Releases are available from Maven Central, which does not require specific declaration.
+Snapshots are available from a repositoriy which must be declared in the dependency management configuration.
 
-For milestones, with Maven:
-
-.Milestone repository declaration for Maven
-[source,xml,subs="attributes,specialcharacters"]
-----
-<repositories>
-
-  <repository>
-    <id>packagecloud-rabbitmq-maven-milestones</id>
-    <url>https://packagecloud.io/rabbitmq/maven-milestones/maven2</url>
-    <releases><enabled>true</enabled></releases>
-    <snapshots><enabled>false</enabled></snapshots>
-  </repository>
-
-</repositories>
-----
-
-For milestones, with Gradle:
-
-.Milestone repository declaration for Gradle:
-[source,groovy,subs="attributes,specialcharacters"]
-----
-repositories {
-  maven { url "https://packagecloud.io/rabbitmq/maven-milestones/maven2" }
-  mavenCentral()
-}
-----
-
-For snapshots, with Maven:
+With Maven:
 
 .Snapshot repository declaration for Maven
 [source,xml,subs="attributes,specialcharacters"]
@@ -172,7 +145,7 @@ For snapshots, with Maven:
 </repositories>
 ----
 
-For snapshots, with Gradle:
+With Gradle:
 
 .Snapshot repository declaration for Gradle:
 [source,groovy,subs="attributes,specialcharacters"]

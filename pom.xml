@@ -408,6 +408,7 @@
             <require>asciidoctor-diagram</require>
           </requires>
           <attributes>
+            <project-artifact-id>${project.artifactId}</project-artifact-id>
             <project-version>${project.version}</project-version>
             <protonj-version>${proton-j.version}</protonj-version>
             <build-number>${buildNumber}</build-number>
