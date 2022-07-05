@@ -723,11 +723,10 @@
         <gpg.skip>false</gpg.skip>
       </properties>
       <distributionManagement>
-        <repository>
-          <id>github</id>
-          <name>GitHub Stream Java Client Apache Maven Packages</name>
-          <url>https://maven.pkg.github.com/rabbitmq/rabbitmq-stream-java-client</url>
-        </repository>
+        <snapshotRepository>
+          <id>ossrh</id>
+          <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
       </distributionManagement>
     </profile>
 
