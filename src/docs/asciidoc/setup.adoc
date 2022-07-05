@@ -100,63 +100,6 @@ Refer to the https://rabbitmq.com/stream.html[stream plugin documentation] for m
 
 Use your favorite build management tool to add the client dependencies to your project.
 
-==== For Single Active Consumer Branch
-
-Add the appropriate repository:
-
-.Single Active Consumer repository declaration for Maven
-[source,xml,subs="attributes,specialcharacters"]
-----
-<repositories>
-
-  <repository>
-    <id>rabbitmq-maven-snapshots</id>
-    <url>https://dl.cloudsmith.io/public/rabbitmq/maven-snapshots/maven/</url>
-    <snapshots>
-      <enabled>true</enabled>
-      <updatePolicy>always</updatePolicy>
-    </snapshots>
-    <releases><enabled>false</enabled></releases>
-  </repository>
-
-</repositories>
-----
-
-.Single Active Consumer repository declaration for Gradle:
-[source,groovy,subs="attributes,specialcharacters"]
-----
-repositories {
-  maven { url 'https://dl.cloudsmith.io/public/rabbitmq/maven-snapshots/maven/' }
-  mavenCentral()
-}
-----
-
-Set up the dependency:
-
-.pom.xml
-[source,xml,subs="attributes,specialcharacters"]
-----
-<dependencies>
-
-  <dependency>
-    <groupId>com.rabbitmq</groupId>
-    <artifactId>stream-client-sac</artifactId>
-    <version>{project-version}</version>
-  </dependency>
-
-</dependencies>
-----
-
-.build.gradle
-[source,groovy,subs="attributes,specialcharacters"]
-----
-dependencies {
-  compile "com.rabbitmq:stream-client-sac:{project-version}"
-}
-----
-
-(TODO: remove this section when merging)
-
 ==== Maven
 
 .pom.xml
