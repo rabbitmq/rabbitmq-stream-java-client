@@ -110,9 +110,12 @@ Add the appropriate repository:
 <repositories>
 
   <repository>
-    <id>github</id>
-    <url>https://maven.pkg.github.com/rabbitmq/rabbitmq-stream-java-client</url>
-    <snapshots><enabled>true</enabled></snapshots>
+    <id>rabbitmq-maven-snapshots</id>
+    <url>https://dl.cloudsmith.io/public/rabbitmq/maven-snapshots/maven/</url>
+    <snapshots>
+      <enabled>true</enabled>
+      <updatePolicy>always</updatePolicy>
+    </snapshots>
     <releases><enabled>false</enabled></releases>
   </repository>
 
@@ -123,7 +126,7 @@ Add the appropriate repository:
 [source,groovy,subs="attributes,specialcharacters"]
 ----
 repositories {
-  maven { url 'https://maven.pkg.github.com/rabbitmq/rabbitmq-stream-java-client' }
+  maven { url 'https://dl.cloudsmith.io/public/rabbitmq/maven-snapshots/maven/' }
   mavenCentral()
 }
 ----
