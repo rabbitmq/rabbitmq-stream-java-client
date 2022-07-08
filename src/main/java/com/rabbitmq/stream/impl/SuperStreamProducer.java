@@ -101,7 +101,8 @@ class SuperStreamProducer implements Producer {
             producers.computeIfAbsent(
                 stream,
                 stream1 -> {
-                  Producer p = producerBuilder.duplicate().stream(stream1).build();
+                  Producer p =
+                      producerBuilder.duplicate().superStream(null).stream(stream1).build();
                   return p;
                 });
         producer.send(message, confirmationHandler);

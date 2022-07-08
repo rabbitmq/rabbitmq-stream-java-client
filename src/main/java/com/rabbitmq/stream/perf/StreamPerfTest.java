@@ -735,12 +735,15 @@ public class StreamPerfTest implements Callable<Integer> {
 
                     java.util.function.Consumer<MessageBuilder> messageBuilderConsumer;
                     if (this.superStreams) {
-                      producerBuilder.routing(msg -> msg.getProperties().getMessageIdAsString());
+                      producerBuilder
+                          .superStream(stream)
+                          .routing(msg -> msg.getProperties().getMessageIdAsString());
                       AtomicLong messageIdSequence = new AtomicLong(0);
                       messageBuilderConsumer =
                           mg -> mg.properties().messageId(messageIdSequence.getAndIncrement());
                     } else {
                       messageBuilderConsumer = mg -> {};
+                      producerBuilder.stream(stream);
                     }
 
                     Producer producer =
@@ -750,7 +753,6 @@ public class StreamPerfTest implements Callable<Integer> {
                             .compression(
                                 this.compression == Compression.NONE ? null : this.compression)
                             .maxUnconfirmedMessages(this.confirms)
-                            .stream(stream)
                             .build();
 
                     AtomicLong messageCount = new AtomicLong(0);

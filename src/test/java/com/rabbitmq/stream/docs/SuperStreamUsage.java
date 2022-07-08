@@ -30,7 +30,7 @@ public class SuperStreamUsage {
         Environment environment = Environment.builder().build();
         // tag::producer-simple[]
         Producer producer = environment.producerBuilder()
-                .stream("invoices")  // <1>
+                .superStream("invoices")  // <1>
                 .routing(message -> message.getProperties().getMessageIdAsString()) // <2>
                 .producerBuilder()
                 .build();  // <3>
@@ -43,7 +43,7 @@ public class SuperStreamUsage {
         Environment environment = Environment.builder().build();
         // tag::producer-custom-hash-function[]
         Producer producer = environment.producerBuilder()
-            .stream("invoices")
+            .superStream("invoices")
             .routing(message -> message.getProperties().getMessageIdAsString())
             .hash(rk -> rk.hashCode())  // <1>
             .producerBuilder()
@@ -55,7 +55,7 @@ public class SuperStreamUsage {
         Environment environment = Environment.builder().build();
         // tag::producer-key-routing-strategy[]
         Producer producer = environment.producerBuilder()
-            .stream("invoices")
+            .superStream("invoices")
             .routing(msg -> msg.getApplicationProperties().get("region").toString())  // <1>
             .key()  // <2>
             .producerBuilder()
@@ -75,7 +75,7 @@ public class SuperStreamUsage {
            return Collections.singletonList(stream);
        };
        Producer producer = environment.producerBuilder()
-           .stream("invoices")
+           .superStream("invoices")
            .routing(null)  // <1>
            .strategy(routingStrategy)  // <2>
            .producerBuilder()

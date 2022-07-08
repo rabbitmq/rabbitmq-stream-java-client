@@ -40,6 +40,17 @@ public interface ProducerBuilder {
   ProducerBuilder stream(String stream);
 
   /**
+   * The super stream to send messages to.
+   *
+   * <p>This is an experimental API, subject to change.
+   *
+   * @param superStream
+   * @return this builder instance
+   * @see #routing(Function)
+   */
+  ProducerBuilder superStream(String superStream);
+
+  /**
    * The number of messages to put in a sub-entry of a publish frame.
    *
    * <p>The default is 1 (no sub-entry batching).

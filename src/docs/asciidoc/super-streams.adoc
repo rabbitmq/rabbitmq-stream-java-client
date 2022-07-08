@@ -57,7 +57,7 @@ When the topology of a super stream like the one described above has been set, c
 --------
 include::{test-examples}/SuperStreamUsage.java[tag=producer-simple]
 --------
-<1> Use the super stream name
+<1> Set the super stream name
 <2> Provide the logic to get the routing key from a message
 <3> Create the producer instance
 <4> Close the producer when it's no longer necessary

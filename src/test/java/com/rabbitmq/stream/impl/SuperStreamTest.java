@@ -82,7 +82,9 @@ public class SuperStreamTest {
     int messageCount = 10_000 * partitions;
     declareSuperStreamTopology(connection, superStream, partitions);
     Producer producer =
-        environment.producerBuilder().stream(superStream)
+        environment
+            .producerBuilder()
+            .superStream(superStream)
             .routing(message -> message.getProperties().getMessageIdAsString())
             .producerBuilder()
             .build();
@@ -125,7 +127,9 @@ public class SuperStreamTest {
     routingKeys = new String[] {"amer", "emea", "apac"};
     declareSuperStreamTopology(connection, superStream, routingKeys);
     Producer producer =
-        environment.producerBuilder().stream(superStream)
+        environment
+            .producerBuilder()
+            .superStream(superStream)
             .routing(message -> message.getApplicationProperties().get("region").toString())
             .key()
             .producerBuilder()
@@ -208,7 +212,9 @@ public class SuperStreamTest {
     assertThat(latchAssert(consumersReadyLatch)).completes();
 
     Producer producer =
-        environment.producerBuilder().stream(superStream)
+        environment
+            .producerBuilder()
+            .superStream(superStream)
             .routing(
                 message -> new String(message.getProperties().getUserId(), StandardCharsets.UTF_8))
             .producerBuilder()
