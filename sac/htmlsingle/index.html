@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.6.0-SNAPSHOT</span>
-<br><span id="revremark">(d93ef42)</span>
+<br><span id="revremark">(bbc26f4)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -3518,7 +3518,7 @@ Some logic must also be provided to extract routing information from messages.</
 <div class="title">Creating a Producer for a Super Stream</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
-        .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
+        .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="1"></i><b>(1)</b>
         .routing(message -&gt; message.getProperties().getMessageIdAsString()) <i class="conum" data-value="2"></i><b>(2)</b>
         .producerBuilder()
         .build();  <i class="conum" data-value="3"></i><b>(3)</b>
@@ -3530,7 +3530,7 @@ producer.close();  <i class="conum" data-value="4"></i><b>(4)</b></code></pre>
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Use the super stream name</td>
+<td>Set the super stream name</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="2"></i><b>2</b></td>
@@ -3560,7 +3560,7 @@ This hash function provides good uniformity, performance, and portability, makin
 <div class="title">Specifying a custom hash function</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
-    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+    .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
     .routing(message -&gt; message.getProperties().getMessageIdAsString())
     .hash(rk -&gt; rk.hashCode())  <i class="conum" data-value="1"></i><b>(1)</b>
     .producerBuilder()
@@ -3600,7 +3600,7 @@ The stream Java client provides another way to resolve streams, based on the rou
 <div class="title">Enabling the "key" routing strategy</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
-    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+    .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
     .routing(msg -&gt; msg.getApplicationProperties().get(<span class="string"><span class="delimiter">&quot;</span><span class="content">region</span><span class="delimiter">&quot;</span></span>).toString())  <i class="conum" data-value="1"></i><b>(1)</b>
     .key()  <i class="conum" data-value="2"></i><b>(2)</b>
     .producerBuilder()
@@ -3671,7 +3671,7 @@ RoutingStrategy routingStrategy = (message, metadata) -&gt; {
     <span class="keyword">return</span> <span class="predefined-type">Collections</span>.singletonList(stream);
 };
 Producer producer = environment.producerBuilder()
-    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+    .superStream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
     .routing(<span class="predefined-constant">null</span>)  <i class="conum" data-value="1"></i><b>(1)</b>
     .strategy(routingStrategy)  <i class="conum" data-value="2"></i><b>(2)</b>
     .producerBuilder()
@@ -4996,7 +4996,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.6.0-SNAPSHOT<br>
-Last updated 2022-07-05 08:08:51 UTC
+Last updated 2022-07-08 13:12:14 UTC
 </div>
 </div>
 </body>
