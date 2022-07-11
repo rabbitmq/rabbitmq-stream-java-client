@@ -13,9 +13,10 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.management.LockInfo;
@@ -23,13 +24,12 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MonitorInfo;
 import java.lang.management.RuntimeMXBean;
 import java.lang.management.ThreadInfo;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.eclipse.jetty.server.Request;
-import org.eclipse.jetty.server.handler.AbstractHandler;
 import picocli.CommandLine.Option;
 
 class DebugEndpointMonitoring implements Monitoring {
@@ -46,25 +46,17 @@ class DebugEndpointMonitoring implements Monitoring {
       PlainTextThreadDumpFormatter formatter = new PlainTextThreadDumpFormatter();
       context.addHttpEndpoint(
           "threaddump",
-          new AbstractHandler() {
+          new HttpHandler() {
             @Override
-            public void handle(
-                String target,
-                Request baseRequest,
-                HttpServletRequest request,
-                HttpServletResponse response)
-                throws IOException {
+            public void handle(HttpExchange exchange) throws IOException {
               ThreadInfo[] threadInfos =
                   ManagementFactory.getThreadMXBean().dumpAllThreads(true, true);
-              String content = formatter.format(threadInfos);
-
-              response.setStatus(HttpServletResponse.SC_OK);
-              response.setContentLength(content.length());
-              response.setContentType("text/plain");
-
-              response.getWriter().print(content);
-
-              baseRequest.setHandled(true);
+              exchange.getResponseHeaders().set("Content-Type", "text/plain");
+              byte[] content = formatter.format(threadInfos).getBytes(StandardCharsets.UTF_8);
+              exchange.sendResponseHeaders(200, content.length);
+              try (OutputStream out = exchange.getResponseBody()) {
+                out.write(content);
+              }
             }
           });
     }

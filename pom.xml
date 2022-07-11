@@ -57,7 +57,6 @@
     <micrometer.version>1.9.1</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.6.3</picocli.version>
-    <jetty.version>11.0.11</jetty.version>
     <guava.version>31.1-jre</guava.version>
     <commons-compress.version>1.21</commons-compress.version>
     <zstd-jni.version>1.5.2-3</zstd-jni.version>
@@ -187,12 +186,6 @@
       <optional>true</optional>
     </dependency>
 
-    <dependency>
-      <groupId>org.eclipse.jetty</groupId>
-      <artifactId>jetty-server</artifactId>
-      <version>${jetty.version}</version>
-      <optional>true</optional>
-    </dependency>
     <!-- end of dependencies for performance tool -->
 
     <dependency>
@@ -581,48 +574,6 @@
   <profiles>
 
     <profile>
-      <id>perf</id>
-      <activation>
-        <jdk>[11,)</jdk>
-      </activation>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>build-helper-maven-plugin</artifactId>
-            <version>3.3.0</version>
-            <executions>
-              <execution>
-                <id>add-source</id>
-                <phase>generate-sources</phase>
-                <goals>
-                  <goal>add-source</goal>
-                </goals>
-                <configuration>
-                  <sources>
-                    <source>src/performance-tool/java</source>
-                  </sources>
-                </configuration>
-              </execution>
-              <execution>
-                <id>add-test-source</id>
-                <phase>generate-test-sources</phase>
-                <goals>
-                  <goal>add-test-source</goal>
-                </goals>
-                <configuration>
-                  <sources>
-                    <source>src/performance-tool/test</source>
-                  </sources>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-
-    <profile>
       <id>performance-tool</id>
       <dependencies>
 
@@ -661,12 +612,6 @@
           <groupId>com.google.guava</groupId>
           <artifactId>guava</artifactId>
           <version>${guava.version}</version>
-        </dependency>
-
-        <dependency>
-          <groupId>org.eclipse.jetty</groupId>
-          <artifactId>jetty-server</artifactId>
-          <version>${jetty.version}</version>
         </dependency>
 
       </dependencies>

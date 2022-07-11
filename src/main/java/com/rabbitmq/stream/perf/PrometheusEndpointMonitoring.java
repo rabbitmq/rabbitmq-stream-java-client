@@ -13,13 +13,13 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import org.eclipse.jetty.server.Request;
-import org.eclipse.jetty.server.handler.AbstractHandler;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import picocli.CommandLine.Option;
 
 class PrometheusEndpointMonitoring implements Monitoring {
@@ -39,23 +39,15 @@ class PrometheusEndpointMonitoring implements Monitoring {
       context.meterRegistry().add(registry);
       context.addHttpEndpoint(
           "metrics",
-          new AbstractHandler() {
+          new HttpHandler() {
             @Override
-            public void handle(
-                String target,
-                Request baseRequest,
-                HttpServletRequest request,
-                HttpServletResponse response)
-                throws IOException {
-              String scraped = registry.scrape();
-
-              response.setStatus(HttpServletResponse.SC_OK);
-              response.setContentLength(scraped.length());
-              response.setContentType("text/plain");
-
-              response.getWriter().print(scraped);
-
-              baseRequest.setHandled(true);
+            public void handle(HttpExchange exchange) throws IOException {
+              exchange.getResponseHeaders().set("Content-Type", "text/plain");
+              byte[] content = registry.scrape().getBytes(StandardCharsets.UTF_8);
+              exchange.sendResponseHeaders(200, content.length);
+              try (OutputStream out = exchange.getResponseBody()) {
+                out.write(content);
+              }
             }
           });
     }

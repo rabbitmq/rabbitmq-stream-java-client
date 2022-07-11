@@ -1,7 +1,5 @@
 == The Performance Tool
 
-NOTE: The performance tool requires *Java 11 or more*.
-
 The library contains also a performance tool to test the RabbitMQ Stream plugin.
 It is usable as an uber JAR
 https://github.com/rabbitmq/rabbitmq-stream-java-client/releases[downloadable from GitHub Release] or as a https://hub.docker.com/r/pivotalrabbitmq/stream-perf-test[Docker image].
