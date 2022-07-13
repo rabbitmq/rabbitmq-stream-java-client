@@ -15,6 +15,17 @@ Consuming applications can use super streams and <<api.adoc#single-active-consum
 The 2 features combined make sure only one consumer instance consumes from an individual stream at a time.
 In this configuration, super streams provide scalability and single active consumer provides the guarantee that messages of an individual stream are processed in order.
 
+[WARNING]
+.Super streams do not deprecate streams
+====
+Super streams are a https://en.wikipedia.org/wiki/Partition_(database)[partitioning] solution.
+They are not meant to replace individual streams, they sit on top of them to handle some use cases in a better way.
+If the stream data is likely to be large – hundreds of gigabytes or even terabytes, size remains relative – and even presents an obvious partition key (e.g. country), a super stream can be appropriate.
+It can help to cope with the data size and to take advantage of data locality for some processing use cases.
+Remember that partitioning always comes with complexity though, even if the implementation of super streams strives to make it as transparent as possible for the application developer.
+====
+
+
 ===== Topology
 
 A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
