@@ -13,6 +13,12 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import com.rabbitmq.client.BuiltinExchangeType;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.SocketConfigurator;
+import com.rabbitmq.client.SocketConfigurators;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
@@ -21,6 +27,8 @@ import com.sun.management.OperatingSystemMXBean;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.URI;
+import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.text.CharacterIterator;
 import java.text.StringCharacterIterator;
@@ -47,8 +55,13 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.net.ssl.KeyManager;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SNIServerName;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -592,5 +605,83 @@ class Utils {
     public String apply(String stream, Integer index) {
       return String.format(pattern, stream, index);
     }
+  }
+
+  static void declareSuperStreamExchangeAndBindings(
+      Channel channel, String superStream, List<String> streams) throws Exception {
+    channel.exchangeDeclare(superStream, BuiltinExchangeType.DIRECT, true);
+
+    for (int i = 0; i < streams.size(); i++) {
+      channel.queueBind(
+          streams.get(i),
+          superStream,
+          String.valueOf(i),
+          Collections.singletonMap("x-stream-partition-order", i));
+    }
+  }
+
+  static void deleteSuperStreamExchange(Channel channel, String superStream) throws Exception {
+    channel.exchangeDelete(superStream);
+  }
+
+  static List<String> superStreamPartitions(String superStream, int partitionCount) {
+    int digits = String.valueOf(partitionCount - 1).length();
+    String format = superStream + "-%0" + digits + "d";
+    return IntStream.range(0, partitionCount)
+        .mapToObj(i -> String.format(format, i))
+        .collect(Collectors.toList());
+  }
+
+  static Connection amqpConnection(
+      String amqpUri, List<String> streamUris, boolean isTls, List<SNIServerName> sniServerNames)
+      throws Exception {
+    ConnectionFactory connectionFactory = new ConnectionFactory();
+    if (amqpUri == null || amqpUri.trim().isEmpty()) {
+      String streamUriString = streamUris.get(0);
+      if (isTls) {
+        streamUriString = streamUriString.replaceFirst("rabbitmq-stream\\+tls", "amqps");
+      } else {
+        streamUriString = streamUriString.replaceFirst("rabbitmq-stream", "amqp");
+      }
+      URI streamUri = new URI(streamUriString);
+      int streamPort = streamUri.getPort();
+      if (streamPort != -1) {
+        int defaultAmqpPort =
+            isTls
+                ? ConnectionFactory.DEFAULT_AMQP_OVER_SSL_PORT
+                : ConnectionFactory.DEFAULT_AMQP_PORT;
+        streamUriString = streamUriString.replaceFirst(":" + streamPort, ":" + defaultAmqpPort);
+      }
+      connectionFactory.setUri(streamUriString);
+    } else {
+      connectionFactory.setUri(amqpUri);
+    }
+    if (isTls) {
+      SSLContext sslContext = SSLContext.getInstance("TLS");
+      sslContext.init(
+          new KeyManager[] {},
+          new TrustManager[] {TRUST_EVERYTHING_TRUST_MANAGER},
+          new SecureRandom());
+      connectionFactory.useSslProtocol(sslContext);
+      if (!sniServerNames.isEmpty()) {
+        SocketConfigurator socketConfigurator =
+            socket -> {
+              if (socket instanceof SSLSocket) {
+                SSLSocket sslSocket = (SSLSocket) socket;
+                SSLParameters sslParameters =
+                    sslSocket.getSSLParameters() == null
+                        ? new SSLParameters()
+                        : sslSocket.getSSLParameters();
+                sslParameters.setServerNames(sniServerNames);
+                sslSocket.setSSLParameters(sslParameters);
+              } else {
+                LOGGER.warn("SNI parameter set on a non-TLS connection");
+              }
+            };
+        connectionFactory.setSocketConfigurator(
+            SocketConfigurators.defaultConfigurator().andThen(socketConfigurator));
+      }
+    }
+    return connectionFactory.newConnection("stream-perf-test-amqp-connection");
   }
 }

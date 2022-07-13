@@ -484,7 +484,7 @@ public final class TestUtils {
     void accept(int index, T t) throws Exception;
   }
 
-  interface CallableConsumer<T> {
+  public interface CallableConsumer<T> {
 
     void accept(T t) throws Exception;
   }
