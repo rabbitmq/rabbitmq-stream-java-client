@@ -54,7 +54,7 @@
     <netty.version>4.1.79.Final</netty.version>
     <proton-j.version>0.33.10</proton-j.version>
     <metrics.version>4.2.10</metrics.version>
-    <micrometer.version>1.9.1</micrometer.version>
+    <micrometer.version>1.9.2</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.6.3</picocli.version>
     <guava.version>31.1-jre</guava.version>
