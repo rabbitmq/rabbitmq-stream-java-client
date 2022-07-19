@@ -39,15 +39,12 @@ class PrometheusEndpointMonitoring implements Monitoring {
       context.meterRegistry().add(registry);
       context.addHttpEndpoint(
           "metrics",
-          new HttpHandler() {
-            @Override
-            public void handle(HttpExchange exchange) throws IOException {
-              exchange.getResponseHeaders().set("Content-Type", "text/plain");
-              byte[] content = registry.scrape().getBytes(StandardCharsets.UTF_8);
-              exchange.sendResponseHeaders(200, content.length);
-              try (OutputStream out = exchange.getResponseBody()) {
-                out.write(content);
-              }
+          exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "text/plain");
+            byte[] content = registry.scrape().getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, content.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+              out.write(content);
             }
           });
     }

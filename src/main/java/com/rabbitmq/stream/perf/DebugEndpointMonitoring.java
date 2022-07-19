@@ -46,17 +46,14 @@ class DebugEndpointMonitoring implements Monitoring {
       PlainTextThreadDumpFormatter formatter = new PlainTextThreadDumpFormatter();
       context.addHttpEndpoint(
           "threaddump",
-          new HttpHandler() {
-            @Override
-            public void handle(HttpExchange exchange) throws IOException {
-              ThreadInfo[] threadInfos =
-                  ManagementFactory.getThreadMXBean().dumpAllThreads(true, true);
-              exchange.getResponseHeaders().set("Content-Type", "text/plain");
-              byte[] content = formatter.format(threadInfos).getBytes(StandardCharsets.UTF_8);
-              exchange.sendResponseHeaders(200, content.length);
-              try (OutputStream out = exchange.getResponseBody()) {
-                out.write(content);
-              }
+          exchange -> {
+            ThreadInfo[] threadInfos =
+                ManagementFactory.getThreadMXBean().dumpAllThreads(true, true);
+            exchange.getResponseHeaders().set("Content-Type", "text/plain");
+            byte[] content = formatter.format(threadInfos).getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, content.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+              out.write(content);
             }
           });
     }
