@@ -13,9 +13,6 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
