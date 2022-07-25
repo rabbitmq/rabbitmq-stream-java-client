@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -20,6 +20,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
 import static com.rabbitmq.stream.Constants.COMMAND_DELETE_PUBLISHER;
 import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
 import static com.rabbitmq.stream.Constants.COMMAND_DELIVER;
+import static com.rabbitmq.stream.Constants.COMMAND_EXCHANGE_COMMAND_VERSIONS;
 import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
 import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
 import static com.rabbitmq.stream.Constants.COMMAND_METADATA_UPDATE;
@@ -40,11 +41,13 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
 import static com.rabbitmq.stream.Constants.VERSION_1;
+import static com.rabbitmq.stream.Constants.VERSION_2;
 import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 
 import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.ChunkChecksumValidationException;
 import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
@@ -70,6 +73,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -85,9 +89,25 @@ class ServerFrameHandler {
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerFrameHandler.class);
   private static final FrameHandler RESPONSE_FRAME_HANDLER = new ResponseFrameHandler();
 
-  private static final FrameHandler[] HANDLERS;
+  private static final FrameHandler[][] HANDLERS;
 
   static {
+    short maxCommandKey =
+        (short)
+            Arrays.stream(Constants.class.getDeclaredFields())
+                .filter(f -> f.getName().startsWith("COMMAND_"))
+                .mapToInt(
+                    field -> {
+                      try {
+                        return ((Number) field.get(null)).intValue();
+                      } catch (IllegalAccessException e) {
+                        LOGGER.info(
+                            "Error while trying to access field Constants." + field.getName());
+                        return 0;
+                      }
+                    })
+                .max()
+                .getAsInt();
     Map<Short, FrameHandler> handlers = new HashMap<>();
     handlers.put(COMMAND_CLOSE, new CloseFrameHandler());
     handlers.put(COMMAND_SUBSCRIBE, RESPONSE_FRAME_HANDLER);
@@ -98,7 +118,6 @@ class ServerFrameHandler {
     handlers.put(COMMAND_DELETE_STREAM, RESPONSE_FRAME_HANDLER);
     handlers.put(COMMAND_OPEN, new OpenFrameHandler());
     handlers.put(COMMAND_PUBLISH_CONFIRM, new ConfirmFrameHandler());
-    handlers.put(COMMAND_DELIVER, new DeliverFrameHandler());
     handlers.put(COMMAND_PUBLISH_ERROR, new PublishErrorHandler());
     handlers.put(COMMAND_METADATA_UPDATE, new MetadataUpdateFrameHandler());
     handlers.put(COMMAND_METADATA, new MetadataFrameHandler());
@@ -112,8 +131,76 @@ class ServerFrameHandler {
     handlers.put(COMMAND_QUERY_PUBLISHER_SEQUENCE, new QueryPublisherSequenceFrameHandler());
     handlers.put(COMMAND_ROUTE, new RouteFrameHandler());
     handlers.put(COMMAND_PARTITIONS, new PartitionsFrameHandler());
-    HANDLERS = new FrameHandler[handlers.size() + 10];
-    handlers.entrySet().forEach(entry -> HANDLERS[entry.getKey()] = entry.getValue());
+    handlers.put(COMMAND_EXCHANGE_COMMAND_VERSIONS, new ExchangeCommandVersionsFrameHandler());
+    HANDLERS = new FrameHandler[maxCommandKey + 1][];
+    handlers
+        .entrySet()
+        .forEach(
+            entry -> {
+              HANDLERS[entry.getKey()] = new FrameHandler[VERSION_1 + 1];
+              HANDLERS[entry.getKey()][VERSION_1] = entry.getValue();
+            });
+    HANDLERS[COMMAND_DELIVER] = new FrameHandler[VERSION_2 + 1];
+    HANDLERS[COMMAND_DELIVER][VERSION_1] = new DeliverVersion1FrameHandler();
+    HANDLERS[COMMAND_DELIVER][VERSION_2] = new DeliverVersion2FrameHandler();
+  }
+
+  static class FrameHandlerInfo {
+
+    private final short key, minVersion, maxVersion;
+
+    FrameHandlerInfo(short key, short minVersion, short maxVersion) {
+      this.key = key;
+      this.minVersion = minVersion;
+      this.maxVersion = maxVersion;
+    }
+
+    short getKey() {
+      return key;
+    }
+
+    short getMinVersion() {
+      return minVersion;
+    }
+
+    short getMaxVersion() {
+      return maxVersion;
+    }
+
+    @Override
+    public String toString() {
+      return "FrameHandlerInfo{"
+          + "key="
+          + key
+          + ", minVersion="
+          + minVersion
+          + ", maxVersion="
+          + maxVersion
+          + '}';
+    }
+  }
+
+  static List<FrameHandlerInfo> commandVersions() {
+    List<FrameHandlerInfo> infos = new ArrayList<>(HANDLERS.length);
+    for (int i = 0; i < HANDLERS.length; i++) {
+      FrameHandler[] handlers = HANDLERS[i];
+      if (handlers == null) {
+        continue;
+      }
+      FrameHandler handler = null;
+      int minVersion = Short.MAX_VALUE, maxVersion = 0;
+      for (short j = VERSION_1; j < handlers.length; j++) {
+        if (handlers[j] != null && handlers[j].isInitiatedByServer()) {
+          minVersion = Math.min(minVersion, j);
+          maxVersion = Math.max(maxVersion, j);
+          handler = handlers[j];
+        }
+      }
+      if (handler != null) {
+        infos.add(new FrameHandlerInfo((short) i, (short) minVersion, (short) maxVersion));
+      }
+    }
+    return infos;
   }
 
   static FrameHandler defaultHandler() {
@@ -121,11 +208,7 @@ class ServerFrameHandler {
   }
 
   static FrameHandler lookup(short commandId, short version, ByteBuf message) {
-    if (version != VERSION_1) {
-      message.release();
-      throw new StreamException("Unsupported version " + version + " for command " + commandId);
-    }
-    FrameHandler handler = HANDLERS[commandId];
+    FrameHandler handler = HANDLERS[commandId][version];
     if (handler == null) {
       message.release();
       throw new StreamException("Unsupported command " + commandId);
@@ -159,6 +242,10 @@ class ServerFrameHandler {
   interface FrameHandler {
 
     void handle(Client client, int frameSize, ChannelHandlerContext ctx, ByteBuf message);
+
+    default boolean isInitiatedByServer() {
+      return false;
+    }
   }
 
   private abstract static class BaseFrameHandler implements FrameHandler {
@@ -223,7 +310,12 @@ class ServerFrameHandler {
     }
   }
 
-  static class DeliverFrameHandler extends BaseFrameHandler {
+  static class DeliverVersion1FrameHandler extends BaseFrameHandler {
+
+    @Override
+    public boolean isInitiatedByServer() {
+      return true;
+    }
 
     static int handleMessage(
         ByteBuf bb,
@@ -251,7 +343,7 @@ class ServerFrameHandler {
       return read;
     }
 
-    static int handleDeliver(
+    static int handleDeliverVersion1(
         ByteBuf message,
         Client client,
         ChunkListener chunkListener,
@@ -260,8 +352,33 @@ class ServerFrameHandler {
         List<SubscriptionOffset> subscriptionOffsets,
         ChunkChecksum chunkChecksum,
         MetricsCollector metricsCollector) {
-      byte subscriptionId = message.readByte();
-      int read = 1;
+      return handleDeliver(
+          message,
+          client,
+          chunkListener,
+          messageListener,
+          codec,
+          subscriptionOffsets,
+          chunkChecksum,
+          metricsCollector,
+          message.readByte(), // subscription ID
+          0, // last committed offset
+          1 // byte read count
+          );
+    }
+
+    static int handleDeliver(
+        ByteBuf message,
+        Client client,
+        ChunkListener chunkListener,
+        MessageListener messageListener,
+        Codec codec,
+        List<SubscriptionOffset> subscriptionOffsets,
+        ChunkChecksum chunkChecksum,
+        MetricsCollector metricsCollector,
+        byte subscriptionId,
+        long lastCommittedOffset,
+        int read) {
       /*
       %% <<
       %%   Magic=5:4/unsigned,
@@ -446,7 +563,7 @@ class ServerFrameHandler {
 
     @Override
     int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
-      return handleDeliver(
+      return handleDeliverVersion1(
           message,
           client,
           client.chunkListener,
@@ -455,6 +572,31 @@ class ServerFrameHandler {
           client.subscriptionOffsets,
           client.chunkChecksum,
           client.metricsCollector);
+    }
+  }
+
+  static class DeliverVersion2FrameHandler extends BaseFrameHandler {
+
+    @Override
+    public boolean isInitiatedByServer() {
+      return true;
+    }
+
+    @Override
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      return DeliverVersion1FrameHandler.handleDeliver(
+          message,
+          client,
+          client.chunkListener,
+          client.messageListener,
+          client.codec,
+          client.subscriptionOffsets,
+          client.chunkChecksum,
+          client.metricsCollector,
+          message.readByte(), // subscription ID
+          message.readLong(), // last committed offset, unsigned long
+          9 // byte read count, 1 + 9
+          );
     }
   }
 
@@ -951,6 +1093,51 @@ class ServerFrameHandler {
         LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
       } else {
         outstandingRequest.response().set(streams);
+        outstandingRequest.countDown();
+      }
+      return read;
+    }
+  }
+
+  private static class ExchangeCommandVersionsFrameHandler extends BaseFrameHandler {
+
+    @Override
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      int correlationId = message.readInt();
+      int read = 4;
+      short responseCode = message.readShort();
+      read += 2;
+      int commandVersionsCount = message.readInt();
+      read += 4;
+
+      List<FrameHandlerInfo> commandVersions;
+      if (commandVersionsCount == 0) {
+        commandVersions = Collections.emptyList();
+      } else {
+        commandVersions = new ArrayList<>(commandVersionsCount);
+        for (int i = 0; i < commandVersionsCount; i++) {
+          short key = message.readShort();
+          short minVersion = message.readShort();
+          short maxVersion = message.readShort();
+          read += 6;
+          commandVersions.add(new FrameHandlerInfo(key, minVersion, maxVersion));
+        }
+      }
+
+      if (responseCode != RESPONSE_CODE_OK) {
+        LOGGER.info(
+            "Exchange command versions returned error: {}", Utils.formatConstant(responseCode));
+      }
+
+      OutstandingRequest<List<FrameHandlerInfo>> outstandingRequest =
+          remove(
+              client.outstandingRequests,
+              correlationId,
+              new ParameterizedTypeReference<List<FrameHandlerInfo>>() {});
+      if (outstandingRequest == null) {
+        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+      } else {
+        outstandingRequest.response().set(commandVersions);
         outstandingRequest.countDown();
       }
       return read;
