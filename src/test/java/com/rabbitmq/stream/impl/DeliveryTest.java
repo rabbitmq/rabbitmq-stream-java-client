@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.impl.ServerFrameHandler.DeliverVersion1FrameHandler;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -129,7 +130,7 @@ public class DeliveryTest {
                 subscriptionOffsets.add(new Client.SubscriptionOffset(1, subscriptionOffset));
               }
 
-              ServerFrameHandler.DeliverFrameHandler.handleDeliver(
+              DeliverVersion1FrameHandler.handleDeliverVersion1(
                   bb,
                   null,
                   (client, subscriptionId, offset, messageCount, sizeOfData) -> {

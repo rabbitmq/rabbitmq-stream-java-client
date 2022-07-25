@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
 import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
 import static com.rabbitmq.stream.Constants.COMMAND_DELETE_PUBLISHER;
 import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
+import static com.rabbitmq.stream.Constants.COMMAND_EXCHANGE_COMMAND_VERSIONS;
 import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
 import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
 import static com.rabbitmq.stream.Constants.COMMAND_OPEN;
@@ -61,6 +62,7 @@ import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
+import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
@@ -1302,7 +1304,7 @@ public class Client implements AutoCloseable {
       throw new IllegalArgumentException("stream must not be null");
     }
     int length =
-        2 + 2 + 4 + +2 + superStream.length(); // API code, version, correlation ID, 1 string
+        2 + 2 + 4 + 2 + superStream.length(); // API code, version, correlation ID, 1 string
     int correlationId = correlationSequence.incrementAndGet();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -1313,6 +1315,35 @@ public class Client implements AutoCloseable {
       bb.writeShort(superStream.length());
       bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
       OutstandingRequest<List<String>> request = new OutstandingRequest<>(this.rpcTimeout);
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb);
+      request.block();
+      return request.response.get();
+    } catch (RuntimeException e) {
+      outstandingRequests.remove(correlationId);
+      throw new StreamException(e);
+    }
+  }
+
+  List<FrameHandlerInfo> exchangeCommandVersions() {
+    List<FrameHandlerInfo> commandVersions = ServerFrameHandler.commandVersions();
+    int length = 2 + 2 + 4 + 4; // API code, version, correlation ID, array size
+    length += commandVersions.size() * (2 + 2 + 2);
+    int correlationId = correlationSequence.incrementAndGet();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(encodeRequestCode(COMMAND_EXCHANGE_COMMAND_VERSIONS));
+      bb.writeShort(VERSION_1);
+      bb.writeInt(correlationId);
+      bb.writeInt(commandVersions.size());
+      for (FrameHandlerInfo commandVersion : commandVersions) {
+        bb.writeShort(commandVersion.getKey());
+        bb.writeShort(commandVersion.getMinVersion());
+        bb.writeShort(commandVersion.getMaxVersion());
+      }
+      OutstandingRequest<List<FrameHandlerInfo>> request =
+          new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();

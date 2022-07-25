@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -67,8 +67,10 @@ public final class Constants {
   public static final short COMMAND_HEARTBEAT = 23;
   public static final short COMMAND_ROUTE = 24;
   public static final short COMMAND_PARTITIONS = 25;
+  public static final short COMMAND_EXCHANGE_COMMAND_VERSIONS = 27;
 
   public static final short VERSION_1 = 1;
+  public static final short VERSION_2 = 2;
 
   private Constants() {}
 }
