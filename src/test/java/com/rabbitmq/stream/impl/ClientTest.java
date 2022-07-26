@@ -840,6 +840,7 @@ public class ClientTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.11.0")
   void deliverVersion2LastCommittedOffsetShouldBeSet() throws Exception {
     int publishCount = 20_000;
     byte correlationId = 42;
