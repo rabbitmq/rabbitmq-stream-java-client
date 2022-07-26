@@ -290,8 +290,8 @@ class ConsumersCoordinator {
         long offset, long timestamp, long committedOffset, Consumer consumer) {
       this.offset = offset;
       this.timestamp = timestamp;
-      this.consumer = consumer;
       this.committedOffset = committedOffset;
+      this.consumer = consumer;
     }
 
     @Override
@@ -438,7 +438,7 @@ class ConsumersCoordinator {
                   subscriptionId & 0xFF,
                   Utils.formatConstant(responseCode));
       MessageListener messageListener =
-          (subscriptionId, offset, committedOffset, chunkTimestamp, message) -> {
+          (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             if (subscriptionTracker != null) {
@@ -559,6 +559,7 @@ class ConsumersCoordinator {
                       .metadataListener(metadataListener))
               .key(owner.name);
       this.client = clientFactory.client(clientFactoryContext);
+      maybeExchangeCommandVersions(client);
       clientInitializedInManager.set(true);
     }
 
@@ -846,6 +847,16 @@ class ConsumersCoordinator {
     @Override
     public String toString() {
       return "SubscriptionContext{" + "offsetSpecification=" + offsetSpecification + '}';
+    }
+  }
+
+  private static void maybeExchangeCommandVersions(Client client) {
+    try {
+      if (Utils.is3_11_OrMore(client.brokerVersion())) {
+        client.exchangeCommandVersions();
+      }
+    } catch (Exception e) {
+      LOGGER.info("Error while exchanging command versions: {}", e.getMessage());
     }
   }
 }

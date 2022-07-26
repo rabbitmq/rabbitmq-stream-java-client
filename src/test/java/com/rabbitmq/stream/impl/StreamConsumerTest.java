@@ -35,6 +35,7 @@ import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
 import java.time.Duration;
@@ -144,6 +145,30 @@ public class StreamConsumerTest {
                   () -> configurer.apply(environment.consumerBuilder().stream(stream)).build())
               .isInstanceOf(IllegalArgumentException.class);
         });
+  }
+
+  @Test
+  @BrokerVersionAtLeast("3.11.0")
+  void committedOffsetShouldBeSet() throws Exception {
+    int messageCount = 20_000;
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, this.stream);
+
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    AtomicLong committedOffset = new AtomicLong();
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
+            .messageHandler(
+                (context, message) -> {
+                  committedOffset.set(context.committedOffset());
+                  consumeLatch.countDown();
+                })
+            .build();
+
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(committedOffset.get()).isNotZero();
+
+    consumer.close();
   }
 
   @Test

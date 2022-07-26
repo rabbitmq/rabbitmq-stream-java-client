@@ -37,6 +37,7 @@ import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import java.io.ByteArrayOutputStream;
@@ -830,7 +831,7 @@ public class ClientTest {
   }
 
   @Test
-  @Disabled
+  @BrokerVersionAtLeast("3.11.0")
   void exchangeCommandVersions() {
     Client client = cf.get();
     List<FrameHandlerInfo> infos = client.exchangeCommandVersions();

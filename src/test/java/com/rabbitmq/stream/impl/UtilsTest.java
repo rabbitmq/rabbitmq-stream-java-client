@@ -37,6 +37,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 public class UtilsTest {
 
@@ -101,5 +103,25 @@ public class UtilsTest {
     assertThat(offsetBefore(Long.MAX_VALUE, Long.MAX_VALUE + 1)).isTrue();
     assertThat(offsetBefore(Long.MAX_VALUE + 10, Long.MAX_VALUE + 10)).isFalse();
     assertThat(offsetBefore(Long.MAX_VALUE + 10, Long.MAX_VALUE + 20)).isTrue();
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "3.8.0+rc.1.2186.g95f3fde,false",
+    "3.9.21,false",
+    "3.9.22-alpha.13,false",
+    "3.10.6,false",
+    "3.11.0-alpha.15,true",
+    "3.11.0,true",
+    "3.11.1,true",
+    "4.0.0-alpha.15,true",
+    "4.0.0,true",
+    "4.0.1,true",
+    "4.1.0-alpha.15,true",
+    "4.1.0,true",
+    "4.1.1,true",
+  })
+  void is_3_11_OrMore(String input, boolean expected) {
+    assertThat(Utils.is3_11_OrMore(input)).isEqualTo(expected);
   }
 }
