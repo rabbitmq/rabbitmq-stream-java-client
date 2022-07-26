@@ -283,12 +283,15 @@ class ConsumersCoordinator {
 
     private final long offset;
     private final long timestamp;
+    private final long committedOffset;
     private final Consumer consumer;
 
-    private MessageHandlerContext(long offset, long timestamp, Consumer consumer) {
+    private MessageHandlerContext(
+        long offset, long timestamp, long committedOffset, Consumer consumer) {
       this.offset = offset;
       this.timestamp = timestamp;
       this.consumer = consumer;
+      this.committedOffset = committedOffset;
     }
 
     @Override
@@ -304,6 +307,11 @@ class ConsumersCoordinator {
     @Override
     public long timestamp() {
       return this.timestamp;
+    }
+
+    @Override
+    public long committedOffset() {
+      return committedOffset;
     }
 
     @Override
@@ -430,14 +438,15 @@ class ConsumersCoordinator {
                   subscriptionId & 0xFF,
                   Utils.formatConstant(responseCode));
       MessageListener messageListener =
-          (subscriptionId, offset, chunkTimestamp, message) -> {
+          (subscriptionId, offset, committedOffset, chunkTimestamp, message) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             if (subscriptionTracker != null) {
               subscriptionTracker.offset = offset;
               subscriptionTracker.hasReceivedSomething = true;
               subscriptionTracker.messageHandler.handle(
-                  new MessageHandlerContext(offset, chunkTimestamp, subscriptionTracker.consumer),
+                  new MessageHandlerContext(
+                      offset, chunkTimestamp, committedOffset, subscriptionTracker.consumer),
                   message);
               // FIXME set offset here as well, best effort to avoid duplicates
             } else {

@@ -325,6 +325,7 @@ class ServerFrameHandler {
         long offset,
         long offsetLimit,
         long chunkTimestamp,
+        long committedOffset,
         Codec codec,
         MessageListener messageListener,
         byte subscriptionId) {
@@ -338,7 +339,7 @@ class ServerFrameHandler {
         messageFiltered.set(true);
       } else {
         Message message = codec.decode(data);
-        messageListener.handle(subscriptionId, offset, chunkTimestamp, message);
+        messageListener.handle(subscriptionId, offset, chunkTimestamp, committedOffset, message);
       }
       return read;
     }
@@ -377,7 +378,7 @@ class ServerFrameHandler {
         ChunkChecksum chunkChecksum,
         MetricsCollector metricsCollector,
         byte subscriptionId,
-        long lastCommittedOffset,
+        long committedOffset,
         int read) {
       /*
       %% <<
@@ -473,6 +474,7 @@ class ServerFrameHandler {
                   offset,
                   offsetLimit,
                   chunkTimestamp,
+                  committedOffset,
                   codec,
                   messageListener,
                   subscriptionId);
@@ -538,6 +540,7 @@ class ServerFrameHandler {
                     offset,
                     offsetLimit,
                     chunkTimestamp,
+                    committedOffset,
                     codec,
                     messageListener,
                     subscriptionId);

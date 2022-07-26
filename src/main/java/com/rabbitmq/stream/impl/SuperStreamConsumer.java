@@ -116,6 +116,11 @@ class SuperStreamConsumer implements Consumer {
             }
 
             @Override
+            public long committedOffset() {
+              return context.committedOffset();
+            }
+
+            @Override
             public void storeOffset() {
               for (ConsumerState state : consumerStates) {
                 if (ManualOffsetTrackingMessageHandler.this.consumerState == state) {

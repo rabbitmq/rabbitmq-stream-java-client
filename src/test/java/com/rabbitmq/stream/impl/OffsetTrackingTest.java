@@ -182,7 +182,7 @@ public class OffsetTrackingTest {
                 Collection<Long> messageIdsCollection = new ConcurrentLinkedQueue<>();
                 CountDownLatch consumeLatch = new CountDownLatch(1);
                 MessageListener messageListener =
-                    (subscriptionId, offset, chunkTimestamp, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
                       if (consumeCount.get() <= consumeCountFirst) {
                         consumeCount.incrementAndGet();
                         long messageId = message.getProperties().getMessageIdAsLong();
@@ -238,7 +238,7 @@ public class OffsetTrackingTest {
                 AtomicLong firstOffset = new AtomicLong(-1);
 
                 messageListener =
-                    (subscriptionId, offset, chunkTimestamp, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
                       firstOffset.compareAndSet(-1, offset);
                       long messageId = message.getProperties().getMessageIdAsLong();
                       if (lastConsumedMessageId.get() < messageId) {
@@ -318,7 +318,7 @@ public class OffsetTrackingTest {
                     (client1, subscriptionId, offset, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, message) ->
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) ->
                         consumed.incrementAndGet()));
 
     assertThat(client.declarePublisher((byte) 0, null, stream).isOk()).isTrue();

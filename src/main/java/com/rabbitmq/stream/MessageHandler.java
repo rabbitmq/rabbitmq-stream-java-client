@@ -54,6 +54,20 @@ public interface MessageHandler {
     long timestamp();
 
     /**
+     * The committed offset on this stream.
+     *
+     * <p>It is the offset of the last message confirmed by a quorum of the stream cluster members
+     * (leader and replicas).
+     *
+     * <p>The committed offset is a good indication of what the last offset of a stream is at a
+     * given time. The value can be stale as soon as the application reads it though, as the
+     * committed offset for a stream that is published to changes all the time.
+     *
+     * @return committed offset on this stream
+     */
+    long committedOffset();
+
+    /**
      * The consumer that receives the message.
      *
      * @return the consumer instance

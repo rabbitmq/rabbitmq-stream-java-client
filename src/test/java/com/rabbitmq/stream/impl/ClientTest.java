@@ -259,7 +259,7 @@ public class ClientTest {
     Client.ChunkListener chunkListener =
         (client, correlationId, offset, messageCount, dataSize) -> client.credit(correlationId, 1);
     Client.MessageListener messageListener =
-        (correlationId, offset, chunkTimestamp, message) -> {
+        (correlationId, offset, chunkTimestamp, committedOffset, message) -> {
           messages.add(message);
           latch.countDown();
         };
@@ -395,7 +395,7 @@ public class ClientTest {
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
                       messageBodies.add(new String(message.getBodyAsBinary()));
                       consumeLatch.countDown();
                     }));
@@ -448,7 +448,7 @@ public class ClientTest {
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
                       ByteBuffer bb = ByteBuffer.wrap(message.getBodyAsBinary());
                       sizes.add(message.getBodyAsBinary().length);
                       sequences.add(bb.getInt());
@@ -479,7 +479,7 @@ public class ClientTest {
 
     AtomicLong chunkTimestamp = new AtomicLong();
     Client.MessageListener messageListener =
-        (corr, offset, chkTimestamp, message) -> {
+        (corr, offset, chkTimestamp, committedOffset, message) -> {
           chunkTimestamp.set(chkTimestamp);
           latch.countDown();
         };
@@ -515,7 +515,7 @@ public class ClientTest {
         };
 
     Client.MessageListener messageListener =
-        (corr, offset, chunkTimestamp, data) -> consumedLatch.countDown();
+        (corr, offset, chunkTimestamp, committedOffset, data) -> consumedLatch.countDown();
 
     Client client =
         cf.get(
@@ -659,7 +659,7 @@ public class ClientTest {
                     (client1, subscriptionId, offset, messageCount1, dataSize) ->
                         client1.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, message) ->
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) ->
                         consumedLatch.countDown()));
     ConnectionFactory connectionFactory = new ConnectionFactory();
     try (Connection amqpConnection = connectionFactory.newConnection()) {
@@ -836,5 +836,43 @@ public class ClientTest {
     List<FrameHandlerInfo> infos = client.exchangeCommandVersions();
     assertThat(infos.stream().filter(info -> info.getKey() == Constants.COMMAND_DECLARE_PUBLISHER))
         .isNotEmpty();
+  }
+
+  @Test
+  void deliverVersion2LastCommittedOffsetShouldBeSet() throws Exception {
+    int publishCount = 20_000;
+    byte correlationId = 42;
+    TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
+
+    CountDownLatch latch = new CountDownLatch(publishCount);
+
+    Client.ChunkListener chunkListener =
+        (client, corr, offset, messageCountInChunk, dataSize) -> {
+          client.credit(correlationId, 1);
+        };
+
+    AtomicLong committedOffset = new AtomicLong();
+    Client.MessageListener messageListener =
+        (corr, offset, chkTimestamp, committedOfft, message) -> {
+          committedOffset.set(committedOfft);
+          latch.countDown();
+        };
+
+    Client client =
+        cf.get(
+            new Client.ClientParameters()
+                .chunkListener(chunkListener)
+                .messageListener(messageListener));
+
+    client.exchangeCommandVersions();
+
+    Response response =
+        client.subscribe(correlationId, stream, OffsetSpecification.first(), credit);
+    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_OK);
+    assertThat(response.isOk()).isTrue();
+
+    assertThat(latch.await(10, SECONDS)).isTrue();
+    assertThat(committedOffset.get()).isPositive();
+    client.close();
   }
 }
