@@ -78,7 +78,7 @@ public class CodecsTest {
         new SwiftMqCodec());
   }
 
-  static Stream<Codec> codecs() {
+  static Stream<Codec> allAmqpCodecs() {
     return Stream.of(new QpidProtonCodec(), new SwiftMqCodec());
   }
 
@@ -513,7 +513,7 @@ public class CodecsTest {
   }
 
   @ParameterizedTest
-  @MethodSource("codecs")
+  @MethodSource("allAmqpCodecs")
   void supportAmqpValueBody(Codec codec) {
     Function<Object, Message> encodeDecode =
         content -> {
