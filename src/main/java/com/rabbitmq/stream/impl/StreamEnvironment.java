@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.propagateException;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.Address;
@@ -24,13 +25,16 @@ import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamInfo;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.StreamInfoResponse;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
@@ -45,6 +49,7 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
@@ -54,9 +59,11 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
@@ -379,6 +386,59 @@ class StreamEnvironment implements Environment {
               + formatConstant(response.getResponseCode())
               + ")",
           response.getResponseCode());
+    }
+  }
+
+  @Override
+  public StreamInfo queryStreamInfo(String stream) {
+    StreamInfoResponse response = locatorOperation(client -> client.streamInfo(stream));
+    if (response.isOk()) {
+      Map<String, String> info = response.getInfo();
+      BiFunction<String, String, LongSupplier> offsetSupplierLogic =
+          (key, message) -> {
+            if (!info.containsKey(key) || "-1".equals(info.get(key))) {
+              return () -> {
+                throw new NoOffsetException(message);
+              };
+            } else {
+              try {
+                long firstOffset = Long.parseUnsignedLong(info.get(key));
+                return () -> firstOffset;
+              } catch (NumberFormatException e) {
+                return () -> {
+                  throw new NoOffsetException(message);
+                };
+              }
+            }
+          };
+      LongSupplier firstOffsetSupplier =
+          offsetSupplierLogic.apply("first_offset", "No first offset for stream " + stream);
+      LongSupplier committedOffsetSupplier =
+          offsetSupplierLogic.apply("committed_offset", "No committed offset for stream " + stream);
+      return new DefaultStreamInfo(firstOffsetSupplier, committedOffsetSupplier);
+    } else {
+      throw propagateException(response.getResponseCode(), stream);
+    }
+  }
+
+  private static class DefaultStreamInfo implements StreamInfo {
+
+    private final LongSupplier firstOffsetSupplier, committedOffsetSupplier;
+
+    private DefaultStreamInfo(
+        LongSupplier firstOffsetSupplier, LongSupplier committedOffsetSupplier) {
+      this.firstOffsetSupplier = firstOffsetSupplier;
+      this.committedOffsetSupplier = committedOffsetSupplier;
+    }
+
+    @Override
+    public long firstOffset() {
+      return firstOffsetSupplier.getAsLong();
+    }
+
+    @Override
+    public long committedOffset() {
+      return committedOffsetSupplier.getAsLong();
     }
   }
 

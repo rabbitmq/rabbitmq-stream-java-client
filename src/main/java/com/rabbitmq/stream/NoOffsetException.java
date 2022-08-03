@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,17 +13,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
-/** Exception to indicate a stream does not exist. */
-public class StreamDoesNotExistException extends StreamException {
+public class NoOffsetException extends StreamException {
 
-  private final String stream;
-
-  public StreamDoesNotExistException(String stream) {
-    super("Stream " + stream + "  does not exist", Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
-    this.stream = stream;
-  }
-
-  public String getStream() {
-    return stream;
+  public NoOffsetException(String message) {
+    super(message, Constants.RESPONSE_CODE_NO_OFFSET);
   }
 }

@@ -34,13 +34,17 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamCreator;
+import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamInfo;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -56,6 +60,7 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
@@ -491,6 +496,47 @@ public class StreamEnvironmentTest {
       producer.close();
       consumer.close();
       env.deleteStream(s);
+    }
+  }
+
+  @Test
+  @BrokerVersionAtLeast("3.11.0")
+  void queryStreamInfoShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
+    try (Environment env = environmentBuilder.build()) {
+      StreamInfo info = env.queryStreamInfo(stream);
+      assertThat(info.firstOffset()).isZero();
+      assertThatThrownBy(() -> info.committedOffset()).isInstanceOf(NoOffsetException.class);
+
+      int publishCount = 20_000;
+      TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
+
+      StreamInfo info2 = env.queryStreamInfo(stream);
+      assertThat(info2.firstOffset()).isZero();
+      assertThat(info2.committedOffset()).isPositive();
+
+      CountDownLatch latch = new CountDownLatch(publishCount);
+      AtomicLong committedOffset = new AtomicLong();
+      env.consumerBuilder().stream(stream)
+          .offset(OffsetSpecification.first())
+          .messageHandler(
+              (context, message) -> {
+                committedOffset.set(context.committedOffset());
+                latch.countDown();
+              })
+          .build();
+
+      assertThat(latch.await(10, SECONDS)).isTrue();
+      assertThat(committedOffset.get()).isPositive();
+      assertThat(committedOffset).hasValue(info2.committedOffset());
+    }
+  }
+
+  @Test
+  @BrokerVersionAtLeast("3.11.0")
+  void queryStreamInfoShouldThrowExceptionWhenStreamDoesNotExist() {
+    try (Environment env = environmentBuilder.build()) {
+      assertThatThrownBy(() -> env.queryStreamInfo("does not exist"))
+          .isInstanceOf(StreamDoesNotExistException.class);
     }
   }
 }

@@ -32,6 +32,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
 import static com.rabbitmq.stream.Constants.COMMAND_STORE_OFFSET;
+import static com.rabbitmq.stream.Constants.COMMAND_STREAM_INFO;
 import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
 import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE;
@@ -1354,6 +1355,31 @@ public class Client implements AutoCloseable {
     }
   }
 
+  StreamInfoResponse streamInfo(String stream) {
+    if (stream == null) {
+      throw new IllegalArgumentException("stream must not be null");
+    }
+    int length = 2 + 2 + 4 + 2 + stream.length(); // API code, version, correlation ID, 1 string
+    int correlationId = correlationSequence.incrementAndGet();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(encodeRequestCode(COMMAND_STREAM_INFO));
+      bb.writeShort(VERSION_1);
+      bb.writeInt(correlationId);
+      bb.writeShort(stream.length());
+      bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
+      OutstandingRequest<StreamInfoResponse> request = new OutstandingRequest<>(this.rpcTimeout);
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb);
+      request.block();
+      return request.response.get();
+    } catch (RuntimeException e) {
+      outstandingRequests.remove(correlationId);
+      throw new StreamException(e);
+    }
+  }
+
   void shutdownReason(ShutdownReason reason) {
     this.shutdownReason = reason;
   }
@@ -1852,13 +1878,27 @@ public class Client implements AutoCloseable {
 
     private final long sequence;
 
-    public QueryPublisherSequenceResponse(short responseCode, long sequence) {
+    QueryPublisherSequenceResponse(short responseCode, long sequence) {
       super(responseCode);
       this.sequence = sequence;
     }
 
     public long getSequence() {
       return sequence;
+    }
+  }
+
+  static class StreamInfoResponse extends Response {
+
+    private final Map<String, String> info;
+
+    StreamInfoResponse(short responseCode, Map<String, String> info) {
+      super(responseCode);
+      this.info = Collections.unmodifiableMap(new HashMap<>(info));
+    }
+
+    public Map<String, String> getInfo() {
+      return info;
     }
   }
 
