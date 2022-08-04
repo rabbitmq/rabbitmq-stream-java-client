@@ -13,12 +13,10 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+/** Exception to indicate a stream is not available. */
 public class StreamNotAvailableException extends StreamException {
-
-  private final String stream;
 
   public StreamNotAvailableException(String stream) {
     super("Stream " + stream + " is not available", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
-    this.stream = stream;
   }
 }

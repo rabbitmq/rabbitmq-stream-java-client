@@ -922,12 +922,14 @@ public class ClientTest {
   }
 
   @Test
+  @BrokerVersionAtLeast("3.11.0")
   void streamInfoShouldReturnErrorWhenStreamDoesNotExist() {
     assertThat(cf.get().streamInfo("does not exist").getResponseCode())
         .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
   }
 
   @Test
+  @BrokerVersionAtLeast("3.11.0")
   void streamInfoFirstOffsetShouldChangeAfterRetentionKickedIn(TestInfo info) {
     int messageCount = 1000;
     int payloadSize = 1000;

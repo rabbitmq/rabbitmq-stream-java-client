@@ -54,7 +54,7 @@ public interface MessageHandler {
     long timestamp();
 
     /**
-     * The committed offset on this stream.
+     * The committed offset in this stream.
      *
      * <p>It is the offset of the last message confirmed by a quorum of the stream cluster members
      * (leader and replicas).
@@ -63,7 +63,10 @@ public interface MessageHandler {
      * given time. The value can be stale as soon as the application reads it though, as the
      * committed offset for a stream that is published to changes all the time.
      *
-     * @return committed offset on this stream
+     * <p>This requires RabbitMQ 3.11 or more. The method always returns 0 otherwise.
+     *
+     * @return committed offset in this stream
+     * @see StreamInfo#committedOffset()
      */
     long committedOffset();
 

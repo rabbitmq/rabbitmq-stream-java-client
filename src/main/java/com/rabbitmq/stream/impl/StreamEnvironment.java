@@ -391,7 +391,16 @@ class StreamEnvironment implements Environment {
 
   @Override
   public StreamInfo queryStreamInfo(String stream) {
-    StreamInfoResponse response = locatorOperation(client -> client.streamInfo(stream));
+    StreamInfoResponse response =
+        locatorOperation(
+            client -> {
+              if (Utils.is3_11_OrMore(client.brokerVersion())) {
+                return client.streamInfo(stream);
+              } else {
+                throw new UnsupportedOperationException(
+                    "QueryStringInfo is available only for RabbitMQ 3.11 or more.");
+              }
+            });
     if (response.isOk()) {
       Map<String, String> info = response.getInfo();
       BiFunction<String, String, LongSupplier> offsetSupplierLogic =

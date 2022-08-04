@@ -61,6 +61,15 @@ public interface Environment extends AutoCloseable {
    */
   void deleteStream(String stream);
 
+  /**
+   * Query information on a stream.
+   *
+   * <p>Requires RabbitMQ 3.11 or more.
+   *
+   * @param stream
+   * @return information on the stream
+   * @throws UnsupportedOperationException if the broker does not support this command
+   */
   StreamInfo queryStreamInfo(String stream);
 
   /**
