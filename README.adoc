@@ -75,7 +75,7 @@ Launch the broker:
 ----
 docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.9
+    rabbitmq:3.10
 ----
 
 Enable the stream plugin:
@@ -109,6 +109,6 @@ Please launch the `./mvnw spotless:apply` command to format your changes before 
 
 == Copyright and License
 
-(c) 2020-2021, VMware Inc or its affiliates.
+(c) 2020-2022, VMware Inc or its affiliates.
 
 Double licensed under the MPL2.0 and ASL2. See link:LICENSE[LICENSE] for details.
