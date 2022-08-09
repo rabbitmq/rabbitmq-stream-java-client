@@ -64,7 +64,7 @@ public class PublisherTest {
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, message) ->
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) ->
                         consumerLatch.countDown()));
 
     Response response = c.declarePublisher(b(1), publisherReference, stream);
@@ -170,7 +170,7 @@ public class PublisherTest {
                     (client, subscriptionId, offset, messageCount1, dataSize) ->
                         client.credit(subscriptionId, 1))
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, message) -> {
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
                       consumeCount.incrementAndGet();
                       consumeLatch.countDown();
                     }));

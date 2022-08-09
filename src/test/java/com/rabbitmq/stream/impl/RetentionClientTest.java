@@ -219,7 +219,7 @@ public class RetentionClientTest {
                       (client1, subscriptionId, offset, messageCount1, dataSize) ->
                           client1.credit(subscriptionId, 1))
                   .messageListener(
-                      (subscriptionId, offset, chunkTimestamp, message) -> {
+                      (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
                         long messageId = message.getProperties().getMessageIdAsLong();
                         firstMessageId.compareAndSet(-1, messageId);
                         if (messageId == publishSequence.get() - 1) {

@@ -134,7 +134,8 @@ public class NotificationTest {
         cf.get(
             new Client.ClientParameters()
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, message) -> consumeLatch.countDown())
+                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) ->
+                        consumeLatch.countDown())
                 .metadataListener(
                     (stream, code) -> {
                       receivedStream.set(stream);

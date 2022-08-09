@@ -240,4 +240,45 @@ final class Utils {
   static boolean offsetBefore(long x, long y) {
     return Long.compareUnsigned(x, y) < 0;
   }
+
+  private static String currentVersion(String currentVersion) {
+    // versions built from source: 3.7.0+rc.1.4.gedc5d96
+    if (currentVersion.contains("+")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("+"));
+    }
+    // alpha (snapshot) versions: 3.7.0~alpha.449-1
+    if (currentVersion.contains("~")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("~"));
+    }
+    // alpha (snapshot) versions: 3.7.1-alpha.40
+    if (currentVersion.contains("-")) {
+      currentVersion = currentVersion.substring(0, currentVersion.indexOf("-"));
+    }
+    return currentVersion;
+  }
+
+  /**
+   * https://stackoverflow.com/questions/6701948/efficient-way-to-compare-version-strings-in-java
+   */
+  static int versionCompare(String str1, String str2) {
+    String[] vals1 = str1.split("\\.");
+    String[] vals2 = str2.split("\\.");
+    int i = 0;
+    // set index to first non-equal ordinal or length of shortest version string
+    while (i < vals1.length && i < vals2.length && vals1[i].equals(vals2[i])) {
+      i++;
+    }
+    // compare first non-equal ordinal number
+    if (i < vals1.length && i < vals2.length) {
+      int diff = Integer.valueOf(vals1[i]).compareTo(Integer.valueOf(vals2[i]));
+      return Integer.signum(diff);
+    }
+    // the strings are equal or one string is a substring of the other
+    // e.g. "1.2.3" = "1.2.3" or "1.2.3" < "1.2.3.4"
+    return Integer.signum(vals1.length - vals2.length);
+  }
+
+  static boolean is3_11_OrMore(String brokerVersion) {
+    return versionCompare(currentVersion(brokerVersion), "3.11.0") >= 0;
+  }
 }

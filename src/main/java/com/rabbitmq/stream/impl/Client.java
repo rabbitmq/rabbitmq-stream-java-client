@@ -1443,7 +1443,12 @@ public class Client implements AutoCloseable {
 
   public interface MessageListener {
 
-    void handle(byte subscriptionId, long offset, long chunkTimestamp, Message message);
+    void handle(
+        byte subscriptionId,
+        long offset,
+        long chunkTimestamp,
+        long committedOffset,
+        Message message);
   }
 
   public interface CreditNotification {
@@ -1964,7 +1969,7 @@ public class Client implements AutoCloseable {
     private ChunkListener chunkListener =
         (client, correlationId, offset, messageCount, dataSize) -> {};
     private MessageListener messageListener =
-        (correlationId, offset, chunkTimestamp, message) -> {};
+        (correlationId, offset, chunkTimestamp, committedOffset, message) -> {};
     private MetadataListener metadataListener = (stream, code) -> {};
     private CreditNotification creditNotification =
         (subscriptionId, responseCode) ->

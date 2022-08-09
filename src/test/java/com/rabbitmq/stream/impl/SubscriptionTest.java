@@ -53,7 +53,7 @@ public class SubscriptionTest {
         cf.get(
             new Client.ClientParameters()
                 .messageListener(
-                    (correlationId, offset, chunkTimestamp, message) -> {
+                    (correlationId, offset, chunkTimestamp, committedOffset, message) -> {
                       messageCounts
                           .computeIfAbsent(correlationId, k -> new AtomicInteger(0))
                           .incrementAndGet();
@@ -124,7 +124,7 @@ public class SubscriptionTest {
         cf.get(
             new Client.ClientParameters()
                 .messageListener(
-                    (correlationId, offset, chunkTimestamp, message) -> {
+                    (correlationId, offset, chunkTimestamp, committedOffset, message) -> {
                       receivedMessageCount.incrementAndGet();
                       latch.countDown();
                     }));
@@ -148,7 +148,8 @@ public class SubscriptionTest {
         cf.get(
             new Client.ClientParameters()
                 .messageListener(
-                    (correlationId, offset, chunkTimestamp, message) -> latch2.countDown()));
+                    (correlationId, offset, chunkTimestamp, committedOffset, message) ->
+                        latch2.countDown()));
     client2.subscribe(b(1), stream, OffsetSpecification.first(), messageCount * 100);
     client.declarePublisher(b(1), null, stream);
     IntStream.range(0, messageCount)
@@ -174,7 +175,7 @@ public class SubscriptionTest {
         cf.get(
             new Client.ClientParameters()
                 .messageListener(
-                    (correlationId, offset, chunkTimestamp, message) -> {
+                    (correlationId, offset, chunkTimestamp, committedOffset, message) -> {
                       messageCounts
                           .computeIfAbsent(correlationId, k -> new AtomicInteger(0))
                           .incrementAndGet();
