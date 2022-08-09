@@ -310,7 +310,7 @@ class ConsumersCoordinator {
     }
 
     @Override
-    public long committedOffset() {
+    public long committedChunkId() {
       return committedOffset;
     }
 

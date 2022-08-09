@@ -15,6 +15,9 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -280,5 +283,16 @@ final class Utils {
 
   static boolean is3_11_OrMore(String brokerVersion) {
     return versionCompare(currentVersion(brokerVersion), "3.11.0") >= 0;
+  }
+
+  static StreamException propagateException(short responseCode, String stream) {
+    if (responseCode == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
+      return new StreamDoesNotExistException(stream);
+    } else if (responseCode == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
+      return new StreamNotAvailableException(stream);
+    } else {
+      String message = "Error while querying stream info: " + formatConstant(responseCode) + ".";
+      return new StreamException(message, responseCode);
+    }
   }
 }

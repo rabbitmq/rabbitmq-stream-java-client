@@ -34,6 +34,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
 import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
+import static com.rabbitmq.stream.Constants.COMMAND_STREAM_STATS;
 import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
 import static com.rabbitmq.stream.Constants.COMMAND_TUNE;
 import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
@@ -62,6 +63,7 @@ import com.rabbitmq.stream.impl.Client.QueryPublisherSequenceResponse;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.SaslAuthenticateResponse;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
+import com.rabbitmq.stream.impl.Client.StreamInfoResponse;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
 import com.rabbitmq.stream.metrics.MetricsCollector;
@@ -132,6 +134,7 @@ class ServerFrameHandler {
     handlers.put(COMMAND_ROUTE, new RouteFrameHandler());
     handlers.put(COMMAND_PARTITIONS, new PartitionsFrameHandler());
     handlers.put(COMMAND_EXCHANGE_COMMAND_VERSIONS, new ExchangeCommandVersionsFrameHandler());
+    handlers.put(COMMAND_STREAM_STATS, new StreamStatsFrameHandler());
     HANDLERS = new FrameHandler[maxCommandKey + 1][];
     handlers
         .entrySet()
@@ -325,7 +328,7 @@ class ServerFrameHandler {
         long offset,
         long offsetLimit,
         long chunkTimestamp,
-        long committedOffset,
+        long committedChunkId,
         Codec codec,
         MessageListener messageListener,
         byte subscriptionId) {
@@ -339,7 +342,7 @@ class ServerFrameHandler {
         messageFiltered.set(true);
       } else {
         Message message = codec.decode(data);
-        messageListener.handle(subscriptionId, offset, chunkTimestamp, committedOffset, message);
+        messageListener.handle(subscriptionId, offset, chunkTimestamp, committedChunkId, message);
       }
       return read;
     }
@@ -597,7 +600,7 @@ class ServerFrameHandler {
           client.chunkChecksum,
           client.metricsCollector,
           message.readByte(), // subscription ID
-          message.readLong(), // last committed offset, unsigned long
+          message.readLong(), // committed chunk ID, unsigned long
           9 // byte read count, 1 + 9
           );
     }
@@ -1141,6 +1144,40 @@ class ServerFrameHandler {
         LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
       } else {
         outstandingRequest.response().set(commandVersions);
+        outstandingRequest.countDown();
+      }
+      return read;
+    }
+  }
+
+  private static class StreamStatsFrameHandler extends BaseFrameHandler {
+
+    @Override
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      int correlationId = message.readInt();
+      int read = 4;
+
+      short responseCode = message.readShort();
+      read += 2;
+
+      int infoCount = message.readInt();
+      read += 4;
+      Map<String, Long> info = new LinkedHashMap<>(infoCount);
+
+      for (int i = 0; i < infoCount; i++) {
+        String key = readString(message);
+        read += 2 + key.length();
+        long value = message.readLong();
+        info.put(key, value);
+        read += 8;
+      }
+
+      OutstandingRequest<StreamInfoResponse> outstandingRequest =
+          remove(client.outstandingRequests, correlationId, StreamInfoResponse.class);
+      if (outstandingRequest == null) {
+        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+      } else {
+        outstandingRequest.response().set(new StreamInfoResponse(responseCode, info));
         outstandingRequest.countDown();
       }
       return read;

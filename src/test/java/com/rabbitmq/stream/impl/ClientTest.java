@@ -27,6 +27,7 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Properties;
 import com.rabbitmq.stream.StreamException;
@@ -35,6 +36,7 @@ import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.Client.StreamInfoResponse;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
@@ -65,7 +67,6 @@ import java.util.function.Function;
 import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -876,5 +877,91 @@ public class ClientTest {
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(committedOffset.get()).isPositive();
     client.close();
+  }
+
+  @Test
+  @BrokerVersionAtLeast("3.11.0")
+  void streamInfoShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
+    int publishCount = 20_000;
+    CountDownLatch latch = new CountDownLatch(publishCount);
+
+    Client.ChunkListener chunkListener =
+        (client, corr, offset, messageCountInChunk, dataSize) -> {
+          client.credit(corr, 1);
+        };
+
+    AtomicLong committedOffset = new AtomicLong();
+    Client.MessageListener messageListener =
+        (corr, offset, chkTimestamp, committedOfft, message) -> {
+          committedOffset.set(committedOfft);
+          latch.countDown();
+        };
+    Client client =
+        cf.get(
+            new Client.ClientParameters()
+                .chunkListener(chunkListener)
+                .messageListener(messageListener));
+    StreamInfoResponse response = client.streamStats(stream);
+    assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
+    assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
+    TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
+    response = client.streamStats(stream);
+    assertThat(response.getInfo()).containsEntry("first_chunk_id", 0L);
+    assertThat(response.getInfo().get("committed_chunk_id")).isNotEqualTo(-1L);
+
+    client.exchangeCommandVersions();
+
+    Response subscribeResponse =
+        client.subscribe(b(42), stream, OffsetSpecification.first(), credit);
+    assertThat(subscribeResponse.isOk()).isTrue();
+
+    assertThat(latch.await(10, SECONDS)).isTrue();
+    assertThat(committedOffset.get()).isPositive();
+    assertThat(committedOffset).hasValue(response.getInfo().get("committed_chunk_id"));
+  }
+
+  @Test
+  @BrokerVersionAtLeast("3.11.0")
+  void streamInfoShouldReturnErrorWhenStreamDoesNotExist() {
+    assertThat(cf.get().streamStats("does not exist").getResponseCode())
+        .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+  }
+
+  @Test
+  @BrokerVersionAtLeast("3.11.0")
+  void streamInfoFirstOffsetShouldChangeAfterRetentionKickedIn(TestInfo info) {
+    int messageCount = 1000;
+    int payloadSize = 1000;
+    String s = TestUtils.streamName(info);
+    Client client = cf.get();
+    try {
+      assertThat(
+              client
+                  .create(
+                      s,
+                      new Client.StreamParametersBuilder()
+                          .maxLengthBytes(messageCount * payloadSize / 10)
+                          .maxSegmentSizeBytes(messageCount * payloadSize / 20)
+                          .build())
+                  .isOk())
+          .isTrue();
+
+      StreamInfoResponse response = client.streamStats(s);
+      assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
+      assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
+
+      byte[] payload = new byte[payloadSize];
+      Function<MessageBuilder, Message> messageCreation = mb -> mb.addData(payload).build();
+
+      TestUtils.publishAndWaitForConfirms(cf, messageCreation, messageCount, s);
+      // publishing again, to make sure new segments trigger retention strategy
+      TestUtils.publishAndWaitForConfirms(cf, messageCreation, messageCount, s);
+      response = client.streamStats(s);
+      assertThat(response.getInfo().get("first_chunk_id")).isPositive();
+      assertThat(response.getInfo().get("committed_chunk_id")).isPositive();
+
+    } finally {
+      assertThat(client.delete(s).isOk()).isTrue();
+    }
   }
 }

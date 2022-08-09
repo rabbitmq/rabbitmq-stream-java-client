@@ -414,15 +414,14 @@ public final class TestUtils {
     }
     try {
       currentVersion = currentVersion(currentVersion);
-      return "0.0.0".equals(currentVersion) || Utils.versionCompare(currentVersion, expectedVersion) >= 0;
+      return "0.0.0".equals(currentVersion)
+          || Utils.versionCompare(currentVersion, expectedVersion) >= 0;
     } catch (RuntimeException e) {
       LoggerFactory.getLogger(TestUtils.class)
           .warn("Unable to parse broker version {}", currentVersion, e);
       throw e;
     }
   }
-
-
 
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)

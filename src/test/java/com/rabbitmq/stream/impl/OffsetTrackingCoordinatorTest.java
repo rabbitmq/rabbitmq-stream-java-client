@@ -350,7 +350,7 @@ public class OffsetTrackingCoordinatorTest {
       }
 
       @Override
-      public long committedOffset() {
+      public long committedChunkId() {
         return 0;
       }
 
