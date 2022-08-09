@@ -68,7 +68,7 @@ public final class Constants {
   public static final short COMMAND_ROUTE = 24;
   public static final short COMMAND_PARTITIONS = 25;
   public static final short COMMAND_EXCHANGE_COMMAND_VERSIONS = 27;
-  public static final short COMMAND_STREAM_INFO = 28;
+  public static final short COMMAND_STREAM_STATS = 28;
 
   public static final short VERSION_1 = 1;
   public static final short VERSION_2 = 2;

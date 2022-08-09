@@ -20,7 +20,7 @@ import com.rabbitmq.stream.MessageHandler.Context;
  *
  * @see Environment#queryStreamInfo(String)
  */
-public interface StreamInfo {
+public interface StreamStats {
 
   /**
    * The first offset in the stream.
@@ -31,18 +31,18 @@ public interface StreamInfo {
   long firstOffset();
 
   /**
-   * The committed offset in the stream.
+   * The ID (offset) of the committed chunk (block of messages) in the stream.
    *
-   * <p>It is the offset of the last message confirmed by a quorum of the stream cluster members
-   * (leader and replicas).
+   * <p>It is the offset of the first message in the last chunk confirmed by a quorum of the stream
+   * cluster members (leader and replicas).
    *
-   * <p>The committed offset is a good indication of what the last offset of a stream is at a given
-   * time. The value can be stale as soon as the application reads it though, as the committed
-   * offset for a stream that is published to changes all the time.
+   * <p>The committed chunk ID is a good indication of what the last offset of a stream can be at a
+   * given time. The value can be stale as soon as the application reads it though, as the committed
+   * chunk ID for a stream that is published to changes all the time.
    *
    * @return committed offset in this stream
-   * @see Context#committedOffset()
-   * @throws NoOffsetException if there is no committed offset yet
+   * @see Context#committedChunkId()
+   * @throws NoOffsetException if there is no committed chunk yet
    */
-  long committedOffset();
+  long committedChunkId();
 }

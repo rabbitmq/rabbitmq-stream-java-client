@@ -160,7 +160,7 @@ public class StreamConsumerTest {
             .offset(OffsetSpecification.first())
             .messageHandler(
                 (context, message) -> {
-                  committedOffset.set(context.committedOffset());
+                  committedOffset.set(context.committedChunkId());
                   consumeLatch.countDown();
                 })
             .build();

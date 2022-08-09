@@ -70,7 +70,7 @@ public interface Environment extends AutoCloseable {
    * @return information on the stream
    * @throws UnsupportedOperationException if the broker does not support this command
    */
-  StreamInfo queryStreamInfo(String stream);
+  StreamStats queryStreamInfo(String stream);
 
   /**
    * Create a {@link ProducerBuilder} to configure and create a {@link Producer}.

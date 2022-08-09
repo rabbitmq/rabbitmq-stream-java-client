@@ -32,7 +32,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
 import static com.rabbitmq.stream.Constants.COMMAND_STORE_OFFSET;
-import static com.rabbitmq.stream.Constants.COMMAND_STREAM_INFO;
+import static com.rabbitmq.stream.Constants.COMMAND_STREAM_STATS;
 import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
 import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE;
@@ -1355,7 +1355,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  StreamInfoResponse streamInfo(String stream) {
+  StreamInfoResponse streamStats(String stream) {
     if (stream == null) {
       throw new IllegalArgumentException("stream must not be null");
     }
@@ -1364,7 +1364,7 @@ public class Client implements AutoCloseable {
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_STREAM_INFO));
+      bb.writeShort(encodeRequestCode(COMMAND_STREAM_STATS));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
@@ -1473,7 +1473,7 @@ public class Client implements AutoCloseable {
         byte subscriptionId,
         long offset,
         long chunkTimestamp,
-        long committedOffset,
+        long committedChunkId,
         Message message);
   }
 
@@ -1890,14 +1890,14 @@ public class Client implements AutoCloseable {
 
   static class StreamInfoResponse extends Response {
 
-    private final Map<String, String> info;
+    private final Map<String, Long> info;
 
-    StreamInfoResponse(short responseCode, Map<String, String> info) {
+    StreamInfoResponse(short responseCode, Map<String, Long> info) {
       super(responseCode);
       this.info = Collections.unmodifiableMap(new HashMap<>(info));
     }
 
-    public Map<String, String> getInfo() {
+    public Map<String, Long> getInfo() {
       return info;
     }
   }

@@ -65,7 +65,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
-import java.util.function.ToLongBiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -902,13 +901,13 @@ public class ClientTest {
             new Client.ClientParameters()
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
-    StreamInfoResponse response = client.streamInfo(stream);
-    assertThat(response.getInfo()).containsEntry("first_offset", "0");
-    assertThat(response.getInfo()).containsEntry("committed_offset", "-1");
+    StreamInfoResponse response = client.streamStats(stream);
+    assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
+    assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
     TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
-    response = client.streamInfo(stream);
-    assertThat(response.getInfo()).containsEntry("first_offset", "0");
-    assertThat(response.getInfo().get("committed_offset")).isNotEqualTo("-1");
+    response = client.streamStats(stream);
+    assertThat(response.getInfo()).containsEntry("first_chunk_id", 0L);
+    assertThat(response.getInfo().get("committed_chunk_id")).isNotEqualTo(-1L);
 
     client.exchangeCommandVersions();
 
@@ -918,13 +917,13 @@ public class ClientTest {
 
     assertThat(latch.await(10, SECONDS)).isTrue();
     assertThat(committedOffset.get()).isPositive();
-    assertThat(committedOffset.toString()).isEqualTo(response.getInfo().get("committed_offset"));
+    assertThat(committedOffset).hasValue(response.getInfo().get("committed_chunk_id"));
   }
 
   @Test
   @BrokerVersionAtLeast("3.11.0")
   void streamInfoShouldReturnErrorWhenStreamDoesNotExist() {
-    assertThat(cf.get().streamInfo("does not exist").getResponseCode())
+    assertThat(cf.get().streamStats("does not exist").getResponseCode())
         .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
   }
 
@@ -947,9 +946,9 @@ public class ClientTest {
                   .isOk())
           .isTrue();
 
-      StreamInfoResponse response = client.streamInfo(s);
-      assertThat(response.getInfo()).containsEntry("first_offset", "0");
-      assertThat(response.getInfo()).containsEntry("committed_offset", "-1");
+      StreamInfoResponse response = client.streamStats(s);
+      assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
+      assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
 
       byte[] payload = new byte[payloadSize];
       Function<MessageBuilder, Message> messageCreation = mb -> mb.addData(payload).build();
@@ -957,10 +956,9 @@ public class ClientTest {
       TestUtils.publishAndWaitForConfirms(cf, messageCreation, messageCount, s);
       // publishing again, to make sure new segments trigger retention strategy
       TestUtils.publishAndWaitForConfirms(cf, messageCreation, messageCount, s);
-      response = client.streamInfo(s);
-      ToLongBiFunction<Map<String, String>, String> toOffset = (m, k) -> Long.parseLong(m.get(k));
-      assertThat(toOffset.applyAsLong(response.getInfo(), "first_offset")).isPositive();
-      assertThat(toOffset.applyAsLong(response.getInfo(), "committed_offset")).isPositive();
+      response = client.streamStats(s);
+      assertThat(response.getInfo().get("first_chunk_id")).isPositive();
+      assertThat(response.getInfo().get("committed_chunk_id")).isPositive();
 
     } finally {
       assertThat(client.delete(s).isOk()).isTrue();

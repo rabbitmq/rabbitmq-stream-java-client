@@ -116,8 +116,8 @@ class SuperStreamConsumer implements Consumer {
             }
 
             @Override
-            public long committedOffset() {
-              return context.committedOffset();
+            public long committedChunkId() {
+              return context.committedChunkId();
             }
 
             @Override

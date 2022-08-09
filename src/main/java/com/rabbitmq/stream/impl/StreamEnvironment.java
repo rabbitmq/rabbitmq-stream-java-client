@@ -30,7 +30,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.ProducerBuilder;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.StreamInfo;
+import com.rabbitmq.stream.StreamStats;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
@@ -390,29 +390,29 @@ class StreamEnvironment implements Environment {
   }
 
   @Override
-  public StreamInfo queryStreamInfo(String stream) {
+  public StreamStats queryStreamInfo(String stream) {
     StreamInfoResponse response =
         locatorOperation(
             client -> {
               if (Utils.is3_11_OrMore(client.brokerVersion())) {
-                return client.streamInfo(stream);
+                return client.streamStats(stream);
               } else {
                 throw new UnsupportedOperationException(
                     "QueryStringInfo is available only for RabbitMQ 3.11 or more.");
               }
             });
     if (response.isOk()) {
-      Map<String, String> info = response.getInfo();
+      Map<String, Long> info = response.getInfo();
       BiFunction<String, String, LongSupplier> offsetSupplierLogic =
           (key, message) -> {
-            if (!info.containsKey(key) || "-1".equals(info.get(key))) {
+            if (!info.containsKey(key) || info.get(key) == -1) {
               return () -> {
                 throw new NoOffsetException(message);
               };
             } else {
               try {
-                long firstOffset = Long.parseUnsignedLong(info.get(key));
-                return () -> firstOffset;
+                long offset = info.get(key);
+                return () -> offset;
               } catch (NumberFormatException e) {
                 return () -> {
                   throw new NoOffsetException(message);
@@ -421,20 +421,21 @@ class StreamEnvironment implements Environment {
             }
           };
       LongSupplier firstOffsetSupplier =
-          offsetSupplierLogic.apply("first_offset", "No first offset for stream " + stream);
+          offsetSupplierLogic.apply("first_chunk_id", "No first offset for stream " + stream);
       LongSupplier committedOffsetSupplier =
-          offsetSupplierLogic.apply("committed_offset", "No committed offset for stream " + stream);
-      return new DefaultStreamInfo(firstOffsetSupplier, committedOffsetSupplier);
+          offsetSupplierLogic.apply(
+              "committed_chunk_id", "No committed chunk ID for stream " + stream);
+      return new DefaultStreamStats(firstOffsetSupplier, committedOffsetSupplier);
     } else {
       throw propagateException(response.getResponseCode(), stream);
     }
   }
 
-  private static class DefaultStreamInfo implements StreamInfo {
+  private static class DefaultStreamStats implements StreamStats {
 
     private final LongSupplier firstOffsetSupplier, committedOffsetSupplier;
 
-    private DefaultStreamInfo(
+    private DefaultStreamStats(
         LongSupplier firstOffsetSupplier, LongSupplier committedOffsetSupplier) {
       this.firstOffsetSupplier = firstOffsetSupplier;
       this.committedOffsetSupplier = committedOffsetSupplier;
@@ -446,7 +447,7 @@ class StreamEnvironment implements Environment {
     }
 
     @Override
-    public long committedOffset() {
+    public long committedChunkId() {
       return committedOffsetSupplier.getAsLong();
     }
   }
