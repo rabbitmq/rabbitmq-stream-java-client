@@ -15,6 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamException;
@@ -22,6 +23,8 @@ import com.rabbitmq.stream.SubscriptionListener;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 class StreamConsumerBuilder implements ConsumerBuilder {
 
@@ -36,6 +39,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private DefaultManualTrackingStrategy manualTrackingStrategy;
   private boolean lazyInit = false;
   private SubscriptionListener subscriptionListener = subscriptionContext -> {};
+  private Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
+  private ConsumerUpdateListener consumerUpdateListener;
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -80,6 +85,18 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
+  public ConsumerBuilder singleActiveConsumer() {
+    this.subscriptionProperties.put("single-active-consumer", "true");
+    return this;
+  }
+
+  @Override
+  public ConsumerBuilder consumerUpdateListener(ConsumerUpdateListener consumerUpdateListener) {
+    this.consumerUpdateListener = consumerUpdateListener;
+    return this;
+  }
+
+  @Override
   public ConsumerBuilder subscriptionListener(SubscriptionListener subscriptionListener) {
     if (subscriptionListener == null) {
       throw new IllegalArgumentException("The subscription listener cannot be null");
@@ -114,6 +131,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     }
     if (this.stream != null && this.superStream != null) {
       throw new IllegalArgumentException("Stream and superStream cannot be set at the same time");
+    }
+    if (this.messageHandler == null) {
+      throw new IllegalArgumentException("A message handle must be set");
     }
     if (this.name == null
         && (this.autoTrackingStrategy != null || this.manualTrackingStrategy != null)) {
@@ -154,7 +174,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.environment,
               trackingConfiguration,
               this.lazyInit,
-              this.subscriptionListener);
+              this.subscriptionListener,
+              this.subscriptionProperties,
+              this.consumerUpdateListener);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       consumer =

@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.isSac;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
@@ -26,6 +27,7 @@ import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
 import com.rabbitmq.stream.impl.Client.ChunkListener;
+import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
 import com.rabbitmq.stream.impl.Client.CreditNotification;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.MetadataListener;
@@ -37,7 +39,6 @@ import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -94,7 +95,8 @@ class ConsumersCoordinator {
       OffsetSpecification offsetSpecification,
       String trackingReference,
       SubscriptionListener subscriptionListener,
-      MessageHandler messageHandler) {
+      MessageHandler messageHandler,
+      Map<String, String> subscriptionProperties) {
     // FIXME fail immediately if there's no locator (can provide a supplier that does not retry)
     List<Client.Broker> candidates = findBrokersForStream(stream);
     Client.Broker newNode = pickBroker(candidates);
@@ -111,7 +113,8 @@ class ConsumersCoordinator {
             offsetSpecification,
             trackingReference,
             subscriptionListener,
-            messageHandler);
+            messageHandler,
+            subscriptionProperties);
 
     String key = keyForClientSubscription(newNode);
 
@@ -232,6 +235,7 @@ class ConsumersCoordinator {
     private final MessageHandler messageHandler;
     private final StreamConsumer consumer;
     private final SubscriptionListener subscriptionListener;
+    private final Map<String, String> subscriptionProperties;
     private volatile long offset;
     private volatile boolean hasReceivedSomething = false;
     private volatile byte subscriptionIdInClient;
@@ -243,13 +247,22 @@ class ConsumersCoordinator {
         OffsetSpecification initialOffsetSpecification,
         String offsetTrackingReference,
         SubscriptionListener subscriptionListener,
-        MessageHandler messageHandler) {
+        MessageHandler messageHandler,
+        Map<String, String> subscriptionProperties) {
       this.consumer = consumer;
       this.stream = stream;
       this.initialOffsetSpecification = initialOffsetSpecification;
       this.offsetTrackingReference = offsetTrackingReference;
       this.subscriptionListener = subscriptionListener;
       this.messageHandler = messageHandler;
+      if (this.offsetTrackingReference == null) {
+        this.subscriptionProperties = subscriptionProperties;
+      } else {
+        Map<String, String> properties = new ConcurrentHashMap<>(subscriptionProperties.size() + 1);
+        properties.putAll(subscriptionProperties);
+        properties.put("name", this.offsetTrackingReference);
+        this.subscriptionProperties = Collections.unmodifiableMap(properties);
+      }
     }
 
     synchronized void cancel() {
@@ -546,6 +559,25 @@ class ConsumersCoordinator {
                       });
             }
           };
+      ConsumerUpdateListener consumerUpdateListener =
+          (client, subscriptionId, active) -> {
+            OffsetSpecification result = null;
+            SubscriptionTracker subscriptionTracker =
+                subscriptionTrackers.get(subscriptionId & 0xFF);
+            if (subscriptionTracker != null) {
+              if (isSac(subscriptionTracker.subscriptionProperties)) {
+                result = subscriptionTracker.consumer.consumerUpdate(active);
+              } else {
+                LOGGER.debug(
+                    "Subscription {} is not a single active consumer, nothing to do.",
+                    subscriptionId);
+              }
+            } else {
+              LOGGER.debug(
+                  "Could not find stream subscription {} for consumer update", subscriptionId);
+            }
+            return result;
+          };
       ClientFactoryContext clientFactoryContext =
           ClientFactoryContext.fromParameters(
                   clientParameters
@@ -556,7 +588,8 @@ class ConsumersCoordinator {
                       .creditNotification(creditNotification)
                       .messageListener(messageListener)
                       .shutdownListener(shutdownListener)
-                      .metadataListener(metadataListener))
+                      .metadataListener(metadataListener)
+                      .consumerUpdateListener(consumerUpdateListener))
               .key(owner.name);
       this.client = clientFactory.client(clientFactoryContext);
       maybeExchangeCommandVersions(client);
@@ -664,10 +697,11 @@ class ConsumersCoordinator {
         List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
 
         LOGGER.debug(
-            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}",
+            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}",
             subscriptionTracker.stream,
             offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
-            subscriptionTracker.offsetTrackingReference);
+            subscriptionTracker.offsetTrackingReference,
+            subscriptionTracker.subscriptionProperties);
         try {
           // updating data structures before subscribing
           // (to make sure they are up-to-date in case message would arrive super fast)
@@ -706,12 +740,6 @@ class ConsumersCoordinator {
           offsetSpecification =
               offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
 
-          Map<String, String> subscriptionProperties = Collections.emptyMap();
-          if (subscriptionTracker.offsetTrackingReference != null) {
-            subscriptionProperties = new HashMap<>(1);
-            subscriptionProperties.put("name", subscriptionTracker.offsetTrackingReference);
-          }
-
           SubscriptionContext subscriptionContext =
               new DefaultSubscriptionContext(offsetSpecification);
           subscriptionTracker.subscriptionListener.preSubscribe(subscriptionContext);
@@ -727,7 +755,7 @@ class ConsumersCoordinator {
                   subscriptionTracker.stream,
                   subscriptionContext.offsetSpecification(),
                   10,
-                  subscriptionProperties);
+                  subscriptionTracker.subscriptionProperties);
           if (!subscribeResponse.isOk()) {
             String message =
                 "Subscription to stream "
@@ -745,7 +773,6 @@ class ConsumersCoordinator {
               .remove(subscriptionTracker);
           throw e;
         }
-
         LOGGER.debug("Subscribed to {}", subscriptionTracker.stream);
       }
     }

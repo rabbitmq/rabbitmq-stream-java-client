@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
+import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
@@ -40,6 +41,7 @@ import org.slf4j.LoggerFactory;
 final class Utils {
 
   static final LongConsumer NO_OP_LONG_CONSUMER = someLong -> {};
+  static final LongSupplier NO_OP_LONG_SUPPLIER = () -> 0;
   static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
   private static final Map<Short, String> CONSTANT_LABELS;
@@ -83,6 +85,14 @@ final class Utils {
 
   static String formatConstant(short value) {
     return value + " (" + CONSTANT_LABELS.getOrDefault(value, "UNKNOWN") + ")";
+  }
+
+  static boolean isSac(Map<String, String> properties) {
+    if (properties == null || properties.isEmpty()) {
+      return false;
+    } else {
+      return "true".equals(properties.get("single-active-consumer"));
+    }
   }
 
   static short encodeRequestCode(Short code) {

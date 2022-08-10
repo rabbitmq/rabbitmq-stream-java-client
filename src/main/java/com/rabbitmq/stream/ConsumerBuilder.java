@@ -64,6 +64,10 @@ public interface ConsumerBuilder {
    */
   ConsumerBuilder name(String name);
 
+  ConsumerBuilder singleActiveConsumer();
+
+  ConsumerBuilder consumerUpdateListener(ConsumerUpdateListener consumerUpdateListener);
+
   /**
    * Callback on subscription.
    *

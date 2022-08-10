@@ -26,9 +26,9 @@ public interface SubscriptionListener {
   /**
    * Callback called before the subscription is created.
    *
-   * <p>The method is called when a {@link Consumer} is created and it registers to broker, and also
-   * when the subscription must be re-created (after a disconnection or when the subscription must
-   * moved because the stream member it was connection becomes unavailable).
+   * <p>The method is called when a {@link Consumer} is created and it registers to the broker, and
+   * also when the subscription must be re-created (after a disconnection or when the subscription
+   * must moved because the stream member it was connected to becomes unavailable).
    *
    * <p>Application code can set the {@link OffsetSpecification} that will be used with the {@link
    * SubscriptionContext#offsetSpecification(OffsetSpecification)} method.

@@ -387,7 +387,10 @@ public class StreamEnvironmentTest {
       environment.streamCreator().stream(s).create();
       try {
         Producer producer = environment.producerBuilder().stream(s).build();
-        Consumer consumer = environment.consumerBuilder().stream(s).build();
+        Consumer consumer =
+            environment.consumerBuilder().stream(s)
+                .messageHandler((context, message) -> {})
+                .build();
         producer.close();
         consumer.close();
       } finally {

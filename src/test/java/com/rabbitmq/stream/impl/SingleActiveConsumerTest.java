@@ -89,8 +89,8 @@ public class SingleActiveConsumerTest {
         () -> receivedMessages.getOrDefault(b(0), new AtomicInteger(0)).get() == messageCount);
 
     assertThat(lastReceivedOffset).hasPositiveValue();
-    client.storeOffset(consumerName, stream, lastReceivedOffset.get());
-    waitAtMost(() -> client.queryOffset(consumerName, stream).getOffset() == lastReceivedOffset.get());
+    writerClient.storeOffset(consumerName, stream, lastReceivedOffset.get());
+    waitAtMost(() -> writerClient.queryOffset(consumerName, stream).getOffset() == lastReceivedOffset.get());
 
     long firstWaveLimit = lastReceivedOffset.get();
     response = client.unsubscribe(b(0));

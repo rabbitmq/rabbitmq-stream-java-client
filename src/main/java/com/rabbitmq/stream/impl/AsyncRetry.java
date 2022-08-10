@@ -121,8 +121,8 @@ class AsyncRetry<V> {
       return this;
     }
 
-    AsyncRetryBuilder<V> description(String description) {
-      this.description = description;
+    AsyncRetryBuilder<V> description(String description, Object... args) {
+      this.description = String.format(description, args);
       return this;
     }
 

@@ -144,6 +144,8 @@ class OffsetTrackingCoordinator {
 
     void flushIfNecessary();
 
+    long flush();
+
     StreamConsumer consumer();
 
     LongConsumer trackingCallback();
@@ -170,6 +172,10 @@ class OffsetTrackingCoordinator {
     Runnable closingCallback() {
       return this.tracker.closingCallback();
     }
+
+    long flush() {
+      return this.tracker.flush();
+    }
   }
 
   private static final class AutoTrackingTracker implements Tracker {
@@ -190,6 +196,7 @@ class OffsetTrackingCoordinator {
       this.clock = clock;
     }
 
+    @Override
     public Consumer<Context> postProcessingCallback() {
       return context -> {
         if (++count % messageCountBeforeStorage == 0) {
@@ -204,26 +211,37 @@ class OffsetTrackingCoordinator {
       };
     }
 
+    @Override
     public void flushIfNecessary() {
       if (this.count > 0) {
         if (this.clock.time() - this.lastTrackingActivity > this.flushIntervalInNs) {
-          if (lastProcessedOffset != null) {
-            try {
-              long lastStoredOffset = consumer.lastStoredOffset();
-              if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
-                this.consumer.store(this.lastProcessedOffset.get());
-              }
-              this.lastTrackingActivity = clock.time();
-            } catch (StreamException e) {
-              if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-                this.consumer.store(this.lastProcessedOffset.get());
-                this.lastTrackingActivity = clock.time();
-              } else {
-                throw e;
-              }
-            }
+          this.flush();
+        }
+      }
+    }
+
+    @Override
+    public long flush() {
+      if (lastProcessedOffset == null) {
+        return 0;
+      } else {
+        long result;
+        try {
+          long lastStoredOffset = consumer.lastStoredOffset();
+          if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
+            this.consumer.store(this.lastProcessedOffset.get());
+          }
+          result = lastProcessedOffset.get();
+        } catch (StreamException e) {
+          if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+            this.consumer.store(this.lastProcessedOffset.get());
+            result = lastProcessedOffset.get();
+          } else {
+            throw e;
           }
         }
+        this.lastTrackingActivity = clock.time();
+        return result;
       }
     }
 
@@ -299,6 +317,11 @@ class OffsetTrackingCoordinator {
           }
         }
       }
+    }
+
+    @Override
+    public long flush() {
+      throw new UnsupportedOperationException();
     }
 
     @Override
