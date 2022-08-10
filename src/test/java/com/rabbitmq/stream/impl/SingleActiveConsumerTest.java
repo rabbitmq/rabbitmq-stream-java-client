@@ -38,6 +38,7 @@ public class SingleActiveConsumerTest {
 
   @Test
   void secondSubscriptionShouldTakeOverAfterFirstOneUnsubscribes() throws Exception {
+    Client writerClient = cf.get();
     int messageCount = 10000;
     AtomicLong lastReceivedOffset = new AtomicLong(0);
     Map<Byte, Boolean> consumerStates = new ConcurrentHashMap<>();
@@ -45,6 +46,7 @@ public class SingleActiveConsumerTest {
     receivedMessages.put(b(0), new AtomicInteger(0));
     receivedMessages.put(b(1), new AtomicInteger(0));
     CountDownLatch consumerUpdateLatch = new CountDownLatch(2);
+    String consumerName = "foo";
     ClientParameters clientParameters =
         new ClientParameters()
             .chunkListener(
@@ -59,17 +61,17 @@ public class SingleActiveConsumerTest {
                 (client, subscriptionId, active) -> {
                   consumerStates.put(subscriptionId, active);
                   consumerUpdateLatch.countDown();
-                  if (lastReceivedOffset.get() == 0) {
+                  long storedOffset = writerClient.queryOffset(consumerName, stream).getOffset();
+                  if (storedOffset == 0) {
                     return OffsetSpecification.first();
                   } else {
-                    return OffsetSpecification.offset(lastReceivedOffset.get() + 1);
+                    return OffsetSpecification.offset(storedOffset + 1);
                   }
                 });
     Client client = cf.get(clientParameters);
 
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
 
-    String consumerName = "foo";
     Map<String, String> parameters = new HashMap<>();
     parameters.put("single-active-consumer", "true");
     parameters.put("name", consumerName);
