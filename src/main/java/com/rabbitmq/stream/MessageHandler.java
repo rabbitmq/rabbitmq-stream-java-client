@@ -71,6 +71,13 @@ public interface MessageHandler {
     long committedChunkId();
 
     /**
+     * The stream the message comes from.
+     *
+     * @return the stream the message comes from
+     */
+    String stream();
+
+    /**
      * The consumer that receives the message.
      *
      * @return the consumer instance

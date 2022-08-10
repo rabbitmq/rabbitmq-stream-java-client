@@ -17,6 +17,7 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
+import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,15 @@ class SuperStreamConsumer implements Consumer {
         messageHandler = builder.messageHandler();
       }
       StreamConsumerBuilder subConsumerBuilder = builder.duplicate();
+
+      // to ease testing
+      // we need to duplicate the composite consumer update listener,
+      // otherwise a unique instance would get the listeners of all the sub-consumers
+      if (subConsumerBuilder.consumerUpdateListener() instanceof CompositeConsumerUpdateListener) {
+        subConsumerBuilder.consumerUpdateListener(
+            ((CompositeConsumerUpdateListener) subConsumerBuilder.consumerUpdateListener())
+                .duplicate());
+      }
 
       if (trackingConfiguration.enabled() && trackingConfiguration.auto()) {
         subConsumerBuilder =
@@ -129,6 +139,11 @@ class SuperStreamConsumer implements Consumer {
                   state.consumer.store(state.offset);
                 }
               }
+            }
+
+            @Override
+            public String stream() {
+              return context.stream();
             }
 
             @Override

@@ -552,6 +552,7 @@ class StreamEnvironment implements Environment {
       OffsetSpecification offsetSpecification,
       String trackingReference,
       SubscriptionListener subscriptionListener,
+      Runnable trackingClosingCallback,
       MessageHandler messageHandler,
       Map<String, String> subscriptionProperties) {
     Runnable closingCallback =
@@ -561,6 +562,7 @@ class StreamEnvironment implements Environment {
             offsetSpecification,
             trackingReference,
             subscriptionListener,
+            trackingClosingCallback,
             messageHandler,
             subscriptionProperties);
     return closingCallback;

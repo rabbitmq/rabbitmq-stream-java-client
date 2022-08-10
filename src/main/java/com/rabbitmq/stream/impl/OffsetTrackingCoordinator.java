@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
@@ -258,20 +259,34 @@ class OffsetTrackingCoordinator {
     @Override
     public Runnable closingCallback() {
       return () -> {
-        if (this.lastProcessedOffset == null) {
-          LOGGER.debug("Not storing anything as nothing has been processed.");
+        if (this.consumer.isSac() && this.consumer.sacStatus() != Status.ACTIVE) {
+          LOGGER.debug("Not storing offset on closing because consumer is a non-active SAC");
         } else {
-          try {
-            long lastStoredOffset = consumer.lastStoredOffset();
-            if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
-              LOGGER.debug("Storing {} offset before closing", this.lastProcessedOffset);
-              this.consumer.store(this.lastProcessedOffset.get());
-            }
-          } catch (StreamException e) {
-            if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-              LOGGER.debug(
-                  "Nothing stored yet, storing {} offset before closing", this.lastProcessedOffset);
-              this.consumer.store(this.lastProcessedOffset.get());
+          if (this.lastProcessedOffset == null) {
+            LOGGER.debug("Not storing anything as nothing has been processed.");
+          } else {
+            Runnable storageOperation =
+                () -> {
+                  this.consumer.store(this.lastProcessedOffset.get());
+                  if (this.consumer.isSac()) {
+                    LOGGER.debug(
+                        "Consumer is SAC, making sure offset has been stored, in case another SAC takes over");
+                    this.consumer.waitForOffsetToBeStored(lastProcessedOffset.get());
+                  }
+                };
+            try {
+              long lastStoredOffset = consumer.lastStoredOffset();
+              if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
+                LOGGER.debug("Storing {} offset before closing", this.lastProcessedOffset);
+                storageOperation.run();
+              }
+            } catch (StreamException e) {
+              if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+                LOGGER.debug(
+                    "Nothing stored yet, storing {} offset before closing",
+                    this.lastProcessedOffset);
+                storageOperation.run();
+              }
             }
           }
         }

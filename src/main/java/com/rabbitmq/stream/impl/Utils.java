@@ -18,15 +18,19 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamNotAvailableException;
+import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -248,6 +252,38 @@ final class Utils {
     }
     return clientConnectionType ->
         prefixes.get(clientConnectionType) + sequences.get(clientConnectionType).getAndIncrement();
+  }
+
+  /*
+  class to help testing SAC on super streams
+   */
+  static class CompositeConsumerUpdateListener implements ConsumerUpdateListener {
+
+    private final List<ConsumerUpdateListener> delegates = new CopyOnWriteArrayList<>();
+
+    @Override
+    public OffsetSpecification update(Context context) {
+      OffsetSpecification result = null;
+      for (ConsumerUpdateListener delegate : delegates) {
+        OffsetSpecification offsetSpecification = delegate.update(context);
+        if (offsetSpecification != null) {
+          result = offsetSpecification;
+        }
+      }
+      return result;
+    }
+
+    void add(ConsumerUpdateListener delegate) {
+      this.delegates.add(delegate);
+    }
+
+    CompositeConsumerUpdateListener duplicate() {
+      CompositeConsumerUpdateListener duplica = new CompositeConsumerUpdateListener();
+      for (ConsumerUpdateListener delegate : this.delegates) {
+        duplica.add(delegate);
+      }
+      return duplica;
+    }
   }
 
   static boolean offsetBefore(long x, long y) {

@@ -95,6 +95,7 @@ class ConsumersCoordinator {
       OffsetSpecification offsetSpecification,
       String trackingReference,
       SubscriptionListener subscriptionListener,
+      Runnable trackingClosingCallback,
       MessageHandler messageHandler,
       Map<String, String> subscriptionProperties) {
     // FIXME fail immediately if there's no locator (can provide a supplier that does not retry)
@@ -113,6 +114,7 @@ class ConsumersCoordinator {
             offsetSpecification,
             trackingReference,
             subscriptionListener,
+            trackingClosingCallback,
             messageHandler,
             subscriptionProperties);
 
@@ -235,6 +237,7 @@ class ConsumersCoordinator {
     private final MessageHandler messageHandler;
     private final StreamConsumer consumer;
     private final SubscriptionListener subscriptionListener;
+    private final Runnable trackingClosingCallback;
     private final Map<String, String> subscriptionProperties;
     private volatile long offset;
     private volatile boolean hasReceivedSomething = false;
@@ -247,6 +250,7 @@ class ConsumersCoordinator {
         OffsetSpecification initialOffsetSpecification,
         String offsetTrackingReference,
         SubscriptionListener subscriptionListener,
+        Runnable trackingClosingCallback,
         MessageHandler messageHandler,
         Map<String, String> subscriptionProperties) {
       this.consumer = consumer;
@@ -254,6 +258,7 @@ class ConsumersCoordinator {
       this.initialOffsetSpecification = initialOffsetSpecification;
       this.offsetTrackingReference = offsetTrackingReference;
       this.subscriptionListener = subscriptionListener;
+      this.trackingClosingCallback = trackingClosingCallback;
       this.messageHandler = messageHandler;
       if (this.offsetTrackingReference == null) {
         this.subscriptionProperties = subscriptionProperties;
@@ -267,6 +272,11 @@ class ConsumersCoordinator {
     }
 
     synchronized void cancel() {
+      // the flow of messages in the user message handler should stop, we can call the tracking
+      // closing callback
+      // with automatic offset tracking, it will store the last dispatched offset
+      LOGGER.debug("Calling tracking consumer closing callback (may be no-op)");
+      this.trackingClosingCallback.run();
       if (this.manager != null) {
         LOGGER.debug("Removing consumer from manager " + this.consumer);
         this.manager.remove(this);
@@ -298,10 +308,10 @@ class ConsumersCoordinator {
     private final long offset;
     private final long timestamp;
     private final long committedOffset;
-    private final Consumer consumer;
+    private final StreamConsumer consumer;
 
     private MessageHandlerContext(
-        long offset, long timestamp, long committedOffset, Consumer consumer) {
+        long offset, long timestamp, long committedOffset, StreamConsumer consumer) {
       this.offset = offset;
       this.timestamp = timestamp;
       this.committedOffset = committedOffset;
@@ -326,6 +336,10 @@ class ConsumersCoordinator {
     @Override
     public long committedChunkId() {
       return committedOffset;
+    }
+
+    public String stream() {
+      return this.consumer.stream();
     }
 
     @Override
@@ -455,14 +469,14 @@ class ConsumersCoordinator {
           (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
-            if (subscriptionTracker != null) {
+            if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
               subscriptionTracker.offset = offset;
               subscriptionTracker.hasReceivedSomething = true;
               subscriptionTracker.messageHandler.handle(
                   new MessageHandlerContext(
                       offset, chunkTimestamp, committedOffset, subscriptionTracker.consumer),
                   message);
-              // FIXME set offset here as well, best effort to avoid duplicates
+              // FIXME set offset here as well, best effort to avoid duplicates?
             } else {
               LOGGER.debug("Could not find stream subscription {}", subscriptionId);
             }
@@ -741,6 +755,8 @@ class ConsumersCoordinator {
           offsetSpecification =
               offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
 
+          // TODO consider using/emulating ConsumerUpdateListener, to have only one API, not 2
+          // even when the consumer is not a SAC.
           SubscriptionContext subscriptionContext =
               new DefaultSubscriptionContext(offsetSpecification);
           subscriptionTracker.subscriptionListener.preSubscribe(subscriptionContext);

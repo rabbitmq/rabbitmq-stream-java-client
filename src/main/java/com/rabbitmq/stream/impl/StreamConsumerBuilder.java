@@ -312,4 +312,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     }
     return duplicate;
   }
+
+  // to help testing
+  public ConsumerUpdateListener consumerUpdateListener() {
+    return consumerUpdateListener;
+  }
 }

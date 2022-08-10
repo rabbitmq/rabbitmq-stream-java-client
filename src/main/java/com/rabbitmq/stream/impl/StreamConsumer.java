@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.Utils.isSac;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.ConsumerUpdateListener.Status;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -29,6 +30,7 @@ import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
@@ -48,7 +50,6 @@ class StreamConsumer implements Consumer {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamConsumer.class);
   private final long id;
-  private final Runnable closingTrackingCallback;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final String name;
   private final String stream;
@@ -77,6 +78,7 @@ class StreamConsumer implements Consumer {
       ConsumerUpdateListener consumerUpdateListener) {
 
     this.id = ID_SEQUENCE.getAndIncrement();
+    Runnable trackingClosingCallback;
     try {
       this.name = name;
       this.stream = stream;
@@ -88,7 +90,7 @@ class StreamConsumer implements Consumer {
         TrackingConsumerRegistration trackingConsumerRegistration =
             environment.registerTrackingConsumer(this, trackingConfiguration);
 
-        this.closingTrackingCallback = trackingConsumerRegistration.closingCallback();
+        trackingClosingCallback = trackingConsumerRegistration.closingCallback();
 
         java.util.function.Consumer<Context> postMessageProcessingCallback =
             trackingConsumerRegistration.postMessageProcessingCallback();
@@ -106,13 +108,13 @@ class StreamConsumer implements Consumer {
         this.trackingCallback = trackingConsumerRegistration.trackingCallback();
         trackingFlushCallback = () -> trackingConsumerRegistration.flush();
       } else {
-        this.closingTrackingCallback = () -> {};
+        trackingClosingCallback = () -> {};
         this.trackingCallback = Utils.NO_OP_LONG_CONSUMER;
         trackingFlushCallback = Utils.NO_OP_LONG_SUPPLIER;
         decoratedMessageHandler.set(messageHandler);
       }
 
-      if (isSac(subscriptionProperties)) {
+      if (Utils.isSac(subscriptionProperties)) {
         this.sacStatus = ConsumerUpdateListener.Status.STARTING;
         MessageHandler existingMessageHandler = decoratedMessageHandler.get();
         MessageHandler messageHandlerWithSac =
@@ -123,67 +125,46 @@ class StreamConsumer implements Consumer {
             };
         decoratedMessageHandler.set(messageHandlerWithSac);
 
-        if (consumerUpdateListener == null) {
+        if (consumerUpdateListener == null
+            || consumerUpdateListener instanceof CompositeConsumerUpdateListener) {
           if (trackingConfiguration.auto()) {
             LOGGER.debug("Setting default consumer update listener for auto tracking strategy");
-            this.consumerUpdateListener =
+            ConsumerUpdateListener defaultListener =
                 context -> {
                   OffsetSpecification result = null;
-                  if (context.previousStatus() == ConsumerUpdateListener.Status.STARTING
+                  if ((context.previousStatus() == ConsumerUpdateListener.Status.STARTING
+                          || context.previousStatus() == ConsumerUpdateListener.Status.PASSIVE)
                       && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
-                    // the initial subscription set up the appropriate offset to start from
-                    // the broker will use it if we don't return anything
-                    LOGGER.debug("No offset specified when going from starting to active");
-                    result = OffsetSpecification.none();
-                  } else if (context.previousStatus() == ConsumerUpdateListener.Status.ACTIVE
-                      && context.status() == ConsumerUpdateListener.Status.PASSIVE) {
-                    LOGGER.debug("Going from active to passive, storing offset");
-                    long offset = trackingFlushCallback.getAsLong();
-                    LOGGER.debug("Making sure offset {} has been stored", offset);
-                    // make sure it has been stored
-                    StreamConsumer consumer = (StreamConsumer) context.consumer();
-                    CompletableFuture<Boolean> storedTask =
-                        AsyncRetry.asyncRetry(
-                                () -> {
-                                  boolean stored = consumer.lastStoredOffset() == offset;
-                                  if (!stored) {
-                                    throw new IllegalStateException();
-                                  } else {
-                                    return true;
-                                  }
-                                })
-                            .description(
-                                "Last stored offset for consumer %s on stream %s must be %d",
-                                this.name, this.stream, offset)
-                            .delayPolicy(
-                                BackOffDelayPolicy.fixedWithInitialDelay(
-                                    Duration.ofMillis(500), Duration.ofMillis(200)))
-                            .retry(exception -> exception instanceof IllegalStateException)
-                            .scheduler(environment.scheduledExecutorService())
-                            .build();
-
-                    try {
-                      storedTask.get(10, TimeUnit.SECONDS);
-                      LOGGER.debug("Offset {} stored", offset);
-                    } catch (InterruptedException e) {
-                      Thread.currentThread().interrupt();
-                    } catch (ExecutionException e) {
-                      LOGGER.warn("Error while checking offset has been stored", e);
-                    } catch (TimeoutException e) {
-                      LOGGER.warn("Error while checking offset has been stored", e);
-                    }
-                    result = OffsetSpecification.none();
-                  } else if (context.previousStatus() == ConsumerUpdateListener.Status.PASSIVE
-                      && context.status() == ConsumerUpdateListener.Status.ACTIVE) {
-                    LOGGER.debug("Going from passive to active, looking up offset");
+                    LOGGER.debug("Looking up offset (stream {})", this.stream);
                     StreamConsumer consumer = (StreamConsumer) context.consumer();
                     long offset = consumer.lastStoredOffset();
                     LOGGER.debug(
                         "Stored offset is {}, returning the value + 1 to the server", offset);
                     return OffsetSpecification.offset(offset + 1);
+                  } else if (context.previousStatus() == ConsumerUpdateListener.Status.ACTIVE
+                      && context.status() == ConsumerUpdateListener.Status.PASSIVE) {
+                    LOGGER.debug(
+                        "Storing offset (consumer {}, stream {}) because going from active to passive",
+                        this.id,
+                        this.stream);
+                    long offset = trackingFlushCallback.getAsLong();
+                    LOGGER.debug(
+                        "Making sure offset {} has been stored (consumer {}, stream {})",
+                        offset,
+                        this.id,
+                        this.stream);
+                    waitForOffsetToBeStored(offset);
+                    result = OffsetSpecification.none();
                   }
                   return result;
                 };
+            // just a trick for testing
+            if (consumerUpdateListener instanceof CompositeConsumerUpdateListener) {
+              ((CompositeConsumerUpdateListener) consumerUpdateListener).add(defaultListener);
+              this.consumerUpdateListener = consumerUpdateListener;
+            } else {
+              this.consumerUpdateListener = defaultListener;
+            }
           } else if (trackingConfiguration.manual()) {
             LOGGER.debug("Setting default consumer update listener for manual tracking strategy");
             this.consumerUpdateListener =
@@ -198,7 +179,7 @@ class StreamConsumer implements Consumer {
                     long offset = consumer.lastStoredOffset();
                     LOGGER.debug(
                         "Stored offset is {}, returning the value + 1 to the server", offset);
-                    return OffsetSpecification.offset(offset + 1);
+                    result = OffsetSpecification.offset(offset + 1);
                   }
                   return result;
                 };
@@ -232,6 +213,7 @@ class StreamConsumer implements Consumer {
                     offsetSpecification,
                     this.name,
                     subscriptionListener,
+                    trackingClosingCallback,
                     closedAwareMessageHandler,
                     Collections.unmodifiableMap(subscriptionProperties));
 
@@ -246,6 +228,47 @@ class StreamConsumer implements Consumer {
     } catch (RuntimeException e) {
       this.closed.set(true);
       throw e;
+    }
+  }
+
+  void waitForOffsetToBeStored(long expectedStoredOffset) {
+    CompletableFuture<Boolean> storedTask =
+        AsyncRetry.asyncRetry(
+                () -> {
+                  long lastStoredOffset = lastStoredOffset();
+                  boolean stored = lastStoredOffset == expectedStoredOffset;
+                  LOGGER.debug(
+                      "Last stored offset from consumer {} on {} is {}, expecting {}",
+                      this.id,
+                      this.stream,
+                      lastStoredOffset,
+                      expectedStoredOffset);
+                  if (!stored) {
+                    throw new IllegalStateException();
+                  } else {
+                    return true;
+                  }
+                })
+            .description(
+                "Last stored offset for consumer %s on stream %s must be %d",
+                this.name, this.stream, expectedStoredOffset)
+            .delayPolicy(
+                BackOffDelayPolicy.fixedWithInitialDelay(
+                    Duration.ofMillis(500), Duration.ofMillis(200)))
+            .retry(exception -> exception instanceof IllegalStateException)
+            .scheduler(environment.scheduledExecutorService())
+            .build();
+
+    try {
+      storedTask.get(10, TimeUnit.SECONDS);
+      LOGGER.debug(
+          "Offset {} stored (consumer {}, stream {})", expectedStoredOffset, this.id, this.stream);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException e) {
+      LOGGER.warn("Error while checking offset has been stored", e);
+    } catch (TimeoutException e) {
+      LOGGER.warn("Error while checking offset has been stored", e);
     }
   }
 
@@ -279,10 +302,12 @@ class StreamConsumer implements Consumer {
 
   OffsetSpecification consumerUpdate(boolean active) {
     LOGGER.debug(
-        "Consumer from stream {}  with name {} received consumer update notification, active = {}",
+        "Consumer {} from stream {} with name {} received consumer update notification, active = {}, current state is {}",
+        this.id,
         this.stream,
         this.name,
-        active);
+        active,
+        this.sacStatus);
 
     ConsumerUpdateListener.Status previousStatus = this.sacStatus;
     this.sacStatus =
@@ -356,6 +381,14 @@ class StreamConsumer implements Consumer {
     }
   }
 
+  boolean isSac() {
+    return this.sacStatus != null;
+  }
+
+  ConsumerUpdateListener.Status sacStatus() {
+    return this.sacStatus;
+  }
+
   private boolean canTrack() {
     return this.status == Status.RUNNING && this.name != null;
   }
@@ -369,10 +402,8 @@ class StreamConsumer implements Consumer {
   }
 
   void closeFromEnvironment() {
-    LOGGER.debug("Calling consumer closing callback");
+    LOGGER.debug("Calling consumer {} closing callback (stream {})", this.id, this.stream);
     this.closingCallback.run();
-    LOGGER.debug("Calling tracking consumer closing callback (may be no-op)");
-    this.closingTrackingCallback.run();
     closed.set(true);
     this.status = Status.CLOSED;
     LOGGER.debug("Closed consumer successfully");

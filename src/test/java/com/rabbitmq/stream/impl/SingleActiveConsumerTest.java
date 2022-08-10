@@ -257,7 +257,7 @@ public class SingleActiveConsumerTest {
                       (client12, subscriptionId, offset, messageCount1, dataSize) ->
                           client12.credit(subscriptionId, 1))
                   .messageListener(
-                      (subscriptionId, offset, chunkTimestamp, message) -> {
+                      (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
                         lastReceivedOffset.set(offset);
                         receivedMessages.get(subscriptionId).incrementAndGet();
                       }));
