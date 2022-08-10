@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
+import static com.rabbitmq.stream.Constants.COMMAND_CONSUMER_UPDATE;
 import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
 import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
 import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
@@ -50,6 +51,7 @@ import com.rabbitmq.stream.ChunkChecksumValidationException;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
@@ -133,6 +135,7 @@ class ServerFrameHandler {
     handlers.put(COMMAND_QUERY_PUBLISHER_SEQUENCE, new QueryPublisherSequenceFrameHandler());
     handlers.put(COMMAND_ROUTE, new RouteFrameHandler());
     handlers.put(COMMAND_PARTITIONS, new PartitionsFrameHandler());
+    handlers.put(COMMAND_CONSUMER_UPDATE, new ConsumerUpdateFrameHandler());
     handlers.put(COMMAND_EXCHANGE_COMMAND_VERSIONS, new ExchangeCommandVersionsFrameHandler());
     handlers.put(COMMAND_STREAM_STATS, new StreamStatsFrameHandler());
     HANDLERS = new FrameHandler[maxCommandKey + 1][];
@@ -719,6 +722,27 @@ class ServerFrameHandler {
       read += 1;
 
       client.creditNotification.handle(subscriptionId, responseCode);
+      return read;
+    }
+  }
+
+  private static class ConsumerUpdateFrameHandler extends BaseFrameHandler {
+
+    @Override
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      int correlationId = message.readInt();
+      int read = 4;
+      byte subscriptionId = message.readByte();
+      read += 1;
+      byte activeByte = message.readByte();
+      read += 1;
+
+      OffsetSpecification offsetSpecification =
+          client.consumerUpdateListener.handle(
+              client, subscriptionId, activeByte == 1 ? true : false);
+
+      client.consumerUpdateResponse(correlationId, RESPONSE_CODE_OK, offsetSpecification);
+
       return read;
     }
   }

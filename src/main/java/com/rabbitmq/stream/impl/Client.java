@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
+import static com.rabbitmq.stream.Constants.COMMAND_CONSUMER_UPDATE;
 import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
 import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
 import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
@@ -41,6 +42,7 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
 import static com.rabbitmq.stream.Constants.VERSION_1;
 import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
+import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -163,6 +165,7 @@ public class Client implements AutoCloseable {
   final ChunkListener chunkListener;
   final MessageListener messageListener;
   final CreditNotification creditNotification;
+  final ConsumerUpdateListener consumerUpdateListener;
   final MetadataListener metadataListener;
   final Codec codec;
   final Channel channel;
@@ -220,6 +223,7 @@ public class Client implements AutoCloseable {
     this.chunkChecksum = parameters.chunkChecksum;
     this.metricsCollector = parameters.metricsCollector;
     this.metadataListener = parameters.metadataListener;
+    this.consumerUpdateListener = parameters.consumerUpdateListener;
     this.compressionCodecFactory =
         parameters.compressionCodecFactory == null
             ? compression -> null
@@ -1380,6 +1384,29 @@ public class Client implements AutoCloseable {
     }
   }
 
+  public void consumerUpdateResponse(
+      int correlationId, short responseCode, OffsetSpecification offsetSpecification) {
+    offsetSpecification =
+        offsetSpecification == null ? OffsetSpecification.none() : offsetSpecification;
+    int length = 2 + 2 + 4 + 2 + 2; // API code, version, correlation ID, response code, offset type
+
+    if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
+      length += 8;
+    }
+
+    ByteBuf bb = allocate(length + 4);
+    bb.writeInt(length);
+    bb.writeShort(encodeResponseCode(COMMAND_CONSUMER_UPDATE));
+    bb.writeShort(VERSION_1);
+    bb.writeInt(correlationId);
+    bb.writeShort(responseCode);
+    bb.writeShort(offsetSpecification.getType());
+    if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
+      bb.writeLong(offsetSpecification.getOffset());
+    }
+    channel.writeAndFlush(bb);
+  }
+
   void shutdownReason(ShutdownReason reason) {
     this.shutdownReason = reason;
   }
@@ -1480,6 +1507,11 @@ public class Client implements AutoCloseable {
   public interface CreditNotification {
 
     void handle(byte subscriptionId, short responseCode);
+  }
+
+  public interface ConsumerUpdateListener {
+
+    OffsetSpecification handle(Client client, byte subscriptionId, boolean active);
   }
 
   public interface ShutdownListener {
@@ -2017,6 +2049,8 @@ public class Client implements AutoCloseable {
                 "Received notification for subscription {}: {}",
                 subscriptionId,
                 Utils.formatConstant(responseCode));
+    private ConsumerUpdateListener consumerUpdateListener =
+        (client, subscriptionId, active) -> null;
     private ShutdownListener shutdownListener = shutdownContext -> {};
     private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
     private CredentialsProvider credentialsProvider =
@@ -2061,6 +2095,11 @@ public class Client implements AutoCloseable {
 
     public ClientParameters creditNotification(CreditNotification creditNotification) {
       this.creditNotification = creditNotification;
+      return this;
+    }
+
+    public ClientParameters consumerUpdateListener(ConsumerUpdateListener consumerUpdateListener) {
+      this.consumerUpdateListener = consumerUpdateListener;
       return this;
     }
 

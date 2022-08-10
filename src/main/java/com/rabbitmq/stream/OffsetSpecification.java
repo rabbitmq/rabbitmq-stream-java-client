@@ -18,6 +18,7 @@ import java.util.Objects;
 /** API to specify an offset in a stream. */
 public class OffsetSpecification {
 
+  private static final short TYPE_NONE = 0;
   private static final short TYPE_FIRST = 1;
   private static final short TYPE_LAST = 2;
   private static final short TYPE_NEXT = 3;
@@ -26,6 +27,7 @@ public class OffsetSpecification {
 
   private static final long UNUSED_OFFSET = -1;
 
+  private static final OffsetSpecification NONE = new OffsetSpecification(TYPE_NONE, UNUSED_OFFSET);
   private static final OffsetSpecification FIRST =
       new OffsetSpecification(TYPE_FIRST, UNUSED_OFFSET);
   private static final OffsetSpecification LAST = new OffsetSpecification(TYPE_LAST, UNUSED_OFFSET);
@@ -37,6 +39,15 @@ public class OffsetSpecification {
   private OffsetSpecification(short type, long offset) {
     this.type = type;
     this.offset = offset;
+  }
+
+  /**
+   * When the offset specification is not relevant.
+   *
+   * @return none offset specification
+   */
+  public static OffsetSpecification none() {
+    return NONE;
   }
 
   /**

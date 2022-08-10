@@ -195,12 +195,7 @@ public final class TestUtils {
       client.publish(b(1), Collections.singletonList(message));
     }
 
-    try {
-      assertThat(latchConfirm.await(60, SECONDS)).isTrue();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new RuntimeException(e);
-    }
+    latchAssert(latchConfirm).completes(Duration.ofSeconds(60));
   }
 
   static Consumer<Object> namedTask(TaskWithException task, String description) {
