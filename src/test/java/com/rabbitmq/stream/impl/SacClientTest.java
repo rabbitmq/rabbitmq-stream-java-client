@@ -507,7 +507,7 @@ public class SacClientTest {
           };
       CountDownLatch receivedMessagesLatch = new CountDownLatch(100);
       MessageListener messageListener =
-          (subscriptionId, offset, chunkTimestamp, message) -> {
+          (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
             lastDispatchedOffset.set(offset);
             receivedMessagesLatch.countDown();
           };

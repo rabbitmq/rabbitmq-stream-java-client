@@ -3,8 +3,8 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.rabbitmq</groupId>
-  <artifactId>stream-client</artifactId>
-  <version>0.7.0-SNAPSHOT</version>
+  <artifactId>stream-client-sac</artifactId>
+  <version>0.6.0-SNAPSHOT</version>
 
   <name>RabbitMQ Stream Java Client</name>
   <description>The RabbitMQ Stream Java client library allows Java applications to interface with
@@ -718,10 +718,11 @@
         <gpg.skip>false</gpg.skip>
       </properties>
       <distributionManagement>
-        <snapshotRepository>
-          <id>ossrh</id>
-          <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
+        <repository>
+          <id>github</id>
+          <name>GitHub Stream Java Client Apache Maven Packages</name>
+          <url>https://maven.pkg.github.com/rabbitmq/rabbitmq-stream-java-client</url>
+        </repository>
       </distributionManagement>
     </profile>
 
