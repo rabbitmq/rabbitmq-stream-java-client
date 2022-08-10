@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -36,8 +37,9 @@ public class SingleActiveConsumerTest {
   TestUtils.ClientFactory cf;
 
   @Test
-  void subscribe() throws Exception {
+  void secondSubscriptionShouldTakeOverAfterFirstOneUnsubscribes() throws Exception {
     int messageCount = 10000;
+    AtomicLong lastReceivedOffset = new AtomicLong(0);
     Map<Byte, Boolean> consumerStates = new ConcurrentHashMap<>();
     Map<Byte, AtomicInteger> receivedMessages = new ConcurrentHashMap<>();
     receivedMessages.put(b(0), new AtomicInteger(0));
@@ -49,21 +51,28 @@ public class SingleActiveConsumerTest {
                 (client, subscriptionId, offset, msgCount, dataSize) ->
                     client.credit(subscriptionId, 1))
             .messageListener(
-                (subscriptionId, offset, chunkTimestamp, committedChunkId, message) ->
-                    receivedMessages.get(subscriptionId).incrementAndGet())
+                (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
+                  lastReceivedOffset.set(offset);
+                  receivedMessages.get(subscriptionId).incrementAndGet();
+                })
             .consumerUpdateListener(
                 (client, subscriptionId, active) -> {
                   consumerStates.put(subscriptionId, active);
                   consumerUpdateLatch.countDown();
-                  return null;
+                  if (lastReceivedOffset.get() == 0) {
+                    return OffsetSpecification.first();
+                  } else {
+                    return OffsetSpecification.offset(lastReceivedOffset.get() + 1);
+                  }
                 });
     Client client = cf.get(clientParameters);
 
     TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
 
+    String consumerName = "foo";
     Map<String, String> parameters = new HashMap<>();
     parameters.put("single-active-consumer", "true");
-    parameters.put("name", "foo");
+    parameters.put("name", consumerName);
     Response response = client.subscribe(b(0), stream, OffsetSpecification.first(), 2, parameters);
     assertThat(response.isOk()).isTrue();
     response = client.subscribe(b(1), stream, OffsetSpecification.first(), 2, parameters);
@@ -76,5 +85,69 @@ public class SingleActiveConsumerTest {
 
     waitAtMost(
         () -> receivedMessages.getOrDefault(b(0), new AtomicInteger(0)).get() == messageCount);
+
+    assertThat(lastReceivedOffset).hasPositiveValue();
+    client.storeOffset(consumerName, stream, lastReceivedOffset.get());
+    waitAtMost(() -> client.queryOffset(consumerName, stream).getOffset() == lastReceivedOffset.get());
+
+    long firstWaveLimit = lastReceivedOffset.get();
+    response = client.unsubscribe(b(0));
+    assertThat(response.isOk()).isTrue();
+
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+
+    waitAtMost(() -> consumerStates.get(b(1)) == true);
+
+    waitAtMost(
+        () -> receivedMessages.getOrDefault(b(1), new AtomicInteger(0)).get() == messageCount);
+    assertThat(lastReceivedOffset).hasValueGreaterThan(firstWaveLimit);
+
+    response = client.unsubscribe(b(1));
+    assertThat(response.isOk()).isTrue();
+  }
+
+  @Test
+  void consumerUpdateListenerShouldBeCalledInOrder() throws Exception {
+    StringBuffer consumerUpdateHistory = new StringBuffer();
+    Client client =
+        cf.get(
+            new ClientParameters()
+                .consumerUpdateListener(
+                    (client1, subscriptionId, active) -> {
+                      consumerUpdateHistory.append(
+                          String.format("<%d.%b>", subscriptionId, active));
+                      return null;
+                    }));
+    String consumerName = "foo";
+    Map<String, String> parameters = new HashMap<>();
+    parameters.put("single-active-consumer", "true");
+    parameters.put("name", consumerName);
+    Response response = client.subscribe(b(0), stream, OffsetSpecification.first(), 2, parameters);
+    assertThat(response.isOk()).isTrue();
+    waitAtMost(() -> consumerUpdateHistory.toString().equals("<0.true>"));
+    for (int i = 1; i < 10; i++) {
+      byte subscriptionId = b(i);
+      response =
+          client.subscribe(subscriptionId, stream, OffsetSpecification.first(), 2, parameters);
+      assertThat(response.isOk()).isTrue();
+      waitAtMost(
+          () ->
+              consumerUpdateHistory
+                  .toString()
+                  .contains(String.format("<%d.%b>", subscriptionId, false)));
+    }
+
+    for (int i = 0; i < 9; i++) {
+      byte subscriptionId = b(i);
+      response = client.unsubscribe(subscriptionId);
+      assertThat(response.isOk()).isTrue();
+      waitAtMost(
+          () ->
+              consumerUpdateHistory
+                  .toString()
+                  .contains(String.format("<%d.%b>", subscriptionId + 1, true)));
+    }
+    response = client.unsubscribe(b(9));
+    assertThat(response.isOk()).isTrue();
   }
 }
