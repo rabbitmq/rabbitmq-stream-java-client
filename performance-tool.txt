@@ -1,1 +1,1 @@
-PERF_TOOL_BASE_NAME="stream-perf-test-sac"
+PERF_TOOL_BASE_NAME="stream-perf-test"
