@@ -28,6 +28,7 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
 import com.rabbitmq.stream.impl.TestUtils.CallableBooleanSupplier;
 import com.rabbitmq.stream.impl.TestUtils.SingleActiveConsumer;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
@@ -46,7 +47,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@ExtendWith({
+  TestUtils.StreamTestInfrastructureExtension.class,
+  BrokerVersionAtLeast311Condition.class
+})
 @SingleActiveConsumer
 public class SacSuperStreamConsumerTest {
   EventLoopGroup eventLoopGroup;

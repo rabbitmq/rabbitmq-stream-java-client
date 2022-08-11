@@ -45,6 +45,7 @@ import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamStats;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.channel.EventLoopGroup;
@@ -504,7 +505,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void queryStreamInfoShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
     try (Environment env = environmentBuilder.build()) {
       StreamStats info = env.queryStreamInfo(stream);
@@ -536,7 +537,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void queryStreamInfoShouldThrowExceptionWhenStreamDoesNotExist() {
     try (Environment env = environmentBuilder.build()) {
       assertThatThrownBy(() -> env.queryStreamInfo("does not exist"))

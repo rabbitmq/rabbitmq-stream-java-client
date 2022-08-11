@@ -22,6 +22,7 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
 import io.netty.channel.EventLoopGroup;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,7 +33,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@ExtendWith({
+  TestUtils.StreamTestInfrastructureExtension.class,
+  BrokerVersionAtLeast311Condition.class
+})
 @TestUtils.SingleActiveConsumer
 public class SacStreamConsumerTest {
 

@@ -36,6 +36,7 @@ import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
@@ -141,7 +142,7 @@ public class StreamConsumerTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void committedOffsetShouldBeSet() throws Exception {
     int messageCount = 20_000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, this.stream);

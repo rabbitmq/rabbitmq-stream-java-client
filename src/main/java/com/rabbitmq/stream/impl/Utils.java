@@ -15,11 +15,11 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamNotAvailableException;
-import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import java.security.cert.X509Certificate;
 import java.time.Duration;

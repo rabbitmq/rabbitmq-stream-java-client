@@ -35,6 +35,7 @@ import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
 import com.rabbitmq.stream.impl.Client.CreditNotification;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
@@ -53,7 +54,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@ExtendWith({
+  TestUtils.StreamTestInfrastructureExtension.class,
+  BrokerVersionAtLeast311Condition.class
+})
 @TestUtils.SingleActiveConsumer
 public class SacClientTest {
 
