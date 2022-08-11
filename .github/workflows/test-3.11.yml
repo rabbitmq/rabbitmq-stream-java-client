@@ -1,10 +1,12 @@
-name: Test SAC branch against RabbitMQ 3.11 alpha
+name: Test against RabbitMQ 3.11 alpha
 
 on:
   push:
     branches:
-      - single-active-consumer
-
+      - main
+  pull_request:
+    branches:
+      - main
 jobs:
   build:
     runs-on: ubuntu-22.04

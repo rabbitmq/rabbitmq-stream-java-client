@@ -1,7 +1,7 @@
 = RabbitMQ Stream Java Client
 
 image:https://maven-badges.herokuapp.com/maven-central/com.rabbitmq/stream-client/badge.svg["Maven Central", link="https://maven-badges.herokuapp.com/maven-central/com.rabbitmq/stream-client"]
-image:https://github.com/rabbitmq/rabbitmq-stream-java-client/workflows/Build%20(Linux,%20Single%20Active%20Consumer)/badge.svg?branch=single-active-consumer["Build Status", link="https://github.com/rabbitmq/rabbitmq-stream-java-client/actions/workflows/test-linux-sac.yml"]
+image:https://github.com/rabbitmq/rabbitmq-stream-java-client/workflows/Build%20(Linux)/badge.svg?branch=main["Build Status", link="https://github.com/rabbitmq/rabbitmq-stream-java-client/actions?query=workflow%3A%22Build+%28Linux%29%22+branch%3Amain"]
 image:https://codecov.io/gh/rabbitmq/rabbitmq-stream-java-client/branch/main/graph/badge.svg?token=CFZ6EHW47J["Code Coverage", link="https://codecov.io/gh/rabbitmq/rabbitmq-stream-java-client"]
 
 The RabbitMQ Stream Java Client is a Java library to communicate with
@@ -10,16 +10,16 @@ It allows to create and delete streams, as well as to publish to and consume fro
 these streams.
 
 The client ships also with a
-https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/htmlsingle/#the-performance-tool[performance tool].
+https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#the-performance-tool[performance tool].
 
-Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/htmlsingle/[documentation]
-(https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/pdf/index.pdf[PDF])
+Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/[documentation]
+(https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/pdf/index.pdf[PDF])
 to find out more.
 
 == Project Maturity
 
 The project is in development and stabilization phase.
-Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/htmlsingle/#stability-of-programming-interfaces[breaking changes] will be kept to a minimum.
+Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#stability-of-programming-interfaces[breaking changes] will be kept to a minimum.
 
 == Support
 
@@ -34,10 +34,15 @@ The library requires Java 8 or later. Java 11 is recommended.
 
 === Documentation
 
+==== Release
+
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/[Reference documentation]
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/api/com/rabbitmq/stream/package-summary.html[API documentation]
+
 ==== Snapshot
 
-* https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/htmlsingle/[Reference documentation]
-* https://rabbitmq.github.io/rabbitmq-stream-java-client/sac/api/com/rabbitmq/stream/package-summary.html[API documentation]
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/[Reference documentation]
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/api/com/rabbitmq/stream/package-summary.html[API documentation]
 
 == Versioning
 
@@ -70,7 +75,7 @@ Launch the broker:
 ----
 docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    pivotalrabbitmq/rabbitmq-stream:sac
+    rabbitmq:3.10
 ----
 
 Enable the stream plugin:

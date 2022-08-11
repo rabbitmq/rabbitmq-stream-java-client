@@ -7,7 +7,7 @@ MESSAGE=$(git log -1 --pretty=%B)
 
 ./mvnw javadoc:javadoc -Dmaven.javadoc.skip=false
 
-RELEASE_VERSION="sac"
+RELEASE_VERSION=$(cat pom.xml | grep -oPm1 "(?<=<version>)[^<]+")
 
 git checkout -- .mvn/maven.config
 
@@ -24,6 +24,28 @@ mkdir -p $RELEASE_VERSION/api
 cp -r target/site/apidocs/* $RELEASE_VERSION/api/
 git add $RELEASE_VERSION/
 
+if [[ $LATEST == "true" ]]
+  then
+    if [[ $RELEASE_VERSION == *[RCM]* ]]
+  then
+    DOC_DIR="milestone"
+  elif [[ $RELEASE_VERSION == *SNAPSHOT* ]]
+  then
+    DOC_DIR="snapshot"
+  else
+    DOC_DIR="stable"
+  fi
+
+  mkdir -p $DOC_DIR/htmlsingle
+  cp target/generated-docs/index.html $DOC_DIR/htmlsingle
+  mkdir -p $DOC_DIR/pdf
+  cp target/generated-docs/index.pdf $DOC_DIR/pdf
+  mkdir -p $DOC_DIR/api
+  cp -r target/site/apidocs/* $DOC_DIR/api/
+  git add $DOC_DIR/
+
+fi
+
 git commit -m "$MESSAGE"
 git push origin gh-pages
-git checkout single-active-consumer
+git checkout main
