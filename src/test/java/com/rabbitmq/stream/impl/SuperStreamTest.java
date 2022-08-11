@@ -25,6 +25,8 @@ import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
@@ -168,6 +170,7 @@ public class SuperStreamTest {
   }
 
   @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void allMessagesForSameUserShouldEndUpInSamePartition() throws Exception {
     int messageCount = 10_000 * partitions;
     int userCount = 10;
