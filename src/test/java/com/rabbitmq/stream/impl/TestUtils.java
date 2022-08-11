@@ -182,6 +182,15 @@ public final class TestUtils {
       Function<MessageBuilder, Message> messageFactory,
       int publishCount,
       String stream) {
+    publishAndWaitForConfirms(cf, messageFactory, publishCount, stream, Duration.ofSeconds(60));
+  }
+
+  static void publishAndWaitForConfirms(
+      TestUtils.ClientFactory cf,
+      Function<MessageBuilder, Message> messageFactory,
+      int publishCount,
+      String stream,
+      Duration timeout) {
     CountDownLatch latchConfirm = new CountDownLatch(publishCount);
     Client.PublishConfirmListener publishConfirmListener =
         (publisherId, correlationId) -> latchConfirm.countDown();
@@ -195,7 +204,7 @@ public final class TestUtils {
       client.publish(b(1), Collections.singletonList(message));
     }
 
-    latchAssert(latchConfirm).completes(Duration.ofSeconds(60));
+    latchAssert(latchConfirm).completes(timeout);
   }
 
   static Consumer<Object> namedTask(TaskWithException task, String description) {

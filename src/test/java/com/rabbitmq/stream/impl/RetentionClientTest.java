@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
-import java.util.stream.IntStream;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -173,42 +172,33 @@ public class RetentionClientTest {
   @MethodSource
   void retention(RetentionTestConfig configuration, TestInfo info) throws Exception {
     String testStream = streamName(info);
-    CountDownLatch publishingLatch = new CountDownLatch(messageCount);
-    CountDownLatch publishingLatchSecondWave = new CountDownLatch(messageCount * 2);
-    Client publisher =
-        cf.get(
-            new Client.ClientParameters()
-                .publishConfirmListener(
-                    (publisherId, publishingId) -> {
-                      publishingLatch.countDown();
-                      publishingLatchSecondWave.countDown();
-                    }));
 
+    Client client = cf.get();
     try {
-      configuration.streamCreator.accept(new Object[] {publisher, testStream});
+      configuration.streamCreator.accept(new Object[] {client, testStream});
+
       AtomicLong publishSequence = new AtomicLong(0);
-      byte[] payload = new byte[payloadSize];
-      publisher.declarePublisher(b(1), null, testStream);
       Runnable publish =
-          () ->
-              publisher.publish(
-                  b(1),
-                  Collections.singletonList(
-                      publisher
-                          .messageBuilder()
-                          .properties()
-                          .messageId(publishSequence.getAndIncrement())
-                          .messageBuilder()
-                          .addData(payload)
-                          .build()));
-      IntStream.range(0, messageCount).forEach(i -> publish.run());
-      assertThat(publishingLatch.await(10, SECONDS)).isTrue();
+          () -> {
+            byte[] payload = new byte[payloadSize];
+            TestUtils.publishAndWaitForConfirms(
+                cf,
+                messageBuilder ->
+                    messageBuilder
+                        .properties()
+                        .messageId(publishSequence.getAndIncrement())
+                        .messageBuilder()
+                        .addData(payload)
+                        .build(),
+                messageCount,
+                testStream,
+                Duration.ofSeconds(20));
+          };
 
+      publish.run();
       configuration.waiting();
-
       // publishing again, to make sure new segments trigger retention strategy
-      IntStream.range(0, messageCount).forEach(i -> publish.run());
-      assertThat(publishingLatchSecondWave.await(10, SECONDS)).isTrue();
+      publish.run();
 
       CountDownLatch consumingLatch = new CountDownLatch(1);
       AtomicLong firstMessageId = new AtomicLong(-1);
@@ -232,7 +222,7 @@ public class RetentionClientTest {
       consumer.unsubscribe(b(1));
       assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get())).isTrue();
     } finally {
-      publisher.delete(testStream);
+      client.delete(testStream);
       configuration.clean();
     }
   }
