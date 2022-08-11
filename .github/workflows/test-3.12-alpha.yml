@@ -1,4 +1,4 @@
-name: Test against RabbitMQ 3.10 alpha
+name: Test against RabbitMQ 3.12 alpha
 
 on:
   push:
@@ -7,14 +7,13 @@ on:
   pull_request:
     branches:
       - main
-
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     services:
       rabbitmq:
-        image: pivotalrabbitmq/rabbitmq-dev:3.10
+        image: pivotalrabbitmq/rabbitmq-stream
         env:
           RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbitmq_stream advertised_host localhost
         ports:
@@ -32,8 +31,8 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           cache: 'maven'
-      - name: Enable Stream, MQTT and STOMP plugins
-        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_stream rabbitmq_mqtt rabbitmq_stomp --offline
+      - name: Enable MQTT and STOMP plugins
+        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_stomp --offline
       - name: Stop RabbitMQ application
         run: docker exec ${{job.services.rabbitmq.id}} rabbitmqctl stop_app
       - name: Start RabbitMQ application
