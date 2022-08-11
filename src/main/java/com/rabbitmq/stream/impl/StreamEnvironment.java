@@ -552,7 +552,9 @@ class StreamEnvironment implements Environment {
       OffsetSpecification offsetSpecification,
       String trackingReference,
       SubscriptionListener subscriptionListener,
-      MessageHandler messageHandler) {
+      Runnable trackingClosingCallback,
+      MessageHandler messageHandler,
+      Map<String, String> subscriptionProperties) {
     Runnable closingCallback =
         this.consumersCoordinator.subscribe(
             consumer,
@@ -560,7 +562,9 @@ class StreamEnvironment implements Environment {
             offsetSpecification,
             trackingReference,
             subscriptionListener,
-            messageHandler);
+            trackingClosingCallback,
+            messageHandler,
+            subscriptionProperties);
     return closingCallback;
   }
 
@@ -649,7 +653,7 @@ class StreamEnvironment implements Environment {
       closingSequence =
           () -> {
             try {
-              LOGGER.debug("Executing offset tracking registration closing sequence");
+              LOGGER.debug("Executing offset tracking registration closing sequence ");
               offsetTrackingRegistration.closingCallback().run();
               LOGGER.debug("Offset tracking registration closing sequence executed");
             } catch (Exception e) {
@@ -668,7 +672,10 @@ class StreamEnvironment implements Environment {
             : offsetTrackingRegistration.postMessageProcessingCallback(),
         offsetTrackingRegistration == null
             ? Utils.NO_OP_LONG_CONSUMER
-            : offsetTrackingRegistration.trackingCallback());
+            : offsetTrackingRegistration.trackingCallback(),
+        offsetTrackingRegistration == null
+            ? Utils.NO_OP_LONG_SUPPLIER
+            : () -> offsetTrackingRegistration.flush());
   }
 
   @Override
@@ -691,26 +698,33 @@ class StreamEnvironment implements Environment {
     private final Runnable closingCallback;
     private final Consumer<Context> postMessageProcessingCallback;
     private final LongConsumer trackingCallback;
+    private final LongSupplier flushOperation;
 
     TrackingConsumerRegistration(
         Runnable closingCallback,
         Consumer<Context> postMessageProcessingCallback,
-        LongConsumer trackingCallback) {
+        LongConsumer trackingCallback,
+        LongSupplier flushOperation) {
       this.closingCallback = closingCallback;
       this.postMessageProcessingCallback = postMessageProcessingCallback;
       this.trackingCallback = trackingCallback;
+      this.flushOperation = flushOperation;
     }
 
-    public Runnable closingCallback() {
+    Runnable closingCallback() {
       return closingCallback;
     }
 
-    public LongConsumer trackingCallback() {
+    LongConsumer trackingCallback() {
       return trackingCallback;
     }
 
-    public Consumer<Context> postMessageProcessingCallback() {
+    Consumer<Context> postMessageProcessingCallback() {
       return postMessageProcessingCallback;
+    }
+
+    long flush() {
+      return this.flushOperation.getAsLong();
     }
   }
 

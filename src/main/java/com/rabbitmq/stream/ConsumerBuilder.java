@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -29,10 +29,15 @@ public interface ConsumerBuilder {
   /**
    * Set the consumer to consume from a super stream (partitioned stream).
    *
+   * <p>This is meant to be used with {@link #singleActiveConsumer()}.
+   *
    * <p>This is an experimental API, subject to change.
+   *
+   * <p>RabbitMQ 3.11 or more is required.
    *
    * @param superStream
    * @return this builder instance
+   * @see #singleActiveConsumer()
    */
   ConsumerBuilder superStream(String superStream);
 
@@ -65,6 +70,47 @@ public interface ConsumerBuilder {
   ConsumerBuilder name(String name);
 
   /**
+   * Declare the consumer as a single active consumer.
+   *
+   * <p>A single active consumer must set up a name with {@link #name(String)}.
+   *
+   * <p>Instances of the same application can declare several single active consumer instances with
+   * the same name and only one will be active at a time, meaning it will be the only one to get
+   * messages from the broker.
+   *
+   * <p>If the active consumer instance stops or crashes, the broker will choose a new active
+   * instance among the remaining ones.
+   *
+   * <p>This is an experimental API, subject to change.
+   *
+   * <p>RabbitMQ 3.11 or more is required.
+   *
+   * @return this builder instance
+   * @since 0.6.0
+   * @see #name(String)
+   */
+  ConsumerBuilder singleActiveConsumer();
+
+  /**
+   * Set the listener for single active consumer updates.
+   *
+   * <p>This listener is usually set when manual offset tracking is used, either server-side or with
+   * an external datastore.
+   *
+   * <p>This is an experimental API, subject to change.
+   *
+   * <p>RabbitMQ 3.11 or more is required.
+   *
+   * @param consumerUpdateListener
+   * @return this builder instance
+   * @since 0.6.0
+   * @see #singleActiveConsumer()
+   * @see ConsumerUpdateListener
+   * @see #manualTrackingStrategy()
+   */
+  ConsumerBuilder consumerUpdateListener(ConsumerUpdateListener consumerUpdateListener);
+
+  /**
    * Callback on subscription.
    *
    * <p>Can be used to set the offset specification before subscribing to the stream.
@@ -74,6 +120,7 @@ public interface ConsumerBuilder {
    * @see SubscriptionListener
    * @param subscriptionListener the listener
    * @return this builder instance
+   * @since 0.5.0
    */
   ConsumerBuilder subscriptionListener(SubscriptionListener subscriptionListener);
 
@@ -92,6 +139,17 @@ public interface ConsumerBuilder {
    * @return the auto-tracking strategy
    */
   AutoTrackingStrategy autoTrackingStrategy();
+
+  /**
+   * Disable server-side offset tracking.
+   *
+   * <p>Useful when {@link #singleActiveConsumer()} is enabled and an external store is used for
+   * offset tracking. This avoids automatic server-side offset tracking to kick in.
+   *
+   * @return this builder instance
+   * @since 0.6.0
+   */
+  ConsumerBuilder noTrackingStrategy();
 
   /**
    * Create the configured {@link Consumer}

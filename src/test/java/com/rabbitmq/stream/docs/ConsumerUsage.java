@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -16,6 +16,7 @@ package com.rabbitmq.stream.docs;
 
 import com.rabbitmq.stream.*;
 import java.time.Duration;
+import org.assertj.core.data.Offset;
 
 public class ConsumerUsage {
 
@@ -153,4 +154,38 @@ public class ConsumerUsage {
       return 0L;
   }
 
+  void enablingSingleActiveConsumer() {
+    Environment environment = Environment.builder().build();
+    // tag::enabling-single-active-consumer[]
+    Consumer consumer = environment.consumerBuilder()
+        .stream("my-stream")
+        .name("application-1")  // <1>
+        .singleActiveConsumer()  // <2>
+        .messageHandler((context, message) -> {
+          // message handling code...
+        })
+        .build();
+    // end::enabling-single-active-consumer[]
+  }
+
+  void sacConsumerUpdateListener() {
+    Environment environment = Environment.builder().build();
+    // tag::sac-consumer-update-listener[]
+    Consumer consumer = environment.consumerBuilder()
+        .stream("my-stream")
+        .name("application-1")  // <1>
+        .singleActiveConsumer()  // <2>
+        .noTrackingStrategy()  // <3>
+        .consumerUpdateListener(context -> {  // <4>
+          long offset = getOffsetFromExternalStore();  // <5>
+          return OffsetSpecification.offset(offset + 1); // <6>
+        })
+        .messageHandler((context, message) -> {
+          // message handling code...
+
+          storeOffsetInExternalStore(context.offset());
+        })
+        .build();
+    // end::sac-consumer-update-listener[]
+  }
 }

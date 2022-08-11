@@ -18,23 +18,25 @@ import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.TestUtils.waitMs;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
@@ -98,14 +100,6 @@ public class StreamConsumerTest {
             "broker is restarted"));
   }
 
-  private static void waitMs(long waitTime) {
-    try {
-      Thread.sleep(waitTime);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   @BeforeEach
   void init() {
     if (Host.isOnDocker()) {
@@ -148,7 +142,7 @@ public class StreamConsumerTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void committedOffsetShouldBeSet() throws Exception {
     int messageCount = 20_000;
     TestUtils.publishAndWaitForConfirms(cf, messageCount, this.stream);
@@ -882,19 +876,8 @@ public class StreamConsumerTest {
             .checkInterval(Duration.ZERO)
             .builder()
             .build();
-    Client client = cf.get();
-    assertThat(client.queryOffset(ref, stream).getResponseCode())
-        .isEqualTo(Constants.RESPONSE_CODE_NO_OFFSET);
+    assertThatThrownBy(() -> consumer.storedOffset()).isInstanceOf(NoOffsetException.class);
     consumer.store(0);
-    waitAtMost(
-        5,
-        () -> {
-          QueryOffsetResponse response = client.queryOffset(ref, stream);
-          return response.isOk() && response.getOffset() == 0;
-        },
-        () ->
-            format(
-                "Expecting stored offset %d to be equal to last received offset %d",
-                client.queryOffset(ref, stream).getOffset(), 0));
+    waitAtMost(() -> consumer.storedOffset() == 0);
   }
 }

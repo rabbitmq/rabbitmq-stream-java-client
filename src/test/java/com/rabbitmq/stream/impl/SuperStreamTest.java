@@ -26,9 +26,18 @@ import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import io.netty.channel.EventLoopGroup;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,7 +82,9 @@ public class SuperStreamTest {
     int messageCount = 10_000 * partitions;
     declareSuperStreamTopology(connection, superStream, partitions);
     Producer producer =
-        environment.producerBuilder().stream(superStream)
+        environment
+            .producerBuilder()
+            .superStream(superStream)
             .routing(message -> message.getProperties().getMessageIdAsString())
             .producerBuilder()
             .build();
@@ -116,7 +127,9 @@ public class SuperStreamTest {
     routingKeys = new String[] {"amer", "emea", "apac"};
     declareSuperStreamTopology(connection, superStream, routingKeys);
     Producer producer =
-        environment.producerBuilder().stream(superStream)
+        environment
+            .producerBuilder()
+            .superStream(superStream)
             .routing(message -> message.getApplicationProperties().get("region").toString())
             .key()
             .producerBuilder()
@@ -152,5 +165,108 @@ public class SuperStreamTest {
 
     latchAssert(consumeLatch).completes();
     assertThat(totalCount.get()).isEqualTo(messageCount);
+  }
+
+  @Test
+  void allMessagesForSameUserShouldEndUpInSamePartition() throws Exception {
+    int messageCount = 10_000 * partitions;
+    int userCount = 10;
+    declareSuperStreamTopology(connection, superStream, partitions);
+
+    AtomicInteger totalReceivedCount = new AtomicInteger(0);
+    // <partition>.<user> => count
+    Map<String, AtomicLong> receivedMessagesPerPartitionUserCount =
+        new ConcurrentHashMap<>(userCount);
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    CountDownLatch consumersReadyLatch = new CountDownLatch(0);
+    IntStream.range(0, partitions)
+        .forEach(
+            i -> {
+              environment
+                  .consumerBuilder()
+                  .superStream(superStream)
+                  .name("app-1")
+                  .singleActiveConsumer()
+                  .offset(OffsetSpecification.first())
+                  .consumerUpdateListener(
+                      context -> {
+                        if (context.isActive() && i == partitions - 1) {
+                          // a consumer in the last composite consumer gets activated
+                          consumersReadyLatch.countDown();
+                        }
+                        return OffsetSpecification.first();
+                      })
+                  .messageHandler(
+                      (context, message) -> {
+                        String user =
+                            new String(message.getProperties().getUserId(), StandardCharsets.UTF_8);
+                        receivedMessagesPerPartitionUserCount
+                            .computeIfAbsent(context.stream() + "." + user, s -> new AtomicLong(0))
+                            .incrementAndGet();
+                        totalReceivedCount.incrementAndGet();
+                        consumeLatch.countDown();
+                      })
+                  .build();
+            });
+
+    assertThat(latchAssert(consumersReadyLatch)).completes();
+
+    Producer producer =
+        environment
+            .producerBuilder()
+            .superStream(superStream)
+            .routing(
+                message -> new String(message.getProperties().getUserId(), StandardCharsets.UTF_8))
+            .producerBuilder()
+            .build();
+
+    List<String> users =
+        IntStream.range(0, userCount).mapToObj(i -> "user" + i).collect(Collectors.toList());
+    Map<String, AtomicLong> messagePerUserCount =
+        users.stream().collect(Collectors.toMap(u -> u, u -> new AtomicLong(0)));
+    Random random = new Random();
+
+    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    IntStream.range(0, messageCount)
+        .forEach(
+            i -> {
+              String user = users.get(random.nextInt(userCount));
+              messagePerUserCount.get(user).incrementAndGet();
+              producer.send(
+                  producer
+                      .messageBuilder()
+                      .properties()
+                      .userId(user.getBytes(StandardCharsets.UTF_8))
+                      .messageBuilder()
+                      .build(),
+                  confirmationStatus -> publishLatch.countDown());
+            });
+
+    assertThat(latchAssert(publishLatch)).completes(5);
+
+    latchAssert(consumeLatch).completes();
+    assertThat(totalReceivedCount.get()).isEqualTo(messageCount);
+    assertThat(receivedMessagesPerPartitionUserCount).hasSize(userCount);
+
+    Set<String> partitionNames =
+        IntStream.range(0, partitions)
+            .mapToObj(i -> superStream + "-" + i)
+            .collect(Collectors.toSet());
+    AtomicLong total = new AtomicLong();
+    Set<String> passedUsers = new HashSet<>();
+    receivedMessagesPerPartitionUserCount.forEach(
+        (key, count) -> {
+          // <partition>.<user> => count
+          String partition = key.split("\\.")[0];
+          String user = key.split("\\.")[1];
+          assertThat(partition).isIn(partitionNames);
+          assertThat(user).isIn(users);
+
+          assertThat(passedUsers).doesNotContain(user);
+          passedUsers.add(user);
+
+          total.addAndGet(count.get());
+        });
+    assertThat(total).hasValue(messageCount);
   }
 }

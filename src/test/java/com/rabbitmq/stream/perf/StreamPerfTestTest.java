@@ -27,6 +27,7 @@ import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.TestUtils;
+import com.rabbitmq.stream.impl.TestUtils.CallableConsumer;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -37,12 +38,14 @@ import java.net.HttpURLConnection;
 import java.net.ServerSocket;
 import java.net.URL;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterAll;
@@ -76,6 +79,35 @@ public class StreamPerfTestTest {
 
   static void waitOneSecond() throws InterruptedException {
     Thread.sleep(1000L);
+  }
+
+  private static HttpResponse httpRequest(String urlString) throws Exception {
+    URL url = new URL(urlString);
+    HttpURLConnection con = (HttpURLConnection) url.openConnection();
+    try {
+      con.setRequestMethod("GET");
+      con.setConnectTimeout(5000);
+      con.setReadTimeout(5000);
+      int status = con.getResponseCode();
+      try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+        String inputLine;
+        StringBuffer content = new StringBuffer();
+        while ((inputLine = in.readLine()) != null) {
+          content.append(inputLine);
+        }
+        return new HttpResponse(status, content.toString());
+      }
+    } finally {
+      con.disconnect();
+    }
+  }
+
+  private static int randomNetworkPort() throws IOException {
+    ServerSocket socket = new ServerSocket();
+    socket.bind(null);
+    int port = socket.getLocalPort();
+    socket.close();
+    return port;
   }
 
   ArgumentsBuilder builder() {
@@ -377,44 +409,50 @@ public class StreamPerfTestTest {
         .doesNotContain("confirm latency");
   }
 
-  private static HttpResponse httpRequest(String urlString) throws Exception {
-    URL url = new URL(urlString);
-    HttpURLConnection con = (HttpURLConnection) url.openConnection();
-    try {
-      con.setRequestMethod("GET");
-      con.setConnectTimeout(5000);
-      con.setReadTimeout(5000);
-      int status = con.getResponseCode();
-      try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
-        String inputLine;
-        StringBuffer content = new StringBuffer();
-        while ((inputLine = in.readLine()) != null) {
-          content.append(inputLine);
-        }
-        return new HttpResponse(status, content.toString());
+  void singleActiveConsumersOnSuperStream() throws Exception {
+    String consumerName = "app-1";
+    Future<?> run =
+        run(
+            builder()
+                .storeEvery(10)
+                .streamCount(2)
+                .superStreams()
+                .superStreamPartitions(3)
+                .singleActiveConsumer()
+                .storeEvery(10)
+                .consumerNames(consumerName)
+                .producers(2)
+                .consumers(3)
+                .deleteStreams());
+    List<String> streams =
+        IntStream.range(0, 2)
+            .mapToObj(i -> s + "-" + (i + 1)) // the 2 super streams
+            .flatMap(s -> IntStream.range(0, 3).mapToObj(i -> s + "-" + i)) // partitions
+            .collect(Collectors.toList());
+    streams.forEach(s -> waitUntilStreamExists(s));
+    waitOneSecond();
+    streams.forEach(
+        wrap(s -> waitAtMost(() -> client.queryOffset(consumerName, s).getOffset() > 0)));
+    run.cancel(true);
+    waitRunEnds();
+
+    client
+        .metadata(streams.toArray(new String[0]))
+        .values()
+        .forEach(
+            m ->
+                assertThat(m.getResponseCode())
+                    .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
+  }
+
+  private static <T> Consumer<T> wrap(CallableConsumer<T> action) {
+    return t -> {
+      try {
+        action.accept(t);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
       }
-    } finally {
-      con.disconnect();
-    }
-  }
-
-  private static class HttpResponse {
-
-    private final int responseCode;
-    private final String body;
-
-    private HttpResponse(int responseCode, String body) {
-      this.responseCode = responseCode;
-      this.body = body;
-    }
-  }
-
-  private static int randomNetworkPort() throws IOException {
-    ServerSocket socket = new ServerSocket();
-    socket.bind(null);
-    int port = socket.getLocalPort();
-    socket.close();
-    return port;
+    };
   }
 
   boolean streamExists(String stream) {
@@ -426,8 +464,12 @@ public class StreamPerfTestTest {
         == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
   }
 
-  void waitUntilStreamExists(String stream) throws Exception {
-    waitAtMost(() -> streamExists(stream));
+  void waitUntilStreamExists(String stream) {
+    try {
+      waitAtMost(() -> streamExists(stream));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   Future<?> run(ArgumentsBuilder builder) {
@@ -444,6 +486,17 @@ public class StreamPerfTestTest {
                     new PrintStream(out, true),
                     new PrintStream(err, true),
                     addressResolver)));
+  }
+
+  private static class HttpResponse {
+
+    private final int responseCode;
+    private final String body;
+
+    private HttpResponse(int responseCode, String body) {
+      this.responseCode = responseCode;
+      this.body = body;
+    }
   }
 
   static class ArgumentsBuilder {
@@ -568,6 +621,21 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder prometheus() {
       arguments.put("prometheus", "");
+      return this;
+    }
+
+    ArgumentsBuilder superStreams() {
+      arguments.put("super-streams", "");
+      return this;
+    }
+
+    ArgumentsBuilder superStreamPartitions(int partitions) {
+      arguments.put("super-stream-partitions", String.valueOf(partitions));
+      return this;
+    }
+
+    ArgumentsBuilder singleActiveConsumer() {
+      arguments.put("single-active-consumer", "");
       return this;
     }
 

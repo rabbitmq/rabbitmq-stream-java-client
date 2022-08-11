@@ -17,6 +17,7 @@ import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
+import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +61,15 @@ class SuperStreamConsumer implements Consumer {
       }
       StreamConsumerBuilder subConsumerBuilder = builder.duplicate();
 
+      // to ease testing
+      // we need to duplicate the composite consumer update listener,
+      // otherwise a unique instance would get the listeners of all the sub-consumers
+      if (subConsumerBuilder.consumerUpdateListener() instanceof CompositeConsumerUpdateListener) {
+        subConsumerBuilder.consumerUpdateListener(
+            ((CompositeConsumerUpdateListener) subConsumerBuilder.consumerUpdateListener())
+                .duplicate());
+      }
+
       if (trackingConfiguration.enabled() && trackingConfiguration.auto()) {
         subConsumerBuilder =
             (StreamConsumerBuilder)
@@ -70,10 +80,14 @@ class SuperStreamConsumer implements Consumer {
                     .builder();
       }
 
-      Consumer consumer =
-          subConsumerBuilder.lazyInit(true).superStream(null).messageHandler(messageHandler).stream(
-                  partition)
-              .build();
+      StreamConsumer consumer =
+          (StreamConsumer)
+              subConsumerBuilder
+                  .lazyInit(true)
+                  .superStream(null)
+                  .messageHandler(messageHandler)
+                  .stream(partition)
+                  .build();
       consumers.put(partition, consumer);
       state.consumer = consumer;
       LOGGER.debug("Created consumer on stream '{}' for super stream '{}'", partition, superStream);
@@ -85,7 +99,7 @@ class SuperStreamConsumer implements Consumer {
   private static final class ConsumerState {
 
     private volatile long offset = 0;
-    private volatile Consumer consumer;
+    private volatile StreamConsumer consumer;
   }
 
   private static final class ManualOffsetTrackingMessageHandler implements MessageHandler {
@@ -124,11 +138,24 @@ class SuperStreamConsumer implements Consumer {
             public void storeOffset() {
               for (ConsumerState state : consumerStates) {
                 if (ManualOffsetTrackingMessageHandler.this.consumerState == state) {
-                  context.storeOffset();
+                  maybeStoreOffset(state, () -> context.storeOffset());
                 } else if (state.offset != 0) {
-                  state.consumer.store(state.offset);
+                  maybeStoreOffset(state, () -> state.consumer.store(state.offset));
                 }
               }
+            }
+
+            private void maybeStoreOffset(ConsumerState state, Runnable storeAction) {
+              if (state.consumer.isSac() && !state.consumer.sacActive()) {
+                // do nothing
+              } else {
+                storeAction.run();
+              }
+            }
+
+            @Override
+            public String stream() {
+              return context.stream();
             }
 
             @Override
@@ -145,6 +172,12 @@ class SuperStreamConsumer implements Consumer {
   public void store(long offset) {
     throw new UnsupportedOperationException(
         "Consumer#store(long) does not work for super streams, use MessageHandler.Context#storeOffset() instead");
+  }
+
+  @Override
+  public long storedOffset() {
+    throw new UnsupportedOperationException(
+        "Consumer#storedOffset() does not work for super streams");
   }
 
   @Override

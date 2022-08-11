@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import static com.rabbitmq.stream.perf.Utils.superStreamPartitions;
 import static java.lang.String.format;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -309,6 +310,19 @@ public class UtilsTest {
   })
   void optionToEnvironmentVariable(String option, String envVariable) {
     assertThat(Utils.OPTION_TO_ENVIRONMENT_VARIABLE.apply(option)).isEqualTo(envVariable);
+  }
+
+  @Test
+  void superStreamPartitionsTest() {
+    assertThat(superStreamPartitions("stream", 3))
+        .hasSize(3)
+        .containsExactly("stream-0", "stream-1", "stream-2");
+    assertThat(superStreamPartitions("stream", 20))
+        .hasSize(20)
+        .contains("stream-00", "stream-01", "stream-10", "stream-19");
+    assertThat(superStreamPartitions("stream-1", 20))
+        .hasSize(20)
+        .contains("stream-1-00", "stream-1-01", "stream-1-10", "stream-1-19");
   }
 
   @Command(name = "test-command")

@@ -1,4 +1,4 @@
-// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -26,9 +26,9 @@ public interface SubscriptionListener {
   /**
    * Callback called before the subscription is created.
    *
-   * <p>The method is called when a {@link Consumer} is created and it registers to broker, and also
-   * when the subscription must be re-created (after a disconnection or when the subscription must
-   * moved because the stream member it was connection becomes unavailable).
+   * <p>The method is called when a {@link Consumer} is created and it registers to the broker, and
+   * also when the subscription must be re-created (after a disconnection or when the subscription
+   * must moved because the stream member it was connected to becomes unavailable).
    *
    * <p>Application code can set the {@link OffsetSpecification} that will be used with the {@link
    * SubscriptionContext#offsetSpecification(OffsetSpecification)} method.

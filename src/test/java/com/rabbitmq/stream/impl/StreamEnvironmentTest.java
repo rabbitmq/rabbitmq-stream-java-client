@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.localhostTls;
@@ -44,6 +45,7 @@ import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamStats;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.channel.EventLoopGroup;
@@ -387,7 +389,10 @@ public class StreamEnvironmentTest {
       environment.streamCreator().stream(s).create();
       try {
         Producer producer = environment.producerBuilder().stream(s).build();
-        Consumer consumer = environment.consumerBuilder().stream(s).build();
+        Consumer consumer =
+            environment.consumerBuilder().stream(s)
+                .messageHandler((context, message) -> {})
+                .build();
         producer.close();
         consumer.close();
       } finally {
@@ -421,7 +426,7 @@ public class StreamEnvironmentTest {
       env.streamCreator().stream(s).maxAge(Duration.ofDays(1)).create();
       assertThatThrownBy(() -> env.streamCreator().stream(s).maxAge(Duration.ofDays(4)).create())
           .isInstanceOf(StreamException.class)
-          .has(TestUtils.responseCode(Constants.RESPONSE_CODE_PRECONDITION_FAILED));
+          .has(responseCode(Constants.RESPONSE_CODE_PRECONDITION_FAILED));
     } finally {
       assertThat(client.delete(s).isOk()).isTrue();
     }
@@ -500,7 +505,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void queryStreamInfoShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
     try (Environment env = environmentBuilder.build()) {
       StreamStats info = env.queryStreamInfo(stream);
@@ -532,7 +537,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void queryStreamInfoShouldThrowExceptionWhenStreamDoesNotExist() {
     try (Environment env = environmentBuilder.build()) {
       assertThatThrownBy(() -> env.queryStreamInfo("does not exist"))

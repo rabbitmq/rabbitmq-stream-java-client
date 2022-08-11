@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -33,4 +33,13 @@ public interface Consumer extends AutoCloseable {
   /** Close the consumer. */
   @Override
   void close();
+
+  /**
+   * The stored offset for this named consumer on the configured stream.
+   *
+   * @return stored offset
+   * @since 0.6.0
+   * @throws NoOffsetException if no offset is stored for this name on the stream
+   */
+  long storedOffset();
 }

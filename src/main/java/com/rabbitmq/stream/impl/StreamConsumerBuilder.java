@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -15,6 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamException;
@@ -22,6 +23,8 @@ import com.rabbitmq.stream.SubscriptionListener;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 class StreamConsumerBuilder implements ConsumerBuilder {
 
@@ -34,8 +37,11 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private String name;
   private DefaultAutoTrackingStrategy autoTrackingStrategy;
   private DefaultManualTrackingStrategy manualTrackingStrategy;
+  private boolean noTrackingStrategy = false;
   private boolean lazyInit = false;
   private SubscriptionListener subscriptionListener = subscriptionContext -> {};
+  private Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
+  private ConsumerUpdateListener consumerUpdateListener;
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -80,6 +86,18 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
+  public ConsumerBuilder singleActiveConsumer() {
+    this.subscriptionProperties.put("single-active-consumer", "true");
+    return this;
+  }
+
+  @Override
+  public ConsumerBuilder consumerUpdateListener(ConsumerUpdateListener consumerUpdateListener) {
+    this.consumerUpdateListener = consumerUpdateListener;
+    return this;
+  }
+
+  @Override
   public ConsumerBuilder subscriptionListener(SubscriptionListener subscriptionListener) {
     if (subscriptionListener == null) {
       throw new IllegalArgumentException("The subscription listener cannot be null");
@@ -92,6 +110,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   public ManualTrackingStrategy manualTrackingStrategy() {
     this.manualTrackingStrategy = new DefaultManualTrackingStrategy(this);
     this.autoTrackingStrategy = null;
+    this.noTrackingStrategy = false;
     return this.manualTrackingStrategy;
   }
 
@@ -99,7 +118,16 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   public AutoTrackingStrategy autoTrackingStrategy() {
     this.autoTrackingStrategy = new DefaultAutoTrackingStrategy(this);
     this.manualTrackingStrategy = null;
+    this.noTrackingStrategy = false;
     return this.autoTrackingStrategy;
+  }
+
+  @Override
+  public ConsumerBuilder noTrackingStrategy() {
+    this.noTrackingStrategy = true;
+    this.autoTrackingStrategy = null;
+    this.manualTrackingStrategy = null;
+    return this;
   }
 
   StreamConsumerBuilder lazyInit(boolean lazyInit) {
@@ -115,9 +143,16 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     if (this.stream != null && this.superStream != null) {
       throw new IllegalArgumentException("Stream and superStream cannot be set at the same time");
     }
+    if (this.messageHandler == null) {
+      throw new IllegalArgumentException("A message handler must be set");
+    }
     if (this.name == null
+        && !this.noTrackingStrategy
         && (this.autoTrackingStrategy != null || this.manualTrackingStrategy != null)) {
       throw new IllegalArgumentException("A name must be set if a tracking strategy is specified");
+    }
+    if (Utils.isSac(this.subscriptionProperties) && this.name == null) {
+      throw new IllegalArgumentException("A name must be set if single active consumer is enabled");
     }
 
     this.environment.maybeInitializeLocator();
@@ -134,13 +169,14 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       trackingConfiguration =
           new TrackingConfiguration(
               true, false, -1, Duration.ZERO, this.manualTrackingStrategy.checkInterval);
+    } else if (this.noTrackingStrategy) {
+      trackingConfiguration = DISABLED_TRACKING_CONFIGURATION;
     } else if (this.name != null) {
       // the default tracking strategy
       trackingConfiguration =
           new TrackingConfiguration(true, true, 10_000, Duration.ofSeconds(5), Duration.ZERO);
     } else {
-      trackingConfiguration =
-          new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
+      trackingConfiguration = DISABLED_TRACKING_CONFIGURATION;
     }
 
     Consumer consumer;
@@ -154,14 +190,22 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.environment,
               trackingConfiguration,
               this.lazyInit,
-              this.subscriptionListener);
+              this.subscriptionListener,
+              this.subscriptionProperties,
+              this.consumerUpdateListener);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
+      if (Utils.isSac(this.subscriptionProperties)) {
+        this.subscriptionProperties.put("super-stream", this.superStream);
+      }
       consumer =
           new SuperStreamConsumer(this, this.superStream, this.environment, trackingConfiguration);
     }
     return consumer;
   }
+
+  private static final TrackingConfiguration DISABLED_TRACKING_CONFIGURATION =
+      new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
 
   static class TrackingConfiguration {
 
@@ -283,5 +327,10 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       }
     }
     return duplicate;
+  }
+
+  // to help testing
+  public ConsumerUpdateListener consumerUpdateListener() {
+    return consumerUpdateListener;
   }
 }

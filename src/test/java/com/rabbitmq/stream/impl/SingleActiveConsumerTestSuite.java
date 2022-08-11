@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -11,18 +11,13 @@
 //
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-/** Exception to report a failed authentication attempt. */
-public class AuthenticationFailureException extends StreamException {
+import org.junit.platform.suite.api.IncludeTags;
+import org.junit.platform.suite.api.SelectPackages;
+import org.junit.platform.suite.api.Suite;
 
-  private static final long serialVersionUID = -8252068600057023968L;
-
-  public AuthenticationFailureException(String message) {
-    super(message);
-  }
-
-  public AuthenticationFailureException(String message, short errorCode) {
-    super(message, errorCode);
-  }
-}
+@Suite
+@SelectPackages("com.rabbitmq.stream.impl")
+@IncludeTags("single-active-consumer")
+public class SingleActiveConsumerTestSuite {}

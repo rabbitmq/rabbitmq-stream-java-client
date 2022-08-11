@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
@@ -76,11 +77,19 @@ public class SuperStreamProducerTest {
   }
 
   @Test
+  void exceptionShouldBeThrownWhenSuperStreamIsSetAndRoutingIsNotConfigured() {
+    assertThatThrownBy(() -> environment.producerBuilder().superStream(superStream).build())
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
   void allMessagesSentToSuperStreamWithHashRoutingShouldBeThenConsumed() throws Exception {
     int messageCount = 10_000;
     declareSuperStreamTopology(connection, superStream, partitions);
     Producer producer =
-        environment.producerBuilder().stream(superStream)
+        environment
+            .producerBuilder()
+            .superStream(superStream)
             .routing(message -> message.getProperties().getMessageIdAsString())
             .producerBuilder()
             .build();
@@ -133,7 +142,9 @@ public class SuperStreamProducerTest {
     routingKeys = new String[] {"amer", "emea", "apac"};
     declareSuperStreamTopology(connection, superStream, routingKeys);
     Producer producer =
-        environment.producerBuilder().stream(superStream)
+        environment
+            .producerBuilder()
+            .superStream(superStream)
             .routing(message -> message.getApplicationProperties().get("region").toString())
             .key()
             .producerBuilder()
@@ -183,7 +194,9 @@ public class SuperStreamProducerTest {
     routingKeys = new String[] {"amer", "emea", "apac"};
     declareSuperStreamTopology(connection, superStream, routingKeys);
     Producer producer =
-        environment.producerBuilder().stream(superStream)
+        environment
+            .producerBuilder()
+            .superStream(superStream)
             .routing(message -> message.getApplicationProperties().get("region").toString())
             .key()
             .producerBuilder()
@@ -216,7 +229,10 @@ public class SuperStreamProducerTest {
     declareSuperStreamTopology(connection, superStream, partitions);
     String producerName = "super-stream-application";
     Producer producer =
-        environment.producerBuilder().name(producerName).stream(superStream)
+        environment
+            .producerBuilder()
+            .name(producerName)
+            .superStream(superStream)
             .routing(message -> message.getProperties().getMessageIdAsString())
             .producerBuilder()
             .build();

@@ -19,6 +19,8 @@ import static com.rabbitmq.stream.perf.Utils.OPTION_TO_ENVIRONMENT_VARIABLE;
 import static java.lang.String.format;
 
 import com.google.common.util.concurrent.RateLimiter;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.ByteCapacity;
@@ -31,6 +33,7 @@ import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.EnvironmentBuilder.TlsConfiguration;
+import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder;
@@ -76,6 +79,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -366,6 +370,30 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "false")
   private boolean confirmLatency;
 
+  @CommandLine.Option(
+      names = {"--super-streams", "-sst"},
+      description = "use super streams",
+      defaultValue = "false")
+  private boolean superStreams;
+
+  @CommandLine.Option(
+      names = {"--super-stream-partitions", "-ssp"},
+      description = "number of partitions for the super streams",
+      defaultValue = "3",
+      converter = Utils.PositiveIntegerTypeConverter.class)
+  private int superStreamsPartitions;
+
+  @CommandLine.Option(
+      names = {"--single-active-consumer", "-sac"},
+      description = "use single active consumer",
+      defaultValue = "false")
+  private boolean singleActiveConsumer;
+
+  @CommandLine.Option(
+      names = {"--amqp-uri", "-au"},
+      description = "AMQP URI to use to create super stream topology")
+  private String amqpUri;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -622,33 +650,32 @@ public class StreamPerfTest implements Callable<Integer> {
 
       streams = Utils.streams(this.streamCount, this.streams);
 
-      for (String stream : streams) {
-        StreamCreator streamCreator =
-            environment.streamCreator().stream(stream)
-                .maxLengthBytes(this.maxLengthBytes)
-                .maxSegmentSizeBytes(this.maxSegmentSize)
-                .leaderLocator(this.leaderLocator);
-
-        if (this.maxAge != null) {
-          streamCreator.maxAge(this.maxAge);
+      AtomicReference<Channel> amqpChannel = new AtomicReference<>();
+      Connection amqpConnection;
+      if (this.superStreams) {
+        amqpConnection = Utils.amqpConnection(this.amqpUri, uris, tls, this.sniServerNames);
+        if (this.deleteStreams) {
+          // we keep it open for deletion, so adding a close step
+          shutdownService.wrap(
+              closeStep("Closing AMQP connection for super streams", () -> amqpConnection.close()));
         }
+        amqpChannel.set(amqpConnection.createChannel());
+      } else {
+        amqpConnection = null;
+      }
 
-        try {
-          streamCreator.create();
-        } catch (StreamException e) {
-          if (e.getCode() == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
-            String message =
-                String.format(
-                    "Warning: stream '%s' already exists, but with different properties than "
-                        + "max-length-bytes=%s, stream-max-segment-size-bytes=%s, queue-leader-locator=%s",
-                    stream, this.maxLengthBytes, this.maxSegmentSize, this.leaderLocator);
-            if (this.maxAge != null) {
-              message += String.format(", max-age=%s", this.maxAge);
-            }
-            this.out.println(message);
-          } else {
-            throw e;
+      for (String stream : streams) {
+        if (this.superStreams) {
+          List<String> partitions =
+              Utils.superStreamPartitions(stream, this.superStreamsPartitions);
+          for (String partition : partitions) {
+            createStream(environment, partition);
           }
+
+          Utils.declareSuperStreamExchangeAndBindings(amqpChannel.get(), stream, partitions);
+
+        } else {
+          createStream(environment, stream);
         }
       }
 
@@ -658,15 +685,30 @@ public class StreamPerfTest implements Callable<Integer> {
                 "Deleting stream(s)",
                 () -> {
                   for (String stream : streams) {
-                    LOGGER.debug("Deleting {}", stream);
-                    try {
-                      environment.deleteStream(stream);
-                      LOGGER.debug("Deleted {}", stream);
-                    } catch (Exception e) {
-                      LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
+                    if (this.superStreams) {
+                      List<String> partitions =
+                          Utils.superStreamPartitions(stream, this.superStreamsPartitions);
+                      for (String partition : partitions) {
+                        environment.deleteStream(partition);
+                      }
+                      Utils.deleteSuperStreamExchange(amqpChannel.get(), stream);
+
+                    } else {
+                      LOGGER.debug("Deleting {}", stream);
+                      try {
+                        environment.deleteStream(stream);
+                        LOGGER.debug("Deleted {}", stream);
+                      } catch (Exception e) {
+                        LOGGER.warn("Could not delete stream {}: {}", stream, e.getMessage());
+                      }
                     }
                   }
                 }));
+      } else {
+        if (this.superStreams) {
+          // we don't want to delete the super streams at the end, so we close the AMQP connection
+          amqpConnection.close();
+        }
       }
 
       List<Producer> producers = Collections.synchronizedList(new ArrayList<>(this.producers));
@@ -691,6 +733,19 @@ public class StreamPerfTest implements Callable<Integer> {
                           producerBuilder.name(producerName).confirmTimeout(Duration.ZERO);
                     }
 
+                    java.util.function.Consumer<MessageBuilder> messageBuilderConsumer;
+                    if (this.superStreams) {
+                      producerBuilder
+                          .superStream(stream)
+                          .routing(msg -> msg.getProperties().getMessageIdAsString());
+                      AtomicLong messageIdSequence = new AtomicLong(0);
+                      messageBuilderConsumer =
+                          mg -> mg.properties().messageId(messageIdSequence.getAndIncrement());
+                    } else {
+                      messageBuilderConsumer = mg -> {};
+                      producerBuilder.stream(stream);
+                    }
+
                     Producer producer =
                         producerBuilder
                             .subEntrySize(this.subEntrySize)
@@ -698,7 +753,6 @@ public class StreamPerfTest implements Callable<Integer> {
                             .compression(
                                 this.compression == Compression.NONE ? null : this.compression)
                             .maxUnconfirmedMessages(this.confirms)
-                            .stream(stream)
                             .build();
 
                     AtomicLong messageCount = new AtomicLong(0);
@@ -753,9 +807,10 @@ public class StreamPerfTest implements Callable<Integer> {
                               long creationTime = System.currentTimeMillis();
                               byte[] payload = new byte[msgSize];
                               Utils.writeLong(payload, creationTime);
+                              MessageBuilder messageBuilder = producer.messageBuilder();
+                              messageBuilderConsumer.accept(messageBuilder);
                               producer.send(
-                                  producer.messageBuilder().addData(payload).build(),
-                                  confirmationHandler);
+                                  messageBuilder.addData(payload).build(), confirmationHandler);
                             }
                           } catch (Exception e) {
                             if (e instanceof InterruptedException
@@ -780,7 +835,21 @@ public class StreamPerfTest implements Callable<Integer> {
                         AtomicLong messageCount = new AtomicLong(0);
                         String stream = stream(streams, i);
                         ConsumerBuilder consumerBuilder = environment.consumerBuilder();
-                        consumerBuilder = consumerBuilder.stream(stream).offset(this.offset);
+                        consumerBuilder = consumerBuilder.offset(this.offset);
+
+                        if (this.superStreams) {
+                          consumerBuilder.superStream(stream);
+                        } else {
+                          consumerBuilder.stream(stream);
+                        }
+
+                        if (this.singleActiveConsumer) {
+                          consumerBuilder.singleActiveConsumer();
+                          // single active consumer requires a name
+                          if (this.storeEvery == 0) {
+                            this.storeEvery = 10_000;
+                          }
+                        }
 
                         if (this.storeEvery > 0) {
                           String consumerName = this.consumerNameStrategy.apply(stream, i + 1);
@@ -878,6 +947,36 @@ public class StreamPerfTest implements Callable<Integer> {
     }
 
     return 0;
+  }
+
+  private void createStream(Environment environment, String stream) {
+    StreamCreator streamCreator =
+        environment.streamCreator().stream(stream)
+            .maxLengthBytes(this.maxLengthBytes)
+            .maxSegmentSizeBytes(this.maxSegmentSize)
+            .leaderLocator(this.leaderLocator);
+
+    if (this.maxAge != null) {
+      streamCreator.maxAge(this.maxAge);
+    }
+
+    try {
+      streamCreator.create();
+    } catch (StreamException e) {
+      if (e.getCode() == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
+        String message =
+            String.format(
+                "Warning: stream '%s' already exists, but with different properties than "
+                    + "max-length-bytes=%s, stream-max-segment-size-bytes=%s, queue-leader-locator=%s",
+                stream, this.maxLengthBytes, this.maxSegmentSize, this.leaderLocator);
+        if (this.maxAge != null) {
+          message += String.format(", max-age=%s", this.maxAge);
+        }
+        this.out.println(message);
+      } else {
+        throw e;
+      }
+    }
   }
 
   private void overridePropertiesWithEnvironmentVariables() throws Exception {

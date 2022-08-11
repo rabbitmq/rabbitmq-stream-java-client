@@ -15,6 +15,8 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamNotAvailableException;
@@ -24,14 +26,17 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
+import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
@@ -40,6 +45,7 @@ import org.slf4j.LoggerFactory;
 final class Utils {
 
   static final LongConsumer NO_OP_LONG_CONSUMER = someLong -> {};
+  static final LongSupplier NO_OP_LONG_SUPPLIER = () -> 0;
   static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
   private static final Map<Short, String> CONSTANT_LABELS;
@@ -83,6 +89,14 @@ final class Utils {
 
   static String formatConstant(short value) {
     return value + " (" + CONSTANT_LABELS.getOrDefault(value, "UNKNOWN") + ")";
+  }
+
+  static boolean isSac(Map<String, String> properties) {
+    if (properties == null || properties.isEmpty()) {
+      return false;
+    } else {
+      return "true".equals(properties.get("single-active-consumer"));
+    }
   }
 
   static short encodeRequestCode(Short code) {
@@ -238,6 +252,38 @@ final class Utils {
     }
     return clientConnectionType ->
         prefixes.get(clientConnectionType) + sequences.get(clientConnectionType).getAndIncrement();
+  }
+
+  /*
+  class to help testing SAC on super streams
+   */
+  static class CompositeConsumerUpdateListener implements ConsumerUpdateListener {
+
+    private final List<ConsumerUpdateListener> delegates = new CopyOnWriteArrayList<>();
+
+    @Override
+    public OffsetSpecification update(Context context) {
+      OffsetSpecification result = null;
+      for (ConsumerUpdateListener delegate : delegates) {
+        OffsetSpecification offsetSpecification = delegate.update(context);
+        if (offsetSpecification != null) {
+          result = offsetSpecification;
+        }
+      }
+      return result;
+    }
+
+    void add(ConsumerUpdateListener delegate) {
+      this.delegates.add(delegate);
+    }
+
+    CompositeConsumerUpdateListener duplicate() {
+      CompositeConsumerUpdateListener duplica = new CompositeConsumerUpdateListener();
+      for (ConsumerUpdateListener delegate : this.delegates) {
+        duplica.add(delegate);
+      }
+      return duplica;
+    }
   }
 
   static boolean offsetBefore(long x, long y) {

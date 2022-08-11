@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
@@ -39,6 +41,7 @@ import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamInfoResponse;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -581,8 +584,7 @@ public class ClientTest {
   void deleteNonExistingStreamShouldReturnError() {
     String nonExistingStream = UUID.randomUUID().toString();
     Client.Response response = cf.get().delete(nonExistingStream);
-    assertThat(response.isOk()).isFalse();
-    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    assertThat(response).is(ko()).has(responseCode(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
   }
 
   @Test
@@ -832,7 +834,7 @@ public class ClientTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void exchangeCommandVersions() {
     Client client = cf.get();
     List<FrameHandlerInfo> infos = client.exchangeCommandVersions();
@@ -841,7 +843,7 @@ public class ClientTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void deliverVersion2LastCommittedOffsetShouldBeSet() throws Exception {
     int publishCount = 20_000;
     byte correlationId = 42;
@@ -880,7 +882,7 @@ public class ClientTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void streamInfoShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
     int publishCount = 20_000;
     CountDownLatch latch = new CountDownLatch(publishCount);
@@ -921,14 +923,14 @@ public class ClientTest {
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void streamInfoShouldReturnErrorWhenStreamDoesNotExist() {
     assertThat(cf.get().streamStats("does not exist").getResponseCode())
         .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
   }
 
   @Test
-  @BrokerVersionAtLeast("3.11.0")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void streamInfoFirstOffsetShouldChangeAfterRetentionKickedIn(TestInfo info) {
     int messageCount = 1000;
     int payloadSize = 1000;

@@ -67,6 +67,7 @@ public final class Constants {
   public static final short COMMAND_HEARTBEAT = 23;
   public static final short COMMAND_ROUTE = 24;
   public static final short COMMAND_PARTITIONS = 25;
+  public static final short COMMAND_CONSUMER_UPDATE = 26;
   public static final short COMMAND_EXCHANGE_COMMAND_VERSIONS = 27;
   public static final short COMMAND_STREAM_STATS = 28;
 

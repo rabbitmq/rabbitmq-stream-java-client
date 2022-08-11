@@ -29,6 +29,7 @@ import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -43,7 +44,6 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -53,7 +53,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -69,6 +68,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.assertj.core.api.AssertDelegateTarget;
 import org.assertj.core.api.Condition;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -195,12 +195,7 @@ public final class TestUtils {
       client.publish(b(1), Collections.singletonList(message));
     }
 
-    try {
-      assertThat(latchConfirm.await(60, SECONDS)).isTrue();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new RuntimeException(e);
-    }
+    latchAssert(latchConfirm).completes(Duration.ofSeconds(60));
   }
 
   static Consumer<Object> namedTask(TaskWithException task, String description) {
@@ -369,13 +364,34 @@ public final class TestUtils {
     return new CountDownLatchAssert(latchReference.get());
   }
 
-  static Condition<Throwable> responseCode(short expectedResponseCode) {
-    String message = "expected code for stream exception is " + expectedResponseCode;
-    return new Condition<>(
-        throwable ->
-            throwable instanceof StreamException
-                && ((StreamException) throwable).getCode() == expectedResponseCode,
-        message);
+  static class ResponseConditions {
+
+    static Condition<Response> ok() {
+      return new Condition<>(Response::isOk, "OK");
+    }
+
+    static Condition<Response> ko() {
+      return new Condition<>(response -> !response.isOk(), "KO");
+    }
+
+    static Condition<Response> responseCode(short expectedResponse) {
+      return new Condition<>(
+          response -> response.getResponseCode() == expectedResponse,
+          "response code %s",
+          Utils.formatConstant(expectedResponse));
+    }
+  }
+
+  static class ExceptionConditions {
+
+    static Condition<Throwable> responseCode(short expectedResponseCode) {
+      String message = "code " + Utils.formatConstant(expectedResponseCode);
+      return new Condition<>(
+          throwable ->
+              throwable instanceof StreamException
+                  && ((StreamException) throwable).getCode() == expectedResponseCode,
+          message);
+    }
   }
 
   static Map<String, StreamMetadata> metadata(String stream, Broker leader, List<Broker> replicas) {
@@ -450,10 +466,10 @@ public final class TestUtils {
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
-  @ExtendWith(BrokerVersionAtLeastCondition.class)
+  @ExtendWith(AnnotationBrokerVersionAtLeastCondition.class)
   public @interface BrokerVersionAtLeast {
 
-    String value();
+    BrokerVersion value();
   }
 
   interface TaskWithException {
@@ -466,9 +482,19 @@ public final class TestUtils {
     void accept(int index, T t) throws Exception;
   }
 
-  interface CallableConsumer<T> {
+  public interface CallableConsumer<T> {
 
     void accept(T t) throws Exception;
+  }
+
+  static <T> java.util.function.Consumer<T> wrap(CallableConsumer<T> action) {
+    return t -> {
+      try {
+        action.accept(t);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    };
   }
 
   @FunctionalInterface
@@ -718,29 +744,47 @@ public final class TestUtils {
     }
   }
 
-  static class BrokerVersionAtLeastCondition implements ExecutionCondition {
+  private static class BaseBrokerVersionAtLeastCondition implements ExecutionCondition {
+
+    private final Function<ExtensionContext, String> versionProvider;
+
+    private BaseBrokerVersionAtLeastCondition(Function<ExtensionContext, String> versionProvider) {
+      this.versionProvider = versionProvider;
+    }
 
     @Override
     public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
-      Optional<AnnotatedElement> element = context.getElement();
-      //      String expectedVersion = annotation.get().getAnnotation(BrokerVersionAtLeast.class);
-      BrokerVersionAtLeast annotation = element.get().getAnnotation(BrokerVersionAtLeast.class);
-      if (annotation == null) {
+      if (!context.getTestMethod().isPresent()) {
+        return ConditionEvaluationResult.enabled("Apply only to methods");
+      }
+      String expectedVersion = versionProvider.apply(context);
+      if (expectedVersion == null) {
         return ConditionEvaluationResult.enabled("No broker version requirement");
       } else {
-        EventLoopGroup eventLoopGroup = StreamTestInfrastructureExtension.eventLoopGroup(context);
-        if (eventLoopGroup == null) {
-          throw new IllegalStateException(
-              "The event loop group must be in the test context to use "
-                  + BrokerVersionAtLeast.class.getSimpleName()
-                  + ", use the "
-                  + StreamTestInfrastructureExtension.class.getSimpleName()
-                  + " extension in the test");
-        }
-        Client client = new Client(new ClientParameters().eventLoopGroup(eventLoopGroup));
-        String expectedVersion = annotation.value();
-        String brokerVersion = client.brokerVersion();
-        client.close();
+        String brokerVersion =
+            context
+                .getRoot()
+                .getStore(Namespace.GLOBAL)
+                .getOrComputeIfAbsent(
+                    "brokerVersion",
+                    k -> {
+                      EventLoopGroup eventLoopGroup =
+                          StreamTestInfrastructureExtension.eventLoopGroup(context);
+                      if (eventLoopGroup == null) {
+                        throw new IllegalStateException(
+                            "The event loop group must be in the test context to use "
+                                + BrokerVersionAtLeast.class.getSimpleName()
+                                + ", use the "
+                                + StreamTestInfrastructureExtension.class.getSimpleName()
+                                + " extension in the test");
+                      }
+                      try (Client client =
+                          new Client(new ClientParameters().eventLoopGroup(eventLoopGroup))) {
+                        return client.brokerVersion();
+                      }
+                    },
+                    String.class);
+
         if (atLeastVersion(expectedVersion, brokerVersion)) {
           return ConditionEvaluationResult.enabled(
               "Broker version requirement met, expected "
@@ -755,6 +799,26 @@ public final class TestUtils {
                   + brokerVersion);
         }
       }
+    }
+  }
+
+  private static class AnnotationBrokerVersionAtLeastCondition
+      extends BaseBrokerVersionAtLeastCondition {
+
+    private AnnotationBrokerVersionAtLeastCondition() {
+      super(
+          context -> {
+            BrokerVersionAtLeast annotation =
+                context.getElement().get().getAnnotation(BrokerVersionAtLeast.class);
+            return annotation == null ? null : annotation.value().toString();
+          });
+    }
+  }
+
+  static class BrokerVersionAtLeast311Condition extends BaseBrokerVersionAtLeastCondition {
+
+    private BrokerVersionAtLeast311Condition() {
+      super(context -> "3.11.0");
     }
   }
 
@@ -809,5 +873,33 @@ public final class TestUtils {
     Level initialLevel = logger.getEffectiveLevel();
     logger.setLevel(level);
     return initialLevel;
+  }
+
+  static void waitMs(long waitTime) {
+    try {
+      Thread.sleep(waitTime);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Tag("single-active-consumer")
+  public @interface SingleActiveConsumer {}
+
+  public enum BrokerVersion {
+    RABBITMQ_3_11("3.11.0");
+
+    final String value;
+
+    BrokerVersion(String value) {
+      this.value = value;
+    }
+
+    @Override
+    public String toString() {
+      return this.value;
+    }
   }
 }

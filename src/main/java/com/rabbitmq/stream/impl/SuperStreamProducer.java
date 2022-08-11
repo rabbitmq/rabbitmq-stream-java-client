@@ -1,4 +1,4 @@
-// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -101,7 +101,8 @@ class SuperStreamProducer implements Producer {
             producers.computeIfAbsent(
                 stream,
                 stream1 -> {
-                  Producer p = producerBuilder.duplicate().stream(stream1).build();
+                  Producer p =
+                      producerBuilder.duplicate().superStream(null).stream(stream1).build();
                   return p;
                 });
         producer.send(message, confirmationHandler);

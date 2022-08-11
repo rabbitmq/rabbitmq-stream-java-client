@@ -30,7 +30,7 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   private String name;
 
-  private String stream;
+  private String stream, superStream;
 
   private int subEntrySize = 1;
 
@@ -60,6 +60,12 @@ class StreamProducerBuilder implements ProducerBuilder {
   @Override
   public ProducerBuilder name(String name) {
     this.name = name;
+    return this;
+  }
+
+  @Override
+  public ProducerBuilder superStream(String superStream) {
+    this.superStream = superStream;
     return this;
   }
 
@@ -134,6 +140,12 @@ class StreamProducerBuilder implements ProducerBuilder {
   }
 
   public Producer build() {
+    if (this.stream == null && this.superStream == null) {
+      throw new IllegalArgumentException("A stream must be specified");
+    }
+    if (this.stream != null && this.superStream != null) {
+      throw new IllegalArgumentException("Stream and superStream cannot be set at the same time");
+    }
     if (subEntrySize == 1 && compression != null) {
       throw new IllegalArgumentException(
           "Sub-entry batching must be enabled to enable compression");
@@ -143,7 +155,23 @@ class StreamProducerBuilder implements ProducerBuilder {
     }
     this.environment.maybeInitializeLocator();
     Producer producer;
-    if (this.routingConfiguration == null) {
+
+    if (this.stream != null && this.routingConfiguration != null) {
+      throw new IllegalArgumentException(
+          "A super stream must be specified when a routing configuration is set");
+    }
+
+    if (this.routingConfiguration != null && this.superStream == null) {
+      throw new IllegalArgumentException(
+          "A super stream must be specified when a routing configuration is set");
+    }
+
+    if (this.routingConfiguration == null && this.superStream != null) {
+      throw new IllegalArgumentException(
+          "A routing configuration must specified when a super stream is set");
+    }
+
+    if (this.stream != null) {
       producer =
           new StreamProducer(
               name,
@@ -170,7 +198,8 @@ class StreamProducerBuilder implements ProducerBuilder {
         }
       }
       producer =
-          new SuperStreamProducer(this, this.name, this.stream, routingStrategy, this.environment);
+          new SuperStreamProducer(
+              this, this.name, this.superStream, routingStrategy, this.environment);
     }
     return producer;
   }

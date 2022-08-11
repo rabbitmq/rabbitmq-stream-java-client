@@ -3,17 +3,28 @@
 [[super-streams]]
 ==== Super Streams (Partitioned Streams)
 
-[WARNING]
-.Experimental
-====
-Super streams are an experimental feature, they are subject to change.
-====
+WARNING: Super streams are an *experimental* feature, they are subject to change.
 
 A super stream is a logical stream made of several individual streams.
 In essence, a super stream is a partitioned stream that brings scalability compared to a single stream.
 
 The stream Java client uses the same programming model for super streams as with individual streams, that is the `Producer`, `Consumer`, `Message`, etc API are still valid when super streams are in use.
 Application code should not be impacted whether it uses individual or super streams.
+
+Consuming applications can use super streams and <<api.adoc#single-active-consumer, single active consumer>> at the same time.
+The 2 features combined make sure only one consumer instance consumes from an individual stream at a time.
+In this configuration, super streams provide scalability and single active consumer provides the guarantee that messages of an individual stream are processed in order.
+
+[WARNING]
+.Super streams do not deprecate streams
+====
+Super streams are a https://en.wikipedia.org/wiki/Partition_(database)[partitioning] solution.
+They are not meant to replace individual streams, they sit on top of them to handle some use cases in a better way.
+If the stream data is likely to be large – hundreds of gigabytes or even terabytes, size remains relative – and even presents an obvious partition key (e.g. country), a super stream can be appropriate.
+It can help to cope with the data size and to take advantage of data locality for some processing use cases.
+Remember that partitioning always comes with complexity though, even if the implementation of super streams strives to make it as transparent as possible for the application developer.
+====
+
 
 ===== Topology
 
@@ -47,6 +58,7 @@ When a super stream is in use, the stream Java client queries this information t
 From the application code point of view, using a super stream is mostly configuration-based.
 Some logic must also be provided to extract routing information from messages.
 
+[[super-stream-producer]]
 ===== Publishing to a Super Stream
 
 When the topology of a super stream like the one described above has been set, creating a producer for it is straightforward:
@@ -56,7 +68,7 @@ When the topology of a super stream like the one described above has been set, c
 --------
 include::{test-examples}/SuperStreamUsage.java[tag=producer-simple]
 --------
-<1> Use the super stream name
+<1> Set the super stream name
 <2> Provide the logic to get the routing key from a message
 <3> Create the producer instance
 <4> Close the producer when it's no longer necessary
@@ -162,7 +174,31 @@ The publishing ID values are spread across the streams but this does affect the 
 
 ===== Consuming From a Super Stream
 
-A super stream consumer is not much different from a single stream consumer.
+A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
+The programming model is the same as with regular consumers for the application developer: their main job is to provide the application code to process messages, that is a `MessageHandler` instance.
+The configuration is different though and this section covers its subtleties.
+But let's focus on the behavior of a super stream consumer first.
+
+[[super-stream-consumer-in-practice]]
+====== Super Stream Consumer in Practice
+
+Imagine you have a super stream made of 3 partitions (individual streams).
+You start an instance of your application, that itself creates a super stream consumer for this super stream.
+The super stream consumer will create 3 consumers internally, one for each partition, and messages will flow in your `MessageHandler`.
+
+Imagine now that you start another instance of your application.
+It will do the exact same thing as previously and the 2 instances will process the exact same messages in parallel.
+This may be not what you want: the messages will be processed twice!
+
+Having one instance of your application may be enough: the data are spread across several streams automatically and the messages from the different partitions are processed in parallel from a single OS process.
+
+But if you want to scale the processing across several OS processes (or bare-metal machines, or virtual machines) and you don't want your messages to be processed several times as illustrated above, you'll have to enable the *single active consumer* feature on your super stream consumer.
+
+The next subsections cover the basic settings of a super stream consumer and a <<super-stream-sac, dedicated section>> covers how super stream consumers and single active consumer play together.
+
+====== Declaring a Super Stream Consumer
+
+Declaring a super stream consumer is not much different from declaring a single stream consumer.
 The `ConsumerBuilder#superStream(String)` must be used to set the super stream to consume from:
 
 .Declaring a super stream consumer
@@ -173,7 +209,8 @@ include::{test-examples}/SuperStreamUsage.java[tag=consumer-simple]
 <1> Set the super stream name
 <2> Close the consumer when it is no longer necessary
 
-A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
+That's all.
+The super stream consumer will take of the details (partitions lookup, coordination of the single consumers, etc).
 
 ====== Offset Tracking
 
@@ -190,4 +227,181 @@ A good rule of thumb is to then multiply the expected per-stream `messageCountBe
 * *manual offset tracking*: the `MessageHandler.Context#storeOffset()` method must be used, the `Consumer#store(long)` will fail, because an offset value has a meaning only in one stream, not in other streams.
 A call to `MessageHandler.Context#storeOffset()` will store the current message offset in _its_ stream, but also the offset of the last dispatched message for the other streams of the super stream.
 
+[[super-stream-sac]]
+====== Single Active Consumer Support
 
+WARNING: Single Active Consumer requires *RabbitMQ 3.11* or more.
+
+As <<super-stream-consumer-in-practice, stated previously>>, super stream consumers and single active consumer provide scalability and the guarantee that messages of an individual stream are processed in order.
+
+Let's take an example with a 3-partition super stream:
+
+* You have an application that creates a super stream consumer instance with single active consumer enabled.
+* You start 3 instances of this application. An instance in this case is a JVM process, which can be in a Docker container, a virtual machine, or a bare-metal server.
+* As the super stream has 3 partitions, each application instance will create a super stream consumer that maintains internally 3 consumer instances.
+That is 9 Java instances of consumer overall.
+Such a super stream consumer is a _composite consumer_.
+* The broker and the different application instances coordinate so that only 1 consumer instance for a given partition receives messages at a time.
+So among these 9 consumer instances, only 3 are actually _active_, the other ones are idle or _inactive_.
+* If one of the application instances stops, the broker will _rebalance_ its active consumer to one of the other instances.
+
+The following figure illustrates how the client library supports the combination of the super stream and single active consumer features.
+It uses a composite consumer that creates an individual consumer for each partition of the super stream.
+If there is only one single active consumer instance with a given name for a super stream, each individual consumer is active.
+
+.A single active consumer on a super stream is a composite consumer that creates an individual consumer for each partition
+[ditaa]
+....
+              +--------------------+
+              |                    |
+              |cGRE invoices–0     |
+              |                    |    +-------------------+
+              +--------------------+    |+-----------------+|
+                                        |+cGRE consumer    ||Active
+                                        |+-----------------+|
+  invoices    +--------------------+    |                   |
+              |                    |    |+-----------------+|
+              |cPNK invoices–1     |    |+cPNK consumer    ||Active
+              |                    |    |+-----------------+|
+super stream  +--------------------+    |                   |
+                                        |+-----------------+|
+                                        |+cBLU consumer    ||Active
+              +--------------------+    |+-----------------+|
+              |                    |    +-------------------+
+              |cBLU invoices–2     |     Composite Consumer
+              |                    |
+              +--------------------+
+....
+
+Imagine now we start 3 instances of the consuming application to scale out the processing.
+The individual consumer instances spread out across the super stream partitions and only one is active for each partition, as illustrated in the following figure:
+
+.Consumer instances spread across the super stream partitions and are activated accordingly
+[ditaa]
+....
+                                        +-------------------+
+                                        |+-----------------+|
+                                        |+cGRE consumer    ||Active
+                                        |+-----------------+|
+                                        |                   |
+                                        |+-----------------+|
+                                        |+cPNK consumer    ||Inactive
+                                        |+-----------------+|
+                                        |                   |
+                                        |+-----------------+|
+                                        |+cBLU consumer    ||Inactive
+                                        |+-----------------+|
+              +--------------------+    +-------------------+
+              |                    |     Composite Consumer
+              |cGRE invoices–0     |
+              |                    |    +-------------------+
+              +--------------------+    |+-----------------+|
+                                        |+cGRE consumer    ||Inactive
+                                        |+-----------------+|
+  invoices    +--------------------+    |                   |
+              |                    |    |+-----------------+|
+              |cPNK invoices–1     |    |+cPNK consumer    ||Active
+              |                    |    |+-----------------+|
+super stream  +--------------------+    |                   |
+                                        |+-----------------+|
+                                        |+cBLU consumer    ||Inactive
+              +--------------------+    |+-----------------+|
+              |                    |    +-------------------+
+              |cBLU invoices–2     |     Composite Consumer
+              |                    |
+              +--------------------+    +-------------------+
+                                        |+-----------------+|
+                                        |+cGRE consumer    ||Inactive
+                                        |+-----------------+|
+                                        |                   |
+                                        |+-----------------+|
+                                        |+cPNK consumer    ||Inactive
+                                        |+-----------------+|
+                                        |                   |
+                                        |+-----------------+|
+                                        |+cBLU consumer    ||Active
+                                        |+-----------------+|
+                                        +-------------------+
+                                         Composite Consumer
+....
+
+After this overview, let's see the API and the configuration details.
+
+The following snippet shows how to declare a single active consumer on a super stream with the `ConsumerBuilder#superStream(String)` and `ConsumerBuilder#singleActiveConsumer()` methods:
+
+.Enabling single active consumer on a super stream
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=sac-simple]
+--------
+<1> Set the super stream name
+<2> Set the consumer name (mandatory to enable single active consumer)
+<3> Enable single active consumer
+
+Note it is mandatory to specify a name for the consumer.
+This name will be used to identify the _group_ of consumer instances and make sure only one is active for each partition.
+The name is also the reference for offset tracking.
+
+The example above uses by default <<api.adoc#consumer-automatic-offset-tracking, automatic offset tracking>>.
+With this strategy, the client library takes care of offset tracking when consumers become active or inactive.
+It looks up the latest stored offset when a consumer becomes active to start consuming at the appropriate offset and it stores the last dispatched offset when a consumer becomes inactive.
+
+The story is not the same with <<api.adoc#consumer-manual-offset-tracking, manual offset tracking>> as the client library does not know which offset it should store when a consumer becomes inactive.
+The application developer can use the <<api.adoc#consumer-update-listener, `ConsumerUpdateListener)` callback>> to react appropriately when a consumer changes state.
+The following snippet illustrates the use of the `ConsumerUpdateListener` callback:
+
+.Using manual offset tracking for a super stream single active consumer
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=sac-manual-offset-tracking]
+--------
+<1> Set the super stream name
+<2> Set the consumer name (mandatory to enable single active consumer)
+<3> Enable single active consumer
+<4> Enable manual offset tracking strategy
+<5> Set `ConsumerUpdateListener`
+<6> Return stored offset + 1 or default when consumer becomes active
+<7> Store last processed offset for the stream when consumer becomes inactive
+<8> Store the current offset on some condition
+
+The `ConsumerUpdateListener` callback must return the offset to start consuming from when a consumer becomes active.
+This is what the code above does: it checks if the consumer is active with `ConsumerUpdateListener.Context#isActive()` and looks up the last stored offset.
+If there is no stored offset yet, it returns a default value, `OffsetSpecification#next()` here.
+
+When a consumer becomes inactive, it should store the last processed offset, as another consumer instance will take over elsewhere.
+It is expected this other consumer runs the exact same code, so it will execute the same sequence when it becomes active (looking up the stored offset, returning the value + 1).
+
+Note the `ConsumerUpdateListener` is called for a _partition_, that is an individual stream.
+The application code should take care of maintaining a reference of the last processed offset for each partition of the super stream, e.g. with a `Map<String, Long>` (partition-to-offset map).
+To do so, the `context` parameter of the `MessageHandler` and `ConsumerUpdateListener` callbacks provide a `stream()` method.
+
+RabbitMQ Stream provides server-side offset tracking, but it is possible to use an external store to track offsets for streams.
+The `ConsumerUpdateListener` callback is still your friend in this case.
+The following snippet shows how to leverage it when an external store is in use:
+
+.Using external offset tracking for a super stream single active consumer
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=sac-external-offset-tracking]
+--------
+<1> Set the super stream name
+<2> Set the consumer name (mandatory to enable single active consumer)
+<3> Enable single active consumer
+<4> Disable server-side offset tracking
+<5> Set `ConsumerUpdateListener`
+<6> Use external store for stored offset when consumer becomes active
+<7> Assume offset already stored when consumer becomes inactive
+<8> Use external store for offset tracking
+
+Here are the takeaway points of this code:
+
+* Even though there is no server-side offset tracking to use it, the consumer must still have a name to identify the group it belongs to.
+The external offset tracking mechanism is free to use the same name or not.
+* Calling `ConsumerBuilder#noTrackingStrategy()` is necessary to disable server-side offset tracking, or the automatic tracking strategy will kick in.
+* The snippet does not provide the details, but the offset tracking mechanism seems to store the offset for each message.
+The external store must be able to cope with the message rate in a real-world scenario.
+* The `ConsumerUpdateListener` callback returns the last stored offset + 1 when the consumer becomes active.
+This way the broker will resume the dispatching at this location in the stream.
+* A well-behaved `ConsumerUpdateListener` must make sure the last processed offset is stored when the consumer becomes inactive, so that the consumer that will take over can look up the offset and resume consuming at the right location.
+Our `ConsumerUpdateListener` does not do anything when the consumer becomes inactive (it returns `null`): it can afford this because the offset is stored for each message.
+Make sure to store the last processed offset when the consumer becomes inactive to avoid duplicates when the consumption resumes elsewhere.

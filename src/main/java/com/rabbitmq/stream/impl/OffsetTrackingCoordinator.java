@@ -15,9 +15,8 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 
-import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import java.time.Duration;
 import java.util.Collection;
@@ -144,6 +143,8 @@ class OffsetTrackingCoordinator {
 
     void flushIfNecessary();
 
+    long flush();
+
     StreamConsumer consumer();
 
     LongConsumer trackingCallback();
@@ -170,6 +171,10 @@ class OffsetTrackingCoordinator {
     Runnable closingCallback() {
       return this.tracker.closingCallback();
     }
+
+    long flush() {
+      return this.tracker.flush();
+    }
   }
 
   private static final class AutoTrackingTracker implements Tracker {
@@ -190,6 +195,7 @@ class OffsetTrackingCoordinator {
       this.clock = clock;
     }
 
+    @Override
     public Consumer<Context> postProcessingCallback() {
       return context -> {
         if (++count % messageCountBeforeStorage == 0) {
@@ -204,26 +210,33 @@ class OffsetTrackingCoordinator {
       };
     }
 
+    @Override
     public void flushIfNecessary() {
       if (this.count > 0) {
         if (this.clock.time() - this.lastTrackingActivity > this.flushIntervalInNs) {
-          if (lastProcessedOffset != null) {
-            try {
-              long lastStoredOffset = consumer.lastStoredOffset();
-              if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
-                this.consumer.store(this.lastProcessedOffset.get());
-              }
-              this.lastTrackingActivity = clock.time();
-            } catch (StreamException e) {
-              if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-                this.consumer.store(this.lastProcessedOffset.get());
-                this.lastTrackingActivity = clock.time();
-              } else {
-                throw e;
-              }
-            }
-          }
+          this.flush();
         }
+      }
+    }
+
+    @Override
+    public long flush() {
+      if (lastProcessedOffset == null) {
+        return 0;
+      } else {
+        long result;
+        try {
+          long lastStoredOffset = consumer.storedOffset();
+          if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
+            this.consumer.store(this.lastProcessedOffset.get());
+          }
+          result = lastProcessedOffset.get();
+        } catch (NoOffsetException e) {
+          this.consumer.store(this.lastProcessedOffset.get());
+          result = lastProcessedOffset.get();
+        }
+        this.lastTrackingActivity = clock.time();
+        return result;
       }
     }
 
@@ -240,20 +253,31 @@ class OffsetTrackingCoordinator {
     @Override
     public Runnable closingCallback() {
       return () -> {
-        if (this.lastProcessedOffset == null) {
-          LOGGER.debug("Not storing anything as nothing has been processed.");
+        if (this.consumer.isSac() && !this.consumer.sacActive()) {
+          LOGGER.debug("Not storing offset on closing because consumer is a non-active SAC");
         } else {
-          try {
-            long lastStoredOffset = consumer.lastStoredOffset();
-            if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
-              LOGGER.debug("Storing {} offset before closing", this.lastProcessedOffset);
-              this.consumer.store(this.lastProcessedOffset.get());
-            }
-          } catch (StreamException e) {
-            if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
+          if (this.lastProcessedOffset == null) {
+            LOGGER.debug("Not storing anything as nothing has been processed.");
+          } else {
+            Runnable storageOperation =
+                () -> {
+                  this.consumer.store(this.lastProcessedOffset.get());
+                  if (this.consumer.isSac()) {
+                    LOGGER.debug(
+                        "Consumer is SAC, making sure offset has been stored, in case another SAC takes over");
+                    this.consumer.waitForOffsetToBeStored(lastProcessedOffset.get());
+                  }
+                };
+            try {
+              long lastStoredOffset = consumer.storedOffset();
+              if (offsetBefore(lastStoredOffset, lastProcessedOffset.get())) {
+                LOGGER.debug("Storing {} offset before closing", this.lastProcessedOffset);
+                storageOperation.run();
+              }
+            } catch (NoOffsetException e) {
               LOGGER.debug(
                   "Nothing stored yet, storing {} offset before closing", this.lastProcessedOffset);
-              this.consumer.store(this.lastProcessedOffset.get());
+              storageOperation.run();
             }
           }
         }
@@ -285,20 +309,21 @@ class OffsetTrackingCoordinator {
     public void flushIfNecessary() {
       if (this.clock.time() - this.lastTrackingActivity > this.checkIntervalInNs) {
         try {
-          long lastStoredOffset = consumer.lastStoredOffset();
+          long lastStoredOffset = consumer.storedOffset();
           if (offsetBefore(lastStoredOffset, lastRequestedOffset)) {
             this.consumer.store(this.lastRequestedOffset);
             this.lastTrackingActivity = clock.time();
           }
-        } catch (StreamException e) {
-          if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-            this.consumer.store(this.lastRequestedOffset);
-            this.lastTrackingActivity = clock.time();
-          } else {
-            throw e;
-          }
+        } catch (NoOffsetException e) {
+          this.consumer.store(this.lastRequestedOffset);
+          this.lastTrackingActivity = clock.time();
         }
       }
+    }
+
+    @Override
+    public long flush() {
+      throw new UnsupportedOperationException();
     }
 
     @Override
