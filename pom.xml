@@ -51,6 +51,8 @@
     <spotless.check.skip>true</spotless.check.skip>
     <slf4j.version>1.7.36</slf4j.version>
     <logback.version>1.2.11</logback.version>
+    <slf4j.perftool.version>2.0.0</slf4j.perftool.version>
+    <logback.perftool.version>1.3.0</logback.perftool.version>
     <netty.version>4.1.80.Final</netty.version>
     <proton-j.version>0.33.10</proton-j.version>
     <metrics.version>4.2.11</metrics.version>
@@ -64,7 +66,7 @@
     <snappy-java.version>1.1.8.4</snappy-java.version>
     <junit.jupiter.version>5.9.0</junit.jupiter.version>
     <assertj.version>3.23.1</assertj.version>
-    <mockito.version>4.6.1</mockito.version>
+    <mockito.version>4.7.0</mockito.version>
     <amqp-client.version>5.15.0</amqp-client.version>
     <commons-lang3.version>3.12.0</commons-lang3.version>
     <commons-codec.version>1.15</commons-codec.version>
@@ -73,22 +75,22 @@
     <paho.version>1.2.5</paho.version>
     <maven.compiler.plugin.version>3.10.1</maven.compiler.plugin.version>
     <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
-    <spring-boot-maven-plugin.version>2.7.2</spring-boot-maven-plugin.version>
+    <spring-boot-maven-plugin.version>2.7.3</spring-boot-maven-plugin.version>
     <checksum.maven.plugin.version>1.11</checksum.maven.plugin.version>
     <maven.gpg.plugin.version>3.0.1</maven.gpg.plugin.version>
     <buildnumber.plugin.version>3.0.0</buildnumber.plugin.version>
     <maven-resources-plugin.version>3.3.0</maven-resources-plugin.version>
     <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
-    <maven-javadoc-plugin.version>3.4.0</maven-javadoc-plugin.version>
+    <maven-javadoc-plugin.version>3.4.1</maven-javadoc-plugin.version>
     <maven.jar.plugin.version>3.2.2</maven.jar.plugin.version>
     <asciidoctor.maven.plugin.version>2.2.2</asciidoctor.maven.plugin.version>
     <asciidoctorj.version>2.5.5</asciidoctorj.version>
-    <asciidoctorj.pdf.version>2.1.6</asciidoctorj.pdf.version>
+    <asciidoctorj.pdf.version>2.3.0</asciidoctorj.pdf.version>
     <asciidoctorj.diagram.version>2.2.3</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jruby.version>9.3.4.0</jruby.version>
     <jmh.version>1.35</jmh.version>
-    <spotless.version>2.24.1</spotless.version>
+    <spotless.version>2.25.0</spotless.version>
     <google-java-format.version>1.15.0</google-java-format.version>
     <jacoco.version>0.8.8</jacoco.version>
     <!-- to sign artifacts when releasing -->
@@ -594,9 +596,15 @@
         </dependency>
 
         <dependency>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-api</artifactId>
+          <version>${slf4j.perftool.version}</version>
+        </dependency>
+
+        <dependency>
           <groupId>ch.qos.logback</groupId>
           <artifactId>logback-classic</artifactId>
-          <version>${logback.version}</version>
+          <version>${logback.perftool.version}</version>
         </dependency>
 
         <dependency>
