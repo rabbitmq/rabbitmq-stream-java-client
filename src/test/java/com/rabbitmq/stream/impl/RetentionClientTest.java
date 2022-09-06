@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongFunction;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,7 +61,8 @@ public class RetentionClientTest {
                     .maxSegmentSizeBytes(messageCount * payloadSize / 20)
                     .build());
           },
-          firstMessageId -> firstMessageId > 0),
+          firstMessageId -> firstMessageId > 0,
+          firstMessageId -> "First message ID should be positive but is " + firstMessageId),
       new RetentionTestConfig(
           "retention defined in policy should take precedence",
           context -> {
@@ -85,6 +87,7 @@ public class RetentionClientTest {
             Host.rabbitmqctl(policyCommand);
           },
           firstMessageId -> firstMessageId > 0,
+          firstMessageId -> "First message ID should be positive but is " + firstMessageId,
           () -> Host.rabbitmqctl("clear_policy stream-retention-test")),
       new RetentionTestConfig(
           "with size helper to specify bytes",
@@ -98,7 +101,8 @@ public class RetentionClientTest {
                     .maxSegmentSizeBytes(ByteCapacity.B(messageCount * payloadSize / 20))
                     .build());
           },
-          firstMessageId -> firstMessageId > 0),
+          firstMessageId -> firstMessageId > 0,
+          firstMessageId -> "First message ID should be positive but is " + firstMessageId),
       new RetentionTestConfig(
           "with max age",
           context -> {
@@ -112,6 +116,7 @@ public class RetentionClientTest {
                     .build());
           },
           firstMessageId -> firstMessageId > 0,
+          firstMessageId -> "First message ID should be positive but is " + firstMessageId,
           Duration.ofSeconds(3)),
       new RetentionTestConfig(
           "no retention",
@@ -120,7 +125,8 @@ public class RetentionClientTest {
             String stream = (String) ((Object[]) context)[1];
             client.create(stream, Collections.emptyMap());
           },
-          firstMessageId -> firstMessageId == 0),
+          firstMessageId -> firstMessageId == 0,
+          firstMessageId -> "First message ID should be 0 but is " + firstMessageId),
       new RetentionTestConfig(
           "with AMQP client, no retention",
           context -> {
@@ -132,7 +138,8 @@ public class RetentionClientTest {
                   stream, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
             }
           },
-          firstMessageId -> firstMessageId == 0),
+          firstMessageId -> firstMessageId == 0,
+          firstMessageId -> "First message ID should be 0 but is " + firstMessageId),
       new RetentionTestConfig(
           "with AMQP client, with size-based retention",
           context -> {
@@ -147,7 +154,8 @@ public class RetentionClientTest {
               ch.queueDeclare(stream, true, false, false, arguments);
             }
           },
-          firstMessageId -> firstMessageId > 0),
+          firstMessageId -> firstMessageId > 0,
+          firstMessageId -> "First message ID should be positive but is " + firstMessageId),
       new RetentionTestConfig(
           "with AMQP client, with age-based retention",
           context -> {
@@ -163,6 +171,7 @@ public class RetentionClientTest {
             }
           },
           firstMessageId -> firstMessageId > 0,
+          firstMessageId -> "First message ID should be positive but is " + firstMessageId,
           Duration.ofSeconds(3)),
     };
   }
@@ -202,6 +211,7 @@ public class RetentionClientTest {
 
       CountDownLatch consumingLatch = new CountDownLatch(1);
       AtomicLong firstMessageId = new AtomicLong(-1);
+      AtomicLong lastMessageId = new AtomicLong(-1);
       Client consumer =
           cf.get(
               new Client.ClientParameters()
@@ -212,15 +222,27 @@ public class RetentionClientTest {
                       (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
                         long messageId = message.getProperties().getMessageIdAsLong();
                         firstMessageId.compareAndSet(-1, messageId);
+                        lastMessageId.set(messageId);
                         if (messageId == publishSequence.get() - 1) {
                           consumingLatch.countDown();
                         }
                       }));
 
       consumer.subscribe(b(1), testStream, OffsetSpecification.first(), 10);
-      assertThat(consumingLatch.await(10, SECONDS)).isTrue();
+      assertThat(consumingLatch.await(10, SECONDS))
+          .as(
+              () ->
+                  String.format(
+                      "Failure '%s', first message ID %d, last message ID %d, publish sequence %d",
+                      configuration.description,
+                      firstMessageId.get(),
+                      lastMessageId.get(),
+                      publishSequence.get()))
+          .isTrue();
       consumer.unsubscribe(b(1));
-      assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get())).isTrue();
+      assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get()))
+          .as(configuration.assertionDescription.apply(firstMessageId.get()))
+          .isTrue();
     } finally {
       client.delete(testStream);
       configuration.clean();
@@ -231,41 +253,65 @@ public class RetentionClientTest {
     final String description;
     final CallableConsumer<Object> streamCreator;
     final Predicate<Long> firstMessageIdAssertion;
+    final LongFunction<String> assertionDescription;
     final Duration waitTime;
     final RunnableWithException cleaning;
 
     RetentionTestConfig(
         String description,
         CallableConsumer<Object> streamCreator,
-        Predicate<Long> firstMessageIdAssertion) {
-      this(description, streamCreator, firstMessageIdAssertion, Duration.ZERO, null);
+        Predicate<Long> firstMessageIdAssertion,
+        LongFunction<String> assertionDescription) {
+      this(
+          description,
+          streamCreator,
+          firstMessageIdAssertion,
+          assertionDescription,
+          Duration.ZERO,
+          null);
     }
 
     RetentionTestConfig(
         String description,
         CallableConsumer<Object> streamCreator,
         Predicate<Long> firstMessageIdAssertion,
+        LongFunction<String> assertionDescription,
         Duration waitTime) {
-      this(description, streamCreator, firstMessageIdAssertion, waitTime, null);
+      this(
+          description,
+          streamCreator,
+          firstMessageIdAssertion,
+          assertionDescription,
+          waitTime,
+          null);
     }
 
     RetentionTestConfig(
         String description,
         CallableConsumer<Object> streamCreator,
         Predicate<Long> firstMessageIdAssertion,
+        LongFunction<String> assertionDescription,
         RunnableWithException cleaning) {
-      this(description, streamCreator, firstMessageIdAssertion, Duration.ZERO, cleaning);
+      this(
+          description,
+          streamCreator,
+          firstMessageIdAssertion,
+          assertionDescription,
+          Duration.ZERO,
+          cleaning);
     }
 
     RetentionTestConfig(
         String description,
         CallableConsumer<Object> streamCreator,
         Predicate<Long> firstMessageIdAssertion,
+        LongFunction<String> assertionDescription,
         Duration waitTime,
         RunnableWithException cleaning) {
       this.description = description;
       this.streamCreator = streamCreator;
       this.firstMessageIdAssertion = firstMessageIdAssertion;
+      this.assertionDescription = assertionDescription;
       this.waitTime = waitTime;
       this.cleaning = cleaning == null ? () -> {} : cleaning;
     }
