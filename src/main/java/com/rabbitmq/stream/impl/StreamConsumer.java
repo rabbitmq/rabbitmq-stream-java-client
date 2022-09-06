@@ -330,6 +330,7 @@ class StreamConsumer implements Consumer {
 
   @Override
   public void store(long offset) {
+    checkNotClosed();
     trackingCallback.accept(offset);
     if (canTrack()) {
       if (offsetBefore(this.lastRequestedStoredOffset, offset)
@@ -475,6 +476,7 @@ class StreamConsumer implements Consumer {
 
   @Override
   public long storedOffset() {
+    checkNotClosed();
     if (canTrack()) {
       // the client can be null by now, so we catch any exception
       QueryOffsetResponse response;
@@ -560,5 +562,11 @@ class StreamConsumer implements Consumer {
         + "\"tracking_client\" : "
         + (trackingClient == null ? "null" : ("\"" + trackingClient.connectionName() + "\""))
         + "}";
+  }
+
+  private void checkNotClosed() {
+    if (this.status == Status.CLOSED) {
+      throw new IllegalStateException("This producer instance has been closed");
+    }
   }
 }

@@ -54,6 +54,7 @@ import io.netty.handler.ssl.SslHandler;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -67,6 +68,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLParameters;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -543,5 +545,21 @@ public class StreamEnvironmentTest {
       assertThatThrownBy(() -> env.queryStreamStats("does not exist"))
           .isInstanceOf(StreamDoesNotExistException.class);
     }
+  }
+
+  @Test
+  void methodsShouldThrowExceptionWhenEnvironmentIsClosed() {
+    Environment env = environmentBuilder.build();
+    env.close();
+    ThrowingCallable[] calls =
+        new ThrowingCallable[] {
+          () -> env.streamCreator(),
+          () -> env.producerBuilder(),
+          () -> env.consumerBuilder(),
+          () -> env.deleteStream("does not matter"),
+          () -> env.queryStreamStats("does not matter")
+        };
+    Arrays.stream(calls)
+        .forEach(call -> assertThatThrownBy(call).isInstanceOf(IllegalStateException.class));
   }
 }

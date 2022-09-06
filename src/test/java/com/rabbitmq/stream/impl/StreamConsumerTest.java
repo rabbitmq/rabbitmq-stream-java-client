@@ -57,6 +57,7 @@ import java.util.function.IntConsumer;
 import java.util.function.UnaryOperator;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -879,5 +880,18 @@ public class StreamConsumerTest {
     assertThatThrownBy(() -> consumer.storedOffset()).isInstanceOf(NoOffsetException.class);
     consumer.store(0);
     waitAtMost(() -> consumer.storedOffset() == 0);
+  }
+
+  @Test
+  void methodsShouldThrowExceptionWhenConsumerIsClosed() {
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .messageHandler((context, message) -> {})
+            .build();
+    consumer.close();
+    ThrowingCallable[] calls =
+        new ThrowingCallable[] {() -> consumer.store(1), () -> consumer.storedOffset()};
+    Arrays.stream(calls)
+        .forEach(call -> assertThatThrownBy(call).isInstanceOf(IllegalStateException.class));
   }
 }

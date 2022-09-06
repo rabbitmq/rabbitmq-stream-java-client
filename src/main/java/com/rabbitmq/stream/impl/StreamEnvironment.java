@@ -371,11 +371,13 @@ class StreamEnvironment implements Environment {
 
   @Override
   public StreamCreator streamCreator() {
+    checkNotClosed();
     return new StreamStreamCreator(this);
   }
 
   @Override
   public void deleteStream(String stream) {
+    checkNotClosed();
     this.maybeInitializeLocator();
     Client.Response response = this.locator().delete(stream);
     if (!response.isOk()) {
@@ -391,6 +393,7 @@ class StreamEnvironment implements Environment {
 
   @Override
   public StreamStats queryStreamStats(String stream) {
+    checkNotClosed();
     StreamStatsResponse response =
         locatorOperation(
             client -> {
@@ -454,6 +457,7 @@ class StreamEnvironment implements Environment {
 
   @Override
   public ProducerBuilder producerBuilder() {
+    checkNotClosed();
     return new StreamProducerBuilder(this);
   }
 
@@ -475,6 +479,7 @@ class StreamEnvironment implements Environment {
 
   @Override
   public ConsumerBuilder consumerBuilder() {
+    checkNotClosed();
     return new StreamConsumerBuilder(this);
   }
 
@@ -732,6 +737,12 @@ class StreamEnvironment implements Environment {
 
     public LocatorNotAvailableException() {
       super("Locator not available");
+    }
+  }
+
+  private void checkNotClosed() {
+    if (this.closed.get()) {
+      throw new IllegalStateException("This environment instance has been closed");
     }
   }
 }

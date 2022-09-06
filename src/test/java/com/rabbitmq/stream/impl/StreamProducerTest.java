@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.Level;
 import com.rabbitmq.stream.BackOffDelayPolicy;
@@ -618,5 +619,13 @@ public class StreamProducerTest {
     assertThat(consumedBodies).isNotEmpty().hasSameSizeAs(publishedBodies);
     publishedBodies.forEach(
         publishBody -> assertThat(consumedBodies.contains(publishBody)).isTrue());
+  }
+
+  @Test
+  void methodsShouldThrowExceptionWhenProducerIsClosed() {
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    producer.close();
+    assertThatThrownBy(() -> producer.getLastPublishingId())
+        .isInstanceOf(IllegalStateException.class);
   }
 }

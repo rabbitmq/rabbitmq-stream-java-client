@@ -268,6 +268,7 @@ class StreamProducer implements Producer {
 
   @Override
   public long getLastPublishingId() {
+    checkNotClosed();
     if (this.name != null && !this.name.isEmpty()) {
       if (canSend()) {
         try {
@@ -515,5 +516,11 @@ class StreamProducer implements Producer {
         + "\"publishing_client\" : "
         + (client == null ? "null" : ("\"" + client.connectionName() + "\""))
         + "}";
+  }
+
+  private void checkNotClosed() {
+    if (this.closed.get()) {
+      throw new IllegalStateException("This producer instance has been closed");
+    }
   }
 }
