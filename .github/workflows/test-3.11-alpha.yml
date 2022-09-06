@@ -1,4 +1,4 @@
-name: Test against 3.10 alpha
+name: Test against 3.11 alpha
 
 on:
   push:
