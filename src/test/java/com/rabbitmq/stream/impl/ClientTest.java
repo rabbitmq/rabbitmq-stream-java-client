@@ -38,7 +38,7 @@ import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
-import com.rabbitmq.stream.impl.Client.StreamInfoResponse;
+import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
@@ -883,7 +883,7 @@ public class ClientTest {
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void streamInfoShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
+  void streamStatsShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
     int publishCount = 20_000;
     CountDownLatch latch = new CountDownLatch(publishCount);
 
@@ -903,7 +903,7 @@ public class ClientTest {
             new Client.ClientParameters()
                 .chunkListener(chunkListener)
                 .messageListener(messageListener));
-    StreamInfoResponse response = client.streamStats(stream);
+    StreamStatsResponse response = client.streamStats(stream);
     assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
     assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
     TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
@@ -924,14 +924,14 @@ public class ClientTest {
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void streamInfoShouldReturnErrorWhenStreamDoesNotExist() {
+  void streamStatsShouldReturnErrorWhenStreamDoesNotExist() {
     assertThat(cf.get().streamStats("does not exist").getResponseCode())
         .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
   }
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void streamInfoFirstOffsetShouldChangeAfterRetentionKickedIn(TestInfo info) {
+  void streamStatsFirstOffsetShouldChangeAfterRetentionKickedIn(TestInfo info) {
     int messageCount = 1000;
     int payloadSize = 1000;
     String s = TestUtils.streamName(info);
@@ -948,7 +948,7 @@ public class ClientTest {
                   .isOk())
           .isTrue();
 
-      StreamInfoResponse response = client.streamStats(s);
+      StreamStatsResponse response = client.streamStats(s);
       assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
       assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
 

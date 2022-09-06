@@ -1360,7 +1360,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  StreamInfoResponse streamStats(String stream) {
+  StreamStatsResponse streamStats(String stream) {
     if (stream == null) {
       throw new IllegalArgumentException("stream must not be null");
     }
@@ -1374,7 +1374,7 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<StreamInfoResponse> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<StreamStatsResponse> request = new OutstandingRequest<>(this.rpcTimeout);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -1921,11 +1921,11 @@ public class Client implements AutoCloseable {
     }
   }
 
-  static class StreamInfoResponse extends Response {
+  static class StreamStatsResponse extends Response {
 
     private final Map<String, Long> info;
 
-    StreamInfoResponse(short responseCode, Map<String, Long> info) {
+    StreamStatsResponse(short responseCode, Map<String, Long> info) {
       super(responseCode);
       this.info = Collections.unmodifiableMap(new HashMap<>(info));
     }

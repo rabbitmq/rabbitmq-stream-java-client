@@ -506,18 +506,18 @@ public class StreamEnvironmentTest {
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void queryStreamInfoShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
+  void queryStreamStatsShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
     try (Environment env = environmentBuilder.build()) {
-      StreamStats info = env.queryStreamInfo(stream);
-      assertThatThrownBy(() -> info.firstOffset()).isInstanceOf(NoOffsetException.class);
-      assertThatThrownBy(() -> info.committedChunkId()).isInstanceOf(NoOffsetException.class);
+      StreamStats stats = env.queryStreamStats(stream);
+      assertThatThrownBy(() -> stats.firstOffset()).isInstanceOf(NoOffsetException.class);
+      assertThatThrownBy(() -> stats.committedChunkId()).isInstanceOf(NoOffsetException.class);
 
       int publishCount = 20_000;
       TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
 
-      StreamStats info2 = env.queryStreamInfo(stream);
-      assertThat(info2.firstOffset()).isZero();
-      assertThat(info2.committedChunkId()).isPositive();
+      StreamStats stats2 = env.queryStreamStats(stream);
+      assertThat(stats2.firstOffset()).isZero();
+      assertThat(stats2.committedChunkId()).isPositive();
 
       CountDownLatch latch = new CountDownLatch(publishCount);
       AtomicLong committedChunkId = new AtomicLong();
@@ -532,15 +532,15 @@ public class StreamEnvironmentTest {
 
       assertThat(latch.await(10, SECONDS)).isTrue();
       assertThat(committedChunkId.get()).isPositive();
-      assertThat(committedChunkId).hasValue(info2.committedChunkId());
+      assertThat(committedChunkId).hasValue(stats2.committedChunkId());
     }
   }
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void queryStreamInfoShouldThrowExceptionWhenStreamDoesNotExist() {
+  void queryStreamStatsShouldThrowExceptionWhenStreamDoesNotExist() {
     try (Environment env = environmentBuilder.build()) {
-      assertThatThrownBy(() -> env.queryStreamInfo("does not exist"))
+      assertThatThrownBy(() -> env.queryStreamStats("does not exist"))
           .isInstanceOf(StreamDoesNotExistException.class);
     }
   }

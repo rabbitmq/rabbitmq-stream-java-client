@@ -16,9 +16,9 @@ package com.rabbitmq.stream;
 import com.rabbitmq.stream.MessageHandler.Context;
 
 /**
- * Information on a stream.
+ * Statistics on a stream.
  *
- * @see Environment#queryStreamInfo(String)
+ * @see Environment#queryStreamStats(String)
  */
 public interface StreamStats {
 

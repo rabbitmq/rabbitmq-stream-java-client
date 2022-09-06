@@ -34,7 +34,7 @@ import com.rabbitmq.stream.StreamStats;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
-import com.rabbitmq.stream.impl.Client.StreamInfoResponse;
+import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
@@ -390,8 +390,8 @@ class StreamEnvironment implements Environment {
   }
 
   @Override
-  public StreamStats queryStreamInfo(String stream) {
-    StreamInfoResponse response =
+  public StreamStats queryStreamStats(String stream) {
+    StreamStatsResponse response =
         locatorOperation(
             client -> {
               if (Utils.is3_11_OrMore(client.brokerVersion())) {

@@ -65,7 +65,7 @@ import com.rabbitmq.stream.impl.Client.QueryPublisherSequenceResponse;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.SaslAuthenticateResponse;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
-import com.rabbitmq.stream.impl.Client.StreamInfoResponse;
+import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
 import com.rabbitmq.stream.metrics.MetricsCollector;
@@ -1196,12 +1196,12 @@ class ServerFrameHandler {
         read += 8;
       }
 
-      OutstandingRequest<StreamInfoResponse> outstandingRequest =
-          remove(client.outstandingRequests, correlationId, StreamInfoResponse.class);
+      OutstandingRequest<StreamStatsResponse> outstandingRequest =
+          remove(client.outstandingRequests, correlationId, StreamStatsResponse.class);
       if (outstandingRequest == null) {
         LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
       } else {
-        outstandingRequest.response().set(new StreamInfoResponse(responseCode, info));
+        outstandingRequest.response().set(new StreamStatsResponse(responseCode, info));
         outstandingRequest.countDown();
       }
       return read;
