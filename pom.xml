@@ -54,7 +54,7 @@
     <slf4j.perftool.version>2.0.0</slf4j.perftool.version>
     <logback.perftool.version>1.3.0</logback.perftool.version>
     <netty.version>4.1.80.Final</netty.version>
-    <proton-j.version>0.33.10</proton-j.version>
+    <proton-j.version>0.34.0</proton-j.version>
     <metrics.version>4.2.12</metrics.version>
     <micrometer.version>1.9.3</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
