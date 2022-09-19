@@ -33,7 +33,7 @@ public interface Message {
    *
    * <p>Publishing IDs are used for de-duplication of outbound messages. They are not persisted.
    *
-   * @return true if a the message has a publishing ID, false otherwise
+   * @return true if the message has a publishing ID, false otherwise
    */
   boolean hasPublishingId();
 
