@@ -3,7 +3,7 @@
 [[super-streams]]
 ==== Super Streams (Partitioned Streams)
 
-WARNING: Super streams are an *experimental* feature, they are subject to change.
+WARNING: Super Streams require *RabbitMQ 3.11* or more.
 
 A super stream is a logical stream made of several individual streams.
 In essence, a super stream is a partitioned stream that brings scalability compared to a single stream.
@@ -57,6 +57,18 @@ Let's take the example of an `invoices` super stream made of 3 streams (i.e. par
 When a super stream is in use, the stream Java client queries this information to find out about the partitions of a super stream and the routing rules.
 From the application code point of view, using a super stream is mostly configuration-based.
 Some logic must also be provided to extract routing information from messages.
+
+===== Super Stream Creation
+
+It is possible to create the topology of a super stream with any AMQP 0.9.1 library or with the https://www.rabbitmq.com/management.html[management plugin], but the `rabbitmq-streams add_super_stream` command is a handy shortcut.
+Here is how to create an invoices super stream with 3 partitions:
+
+.Creating a super stream from the CLI
+----
+rabbitmq-streams add_super_stream invoices --partitions 3
+----
+
+Use `rabbitmq-streams add_super_stream --help` to learn more about the command.
 
 [[super-stream-producer]]
 ===== Publishing to a Super Stream
