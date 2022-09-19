@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.8.0-SNAPSHOT</span>
-<br><span id="revremark">(be80c81)</span>
+<br><span id="revremark">(a2e0443)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -616,6 +616,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#super-streams">Super Streams (Partitioned Streams)</a>
 <ul class="sectlevel4">
 <li><a href="#topology">Topology</a></li>
+<li><a href="#super-stream-creation">Super Stream Creation</a></li>
 <li><a href="#super-stream-producer">Publishing to a Super Stream</a>
 <ul class="sectlevel5">
 <li><a href="#resolving-routes-with-bindings">Resolving Routes with Bindings</a></li>
@@ -3442,7 +3443,7 @@ In this case, it is possible to use the <code>ConsumerBuilder#consumerUpdateList
 <i class="fa icon-warning" title="Warning"></i>
 </td>
 <td class="content">
-Super streams are an <strong>experimental</strong> feature, they are subject to change.
+Super Streams require <strong>RabbitMQ 3.11</strong> or more.
 </td>
 </tr>
 </table>
@@ -3512,6 +3513,22 @@ This does not mean AMQP resources are used to transport or store stream messages
 <p>When a super stream is in use, the stream Java client queries this information to find out about the partitions of a super stream and the routing rules.
 From the application code point of view, using a super stream is mostly configuration-based.
 Some logic must also be provided to extract routing information from messages.</p>
+</div>
+</div>
+<div class="sect4">
+<h5 id="super-stream-creation"><a class="anchor" href="#super-stream-creation"></a>Super Stream Creation</h5>
+<div class="paragraph">
+<p>It is possible to create the topology of a super stream with any AMQP 0.9.1 library or with the <a href="https://www.rabbitmq.com/management.html">management plugin</a>, but the <code>rabbitmq-streams add_super_stream</code> command is a handy shortcut.
+Here is how to create an invoices super stream with 3 partitions:</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating a super stream from the CLI</div>
+<div class="content">
+<pre>rabbitmq-streams add_super_stream invoices --partitions 3</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Use <code>rabbitmq-streams add_super_stream --help</code> to learn more about the command.</p>
 </div>
 </div>
 <div class="sect4">
@@ -4977,7 +4994,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.8.0-SNAPSHOT<br>
-Last updated 2022-09-16 16:32:57 UTC
+Last updated 2022-09-19 15:54:40 UTC
 </div>
 </div>
 </body>
