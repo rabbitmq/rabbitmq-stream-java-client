@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +43,7 @@ class SuperStreamProducer implements Producer {
   private final StreamEnvironment environment;
   private final String name;
   private final Metadata superStreamMetadata;
+  private final AtomicBoolean closed = new AtomicBoolean(false);
 
   SuperStreamProducer(
       StreamProducerBuilder producerBuilder,
@@ -91,36 +93,47 @@ class SuperStreamProducer implements Producer {
 
   @Override
   public void send(Message message, ConfirmationHandler confirmationHandler) {
-    List<String> streams = this.routingStrategy.route(message, superStreamMetadata);
-    if (streams.isEmpty()) {
-      confirmationHandler.handle(
-          new ConfirmationStatus(message, false, Constants.CODE_NO_ROUTE_FOUND));
-    } else {
-      for (String stream : streams) {
-        Producer producer =
-            producers.computeIfAbsent(
-                stream,
-                stream1 -> {
-                  Producer p =
-                      producerBuilder.duplicate().superStream(null).stream(stream1).build();
-                  return p;
-                });
-        producer.send(message, confirmationHandler);
+    if (canSend()) {
+      List<String> streams = this.routingStrategy.route(message, superStreamMetadata);
+      if (streams.isEmpty()) {
+        confirmationHandler.handle(
+            new ConfirmationStatus(message, false, Constants.CODE_NO_ROUTE_FOUND));
+      } else {
+        for (String stream : streams) {
+          Producer producer =
+              producers.computeIfAbsent(
+                  stream,
+                  stream1 -> {
+                    Producer p =
+                        producerBuilder.duplicate().superStream(null).stream(stream1).build();
+                    return p;
+                  });
+          producer.send(message, confirmationHandler);
+        }
       }
+    } else {
+      confirmationHandler.handle(
+          new ConfirmationStatus(message, false, Constants.CODE_PRODUCER_CLOSED));
     }
+  }
+
+  private boolean canSend() {
+    return !this.closed.get();
   }
 
   @Override
   public void close() {
-    for (Entry<String, Producer> entry : producers.entrySet()) {
-      try {
-        entry.getValue().close();
-      } catch (Exception e) {
-        LOGGER.info(
-            "Error while closing producer for partition {} of super stream {}: {}",
-            entry.getKey(),
-            this.superStream,
-            e.getMessage());
+    if (this.closed.compareAndSet(false, true)) {
+      for (Entry<String, Producer> entry : producers.entrySet()) {
+        try {
+          entry.getValue().close();
+        } catch (Exception e) {
+          LOGGER.info(
+              "Error while closing producer for partition {} of super stream {}: {}",
+              entry.getKey(),
+              this.superStream,
+              e.getMessage());
+        }
       }
     }
   }

@@ -30,6 +30,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import io.netty.channel.EventLoopGroup;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -289,5 +290,44 @@ public class SuperStreamProducerTest {
         .doesNotContain(0L);
     assertThat(counts.values().stream().map(AtomicLong::get).reduce(0L, Long::sum))
         .isEqualTo(messageCount);
+  }
+
+  @Test
+  void producerShouldNotPublishMessagesOnceClosed() throws Exception {
+    int messageCount = 100;
+    declareSuperStreamTopology(connection, superStream, partitions);
+    String producerName = "super-stream-application";
+    Producer producer =
+        environment
+            .producerBuilder()
+            .name(producerName)
+            .superStream(superStream)
+            .routing(message -> message.getProperties().getMessageIdAsString())
+            .producerBuilder()
+            .build();
+
+    producer.close();
+
+    Set<Short> confirmationCodes = ConcurrentHashMap.newKeySet(1);
+    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+
+    IntStream.range(0, messageCount)
+        .forEach(
+            i ->
+                producer.send(
+                    producer
+                        .messageBuilder()
+                        .publishingId(i)
+                        .properties()
+                        .messageId(UUID.randomUUID().toString())
+                        .messageBuilder()
+                        .build(),
+                    confirmationStatus -> {
+                      confirmationCodes.add(confirmationStatus.getCode());
+                      publishLatch.countDown();
+                    }));
+
+    assertThat(latchAssert(publishLatch)).completes(5);
+    assertThat(confirmationCodes).hasSize(1).containsExactly(Constants.CODE_PRODUCER_CLOSED);
   }
 }
