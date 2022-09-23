@@ -27,6 +27,8 @@ import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.TestUtils;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.CallableConsumer;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import java.io.BufferedReader;
@@ -421,6 +423,8 @@ public class StreamPerfTestTest {
         .isGreaterThanOrEqualTo(Duration.ofSeconds(3));
   }
 
+  @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void singleActiveConsumersOnSuperStream() throws Exception {
     String consumerName = "app-1";
     Future<?> run =
