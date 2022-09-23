@@ -487,6 +487,23 @@ class Utils {
     }
   }
 
+  static class GreaterThanOrEqualToZeroIntegerTypeConverter
+      implements CommandLine.ITypeConverter<Integer> {
+
+    @Override
+    public Integer convert(String input) {
+      try {
+        Integer value = Integer.valueOf(input);
+        if (value < 0) {
+          throw new IllegalArgumentException();
+        }
+        return value;
+      } catch (Exception e) {
+        throw new CommandLine.TypeConversionException(input + " is not greater than or equal to 0");
+      }
+    }
+  }
+
   static class CompressionTypeConverter implements CommandLine.ITypeConverter<Compression> {
 
     @Override

@@ -394,6 +394,13 @@ public class StreamPerfTest implements Callable<Integer> {
       description = "AMQP URI to use to create super stream topology")
   private String amqpUri;
 
+  @CommandLine.Option(
+      names = {"--time", "-z"},
+      description = "run duration in seconds, unlimited by default",
+      defaultValue = "0",
+      converter = Utils.GreaterThanOrEqualToZeroIntegerTypeConverter.class)
+  private int time;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -940,7 +947,11 @@ public class StreamPerfTest implements Callable<Integer> {
       Thread shutdownHook = new Thread(() -> latch.countDown());
       Runtime.getRuntime().addShutdownHook(shutdownHook);
       try {
-        latch.await();
+        if (this.time > 0) {
+          latch.await(this.time, TimeUnit.SECONDS);
+        } else {
+          latch.await();
+        }
         Runtime.getRuntime().removeShutdownHook(shutdownHook);
       } catch (InterruptedException e) {
         // moving on to the closing sequence

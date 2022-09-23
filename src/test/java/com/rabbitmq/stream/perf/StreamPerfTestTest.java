@@ -37,6 +37,7 @@ import java.io.PrintStream;
 import java.net.HttpURLConnection;
 import java.net.ServerSocket;
 import java.net.URL;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -409,6 +410,17 @@ public class StreamPerfTestTest {
         .doesNotContain("confirm latency");
   }
 
+  @Test
+  void shouldStopWhenTimeIsSet() throws Exception {
+    int time = 3;
+    long start = System.nanoTime();
+    run(builder().time(time));
+    waitUntilStreamExists(s);
+    waitRunEnds();
+    assertThat(Duration.ofNanos(System.nanoTime() - start))
+        .isGreaterThanOrEqualTo(Duration.ofSeconds(3));
+  }
+
   void singleActiveConsumersOnSuperStream() throws Exception {
     String consumerName = "app-1";
     Future<?> run =
@@ -636,6 +648,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder singleActiveConsumer() {
       arguments.put("single-active-consumer", "");
+      return this;
+    }
+
+    ArgumentsBuilder time(int time) {
+      arguments.put("time", String.valueOf(time));
       return this;
     }
 
