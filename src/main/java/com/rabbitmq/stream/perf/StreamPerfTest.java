@@ -560,6 +560,8 @@ public class StreamPerfTest implements Callable<Integer> {
     this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
 
     ShutdownService shutdownService = new ShutdownService();
+    Thread shutdownServiceShutdownHook = new Thread(() -> shutdownService.close());
+    Runtime.getRuntime().addShutdownHook(shutdownServiceShutdownHook);
 
     try {
 
@@ -569,8 +571,6 @@ public class StreamPerfTest implements Callable<Integer> {
       monitoringContext.start();
 
       shutdownService.wrap(closeStep("Closing monitoring context", monitoringContext::close));
-
-      Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdownService.close()));
 
       // FIXME add confirm latency
 
@@ -958,6 +958,7 @@ public class StreamPerfTest implements Callable<Integer> {
       }
     } finally {
       shutdownService.close();
+      Runtime.getRuntime().removeShutdownHook(shutdownServiceShutdownHook);
     }
 
     return 0;
