@@ -936,9 +936,12 @@ public class StreamPerfTest implements Callable<Integer> {
       shutdownService.wrap(closeStep("Closing metrics", () -> this.performanceMetrics.close()));
 
       CountDownLatch latch = new CountDownLatch(1);
-      Runtime.getRuntime().addShutdownHook(new Thread(() -> latch.countDown()));
+
+      Thread shutdownHook = new Thread(() -> latch.countDown());
+      Runtime.getRuntime().addShutdownHook(shutdownHook);
       try {
         latch.await();
+        Runtime.getRuntime().removeShutdownHook(shutdownHook);
       } catch (InterruptedException e) {
         // moving on to the closing sequence
       }
