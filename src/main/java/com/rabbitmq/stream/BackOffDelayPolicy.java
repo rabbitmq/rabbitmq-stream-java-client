@@ -85,36 +85,58 @@ public interface BackOffDelayPolicy {
     public Duration delay(int recoveryAttempt) {
       return recoveryAttempt == 0 ? initialDelay : delay;
     }
+
+    @Override
+    public String toString() {
+      return "FixedWithInitialDelayBackOffPolicy{"
+          + "initialDelay="
+          + initialDelay
+          + ", delay="
+          + delay
+          + '}';
+    }
   }
 
   class FixedWithInitialDelayAndTimeoutBackOffPolicy implements BackOffDelayPolicy {
 
-    private final Duration initialDelay;
-    private final Duration delay;
     private final int attemptLimitBeforeTimeout;
+    private final BackOffDelayPolicy delegate;
 
     private FixedWithInitialDelayAndTimeoutBackOffPolicy(
         Duration initialDelay, Duration delay, Duration timeout) {
-      if (timeout.toMillis() < initialDelay.toMillis()) {
+      this(fixedWithInitialDelay(initialDelay, delay), timeout);
+    }
+
+    private FixedWithInitialDelayAndTimeoutBackOffPolicy(
+        BackOffDelayPolicy policy, Duration timeout) {
+      if (timeout.toMillis() < policy.delay(0).toMillis()) {
         throw new IllegalArgumentException("Timeout must be longer than initial delay");
       }
-      this.initialDelay = initialDelay;
-      this.delay = delay;
+      this.delegate = policy;
+      // best effort, assume FixedWithInitialDelay-ish policy
+      Duration initialDelay = policy.delay(0);
+      Duration delay = policy.delay(1);
       long timeoutWithInitialDelay = timeout.toMillis() - initialDelay.toMillis();
       this.attemptLimitBeforeTimeout = (int) (timeoutWithInitialDelay / delay.toMillis()) + 1;
     }
 
     @Override
     public Duration delay(int recoveryAttempt) {
-      if (recoveryAttempt == 0) {
-        return initialDelay;
+      if (recoveryAttempt >= attemptLimitBeforeTimeout) {
+        return TIMEOUT;
       } else {
-        if (recoveryAttempt >= attemptLimitBeforeTimeout) {
-          return TIMEOUT;
-        } else {
-          return delay;
-        }
+        return delegate.delay(recoveryAttempt);
       }
+    }
+
+    @Override
+    public String toString() {
+      return "FixedWithInitialDelayAndTimeoutBackOffPolicy{"
+          + "attemptLimitBeforeTimeout="
+          + attemptLimitBeforeTimeout
+          + ", delegate="
+          + delegate
+          + '}';
     }
   }
 }

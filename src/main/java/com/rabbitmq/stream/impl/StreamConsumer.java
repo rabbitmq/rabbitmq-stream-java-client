@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -155,14 +157,9 @@ class StreamConsumer implements Consumer {
                   OffsetSpecification result = null;
                   if (context.isActive()) {
                     LOGGER.debug("Looking up offset (stream {})", this.stream);
-                    Consumer consumer = context.consumer();
+                    StreamConsumer consumer = (StreamConsumer) context.consumer();
                     try {
-                      // FIXME make the stored offset retrieval more robust
-                      // it uses the locator connection currently, which may be not available yet
-                      // e.g. after a stream leader process restart
-                      // we could fall back to the subscription connection, but it's likely to
-                      // deadlock.
-                      long offset = consumer.storedOffset();
+                      long offset = getStoredOffsetSafely(consumer, this.environment);
                       LOGGER.debug(
                           "Stored offset is {}, returning the value + 1 to the server", offset);
                       result = OffsetSpecification.offset(offset + 1);
@@ -207,14 +204,9 @@ class StreamConsumer implements Consumer {
                   // so we just look up the last stored offset when we go from passive to active
                   if (context.isActive()) {
                     LOGGER.debug("Going from passive to active, looking up offset");
-                    Consumer consumer = context.consumer();
+                    StreamConsumer consumer = (StreamConsumer) context.consumer();
                     try {
-                      // FIXME make the stored offset retrieval more robust
-                      // it uses the locator connection currently, which may be not available yet
-                      // e.g. after a stream leader process restart
-                      // we could fall back to the subscription connection, but it's likely to
-                      // deadlock.
-                      long offset = consumer.storedOffset();
+                      long offset = getStoredOffsetSafely(consumer, this.environment);
                       LOGGER.debug(
                           "Stored offset is {}, returning the value + 1 to the server", offset);
                       result = OffsetSpecification.offset(offset + 1);
@@ -277,9 +269,52 @@ class StreamConsumer implements Consumer {
     }
   }
 
+  static long getStoredOffsetSafely(StreamConsumer consumer, StreamEnvironment environment) {
+    long offset;
+    try {
+      offset = consumer.storedOffset();
+    } catch (IllegalStateException e) {
+      LOGGER.debug("Leader connection not available to retrieve offset, retrying");
+      // no connection to leader to retrieve the offset, retrying
+      CompletableFuture<Long> storedOffetRetrievalFuture =
+          asyncRetry(() -> consumer.storedOffset(() -> consumer.trackingClient()))
+              .description(
+                  "Stored offset retrieval for '%s' on stream '%s'", consumer.name, consumer.stream)
+              .scheduler(environment.scheduledExecutorService())
+              .retry(ex -> ex instanceof IllegalStateException)
+              .delayPolicy(
+                  BackOffDelayPolicy.fixedWithInitialDelay(
+                      environment.recoveryBackOffDelayPolicy().delay(0),
+                      environment.recoveryBackOffDelayPolicy().delay(1),
+                      environment.recoveryBackOffDelayPolicy().delay(0).multipliedBy(3)))
+              .build();
+      try {
+        offset = storedOffetRetrievalFuture.get();
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new StreamException(
+            String.format(
+                "Could not get stored offset for '%s' on stream '%s'",
+                consumer.name, consumer.stream),
+            ex);
+      } catch (ExecutionException ex) {
+        throw new StreamException(
+            String.format(
+                "Could not get stored offset for '%s' on stream '%s'",
+                consumer.name, consumer.stream),
+            ex);
+      }
+    }
+    return offset;
+  }
+
+  Client trackingClient() {
+    return this.trackingClient;
+  }
+
   void waitForOffsetToBeStored(long expectedStoredOffset) {
     CompletableFuture<Boolean> storedTask =
-        AsyncRetry.asyncRetry(
+        asyncRetry(
                 () -> {
                   try {
                     long lastStoredOffset = storedOffset();
@@ -484,14 +519,13 @@ class StreamConsumer implements Consumer {
     this.status = Status.RUNNING;
   }
 
-  @Override
-  public long storedOffset() {
+  long storedOffset(Supplier<Client> clientSupplier) {
     checkNotClosed();
     if (canTrack()) {
       // the client can be null by now, so we catch any exception
       QueryOffsetResponse response;
       try {
-        response = this.trackingClient.queryOffset(this.name, this.stream);
+        response = clientSupplier.get().queryOffset(this.name, this.stream);
       } catch (Exception e) {
         throw new IllegalStateException(
             String.format(
@@ -523,6 +557,11 @@ class StreamConsumer implements Consumer {
               "Not possible to query offset for consumer %s on stream %s for now",
               this.name, this.stream));
     }
+  }
+
+  @Override
+  public long storedOffset() {
+    return storedOffset(() -> this.trackingClient);
   }
 
   String stream() {

@@ -859,7 +859,7 @@ public class StreamConsumerTest {
     publish.accept(storeEvery * 2);
     producer.send(
         producer.messageBuilder().addData("poison".getBytes()).build(), confirmationStatus -> {});
-    latchAssert(poisonLatch).completes();
+    latchAssert(poisonLatch).completes(recoveryInitialDelay.plusSeconds(2));
     // no duplicates because the custom offset tracking overrides the stored offset in the
     // subscription listener
     assertThat(receivedMessages).hasValue(publishedMessages.get() + 1);

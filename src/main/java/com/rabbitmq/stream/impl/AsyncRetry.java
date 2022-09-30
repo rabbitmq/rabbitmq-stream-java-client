@@ -44,7 +44,7 @@ class AsyncRetry<V> {
     Runnable retryableTask =
         () -> {
           if (Thread.currentThread().isInterrupted()) {
-            LOGGER.debug("Task '{}' interrupted, failing future", Thread.currentThread());
+            LOGGER.debug("Task '{}' interrupted, failing future", description);
             this.completableFuture.completeExceptionally(new CancellationException());
             return;
           }
@@ -77,6 +77,7 @@ class AsyncRetry<V> {
         };
     retryableTaskReference.set(retryableTask);
     Duration initialDelay = delayPolicy.delay(attempts.getAndIncrement());
+    LOGGER.debug("Scheduling task '{}' with policy {}", description, delayPolicy);
     if (initialDelay.isZero()) {
       retryableTask.run();
     } else {
