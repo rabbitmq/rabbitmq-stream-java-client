@@ -157,6 +157,11 @@ class StreamConsumer implements Consumer {
                     LOGGER.debug("Looking up offset (stream {})", this.stream);
                     Consumer consumer = context.consumer();
                     try {
+                      // FIXME make the stored offset retrieval more robust
+                      // it uses the locator connection currently, which may be not available yet
+                      // e.g. after a stream leader process restart
+                      // we could fall back to the subscription connection, but it's likely to
+                      // deadlock.
                       long offset = consumer.storedOffset();
                       LOGGER.debug(
                           "Stored offset is {}, returning the value + 1 to the server", offset);
@@ -204,6 +209,11 @@ class StreamConsumer implements Consumer {
                     LOGGER.debug("Going from passive to active, looking up offset");
                     Consumer consumer = context.consumer();
                     try {
+                      // FIXME make the stored offset retrieval more robust
+                      // it uses the locator connection currently, which may be not available yet
+                      // e.g. after a stream leader process restart
+                      // we could fall back to the subscription connection, but it's likely to
+                      // deadlock.
                       long offset = consumer.storedOffset();
                       LOGGER.debug(
                           "Stored offset is {}, returning the value + 1 to the server", offset);

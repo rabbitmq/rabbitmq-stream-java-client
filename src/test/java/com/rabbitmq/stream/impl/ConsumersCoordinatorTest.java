@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyByte;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -554,6 +555,9 @@ public class ConsumersCoordinatorTest {
 
     Thread.sleep(retryDelay.toMillis() * 5);
 
+    // the consumer connection should be reset after the connection disruption
+    verify(consumer, times(1)).setSubscriptionClient(isNull());
+
     // the second consumer does not re-subscribe because it returns it is not open
     verify(client, times(2 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -636,6 +640,9 @@ public class ConsumersCoordinatorTest {
 
     this.metadataListeners.forEach(
         ml -> ml.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE));
+
+    // the consumer connection should be reset after the metadata update
+    verify(consumer, times(1)).setSubscriptionClient(isNull());
 
     Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
 

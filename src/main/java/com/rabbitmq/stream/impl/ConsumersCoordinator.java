@@ -527,7 +527,7 @@ class ConsumersCoordinator {
       MetadataListener metadataListener =
           (stream, code) -> {
             LOGGER.debug(
-                "Received metadata notification for {}, stream is likely to have become unavailable",
+                "Received metadata notification for '{}', stream is likely to have become unavailable",
                 stream);
 
             Set<SubscriptionTracker> affectedSubscriptions;
@@ -546,6 +546,7 @@ class ConsumersCoordinator {
                       subscription.offset,
                       subscription.hasReceivedSomething);
                   newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
+                  subscription.consumer.setSubscriptionClient(null);
                 }
                 this.subscriptionTrackers = newSubscriptions;
               }
