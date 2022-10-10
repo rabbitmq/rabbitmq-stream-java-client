@@ -66,6 +66,10 @@ public class SwiftMqCodec implements Codec {
       return ((AMQPUuid) value).getValue();
     } else if (value instanceof AMQPSymbol) {
       return ((AMQPSymbol) value).getValue();
+    } else if (value instanceof AMQPNull) {
+      return null;
+    } else if (value == null) {
+      return null;
     } else {
       throw new IllegalArgumentException(
           "Type not supported for an application property: " + value.getClass());
@@ -311,6 +315,8 @@ public class SwiftMqCodec implements Codec {
       return new AMQPSymbol(value.toString());
     } else if (value instanceof UUID) {
       return new AMQPUuid((UUID) value);
+    } else if (value == value) {
+      return AMQPNull.NULL;
     } else {
       throw new IllegalArgumentException(
           "Type not supported for an application property: " + value.getClass());

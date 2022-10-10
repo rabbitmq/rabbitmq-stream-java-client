@@ -212,6 +212,7 @@ public class CodecsTest {
                   .entry("binary", binary)
                   .entry("string", string)
                   .entrySymbol("symbol", symbol)
+                  .entry("null", (String) null)
                   .messageBuilder()
                   .messageAnnotations()
                   .entry("annotations.boolean", Boolean.FALSE)
@@ -235,6 +236,7 @@ public class CodecsTest {
                   .entry("annotations.binary", binary)
                   .entry("annotations.string", string)
                   .entrySymbol("annotations.symbol", symbol)
+                  .entry("annotations.null", (String) null)
                   .messageBuilder()
                   .build();
           Codec.EncodedMessage encoded = serializer.encode(outboundMessage);
@@ -356,6 +358,7 @@ public class CodecsTest {
               .isNotNull()
               .isInstanceOf(String.class)
               .isEqualTo(symbol);
+          assertThat(inboundMessage.getApplicationProperties().get("null")).isNull();
 
           // message annotations
           assertThat(inboundMessage.getMessageAnnotations().get("annotations.boolean"))
@@ -453,6 +456,7 @@ public class CodecsTest {
               .isNotNull()
               .isInstanceOf(String.class)
               .isEqualTo(symbol);
+          assertThat(inboundMessage.getMessageAnnotations().get("annotations.null")).isNull();
         });
   }
 

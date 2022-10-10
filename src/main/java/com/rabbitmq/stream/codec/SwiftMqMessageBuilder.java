@@ -301,19 +301,19 @@ class SwiftMqMessageBuilder implements MessageBuilder {
     }
 
     protected void addEntry(String key, UUID value) {
-      map.put(keyMaker.apply(key), new AMQPUuid(value));
+      map.put(keyMaker.apply(key), value == null ? AMQPNull.NULL : new AMQPUuid(value));
     }
 
     protected void addEntry(String key, byte[] value) {
-      map.put(keyMaker.apply(key), new AMQPBinary(value));
+      map.put(keyMaker.apply(key), value == null ? AMQPNull.NULL : new AMQPBinary(value));
     }
 
     protected void addEntry(String key, String value) {
-      map.put(keyMaker.apply(key), new AMQPString(value));
+      map.put(keyMaker.apply(key), value == null ? AMQPNull.NULL : new AMQPString(value));
     }
 
     protected void addEntrySymbol(String key, String value) {
-      map.put(keyMaker.apply(key), new AMQPSymbol(value));
+      map.put(keyMaker.apply(key), value == null ? AMQPNull.NULL : new AMQPSymbol(value));
     }
   }
 

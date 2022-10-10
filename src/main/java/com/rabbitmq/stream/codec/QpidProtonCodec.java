@@ -96,6 +96,8 @@ public class QpidProtonCodec implements Codec {
       return ((Date) value).getTime();
     } else if (value instanceof Symbol) {
       return ((Symbol) value).toString();
+    } else if (value == null) {
+      return null;
     } else {
       throw new IllegalArgumentException(
           "Type not supported for an application property: " + value.getClass());
@@ -289,6 +291,8 @@ public class QpidProtonCodec implements Codec {
       return Symbol.getSymbol(value.toString());
     } else if (value instanceof byte[]) {
       return new Binary((byte[]) value);
+    } else if (value == null) {
+      return null;
     } else {
       throw new IllegalArgumentException(
           "Type not supported for an application property: " + value.getClass());
