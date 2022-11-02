@@ -5,6 +5,7 @@ ARG stream_perf_test_url="set-url-here"
 RUN set -eux; \
 	\
 	apt-get update; \
+	apt-get -y upgrade; \
 	apt-get install --yes --no-install-recommends \
 		ca-certificates \
 		wget \
@@ -63,6 +64,7 @@ FROM ubuntu:20.04
 # we need locales support for characters like µ to show up correctly in the console
 RUN set -eux; \
 	apt-get update; \
+	apt-get -y upgrade; \
 	apt-get install -y --no-install-recommends \
 		locales \
 		wget \
