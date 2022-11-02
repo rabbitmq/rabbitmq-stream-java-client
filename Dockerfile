@@ -1,4 +1,4 @@
-FROM ubuntu:20.04 as builder
+FROM ubuntu:22.04 as builder
 
 ARG stream_perf_test_url="set-url-here"
 
@@ -59,7 +59,7 @@ RUN set -eux; \
     mkdir -p "$STREAM_PERF_TEST_HOME"; \
     cp /usr/local/src/stream-perf-test.jar $STREAM_PERF_TEST_HOME/stream-perf-test.jar
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 # we need locales support for characters like µ to show up correctly in the console
 RUN set -eux; \
