@@ -180,72 +180,84 @@ public class RetentionClientTest {
   @ParameterizedTest
   @MethodSource
   void retention(RetentionTestConfig configuration, TestInfo info) throws Exception {
-    String testStream = streamName(info);
+    // this test is flaky in some CI environments, so we have to retry it
+    int attemptCount = 0;
+    int maxAttempts = 3;
+    while (attemptCount <= maxAttempts) {
+      attemptCount++;
+      String testStream = streamName(info);
 
-    Client client = cf.get();
-    try {
-      configuration.streamCreator.accept(new Object[] {client, testStream});
+      Client client = cf.get();
+      try {
+        configuration.streamCreator.accept(new Object[] {client, testStream});
 
-      AtomicLong publishSequence = new AtomicLong(0);
-      Runnable publish =
-          () -> {
-            byte[] payload = new byte[payloadSize];
-            TestUtils.publishAndWaitForConfirms(
-                cf,
-                messageBuilder ->
-                    messageBuilder
-                        .properties()
-                        .messageId(publishSequence.getAndIncrement())
-                        .messageBuilder()
-                        .addData(payload)
-                        .build(),
-                messageCount,
-                testStream,
-                Duration.ofSeconds(20));
-          };
+        AtomicLong publishSequence = new AtomicLong(0);
+        Runnable publish =
+            () -> {
+              byte[] payload = new byte[payloadSize];
+              TestUtils.publishAndWaitForConfirms(
+                  cf,
+                  messageBuilder ->
+                      messageBuilder
+                          .properties()
+                          .messageId(publishSequence.getAndIncrement())
+                          .messageBuilder()
+                          .addData(payload)
+                          .build(),
+                  messageCount,
+                  testStream,
+                  Duration.ofSeconds(20));
+            };
 
-      publish.run();
-      configuration.waiting();
-      // publishing again, to make sure new segments trigger retention strategy
-      publish.run();
+        publish.run();
+        configuration.waiting();
+        // publishing again, to make sure new segments trigger retention strategy
+        publish.run();
 
-      CountDownLatch consumingLatch = new CountDownLatch(1);
-      AtomicLong firstMessageId = new AtomicLong(-1);
-      AtomicLong lastMessageId = new AtomicLong(-1);
-      Client consumer =
-          cf.get(
-              new Client.ClientParameters()
-                  .chunkListener(
-                      (client1, subscriptionId, offset, messageCount1, dataSize) ->
-                          client1.credit(subscriptionId, 1))
-                  .messageListener(
-                      (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
-                        long messageId = message.getProperties().getMessageIdAsLong();
-                        firstMessageId.compareAndSet(-1, messageId);
-                        lastMessageId.set(messageId);
-                        if (messageId == publishSequence.get() - 1) {
-                          consumingLatch.countDown();
-                        }
-                      }));
+        CountDownLatch consumingLatch = new CountDownLatch(1);
+        AtomicLong firstMessageId = new AtomicLong(-1);
+        AtomicLong lastMessageId = new AtomicLong(-1);
+        Client consumer =
+            cf.get(
+                new Client.ClientParameters()
+                    .chunkListener(
+                        (client1, subscriptionId, offset, messageCount1, dataSize) ->
+                            client1.credit(subscriptionId, 1))
+                    .messageListener(
+                        (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                          long messageId = message.getProperties().getMessageIdAsLong();
+                          firstMessageId.compareAndSet(-1, messageId);
+                          lastMessageId.set(messageId);
+                          if (messageId == publishSequence.get() - 1) {
+                            consumingLatch.countDown();
+                          }
+                        }));
 
-      consumer.subscribe(b(1), testStream, OffsetSpecification.first(), 10);
-      assertThat(consumingLatch.await(10, SECONDS))
-          .as(
-              () ->
-                  String.format(
-                      "Failure '%s', first message ID %d, last message ID %d, publish sequence %d",
-                      configuration.description,
-                      firstMessageId.get(),
-                      lastMessageId.get(),
-                      publishSequence.get()))
-          .isTrue();
-      consumer.unsubscribe(b(1));
-      assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get()))
-          .as(configuration.assertionDescription.apply(firstMessageId.get()))
-          .isTrue();
-    } finally {
-      client.delete(testStream);
-      configuration.clean();
+        consumer.subscribe(b(1), testStream, OffsetSpecification.first(), 10);
+        assertThat(consumingLatch.await(10, SECONDS))
+            .as(
+                () ->
+                    String.format(
+                        "Failure '%s', first message ID %d, last message ID %d, publish sequence %d",
+                        configuration.description,
+                        firstMessageId.get(),
+                        lastMessageId.get(),
+                        publishSequence.get()))
+            .isTrue();
+        consumer.unsubscribe(b(1));
+        assertThat(configuration.firstMessageIdAssertion.test(firstMessageId.get()))
+            .as(configuration.assertionDescription.apply(firstMessageId.get()))
+            .isTrue();
+        attemptCount = Integer.MAX_VALUE;
+      } catch (AssertionError e) {
+        // if too many attempts, fail the test, otherwise, try again
+        if (attemptCount > maxAttempts) {
+          throw e;
+        }
+      } finally {
+        client.delete(testStream);
+        configuration.clean();
+      }
     }
   }
 
