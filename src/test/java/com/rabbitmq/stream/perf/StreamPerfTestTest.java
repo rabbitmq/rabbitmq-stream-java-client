@@ -381,7 +381,9 @@ public class StreamPerfTestTest {
         () -> {
           HttpResponse response = httpRequest("http://localhost:" + monitoringPort + "/metrics");
           return response.responseCode == 200
-              && response.body.contains("# HELP rabbitmq_stream_published_total");
+              && response.body.contains("# HELP rabbitmq_stream_published_total")
+              && response.body.contains("rabbitmq_stream_chunk_size{quantile=\"0.5\",}")
+              && !response.body.contains("chunk_total");
         });
     run.cancel(true);
     waitRunEnds();
