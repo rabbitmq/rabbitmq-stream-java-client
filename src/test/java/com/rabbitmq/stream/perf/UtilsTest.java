@@ -352,13 +352,13 @@ public class UtilsTest {
     @Option(
         names = {"aaa", "a"},
         defaultValue = "10")
-    private final int a = 10;
+    private int a = 10;
 
     @Option(names = "b", defaultValue = "false")
-    private final boolean b = false;
+    private boolean b = false;
 
     @Option(names = "c", defaultValue = "false")
-    private final boolean c = false;
+    private boolean c = false;
 
     @CommandLine.Option(
         names = {"offset"},
