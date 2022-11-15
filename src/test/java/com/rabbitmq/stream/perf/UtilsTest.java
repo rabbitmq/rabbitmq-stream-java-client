@@ -23,10 +23,12 @@ import static org.junit.jupiter.params.provider.Arguments.of;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.perf.Utils.CompressionTypeConverter;
+import com.rabbitmq.stream.perf.Utils.MetricsTagsTypeConverter;
 import com.rabbitmq.stream.perf.Utils.NameStrategyConverter;
 import com.rabbitmq.stream.perf.Utils.PatternNameStrategy;
 import com.rabbitmq.stream.perf.Utils.RangeTypeConverter;
 import com.rabbitmq.stream.perf.Utils.SniServerNamesConverter;
+import io.micrometer.core.instrument.Tag;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -78,7 +80,7 @@ public class UtilsTest {
   static Stream<Arguments> streams() {
     Stream<Arguments> arguments =
         Stream.of(
-            of("1", "stream", Arrays.asList("stream")),
+            of("1", "stream", Collections.singletonList("stream")),
             of("5", "stream", IntStream.range(1, 6).mapToObj(i -> "stream-" + i).collect(toList())),
             of(
                 "10",
@@ -109,6 +111,10 @@ public class UtilsTest {
                   of(range.replace("-", ".."), arg.get()[1], arg.get()[2]))
               : Stream.of(arg);
         });
+  }
+
+  private static Tag tag(String key, String value) {
+    return Tag.of(key, value);
   }
 
   @ParameterizedTest
@@ -189,6 +195,21 @@ public class UtilsTest {
         .hasSize(2)
         .contains(new SNIHostName("localhost"))
         .contains(new SNIHostName("dummy"));
+  }
+
+  @Test
+  void metricsTagsConverter() throws Exception {
+    MetricsTagsTypeConverter converter = new MetricsTagsTypeConverter();
+    assertThat(converter.convert(null)).isNotNull().isEmpty();
+    assertThat(converter.convert("")).isNotNull().isEmpty();
+    assertThat(converter.convert("  ")).isNotNull().isEmpty();
+    assertThat(converter.convert("env=performance,datacenter=eu"))
+        .hasSize(2)
+        .contains(tag("env", "performance"))
+        .contains(tag("datacenter", "eu"));
+    assertThat(converter.convert("args=--queue-args \"x-max-length=100000\""))
+        .hasSize(1)
+        .contains(tag("args", "--queue-args \"x-max-length=100000\""));
   }
 
   @Test
@@ -327,22 +348,23 @@ public class UtilsTest {
 
   @Command(name = "test-command")
   static class TestCommand {
+
     @Option(
         names = {"aaa", "a"},
         defaultValue = "10")
-    private int a = 10;
+    private final int a = 10;
 
     @Option(names = "b", defaultValue = "false")
-    private boolean b = false;
+    private final boolean b = false;
 
     @Option(names = "c", defaultValue = "false")
-    private boolean c = false;
+    private final boolean c = false;
 
     @CommandLine.Option(
         names = {"offset"},
         defaultValue = "next",
         converter = Utils.OffsetSpecificationTypeConverter.class)
-    private OffsetSpecification offsetSpecification = OffsetSpecification.next();
+    private final OffsetSpecification offsetSpecification = OffsetSpecification.next();
 
     public TestCommand() {}
   }

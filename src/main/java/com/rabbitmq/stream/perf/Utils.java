@@ -24,6 +24,7 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.compression.Compression;
 import com.sun.management.OperatingSystemMXBean;
+import io.micrometer.core.instrument.Tag;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -71,6 +72,7 @@ import picocli.CommandLine.ITypeConverter;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Model.OptionSpec;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.TypeConversionException;
 
 class Utils {
 
@@ -311,6 +313,28 @@ class Utils {
       } catch (IllegalArgumentException e) {
         throw new CommandLine.TypeConversionException(
             "'" + value + "' is not valid, valid example values: 100gb, 50mb");
+      }
+    }
+  }
+
+  static class MetricsTagsTypeConverter implements CommandLine.ITypeConverter<Collection<Tag>> {
+
+    @Override
+    public Collection<Tag> convert(String value) throws Exception {
+      if (value == null || value.trim().isEmpty()) {
+        return Collections.emptyList();
+      } else {
+        try {
+          Collection<Tag> tags = new ArrayList<>();
+          for (String tag : value.split(",")) {
+            String[] keyValue = tag.split("=", 2);
+            tags.add(Tag.of(keyValue[0], keyValue[1]));
+          }
+          return tags;
+        } catch (Exception e) {
+          throw new TypeConversionException(
+              String.format("'%s' is not valid, use key/value pairs separated by commas"));
+        }
       }
     }
   }

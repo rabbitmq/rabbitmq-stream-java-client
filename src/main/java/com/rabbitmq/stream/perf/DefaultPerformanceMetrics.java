@@ -55,6 +55,7 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
   private volatile long lastPublishedCount = 0;
   private volatile long lastConsumedCount = 0;
   private volatile long offset;
+  private final String metricsSuffix;
 
   DefaultPerformanceMetrics(
       CompositeMeterRegistry meterRegistry,
@@ -111,28 +112,36 @@ class DefaultPerformanceMetrics implements PerformanceMetrics {
     } else {
       this.confirmLatency = null;
     }
+    // the metrics name contains the tags, if any,
+    // so we extract the suffix to use it later when looking up the metrics
+    String key = metricRegistry.getMeters().keySet().iterator().next();
+    int index = key.indexOf(".");
+    this.metricsSuffix = index == -1 ? "" : key.substring(index);
   }
 
   private long getPublishedCount() {
-    return this.metricRegistry.getMeters().get("rabbitmqStreamPublished").getCount();
+    return this.metricRegistry
+        .getMeters()
+        .get("rabbitmqStreamPublished" + metricsSuffix)
+        .getCount();
   }
 
   private long getConsumedCount() {
-    return this.metricRegistry.getMeters().get("rabbitmqStreamConsumed").getCount();
+    return this.metricRegistry.getMeters().get("rabbitmqStreamConsumed" + metricsSuffix).getCount();
   }
 
   @Override
   public void start(String description) throws Exception {
     long startTime = System.nanoTime();
 
-    String metricPublished = "rabbitmqStreamPublished";
-    String metricProducerConfirmed = "rabbitmqStreamProducer_confirmed";
-    String metricConsumed = "rabbitmqStreamConsumed";
-    String metricChunkSize = "rabbitmqStreamChunk_size";
-    String metricLatency = "rabbitmqStreamLatency";
-    String metricConfirmLatency = "rabbitmqStreamConfirm_latency";
-    String metricWrittenBytes = "rabbitmqStreamWritten_bytes";
-    String metricReadBytes = "rabbitmqStreamRead_bytes";
+    String metricPublished = "rabbitmqStreamPublished" + metricsSuffix;
+    String metricProducerConfirmed = "rabbitmqStreamProducer_confirmed" + metricsSuffix;
+    String metricConsumed = "rabbitmqStreamConsumed" + metricsSuffix;
+    String metricChunkSize = "rabbitmqStreamChunk_size" + metricsSuffix;
+    String metricLatency = "rabbitmqStreamLatency" + metricsSuffix;
+    String metricConfirmLatency = "rabbitmqStreamConfirm_latency" + metricsSuffix;
+    String metricWrittenBytes = "rabbitmqStreamWritten_bytes" + metricsSuffix;
+    String metricReadBytes = "rabbitmqStreamRead_bytes" + metricsSuffix;
 
     Set<String> allMetrics =
         new HashSet<>(

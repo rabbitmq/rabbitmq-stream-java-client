@@ -388,6 +388,31 @@ public class StreamPerfTestTest {
   }
 
   @Test
+  void metricsTagsShouldShowUpInHttpEndpoint() throws Exception {
+    int monitoringPort = randomNetworkPort();
+    Future<?> run =
+        run(
+            builder()
+                .deleteStreams()
+                .monitoring()
+                .monitoringPort(monitoringPort)
+                .prometheus()
+                .metricsTags("env=performance,datacenter=eu"));
+    waitUntilStreamExists(s);
+    waitOneSecond();
+
+    waitAtMost(
+        10,
+        () -> {
+          HttpResponse response = httpRequest("http://localhost:" + monitoringPort + "/metrics");
+          return response.responseCode == 200
+              && response.body.contains("{datacenter=\"eu\",env=\"performance\",}");
+        });
+    run.cancel(true);
+    waitRunEnds();
+  }
+
+  @Test
   void publishConfirmLatencyShouldBeIncludedWhenOptionIsEnabled() throws Exception {
     Future<?> run = run(builder().confirmLatency());
     waitUntilStreamExists(s);
@@ -637,6 +662,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder prometheus() {
       arguments.put("prometheus", "");
+      return this;
+    }
+
+    ArgumentsBuilder metricsTags(String tags) {
+      arguments.put("metrics-tags", tags);
       return this;
     }
 

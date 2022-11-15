@@ -49,6 +49,7 @@ import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
 import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufAllocatorMetric;
@@ -401,6 +402,13 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.GreaterThanOrEqualToZeroIntegerTypeConverter.class)
   private int time;
 
+  @CommandLine.Option(
+      names = {"--metrics-tags", "-mt"},
+      description = "metrics tags as key-value pairs separated by commas",
+      defaultValue = "",
+      converter = Utils.MetricsTagsTypeConverter.class)
+  private Collection<Tag> metricsTags;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -503,6 +511,7 @@ public class StreamPerfTest implements Callable<Integer> {
     ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
 
     CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
+    meterRegistry.config().commonTags(this.metricsTags);
     String metricsPrefix = "rabbitmq.stream";
     this.metricsCollector = new MicrometerMetricsCollector(meterRegistry, metricsPrefix);
 
