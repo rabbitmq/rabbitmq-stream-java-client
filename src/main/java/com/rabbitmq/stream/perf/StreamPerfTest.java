@@ -45,9 +45,9 @@ import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.MetricsCollector;
-import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
 import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
+import com.rabbitmq.stream.perf.Utils.PerformanceMicrometerMetricsCollector;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
@@ -513,7 +513,7 @@ public class StreamPerfTest implements Callable<Integer> {
     CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
     meterRegistry.config().commonTags(this.metricsTags);
     String metricsPrefix = "rabbitmq.stream";
-    this.metricsCollector = new MicrometerMetricsCollector(meterRegistry, metricsPrefix);
+    this.metricsCollector = new PerformanceMicrometerMetricsCollector(meterRegistry, metricsPrefix);
 
     Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
 

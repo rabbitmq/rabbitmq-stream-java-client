@@ -23,7 +23,11 @@ import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.metrics.MicrometerMetricsCollector;
 import com.sun.management.OperatingSystemMXBean;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -729,5 +733,35 @@ class Utils {
       }
     }
     return connectionFactory.newConnection("stream-perf-test-amqp-connection");
+  }
+
+  static class PerformanceMicrometerMetricsCollector extends MicrometerMetricsCollector {
+
+    public PerformanceMicrometerMetricsCollector(MeterRegistry registry, String prefix) {
+      super(registry, prefix);
+    }
+
+    @Override
+    protected Counter createChunkCounter(
+        MeterRegistry registry, String prefix, Iterable<Tag> tags) {
+      return null;
+    }
+
+    @Override
+    protected DistributionSummary createChunkSizeDistributionSummary(
+        MeterRegistry registry, String prefix, Iterable<Tag> tags) {
+      return DistributionSummary.builder(prefix + ".chunk_size")
+          .tags(tags)
+          .description("chunk size")
+          .publishPercentiles(0.5, 0.75, 0.95, 0.99)
+          .distributionStatisticExpiry(Duration.ofSeconds(1))
+          .serviceLevelObjectives()
+          .register(registry);
+    }
+
+    @Override
+    public void chunk(int entriesCount) {
+      this.chunkSize.record(entriesCount);
+    }
   }
 }

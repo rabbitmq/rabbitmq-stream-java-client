@@ -29,7 +29,7 @@ public class MicrometerMetricsCollector implements MetricsCollector {
   private final Counter readBytes;
 
   private final AtomicLong outstandingPublishConfirm;
-  private final DistributionSummary chunkSize;
+  protected final DistributionSummary chunkSize;
 
   public MicrometerMetricsCollector(MeterRegistry registry) {
     this(registry, "rabbitmq.stream");
@@ -50,13 +50,22 @@ public class MicrometerMetricsCollector implements MetricsCollector {
     this.publish = registry.counter(prefix + ".published", tags);
     this.publishConfirm = registry.counter(prefix + ".confirmed", tags);
     this.publishError = registry.counter(prefix + ".errored", tags);
-    this.chunk = registry.counter(prefix + ".chunk", tags);
-    this.chunkSize = registry.summary(prefix + ".chunk_size", tags);
+    this.chunk = this.createChunkCounter(registry, prefix, tags);
+    this.chunkSize = this.createChunkSizeDistributionSummary(registry, prefix, tags);
     this.consume = registry.counter(prefix + ".consumed", tags);
     this.writtenBytes = registry.counter(prefix + ".written_bytes", tags);
     this.readBytes = registry.counter(prefix + ".read_bytes", tags);
     this.outstandingPublishConfirm =
         registry.gauge(prefix + ".outstanding_publish_confirm", tags, new AtomicLong(0));
+  }
+
+  protected Counter createChunkCounter(MeterRegistry registry, String prefix, Iterable<Tag> tags) {
+    return Counter.builder(prefix + ".chunk").tags(tags).register(registry);
+  }
+
+  protected DistributionSummary createChunkSizeDistributionSummary(
+      MeterRegistry registry, String prefix, Iterable<Tag> tags) {
+    return DistributionSummary.builder(prefix + ".chunk_size").tags(tags).register(registry);
   }
 
   @Override
