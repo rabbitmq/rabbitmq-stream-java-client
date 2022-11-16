@@ -224,7 +224,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
   @CommandLine.Option(
       names = {"--max-length-bytes", "-mlb"},
-      description = "max size of created streams",
+      description = "max size of created streams, use 0 for no limit",
       defaultValue = "20gb",
       converter = Utils.ByteCapacityTypeConverter.class)
   private ByteCapacity maxLengthBytes;
@@ -976,9 +976,12 @@ public class StreamPerfTest implements Callable<Integer> {
   private void createStream(Environment environment, String stream) {
     StreamCreator streamCreator =
         environment.streamCreator().stream(stream)
-            .maxLengthBytes(this.maxLengthBytes)
             .maxSegmentSizeBytes(this.maxSegmentSize)
             .leaderLocator(this.leaderLocator);
+
+    if (this.maxLengthBytes.toBytes() != 0) {
+      streamCreator.maxLengthBytes(this.maxLengthBytes);
+    }
 
     if (this.maxAge != null) {
       streamCreator.maxAge(this.maxAge);

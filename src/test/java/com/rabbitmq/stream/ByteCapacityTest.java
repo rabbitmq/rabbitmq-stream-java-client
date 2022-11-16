@@ -48,6 +48,12 @@ public class ByteCapacityTest {
     assertThat(capacity.toString()).isEqualTo(value);
   }
 
+  @ValueSource(strings = {"0tb", "0gb", "0mb", "0kb", "0"})
+  @ParameterizedTest
+  void zero(String value) {
+    assertThat(ByteCapacity.from(value).toBytes()).isEqualTo(0);
+  }
+
   @ParameterizedTest
   @ValueSource(strings = {"100.0gb", "abc", "100.0", "-10gb", "10b"})
   void fromKo(String value) {
