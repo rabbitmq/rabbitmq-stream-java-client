@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import com.codahale.metrics.MetricRegistry;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -29,6 +30,9 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
+import io.micrometer.core.instrument.dropwizard.DropwizardConfig;
+import io.micrometer.core.instrument.dropwizard.DropwizardMeterRegistry;
+import io.micrometer.core.instrument.util.HierarchicalNameMapper;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -792,5 +796,33 @@ class Utils {
     public void chunk(int entriesCount) {
       this.chunkSize.record(entriesCount);
     }
+  }
+
+  static DropwizardMeterRegistry dropwizardMeterRegistry() {
+    DropwizardConfig dropwizardConfig =
+        new DropwizardConfig() {
+          @Override
+          public String prefix() {
+            return "";
+          }
+
+          @Override
+          public String get(String key) {
+            return null;
+          }
+        };
+    MetricRegistry metricRegistry = new MetricRegistry();
+    DropwizardMeterRegistry dropwizardMeterRegistry =
+        new DropwizardMeterRegistry(
+            dropwizardConfig,
+            metricRegistry,
+            HierarchicalNameMapper.DEFAULT,
+            io.micrometer.core.instrument.Clock.SYSTEM) {
+          @Override
+          protected Double nullGaugeValue() {
+            return null;
+          }
+        };
+    return dropwizardMeterRegistry;
   }
 }

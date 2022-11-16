@@ -575,16 +575,6 @@ public class StreamPerfTest implements Callable<Integer> {
       memoryReportSupplier = () -> "";
     }
 
-    this.performanceMetrics =
-        new DefaultPerformanceMetrics(
-            meterRegistry,
-            metricsPrefix,
-            this.summaryFile,
-            this.includeByteRates,
-            this.confirmLatency,
-            memoryReportSupplier,
-            this.out);
-
     this.messageSize = this.messageSize < 8 ? 8 : this.messageSize; // we need to store a long in it
 
     ShutdownService shutdownService = new ShutdownService();
@@ -597,6 +587,21 @@ public class StreamPerfTest implements Callable<Integer> {
           new MonitoringContext(this.monitoringPort, meterRegistry);
       this.monitorings.forEach(m -> m.configure(monitoringContext));
       monitoringContext.start();
+
+      if (meterRegistry.getRegistries().isEmpty()) {
+        // we need at least one to do the calculations
+        meterRegistry.add(Utils.dropwizardMeterRegistry());
+      }
+
+      this.performanceMetrics =
+          new DefaultPerformanceMetrics(
+              meterRegistry,
+              metricsPrefix,
+              this.summaryFile,
+              this.includeByteRates,
+              this.confirmLatency,
+              memoryReportSupplier,
+              this.out);
 
       shutdownService.wrap(closeStep("Closing monitoring context", monitoringContext::close));
 
