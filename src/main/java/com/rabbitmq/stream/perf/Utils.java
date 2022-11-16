@@ -48,6 +48,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -308,6 +309,116 @@ class Utils {
     return divisor;
   }
 
+  static void declareSuperStreamExchangeAndBindings(
+      Channel channel, String superStream, List<String> streams) throws Exception {
+    channel.exchangeDeclare(
+        superStream,
+        BuiltinExchangeType.DIRECT,
+        true,
+        false,
+        Collections.singletonMap("x-super-stream", true));
+
+    for (int i = 0; i < streams.size(); i++) {
+      channel.queueBind(
+          streams.get(i),
+          superStream,
+          String.valueOf(i),
+          Collections.singletonMap("x-stream-partition-order", i));
+    }
+  }
+
+  static void deleteSuperStreamExchange(Channel channel, String superStream) throws Exception {
+    channel.exchangeDelete(superStream);
+  }
+
+  static List<String> superStreamPartitions(String superStream, int partitionCount) {
+    int digits = String.valueOf(partitionCount - 1).length();
+    String format = superStream + "-%0" + digits + "d";
+    return IntStream.range(0, partitionCount)
+        .mapToObj(i -> String.format(format, i))
+        .collect(Collectors.toList());
+  }
+
+  static Connection amqpConnection(
+      String amqpUri, List<String> streamUris, boolean isTls, List<SNIServerName> sniServerNames)
+      throws Exception {
+    ConnectionFactory connectionFactory = new ConnectionFactory();
+    if (amqpUri == null || amqpUri.trim().isEmpty()) {
+      String streamUriString = streamUris.get(0);
+      if (isTls) {
+        streamUriString = streamUriString.replaceFirst("rabbitmq-stream\\+tls", "amqps");
+      } else {
+        streamUriString = streamUriString.replaceFirst("rabbitmq-stream", "amqp");
+      }
+      URI streamUri = new URI(streamUriString);
+      int streamPort = streamUri.getPort();
+      if (streamPort != -1) {
+        int defaultAmqpPort =
+            isTls
+                ? ConnectionFactory.DEFAULT_AMQP_OVER_SSL_PORT
+                : ConnectionFactory.DEFAULT_AMQP_PORT;
+        streamUriString = streamUriString.replaceFirst(":" + streamPort, ":" + defaultAmqpPort);
+      }
+      connectionFactory.setUri(streamUriString);
+    } else {
+      connectionFactory.setUri(amqpUri);
+    }
+    if (isTls) {
+      SSLContext sslContext = SSLContext.getInstance("TLS");
+      sslContext.init(
+          new KeyManager[] {},
+          new TrustManager[] {TRUST_EVERYTHING_TRUST_MANAGER},
+          new SecureRandom());
+      connectionFactory.useSslProtocol(sslContext);
+      if (!sniServerNames.isEmpty()) {
+        SocketConfigurator socketConfigurator =
+            socket -> {
+              if (socket instanceof SSLSocket) {
+                SSLSocket sslSocket = (SSLSocket) socket;
+                SSLParameters sslParameters =
+                    sslSocket.getSSLParameters() == null
+                        ? new SSLParameters()
+                        : sslSocket.getSSLParameters();
+                sslParameters.setServerNames(sniServerNames);
+                sslSocket.setSSLParameters(sslParameters);
+              } else {
+                LOGGER.warn("SNI parameter set on a non-TLS connection");
+              }
+            };
+        connectionFactory.setSocketConfigurator(
+            SocketConfigurators.defaultConfigurator().andThen(socketConfigurator));
+      }
+    }
+    return connectionFactory.newConnection("stream-perf-test-amqp-connection");
+  }
+
+  static String commandLineMetrics(String[] args) {
+    Map<String, Boolean> filteredOptions = new HashMap<>();
+    filteredOptions.put("--uris", true);
+    filteredOptions.put("-u", true);
+    filteredOptions.put("--prometheus", false);
+    filteredOptions.put("--amqp-uri", true);
+    filteredOptions.put("--au", true);
+    filteredOptions.put("--metrics-command-line-arguments", false);
+    filteredOptions.put("-mcla", false);
+    filteredOptions.put("--metrics-tags", true);
+    filteredOptions.put("-mt", true);
+
+    Collection<String> filtered = new ArrayList<>();
+    Iterator<String> iterator = Arrays.stream(args).iterator();
+    while (iterator.hasNext()) {
+      String option = iterator.next();
+      if (filteredOptions.containsKey(option)) {
+        if (filteredOptions.get(option)) {
+          iterator.next();
+        }
+      } else {
+        filtered.add(option);
+      }
+    }
+    return String.join(" ", filtered);
+  }
+
   static class ByteCapacityTypeConverter implements CommandLine.ITypeConverter<ByteCapacity> {
 
     @Override
@@ -324,7 +435,7 @@ class Utils {
   static class MetricsTagsTypeConverter implements CommandLine.ITypeConverter<Collection<Tag>> {
 
     @Override
-    public Collection<Tag> convert(String value) throws Exception {
+    public Collection<Tag> convert(String value) {
       if (value == null || value.trim().isEmpty()) {
         return Collections.emptyList();
       } else {
@@ -359,7 +470,7 @@ class Utils {
   static class SniServerNamesConverter implements ITypeConverter<List<SNIServerName>> {
 
     @Override
-    public List<SNIServerName> convert(String value) throws Exception {
+    public List<SNIServerName> convert(String value) {
       if (value == null || value.trim().isEmpty()) {
         return Collections.emptyList();
       } else {
@@ -626,6 +737,7 @@ class Utils {
   }
 
   private static class TrustEverythingTrustManager implements X509TrustManager {
+
     @Override
     public void checkClientTrusted(X509Certificate[] chain, String authType) {}
 
@@ -650,89 +762,6 @@ class Utils {
     public String apply(String stream, Integer index) {
       return String.format(pattern, stream, index);
     }
-  }
-
-  static void declareSuperStreamExchangeAndBindings(
-      Channel channel, String superStream, List<String> streams) throws Exception {
-    channel.exchangeDeclare(
-        superStream,
-        BuiltinExchangeType.DIRECT,
-        true,
-        false,
-        Collections.singletonMap("x-super-stream", true));
-
-    for (int i = 0; i < streams.size(); i++) {
-      channel.queueBind(
-          streams.get(i),
-          superStream,
-          String.valueOf(i),
-          Collections.singletonMap("x-stream-partition-order", i));
-    }
-  }
-
-  static void deleteSuperStreamExchange(Channel channel, String superStream) throws Exception {
-    channel.exchangeDelete(superStream);
-  }
-
-  static List<String> superStreamPartitions(String superStream, int partitionCount) {
-    int digits = String.valueOf(partitionCount - 1).length();
-    String format = superStream + "-%0" + digits + "d";
-    return IntStream.range(0, partitionCount)
-        .mapToObj(i -> String.format(format, i))
-        .collect(Collectors.toList());
-  }
-
-  static Connection amqpConnection(
-      String amqpUri, List<String> streamUris, boolean isTls, List<SNIServerName> sniServerNames)
-      throws Exception {
-    ConnectionFactory connectionFactory = new ConnectionFactory();
-    if (amqpUri == null || amqpUri.trim().isEmpty()) {
-      String streamUriString = streamUris.get(0);
-      if (isTls) {
-        streamUriString = streamUriString.replaceFirst("rabbitmq-stream\\+tls", "amqps");
-      } else {
-        streamUriString = streamUriString.replaceFirst("rabbitmq-stream", "amqp");
-      }
-      URI streamUri = new URI(streamUriString);
-      int streamPort = streamUri.getPort();
-      if (streamPort != -1) {
-        int defaultAmqpPort =
-            isTls
-                ? ConnectionFactory.DEFAULT_AMQP_OVER_SSL_PORT
-                : ConnectionFactory.DEFAULT_AMQP_PORT;
-        streamUriString = streamUriString.replaceFirst(":" + streamPort, ":" + defaultAmqpPort);
-      }
-      connectionFactory.setUri(streamUriString);
-    } else {
-      connectionFactory.setUri(amqpUri);
-    }
-    if (isTls) {
-      SSLContext sslContext = SSLContext.getInstance("TLS");
-      sslContext.init(
-          new KeyManager[] {},
-          new TrustManager[] {TRUST_EVERYTHING_TRUST_MANAGER},
-          new SecureRandom());
-      connectionFactory.useSslProtocol(sslContext);
-      if (!sniServerNames.isEmpty()) {
-        SocketConfigurator socketConfigurator =
-            socket -> {
-              if (socket instanceof SSLSocket) {
-                SSLSocket sslSocket = (SSLSocket) socket;
-                SSLParameters sslParameters =
-                    sslSocket.getSSLParameters() == null
-                        ? new SSLParameters()
-                        : sslSocket.getSSLParameters();
-                sslParameters.setServerNames(sniServerNames);
-                sslSocket.setSSLParameters(sslParameters);
-              } else {
-                LOGGER.warn("SNI parameter set on a non-TLS connection");
-              }
-            };
-        connectionFactory.setSocketConfigurator(
-            SocketConfigurators.defaultConfigurator().andThen(socketConfigurator));
-      }
-    }
-    return connectionFactory.newConnection("stream-perf-test-amqp-connection");
   }
 
   static class PerformanceMicrometerMetricsCollector extends MicrometerMetricsCollector {

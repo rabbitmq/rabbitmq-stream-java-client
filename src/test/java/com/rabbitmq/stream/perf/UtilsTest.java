@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import static com.rabbitmq.stream.perf.Utils.commandLineMetrics;
 import static com.rabbitmq.stream.perf.Utils.superStreamPartitions;
 import static java.lang.String.format;
 import static java.util.stream.Collectors.toList;
@@ -344,6 +345,27 @@ public class UtilsTest {
     assertThat(superStreamPartitions("stream-1", 20))
         .hasSize(20)
         .contains("stream-1-00", "stream-1-01", "stream-1-10", "stream-1-19");
+  }
+
+  @Test
+  void commandLineMetricsTest() {
+    assertThat(
+            commandLineMetrics(
+                ("--uris rabbitmq-stream://default_user_kdId_cNrxfdolc5V7WJ:K8IYrRjh1NGqdVsaxfFa-r0KR1vGuPHB@cqv2 "
+                        + "--prometheus "
+                        + "--metrics-command-line-arguments "
+                        + "-mt rabbitmq_cluster=cqv2,workload_name=test-new "
+                        + "-x 1 -y 2")
+                    .split(" ")))
+        .isEqualTo("-x 1 -y 2");
+    assertThat(
+            commandLineMetrics(
+                ("-u amqp://default_user_kdId_cNrxfdolc5V7WJ:K8IYrRjh1NGqdVsaxfFa-r0KR1vGuPHB@cqv2 "
+                        + "-mcla "
+                        + "-mt rabbitmq_cluster=cqv2,workload_name=test-new "
+                        + "-x 1 -y 2")
+                    .split(" ")))
+        .isEqualTo("-x 1 -y 2");
   }
 
   @Command(name = "test-command")

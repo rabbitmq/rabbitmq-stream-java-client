@@ -49,7 +49,9 @@ import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import com.rabbitmq.stream.perf.Utils.PerformanceMicrometerMetricsCollector;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Tag;
+import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufAllocatorMetric;
@@ -409,6 +411,12 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.MetricsTagsTypeConverter.class)
   private Collection<Tag> metricsTags;
 
+  @CommandLine.Option(
+      names = {"--metrics-command-line-arguments", "-mcla"},
+      description = "add fixed metrics with command line arguments label",
+      defaultValue = "false")
+  private boolean metricsCommandLineArguments;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -513,6 +521,17 @@ public class StreamPerfTest implements Callable<Integer> {
     CompositeMeterRegistry meterRegistry = new CompositeMeterRegistry();
     meterRegistry.config().commonTags(this.metricsTags);
     String metricsPrefix = "rabbitmq.stream";
+    if (this.metricsCommandLineArguments) {
+      Tags tags;
+      if (this.arguments == null || this.arguments.length == 0) {
+        tags = Tags.of("command_line", "");
+      } else {
+        tags = Tags.of("command_line", Utils.commandLineMetrics(this.arguments));
+      }
+      Gauge.builder(metricsPrefix + ".args", () -> Integer.valueOf(1))
+          .tags(tags)
+          .register(meterRegistry);
+    }
     this.metricsCollector = new PerformanceMicrometerMetricsCollector(meterRegistry, metricsPrefix);
 
     Counter producerConfirm = meterRegistry.counter(metricsPrefix + ".producer_confirmed");
