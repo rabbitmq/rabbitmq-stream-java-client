@@ -856,6 +856,8 @@ can also specify any number, for example the offset where it left off
 in a previous incarnation of the application.
 * `OffsetSpecification.timestamp(timestamp)`: starting from the messages stored
 after the specified timestamp.
+Note consumers can receive messages published a bit before the specified timestamp.
+Application code can filter out those messages if necessary.
 
 [[chunk-definition]]
 [NOTE]
@@ -882,6 +884,10 @@ made of 2 chunks:
          |                       |                   |                       |
        FIRST                  OFFSET 3              LAST                    NEXT
 ....
+
+Each chunk contains a timestamp of its creation time.
+This is this timestamp the broker uses to find the appropriate chunk to start from when using a timestamp specification.
+The broker chooses the closest chunk _before_ the specified timestamp, that is why consumers may see messages published a bit before what they specified.
 
 [[consumer-offset-tracking]]
 ===== Tracking the Offset for a Consumer

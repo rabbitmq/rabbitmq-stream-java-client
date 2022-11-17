@@ -94,6 +94,8 @@ public class OffsetSpecification {
   /**
    * Offset of messages stored after the specified timestamp.
    *
+   * <p>Be aware consumers can receive messages published a bit before the specified timestamp.
+   *
    * @param timestamp
    * @return messages stored after the specified timestamp
    */
