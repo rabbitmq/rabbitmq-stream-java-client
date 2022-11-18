@@ -237,7 +237,7 @@ public class QpidProtonCodec implements Codec {
     }
     int bufferSize;
     if (qpidMessage.getBody() instanceof Data) {
-      bufferSize = ((Data) qpidMessage.getBody()).getValue().getLength() * 2;
+      bufferSize = (int) (((Data) qpidMessage.getBody()).getValue().getLength() * 1.5);
     } else {
       bufferSize = 8192;
     }
@@ -711,7 +711,7 @@ public class QpidProtonCodec implements Codec {
     }
 
     /**
-     * Ensures the the buffer has at least the minimumCapacity specified.
+     * Ensures the buffer has at least the minimumCapacity specified.
      *
      * @param minimumCapacity the minimum capacity needed to meet the next write operation.
      */
