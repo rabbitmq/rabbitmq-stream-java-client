@@ -2028,11 +2028,11 @@ public class Client implements AutoCloseable {
 
   public static class ClientParameters {
 
-    private final Map<String, String> clientProperties = new HashMap<>();
+    private final Map<String, String> clientProperties = new ConcurrentHashMap<>();
     EventLoopGroup eventLoopGroup;
-    Codec codec;
-    String host = "localhost";
-    int port = DEFAULT_PORT;
+    private Codec codec;
+    private String host = "localhost";
+    private int port = DEFAULT_PORT;
     CompressionCodecFactory compressionCodecFactory;
     private String virtualHost = "/";
     private Duration requestedHeartbeat = Duration.ofSeconds(60);
@@ -2227,12 +2227,32 @@ public class Client implements AutoCloseable {
       return this;
     }
 
+    String host() {
+      return this.host;
+    }
+
+    int port() {
+      return this.port;
+    }
+
+    Map<String, String> clientProperties() {
+      return Collections.unmodifiableMap(this.clientProperties);
+    }
+
+    Codec codec() {
+      return this.codec;
+    }
+
     ClientParameters duplicate() {
       ClientParameters duplicate = new ClientParameters();
       for (Field field : ClientParameters.class.getDeclaredFields()) {
         field.setAccessible(true);
         try {
-          field.set(duplicate, field.get(this));
+          Object value = field.get(this);
+          if (value instanceof Map) {
+            value = new ConcurrentHashMap<>((Map<?, ?>) value);
+          }
+          field.set(duplicate, value);
         } catch (IllegalAccessException e) {
           throw new StreamException("Error while duplicating client parameters", e);
         }

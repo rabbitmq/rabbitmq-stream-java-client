@@ -594,12 +594,11 @@ class ConsumersCoordinator {
             }
             return result;
           };
+      String connectionName = connectionNamingStrategy.apply(ClientConnectionType.CONSUMER);
       ClientFactoryContext clientFactoryContext =
           ClientFactoryContext.fromParameters(
                   clientParameters
-                      .clientProperty(
-                          "connection_name",
-                          connectionNamingStrategy.apply(ClientConnectionType.CONSUMER))
+                      .clientProperty("connection_name", connectionName)
                       .chunkListener(chunkListener)
                       .creditNotification(creditNotification)
                       .messageListener(messageListener)
@@ -608,6 +607,7 @@ class ConsumersCoordinator {
                       .consumerUpdateListener(consumerUpdateListener))
               .key(owner.name);
       this.client = clientFactory.client(clientFactoryContext);
+      LOGGER.debug("Created consumer connection '{}'", connectionName);
       maybeExchangeCommandVersions(client);
       clientInitializedInManager.set(true);
     }

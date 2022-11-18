@@ -114,7 +114,7 @@ final class Utils {
   static ClientFactory coordinatorClientFactory(StreamEnvironment environment) {
     return context -> {
       ClientParameters parametersCopy = context.parameters().duplicate();
-      Address address = new Address(parametersCopy.host, parametersCopy.port);
+      Address address = new Address(parametersCopy.host(), parametersCopy.port());
       address = environment.addressResolver().resolve(address);
       parametersCopy.host(address.host()).port(address.port());
 

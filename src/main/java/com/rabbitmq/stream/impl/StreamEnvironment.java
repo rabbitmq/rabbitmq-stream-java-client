@@ -175,7 +175,7 @@ class StreamEnvironment implements Environment {
     if (uris.isEmpty()) {
       this.addresses =
           Collections.singletonList(
-              new Address(clientParametersPrototype.host, clientParametersPrototype.port));
+              new Address(clientParametersPrototype.host(), clientParametersPrototype.port()));
     } else {
       int defaultPort = tls ? Client.DEFAULT_TLS_PORT : Client.DEFAULT_PORT;
       this.addresses =
@@ -241,15 +241,15 @@ class StreamEnvironment implements Environment {
                               : addresses.get(random.nextInt(addresses.size()));
                       address = addressResolver.resolve(address);
                       LOGGER.debug("Trying to reconnect locator on {}", address);
+                      String connectionName =
+                          connectionNamingStrategy.apply(ClientConnectionType.LOCATOR);
                       Client newLocator =
                           clientFactory.apply(
                               newLocatorParameters
                                   .host(address.host())
                                   .port(address.port())
-                                  .clientProperty(
-                                      "connection_name",
-                                      connectionNamingStrategy.apply(
-                                          ClientConnectionType.LOCATOR)));
+                                  .clientProperty("connection_name", connectionName));
+                      LOGGER.debug("Created locator connection '{}'", connectionName);
                       LOGGER.debug("Locator connected on {}", address);
                       return newLocator;
                     })
@@ -267,17 +267,17 @@ class StreamEnvironment implements Environment {
           RuntimeException lastException = null;
           for (Address address : addresses) {
             address = addressResolver.resolve(address);
+            String connectionName = connectionNamingStrategy.apply(ClientConnectionType.LOCATOR);
             Client.ClientParameters locatorParameters =
                 clientParametersForInit
                     .duplicate()
                     .host(address.host())
                     .port(address.port())
-                    .clientProperty(
-                        "connection_name",
-                        connectionNamingStrategy.apply(ClientConnectionType.LOCATOR))
+                    .clientProperty("connection_name", connectionName)
                     .shutdownListener(shutdownListenerReference.get());
             try {
               this.locator = clientFactory.apply(locatorParameters);
+              LOGGER.debug("Created locator connection '{}'", connectionName);
               LOGGER.debug("Locator connected to {}", address);
               break;
             } catch (RuntimeException e) {
@@ -297,7 +297,9 @@ class StreamEnvironment implements Environment {
       this.locatorInitializationSequence = () -> {};
     }
     this.codec =
-        clientParametersPrototype.codec == null ? Codecs.DEFAULT : clientParametersPrototype.codec;
+        clientParametersPrototype.codec() == null
+            ? Codecs.DEFAULT
+            : clientParametersPrototype.codec();
     this.clockRefreshFuture =
         this.scheduledExecutorService.scheduleAtFixedRate(
             () -> this.clock.refresh(), 1, 1, SECONDS);

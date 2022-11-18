@@ -490,6 +490,7 @@ class ProducersCoordinator {
               }
             }
           };
+      String connectionName = connectionNamingStrategy.apply(ClientConnectionType.PRODUCER);
       ClientFactoryContext connectionFactoryContext =
           ClientFactoryContext.fromParameters(
                   clientParameters
@@ -497,11 +498,10 @@ class ProducersCoordinator {
                       .publishErrorListener(publishErrorListener)
                       .shutdownListener(shutdownListener)
                       .metadataListener(metadataListener)
-                      .clientProperty(
-                          "connection_name",
-                          connectionNamingStrategy.apply(ClientConnectionType.PRODUCER)))
+                      .clientProperty("connection_name", connectionName))
               .key(owner.name);
       this.client = cf.client(connectionFactoryContext);
+      LOGGER.debug("Created producer connection '{}'", connectionName);
       clientInitializedInManager.set(true);
       ref.set(this.client);
     }

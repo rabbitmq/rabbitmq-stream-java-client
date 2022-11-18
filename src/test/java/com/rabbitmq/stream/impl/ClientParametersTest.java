@@ -15,21 +15,24 @@ package com.rabbitmq.stream.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.lang.reflect.Field;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import org.junit.jupiter.api.Test;
 
 public class ClientParametersTest {
 
   @Test
-  void duplicate() throws Exception {
-    Client.ClientParameters clientParameters =
+  void duplicate() {
+    Client.ClientParameters clientParameters1 =
         new Client.ClientParameters().host("rabbitmq").port(5556);
-    clientParameters = clientParameters.duplicate();
-    Field hostField = Client.ClientParameters.class.getDeclaredField("host");
-    hostField.setAccessible(true);
-    Field portField = Client.ClientParameters.class.getDeclaredField("port");
-    portField.setAccessible(true);
-    assertThat(hostField.get(clientParameters)).isEqualTo("rabbitmq");
-    assertThat(portField.get(clientParameters)).isEqualTo(5556);
+    clientParameters1.clientProperty("connection_name", "producer");
+    ClientParameters clientParameters2 = clientParameters1.duplicate();
+    assertThat(clientParameters2.host()).isEqualTo("rabbitmq");
+    assertThat(clientParameters2.port()).isEqualTo(5556);
+
+    // same as original
+    assertThat(clientParameters2.clientProperties()).containsEntry("connection_name", "producer");
+    // changing the copy should not change the original
+    clientParameters2.clientProperty("connection_name", "consumer");
+    assertThat(clientParameters1.clientProperties()).containsEntry("connection_name", "producer");
   }
 }
