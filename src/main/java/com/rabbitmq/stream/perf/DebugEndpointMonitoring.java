@@ -53,6 +53,17 @@ class DebugEndpointMonitoring implements Monitoring {
               out.write(content);
             }
           });
+
+      context.addHttpEndpoint(
+          "stream-environment",
+          exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            byte[] content = context.environment().toString().getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, content.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+              out.write(content);
+            }
+          });
     }
   }
 

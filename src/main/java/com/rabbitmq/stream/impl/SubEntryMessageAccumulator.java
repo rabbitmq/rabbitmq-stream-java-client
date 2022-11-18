@@ -48,7 +48,6 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
   }
 
   private Batch createBatch() {
-    // FIXME create list with appropriate initial size (sub-entry size)
     return new Batch(
         EncodedMessageBatch.create(
             byteBufAllocator, compression, compressionCodec, this.subEntrySize),

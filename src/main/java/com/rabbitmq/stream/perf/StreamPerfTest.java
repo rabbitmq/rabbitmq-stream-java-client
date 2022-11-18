@@ -583,11 +583,6 @@ public class StreamPerfTest implements Callable<Integer> {
 
     try {
 
-      MonitoringContext monitoringContext =
-          new MonitoringContext(this.monitoringPort, meterRegistry);
-      this.monitorings.forEach(m -> m.configure(monitoringContext));
-      monitoringContext.start();
-
       if (meterRegistry.getRegistries().isEmpty()) {
         // we need at least one to do the calculations
         meterRegistry.add(Utils.dropwizardMeterRegistry());
@@ -602,10 +597,6 @@ public class StreamPerfTest implements Callable<Integer> {
               this.confirmLatency,
               memoryReportSupplier,
               this.out);
-
-      shutdownService.wrap(closeStep("Closing monitoring context", monitoringContext::close));
-
-      // FIXME add confirm latency
 
       ScheduledExecutorService envExecutor =
           Executors.newScheduledThreadPool(
@@ -687,6 +678,13 @@ public class StreamPerfTest implements Callable<Integer> {
 
       Environment environment = environmentBuilder.channelCustomizer(channelCustomizer).build();
       shutdownService.wrap(closeStep("Closing environment(s)", () -> environment.close()));
+
+      MonitoringContext monitoringContext =
+          new MonitoringContext(this.monitoringPort, meterRegistry, environment);
+      this.monitorings.forEach(m -> m.configure(monitoringContext));
+      monitoringContext.start();
+
+      shutdownService.wrap(closeStep("Closing monitoring context", monitoringContext::close));
 
       streams = Utils.streams(this.streamCount, this.streams);
 

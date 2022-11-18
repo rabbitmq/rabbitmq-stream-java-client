@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import com.rabbitmq.stream.Environment;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
@@ -29,14 +30,17 @@ class MonitoringContext {
 
   private final int monitoringPort;
   private final CompositeMeterRegistry meterRegistry;
+  private final Environment environment;
 
   private final Map<String, HttpHandler> handlers = new LinkedHashMap<>();
 
   private volatile HttpServer server;
 
-  MonitoringContext(int monitoringPort, CompositeMeterRegistry meterRegistry) {
+  MonitoringContext(
+      int monitoringPort, CompositeMeterRegistry meterRegistry, Environment environment) {
     this.monitoringPort = monitoringPort;
     this.meterRegistry = meterRegistry;
+    this.environment = environment;
   }
 
   void addHttpEndpoint(String path, HttpHandler handler) {
@@ -67,6 +71,10 @@ class MonitoringContext {
   }
 
   CompositeMeterRegistry meterRegistry() {
-    return meterRegistry;
+    return this.meterRegistry;
+  }
+
+  Environment environment() {
+    return this.environment;
   }
 }
