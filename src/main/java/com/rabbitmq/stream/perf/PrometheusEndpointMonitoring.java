@@ -36,6 +36,7 @@ class PrometheusEndpointMonitoring implements Monitoring {
       context.meterRegistry().add(registry);
       context.addHttpEndpoint(
           "metrics",
+          "Prometheus metrics",
           exchange -> {
             exchange.getResponseHeaders().set("Content-Type", "text/plain");
             byte[] content = registry.scrape().getBytes(StandardCharsets.UTF_8);

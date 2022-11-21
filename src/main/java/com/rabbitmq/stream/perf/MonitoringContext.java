@@ -17,10 +17,14 @@ import com.rabbitmq.stream.Environment;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Map.Entry;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,7 +36,7 @@ class MonitoringContext {
   private final CompositeMeterRegistry meterRegistry;
   private final Environment environment;
 
-  private final Map<String, HttpHandler> handlers = new LinkedHashMap<>();
+  private final Collection<Endpoint> endpoints = Collections.synchronizedList(new ArrayList<>());
 
   private volatile HttpServer server;
 
@@ -43,21 +47,60 @@ class MonitoringContext {
     this.environment = environment;
   }
 
-  void addHttpEndpoint(String path, HttpHandler handler) {
-    this.handlers.put(path, handler);
+  void addHttpEndpoint(String path, String description, HttpHandler handler) {
+    this.endpoints.add(new Endpoint(path, description, handler));
   }
 
   void start() throws Exception {
-    if (!handlers.isEmpty()) {
+    if (!endpoints.isEmpty()) {
       server = HttpServer.create(new InetSocketAddress(this.monitoringPort), 0);
 
-      for (Entry<String, HttpHandler> entry : handlers.entrySet()) {
-        String path = entry.getKey().startsWith("/") ? entry.getKey() : "/" + entry.getKey();
-        HttpHandler handler = entry.getValue();
-        server.createContext(path, handler);
+      for (Endpoint handler : endpoints) {
+        server.createContext(handler.path, handler.handler);
       }
 
+      String hostname = hostname();
+
+      StringBuilder builder =
+          new StringBuilder(
+              "{ \"name\" : \"StreamPerfTest Monitoring Endpoints\", \"endpoints\" : [");
+      String endpointJson =
+          endpoints.stream()
+              .map(
+                  endpoint ->
+                      "{\"name\" : \""
+                          + endpoint.description
+                          + "\", \"href\" : \""
+                          + url(hostname, endpoint.path)
+                          + "\"}")
+              .collect(Collectors.joining(","));
+      builder.append(endpointJson);
+      builder.append("]}");
+      server.createContext(
+          "/",
+          exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            byte[] content = builder.toString().getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, content.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+              out.write(content);
+            }
+          });
+
       server.start();
+      System.out.println("Monitoring endpoints started on http://localhost:" + this.monitoringPort);
+    }
+  }
+
+  private String url(String hostname, String endpoint) {
+    return String.format("http://%s:%d%s", hostname, this.monitoringPort, endpoint);
+  }
+
+  private static String hostname() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (Exception e) {
+      return "localhost";
     }
   }
 
@@ -76,5 +119,17 @@ class MonitoringContext {
 
   Environment environment() {
     return this.environment;
+  }
+
+  private static class Endpoint {
+
+    private final String path, description;
+    private final HttpHandler handler;
+
+    private Endpoint(String path, String description, HttpHandler handler) {
+      this.path = path.startsWith("/") ? path : "/" + path;
+      this.description = description;
+      this.handler = handler;
+    }
   }
 }

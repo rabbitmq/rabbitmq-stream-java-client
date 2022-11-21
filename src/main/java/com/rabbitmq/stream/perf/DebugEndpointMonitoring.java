@@ -43,6 +43,7 @@ class DebugEndpointMonitoring implements Monitoring {
       PlainTextThreadDumpFormatter formatter = new PlainTextThreadDumpFormatter();
       context.addHttpEndpoint(
           "threaddump",
+          "Java thread dump",
           exchange -> {
             ThreadInfo[] threadInfos =
                 ManagementFactory.getThreadMXBean().dumpAllThreads(true, true);
@@ -56,6 +57,7 @@ class DebugEndpointMonitoring implements Monitoring {
 
       context.addHttpEndpoint(
           "stream-environment",
+          "Stream client environment internals",
           exchange -> {
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             byte[] content = context.environment().toString().getBytes(StandardCharsets.UTF_8);
