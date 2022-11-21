@@ -149,7 +149,9 @@ class ProducersCoordinator {
                 poolEntry ->
                     "  { \"broker\" : \""
                         + poolEntry.getKey()
-                        + "\", \"clients\" : [ "
+                        + "\", \"client_count\" : "
+                        + poolEntry.getValue().managers.size()
+                        + ", \"clients\" : [ "
                         + poolEntry.getValue().managers.stream()
                             .map(
                                 manager ->
