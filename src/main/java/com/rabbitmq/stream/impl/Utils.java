@@ -151,6 +151,14 @@ final class Utils {
         retryInterval);
   }
 
+  static Runnable namedRunnable(Runnable task, String format, Object... args) {
+    return new NamedRunnable(String.format(format, args), task);
+  }
+
+  static <T, R> Function<T, R> namedFunction(Function<T, R> task, String format, Object... args) {
+    return new NamedFunction<>(String.format(format, args), task);
+  }
+
   interface ClientFactory {
 
     Client client(ClientFactoryContext context);
@@ -339,6 +347,48 @@ final class Utils {
     } else {
       String message = "Error while querying stream info: " + formatConstant(responseCode) + ".";
       return new StreamException(message, responseCode);
+    }
+  }
+
+  private static class NamedRunnable implements Runnable {
+
+    private final String name;
+    private final Runnable delegate;
+
+    private NamedRunnable(String name, Runnable delegate) {
+      this.name = name;
+      this.delegate = delegate;
+    }
+
+    @Override
+    public void run() {
+      this.delegate.run();
+    }
+
+    @Override
+    public String toString() {
+      return this.name;
+    }
+  }
+
+  private static class NamedFunction<T, R> implements Function<T, R> {
+
+    private final String name;
+    private final Function<T, R> delegate;
+
+    private NamedFunction(String name, Function<T, R> delegate) {
+      this.name = name;
+      this.delegate = delegate;
+    }
+
+    @Override
+    public R apply(T t) {
+      return this.delegate.apply(t);
+    }
+
+    @Override
+    public String toString() {
+      return this.name;
     }
   }
 }

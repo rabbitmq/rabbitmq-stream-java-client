@@ -229,7 +229,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void shouldRedistributeProducerAndTrackingConsumerIfConnectionIsLost() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -295,7 +295,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void shouldDisposeProducerAndNotTrackingConsumerIfRecoveryTimesOut() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.recoveryBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -336,7 +336,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void shouldRedistributeProducersAndTrackingConsumersOnMetadataUpdate() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.topologyUpdateBackOffDelayPolicy())
@@ -426,7 +426,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void shouldDisposeProducerIfStreamIsDeleted() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -460,7 +460,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void shouldDisposeProducerAndNotTrackingConsumerIfMetadataUpdateTimesOut() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -500,7 +500,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void growShrinkResourcesBasedOnProducersAndTrackingConsumersCount() {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
 
@@ -600,5 +600,9 @@ public class ProducersCoordinatorTest {
 
     assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
+  }
+
+  private static ScheduledExecutorService createScheduledExecutorService() {
+    return new ScheduledExecutorServiceWrapper(Executors.newSingleThreadScheduledExecutor());
   }
 }

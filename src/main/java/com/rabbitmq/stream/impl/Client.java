@@ -308,8 +308,18 @@ public class Client implements AutoCloseable {
         });
 
     ChannelFuture f;
+    String clientConnectionName =
+        parameters.clientProperties == null
+            ? ""
+            : (parameters.clientProperties.containsKey("connection_name")
+                ? parameters.clientProperties.get("connection_name")
+                : "");
     try {
-      LOGGER.debug("Trying to create stream connection to {}:{}", parameters.host, parameters.port);
+      LOGGER.debug(
+          "Trying to create stream connection to {}:{}, with client connection name '{}'",
+          parameters.host,
+          parameters.port,
+          clientConnectionName);
       f = b.connect(parameters.host, parameters.port).sync();
       this.host = parameters.host;
       this.port = parameters.port;
@@ -1113,6 +1123,9 @@ public class Client implements AutoCloseable {
       request.block();
       QueryOffsetResponse response = request.response.get();
       return response;
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
       throw new StreamException(e);
@@ -2284,7 +2297,7 @@ public class Client implements AutoCloseable {
         throw new StreamException("Interrupted while waiting for response");
       }
       if (!completed) {
-        throw new StreamException("Could not get response in " + timeout.toMillis() + " ms");
+        throw new TimeoutStreamException("Could not get response in " + timeout.toMillis() + " ms");
       }
     }
 

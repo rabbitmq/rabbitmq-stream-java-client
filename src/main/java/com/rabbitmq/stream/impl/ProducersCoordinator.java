@@ -14,6 +14,8 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.namedFunction;
+import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
@@ -101,7 +103,8 @@ class ProducersCoordinator {
 
   private Client.Broker getBrokerForProducer(String stream) {
     Map<String, Client.StreamMetadata> metadata =
-        this.environment.locatorOperation(c -> c.metadata(stream));
+        this.environment.locatorOperation(
+            namedFunction(c -> c.metadata(stream), "Candidate lookup to publish to '%s'", stream));
     if (metadata.size() == 0 || metadata.get(stream) == null) {
       throw new StreamDoesNotExistException(stream);
     }
@@ -438,7 +441,7 @@ class ProducersCoordinator {
             }
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
-                  "Recovering {} producers after unexpected connection termination",
+                  "Recovering {} producer(s) after unexpected connection termination",
                   producers.size());
               producers.forEach((publishingId, tracker) -> tracker.unavailable());
               trackingConsumerTrackers.forEach(AgentTracker::unavailable);
@@ -446,18 +449,21 @@ class ProducersCoordinator {
               environment
                   .scheduledExecutorService()
                   .execute(
-                      () -> {
-                        if (Thread.currentThread().isInterrupted()) {
-                          return;
-                        }
-                        streamToTrackers.forEach(
-                            (stream, trackers) -> {
-                              if (!Thread.currentThread().isInterrupted()) {
-                                assignProducersToNewManagers(
-                                    trackers, stream, environment.recoveryBackOffDelayPolicy());
-                              }
-                            });
-                      });
+                      namedRunnable(
+                          () -> {
+                            if (Thread.currentThread().isInterrupted()) {
+                              return;
+                            }
+                            streamToTrackers.forEach(
+                                (stream, trackers) -> {
+                                  if (!Thread.currentThread().isInterrupted()) {
+                                    assignProducersToNewManagers(
+                                        trackers, stream, environment.recoveryBackOffDelayPolicy());
+                                  }
+                                });
+                          },
+                          "Producer recovery after disconnection from %s",
+                          owner.name));
             }
           };
       MetadataListener metadataListener =
@@ -477,18 +483,21 @@ class ProducersCoordinator {
                 environment
                     .scheduledExecutorService()
                     .execute(
-                        () -> {
-                          if (Thread.currentThread().isInterrupted()) {
-                            return;
-                          }
-                          // close manager if no more trackers for it
-                          // needs to be done in another thread than the IO thread
-                          this.owner.maybeDisposeManager(this);
-                          assignProducersToNewManagers(
-                              affectedTrackers,
-                              stream,
-                              environment.topologyUpdateBackOffDelayPolicy());
-                        });
+                        namedRunnable(
+                            () -> {
+                              if (Thread.currentThread().isInterrupted()) {
+                                return;
+                              }
+                              // close manager if no more trackers for it
+                              // needs to be done in another thread than the IO thread
+                              this.owner.maybeDisposeManager(this);
+                              assignProducersToNewManagers(
+                                  affectedTrackers,
+                                  stream,
+                                  environment.topologyUpdateBackOffDelayPolicy());
+                            },
+                            "Producer re-assignment after metadata update on stream '%s'",
+                            stream));
               }
             }
           };

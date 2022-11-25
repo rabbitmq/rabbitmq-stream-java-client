@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.namedRunnable;
+
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import java.time.Duration;
 import java.util.concurrent.Callable;
@@ -42,47 +44,56 @@ class AsyncRetry<V> {
     AtomicReference<Runnable> retryableTaskReference = new AtomicReference<>();
     AtomicInteger attempts = new AtomicInteger(0);
     Runnable retryableTask =
-        () -> {
-          if (Thread.currentThread().isInterrupted()) {
-            LOGGER.debug("Task '{}' interrupted, failing future", description);
-            this.completableFuture.completeExceptionally(new CancellationException());
-            return;
-          }
-          try {
-            V result = task.call();
-            LOGGER.debug("Task '{}' succeeded, completing future", description);
-            completableFuture.complete(result);
-          } catch (Exception e) {
-            int attemptCount = attempts.getAndIncrement();
-            if (retry.test(e)) {
-              if (delayPolicy.delay(attemptCount).equals(BackOffDelayPolicy.TIMEOUT)) {
-                LOGGER.debug(
-                    "Retryable attempts for task '{}' timed out, failing future", description);
-                this.completableFuture.completeExceptionally(new RetryTimeoutException());
-              } else {
-                LOGGER.debug(
-                    "Retryable exception ({}) for task '{}', scheduling another attempt",
-                    e.getClass().getSimpleName(),
-                    description);
-                scheduler.schedule(
-                    retryableTaskReference.get(),
-                    delayPolicy.delay(attemptCount).toMillis(),
-                    TimeUnit.MILLISECONDS);
+        namedRunnable(
+            () -> {
+              if (Thread.currentThread().isInterrupted()) {
+                LOGGER.debug("Task '{}' interrupted, failing future", description);
+                this.completableFuture.completeExceptionally(new CancellationException());
+                return;
               }
-            } else {
-              LOGGER.debug("Non-retryable exception for task '{}', failing future", description);
-              this.completableFuture.completeExceptionally(e);
-            }
-          }
-        };
+              try {
+                V result = task.call();
+                LOGGER.debug("Task '{}' succeeded, completing future", description);
+                completableFuture.complete(result);
+              } catch (Exception e) {
+                int attemptCount = attempts.getAndIncrement();
+                if (retry.test(e)) {
+                  if (delayPolicy.delay(attemptCount).equals(BackOffDelayPolicy.TIMEOUT)) {
+                    LOGGER.debug(
+                        "Retryable attempts for task '{}' timed out, failing future", description);
+                    this.completableFuture.completeExceptionally(new RetryTimeoutException());
+                  } else {
+                    LOGGER.debug(
+                        "Retryable exception ({}) for task '{}', scheduling another attempt",
+                        e.getClass().getSimpleName(),
+                        description);
+                    schedule(
+                        scheduler, retryableTaskReference.get(), delayPolicy.delay(attemptCount));
+                  }
+                } else {
+                  LOGGER.debug(
+                      "Non-retryable exception for task '{}', failing future", description);
+                  this.completableFuture.completeExceptionally(e);
+                }
+              }
+            },
+            description);
     retryableTaskReference.set(retryableTask);
     Duration initialDelay = delayPolicy.delay(attempts.getAndIncrement());
     LOGGER.debug("Scheduling task '{}' with policy {}", description, delayPolicy);
     if (initialDelay.isZero()) {
       retryableTask.run();
     } else {
-      scheduler.schedule(
-          retryableTaskReference.get(), initialDelay.toMillis(), TimeUnit.MILLISECONDS);
+      schedule(scheduler, retryableTaskReference.get(), initialDelay);
+    }
+  }
+
+  private static void schedule(
+      ScheduledExecutorService scheduler, Runnable command, Duration delay) {
+    try {
+      scheduler.schedule(command, delay.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (RuntimeException e) {
+      LOGGER.debug("Error while scheduling command", e);
     }
   }
 

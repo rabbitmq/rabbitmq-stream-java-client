@@ -133,6 +133,8 @@ public class StreamEnvironmentUnitTest {
   @SuppressWarnings("unchecked")
   void shouldTryUrisOnInitializationFailure() throws Exception {
     reset(cf);
+    // we don't want the scheduled retry to kick in
+    when(recoveryBackOffDelayPolicy.delay(anyInt())).thenReturn(Duration.ofMinutes(60));
     when(cf.apply(any(Client.ClientParameters.class)))
         .thenThrow(new RuntimeException())
         .thenThrow(new RuntimeException())

@@ -63,19 +63,19 @@ class MonitoringTestUtils {
 
   public static class EnvironmentInfo {
 
-    private final String locator;
+    private final String[] locators;
     private final ProducersPoolInfo[] producers;
     private final ConsumersPoolInfo[] consumers;
 
     public EnvironmentInfo(
-        String locator, ProducersPoolInfo[] producers, ConsumersPoolInfo[] consumers) {
-      this.locator = locator;
+        String[] locators, ProducersPoolInfo[] producers, ConsumersPoolInfo[] consumers) {
+      this.locators = locators;
       this.producers = producers;
       this.consumers = consumers;
     }
 
-    public String getLocator() {
-      return locator;
+    public String[] getLocators() {
+      return locators;
     }
 
     public List<ConsumersPoolInfo> getConsumers() {
@@ -89,8 +89,8 @@ class MonitoringTestUtils {
     @Override
     public String toString() {
       return "EnvironmentInfo{"
-          + "locator='"
-          + locator
+          + "locators='"
+          + Arrays.toString(locators)
           + '\''
           + ", producers="
           + Arrays.toString(producers)

@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -40,6 +41,7 @@ import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
+import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumersPoolInfo;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import java.time.Duration;
@@ -143,6 +145,7 @@ public class ConsumersCoordinatorTest {
     when(environment.locatorOperation(any())).thenCallRealMethod();
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.addressResolver()).thenReturn(address -> address);
+    when(client.brokerVersion()).thenReturn("3.11.0");
 
     coordinator =
         new ConsumersCoordinator(
@@ -493,7 +496,7 @@ public class ConsumersCoordinatorTest {
 
   @Test
   void shouldRedistributeConsumerIfConnectionIsLost() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -506,13 +509,18 @@ public class ConsumersCoordinatorTest {
         .thenReturn(metadata(null, replica()));
 
     when(clientFactory.client(any())).thenReturn(client);
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
     when(client.subscribe(
             subscriptionIdCaptor.capture(),
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
             anyMap()))
-        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return new Client.Response(Constants.RESPONSE_CODE_OK);
+            });
 
     StreamConsumer consumerClosedAfterConnectionLost = mock(StreamConsumer.class);
     when(consumerClosedAfterConnectionLost.isOpen()).thenReturn(false);
@@ -553,12 +561,12 @@ public class ConsumersCoordinatorTest {
     shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
 
-    Thread.sleep(retryDelay.toMillis() * 5);
+    // the second consumer does not re-subscribe because it returns it is not open
+    waitAtMost(() -> subscriptionCount.get() == 2 + 1);
 
     // the consumer connection should be reset after the connection disruption
     verify(consumer, times(1)).setSubscriptionClient(isNull());
 
-    // the second consumer does not re-subscribe because it returns it is not open
     verify(client, times(2 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
@@ -582,7 +590,7 @@ public class ConsumersCoordinatorTest {
   void shouldRedistributeConsumerOnMetadataUpdate() throws Exception {
     BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(100), ms(100));
     when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
@@ -592,13 +600,18 @@ public class ConsumersCoordinatorTest {
     StreamConsumer consumerClosedAfterMetadataUpdate = mock(StreamConsumer.class);
     when(consumerClosedAfterMetadataUpdate.isOpen()).thenReturn(false);
 
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
     when(client.subscribe(
             subscriptionIdCaptor.capture(),
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
             anyMap()))
-        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     Runnable closingRunnable =
@@ -644,9 +657,8 @@ public class ConsumersCoordinatorTest {
     // the consumer connection should be reset after the metadata update
     verify(consumer, times(1)).setSubscriptionClient(isNull());
 
-    Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
-
     // the second consumer does not re-subscribe because it returns it is not open
+    waitAtMost(() -> subscriptionCount.get() == 2 + 1);
     verify(client, times(2 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
@@ -677,7 +689,7 @@ public class ConsumersCoordinatorTest {
   void shouldRetryRedistributionIfMetadataIsNotUpdatedImmediately() throws Exception {
     BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(100), ms(100));
     when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
@@ -744,7 +756,7 @@ public class ConsumersCoordinatorTest {
   void metadataUpdate_shouldCloseConsumerIfStreamIsDeleted() throws Exception {
     BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(50), ms(50));
     when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
@@ -796,7 +808,7 @@ public class ConsumersCoordinatorTest {
     Duration retryTimeout = Duration.ofMillis(200);
     BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(50), ms(50), ms(200));
     when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
@@ -904,7 +916,7 @@ public class ConsumersCoordinatorTest {
 
   @Test
   void shouldRemoveClientSubscriptionManagerFromPoolAfterConnectionDies() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -969,7 +981,7 @@ public class ConsumersCoordinatorTest {
   void shouldRemoveClientSubscriptionManagerFromPoolIfEmptyAfterMetadataUpdate() throws Exception {
     BackOffDelayPolicy delayPolicy = fixedWithInitialDelay(ms(50), ms(50));
     when(environment.topologyUpdateBackOffDelayPolicy()).thenReturn(delayPolicy);
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas().subList(0, 1)));
@@ -1051,7 +1063,7 @@ public class ConsumersCoordinatorTest {
   @MethodSource("disruptionArguments")
   void shouldRestartWhereItLeftOffAfterDisruption(Consumer<ConsumersCoordinatorTest> configurator)
       throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -1122,7 +1134,7 @@ public class ConsumersCoordinatorTest {
   @MethodSource("disruptionArguments")
   void shouldReUseInitialOffsetSpecificationAfterDisruptionIfNoMessagesReceived(
       Consumer<ConsumersCoordinatorTest> configurator) throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -1186,7 +1198,7 @@ public class ConsumersCoordinatorTest {
   @SuppressWarnings("unchecked")
   void shouldUseStoredOffsetOnRecovery(Consumer<ConsumersCoordinatorTest> configurator)
       throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -1268,7 +1280,89 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
-  void subscribeUnsubscribeInDifferentThreadsShouldNotDeadlock() throws Exception {
+  @SuppressWarnings("unchecked")
+  void shouldRetryAssignmentOnManagerClientTimeout() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream-1")).thenReturn(metadata("stream-1", null, replica()));
+    when(locator.metadata("stream-2")).thenReturn(metadata("stream-2", null, replica()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+
+    String consumerName = "consumer-name";
+    when(client.queryOffset(consumerName, "stream-1"))
+        .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, 0L));
+    when(client.queryOffset(consumerName, "stream-2"))
+        .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, 0L)) // first subscription
+        .thenThrow(new TimeoutStreamException("")) // on recovery
+        .thenThrow(new TimeoutStreamException("")) // on recovery, retry
+        .thenThrow(new TimeoutStreamException("")) // on recovery, retry
+        .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, 0L));
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            a -> {
+              subscriptionCount.incrementAndGet();
+              return new Client.Response(Constants.RESPONSE_CODE_OK);
+            });
+
+    Runnable closingRunnable1 =
+        coordinator.subscribe(
+            consumer,
+            "stream-1",
+            null,
+            consumerName,
+            NO_OP_SUBSCRIPTION_LISTENER,
+            NO_OP_TRACKING_CLOSING_CALLBACK,
+            (offset, message) -> {},
+            Collections.emptyMap());
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    Runnable closingRunnable2 =
+        coordinator.subscribe(
+            consumer,
+            "stream-2",
+            null,
+            consumerName,
+            NO_OP_SUBSCRIPTION_LISTENER,
+            NO_OP_TRACKING_CLOSING_CALLBACK,
+            (offset, message) -> {},
+            Collections.emptyMap());
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1 + 1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    Thread.sleep(retryDelay.toMillis() * 5);
+
+    waitAtMost(() -> subscriptionCount.get() == (1 + 1) * 2);
+
+    verify(locator, times(2)).metadata("stream-1");
+    verify(client, times(2)).queryOffset(consumerName, "stream-1");
+    // for stream-2, the offset query on recovery timed out, so more calls...
+    verify(locator, times(3)).metadata("stream-2");
+    verify(client, times(1 + 3 + 1))
+        .queryOffset(
+            consumerName, "stream-2"); // subscription call, times out 3 times, retry that succeeds
+  }
+
+  @Test
+  void subscribeUnsubscribeInDifferentThreadsShouldNotDeadlock() {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
@@ -1341,5 +1435,20 @@ public class ConsumersCoordinatorTest {
 
   private MessageListener lastMessageListener() {
     return this.messageListeners.get(messageListeners.size() - 1);
+  }
+
+  private static ScheduledExecutorService createScheduledExecutorService() {
+    return createScheduledExecutorService(1);
+  }
+
+  private static ScheduledExecutorService createScheduledExecutorService(int nbThreads) {
+    return new ScheduledExecutorServiceWrapper(
+        nbThreads == 1
+            ? Executors.newSingleThreadScheduledExecutor()
+            : Executors.newScheduledThreadPool(nbThreads));
+  }
+
+  private static Response responseOk() {
+    return new Response(Constants.RESPONSE_CODE_OK);
   }
 }

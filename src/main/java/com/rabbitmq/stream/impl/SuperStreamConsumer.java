@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.namedFunction;
+
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
@@ -38,7 +40,12 @@ class SuperStreamConsumer implements Consumer {
       StreamEnvironment environment,
       TrackingConfiguration trackingConfiguration) {
     this.superStream = superStream;
-    List<String> partitions = environment.locatorOperation(c -> c.partitions(superStream));
+    List<String> partitions =
+        environment.locatorOperation(
+            namedFunction(
+                c -> c.partitions(superStream),
+                "Partition lookup for super stream '%s'",
+                superStream));
 
     // for manual offset tracking strategy only
     ConsumerState[] states = new ConsumerState[partitions.size()];
