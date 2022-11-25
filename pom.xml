@@ -88,7 +88,6 @@
     <asciidoctorj.pdf.version>2.3.3</asciidoctorj.pdf.version>
     <asciidoctorj.diagram.version>2.2.3</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
-    <jruby.version>9.3.4.0</jruby.version>
     <jmh.version>1.36</jmh.version>
     <spotless.version>2.27.2</spotless.version>
     <google-java-format.version>1.15.0</google-java-format.version>
@@ -384,11 +383,6 @@
         <artifactId>asciidoctor-maven-plugin</artifactId>
         <version>${asciidoctor.maven.plugin.version}</version>
         <dependencies>
-          <dependency>
-            <groupId>org.jruby</groupId>
-            <artifactId>jruby-complete</artifactId>
-            <version>${jruby.version}</version>
-          </dependency>
           <dependency>
             <groupId>org.asciidoctor</groupId>
             <artifactId>asciidoctorj</artifactId>
