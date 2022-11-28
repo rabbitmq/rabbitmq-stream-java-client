@@ -89,6 +89,8 @@ public final class TestUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TestUtils.class);
 
+  private static final Duration DEFAULT_CONDITION_TIMEOUT = Duration.ofSeconds(10);
+
   private TestUtils() {}
 
   public static Duration waitAtMost(CallableBooleanSupplier condition) throws Exception {
@@ -97,12 +99,12 @@ public final class TestUtils {
 
   public static Duration waitAtMost(CallableBooleanSupplier condition, Supplier<String> message)
       throws Exception {
-    return waitAtMost(10, condition, message);
+    return waitAtMost(DEFAULT_CONDITION_TIMEOUT, condition, message);
   }
 
   public static Duration waitAtMost(Duration timeout, CallableBooleanSupplier condition)
       throws Exception {
-    return waitAtMost((int) timeout.getSeconds(), condition, null);
+    return waitAtMost(timeout, condition, null);
   }
 
   public static Duration waitAtMost(int timeoutInSeconds, CallableBooleanSupplier condition)
@@ -113,12 +115,18 @@ public final class TestUtils {
   public static Duration waitAtMost(
       int timeoutInSeconds, CallableBooleanSupplier condition, Supplier<String> message)
       throws Exception {
+    return waitAtMost(Duration.ofSeconds(timeoutInSeconds), condition, message);
+  }
+
+  public static Duration waitAtMost(
+      Duration timeout, CallableBooleanSupplier condition, Supplier<String> message)
+      throws Exception {
     if (condition.getAsBoolean()) {
       return Duration.ZERO;
     }
     int waitTime = 100;
     int waitedTime = 0;
-    int timeoutInMs = timeoutInSeconds * 1000;
+    int timeoutInMs = (int) timeout.toMillis();
     Exception exception = null;
     while (waitedTime <= timeoutInMs) {
       Thread.sleep(waitTime);
@@ -134,9 +142,9 @@ public final class TestUtils {
     }
     String msg;
     if (message == null) {
-      msg = "Waited " + timeoutInSeconds + " second(s), condition never got true";
+      msg = "Waited " + timeout.getSeconds() + " second(s), condition never got true";
     } else {
-      msg = "Waited " + timeoutInSeconds + " second(s), " + message.get();
+      msg = "Waited " + timeout.getSeconds() + " second(s), " + message.get();
     }
     if (exception == null) {
       fail(msg);

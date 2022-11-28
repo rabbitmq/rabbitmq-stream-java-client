@@ -17,6 +17,7 @@ import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -285,7 +286,7 @@ public class StreamProducerTest {
 
     Host.killConnection("rabbitmq-stream-producer-0");
 
-    waitAtMost(10, () -> ((StreamProducer) producer).status() == Status.NOT_AVAILABLE);
+    waitAtMost(() -> ((StreamProducer) producer).status() == Status.NOT_AVAILABLE);
     canPublish.set(false);
 
     assertThat(confirmed.get()).isPositive();
@@ -293,7 +294,7 @@ public class StreamProducerTest {
         5,
         () -> confirmed.get() + errored.get() == published.get(),
         () ->
-            String.format(
+            format(
                 "confirmed %d / errored %d / published %d, %d + %d = %d != %d, difference %d",
                 confirmed.get(),
                 errored.get(),
@@ -305,21 +306,35 @@ public class StreamProducerTest {
                 (published.get() - (confirmed.get() + errored.get()))));
     assertThat(confirmed.get() + errored.get()).isEqualTo(published.get());
 
-    waitAtMost(10, () -> ((StreamProducer) producer).status() == StreamProducer.Status.RUNNING);
+    waitAtMost(() -> ((StreamProducer) producer).status() == StreamProducer.Status.RUNNING);
 
     int confirmedAfterUnavailability = confirmed.get();
     int errorAfterUnavailability = errored.get();
 
     canPublish.set(true);
 
-    waitAtMost(10, () -> confirmed.get() > confirmedAfterUnavailability * 2);
+    waitAtMost(
+        () -> confirmed.get() > confirmedAfterUnavailability * 2,
+        () ->
+            format(
+                "Confirmed %d, confirmed after unavailability %d, expecting twice as many",
+                confirmed.get(), confirmedAfterUnavailability));
 
     assertThat(errored.get()).isEqualTo(errorAfterUnavailability);
 
     canPublish.set(false);
     publishThread.interrupt();
 
-    waitAtMost(10, () -> confirmed.get() + errored.get() == published.get());
+    waitAtMost(
+        () -> confirmed.get() + errored.get() == published.get(),
+        () ->
+            format(
+                "Confirmed %d, errored %d, published %d, expecting %d, but got %d",
+                confirmed.get(),
+                errored.get(),
+                published.get(),
+                published.get(),
+                (confirmed.get() + errored.get())));
 
     CountDownLatch consumeLatch = new CountDownLatch(confirmed.get());
     environment.consumerBuilder().stream(stream)
@@ -329,7 +344,7 @@ public class StreamProducerTest {
               consumeLatch.countDown();
             })
         .build();
-    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    latchAssert(consumeLatch).completes();
   }
 
   @ParameterizedTest

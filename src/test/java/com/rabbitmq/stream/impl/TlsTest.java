@@ -16,7 +16,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.Utils.TRUST_EVERYTHING_TRUST_MANAGER;
-import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -196,8 +196,8 @@ public class TlsTest {
             })
         .start();
 
-    assertThat(confirmedLatch.await(15, SECONDS)).isTrue();
-    assertThat(consumedLatch.await(15, SECONDS)).isTrue();
+    latchAssert(confirmedLatch).completes(ofSeconds(20));
+    latchAssert(consumedLatch).completes(ofSeconds(20));
     client.unsubscribe(b(1));
   }
 
