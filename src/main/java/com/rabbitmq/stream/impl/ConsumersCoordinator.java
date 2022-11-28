@@ -686,8 +686,8 @@ class ConsumersCoordinator {
                 } else {
                   for (SubscriptionTracker affectedSubscription : subscriptions) {
                     ManagerPool subscriptionPool = null;
-                    boolean reassigned = false;
-                    while (!reassigned) {
+                    boolean reassignmentCompleted = false;
+                    while (!reassignmentCompleted) {
                       try {
                         if (affectedSubscription.consumer.isOpen()) {
                           Client.Broker broker = pickBroker(candidates);
@@ -715,11 +715,14 @@ class ConsumersCoordinator {
                               }
                               subscriptionPool.add(
                                   affectedSubscription, offsetSpecification, false);
-                              reassigned = true;
+                              reassignmentCompleted = true;
+                            } else {
+                              reassignmentCompleted = true;
                             }
                           }
                         } else {
                           LOGGER.debug("Not re-assigning consumer because it has been closed");
+                          reassignmentCompleted = true;
                         }
                       } catch (TimeoutStreamException e) {
                         LOGGER.debug(
@@ -740,6 +743,7 @@ class ConsumersCoordinator {
                       } catch (Exception e) {
                         LOGGER.warn(
                             "Error while re-assigning subscription from stream {}", stream, e);
+                        reassignmentCompleted = true;
                       }
                     }
                   }
