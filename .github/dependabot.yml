@@ -9,5 +9,5 @@ updates:
     open-pull-requests-limit: 20
     ignore:
       - dependency-name: "com.swiftmq:swiftmq-client"
-      - dependency-name: "org.eclipse.jetty:jetty-servlet"
-        versions: ["[10.0,)"]
+      - dependency-name: "org.springframework.boot:spring-boot-maven-plugin"
+        versions: ["[2.7,)"]
