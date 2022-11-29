@@ -13,9 +13,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
-import static com.rabbitmq.stream.impl.Utils.propagateException;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.Address;
@@ -516,7 +516,13 @@ class StreamEnvironment implements Environment {
               "committed_chunk_id", "No committed chunk ID for stream " + stream);
       return new DefaultStreamStats(firstOffsetSupplier, committedOffsetSupplier);
     } else {
-      throw propagateException(response.getResponseCode(), stream);
+      throw convertCodeToException(
+          response.getResponseCode(),
+          stream,
+          () ->
+              "Error while querying stream info: "
+                  + formatConstant(response.getResponseCode())
+                  + ".");
     }
   }
 

@@ -40,9 +40,8 @@ class MonitoringTestUtils {
     return GSON.fromJson(coordinator.toString(), type);
   }
 
-  static List<ConsumersPoolInfo> extract(ConsumersCoordinator coordinator) {
-    Type type = new TypeToken<List<ConsumersPoolInfo>>() {}.getType();
-    return GSON.fromJson(coordinator.toString(), type);
+  static ConsumerCoordinatorInfo extract(ConsumersCoordinator coordinator) {
+    return GSON.fromJson(coordinator.toString(), ConsumerCoordinatorInfo.class);
   }
 
   static EnvironmentInfo extract(Environment environment) {
@@ -65,10 +64,10 @@ class MonitoringTestUtils {
 
     private final String[] locators;
     private final ProducersPoolInfo[] producers;
-    private final ConsumersPoolInfo[] consumers;
+    private final ConsumerCoordinatorInfo consumers;
 
     public EnvironmentInfo(
-        String[] locators, ProducersPoolInfo[] producers, ConsumersPoolInfo[] consumers) {
+        String[] locators, ProducersPoolInfo[] producers, ConsumerCoordinatorInfo consumers) {
       this.locators = locators;
       this.producers = producers;
       this.consumers = consumers;
@@ -79,7 +78,7 @@ class MonitoringTestUtils {
     }
 
     public List<ConsumersPoolInfo> getConsumers() {
-      return arrayToList(this.consumers);
+      return this.consumers.consumerCoordinatorInfos();
     }
 
     public List<ProducersPoolInfo> getProducers() {
@@ -95,8 +94,30 @@ class MonitoringTestUtils {
           + ", producers="
           + Arrays.toString(producers)
           + ", consumers="
-          + Arrays.toString(consumers)
+          + consumers
           + '}';
+    }
+  }
+
+  public static class ConsumerCoordinatorInfo {
+
+    private final int subscription_count;
+    private final int pool_count;
+    private final ConsumersPoolInfo[] pools;
+
+    public ConsumerCoordinatorInfo(
+        int subscription_count, int pool_count, ConsumersPoolInfo[] pools) {
+      this.subscription_count = subscription_count;
+      this.pool_count = pool_count;
+      this.pools = pools;
+    }
+
+    boolean isEmpty() {
+      return this.pool_count == 0;
+    }
+
+    List<ConsumersPoolInfo> consumerCoordinatorInfos() {
+      return Arrays.asList(this.pools);
     }
   }
 

@@ -38,6 +38,7 @@ import java.util.function.Function;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -339,14 +340,14 @@ final class Utils {
     return versionCompare(currentVersion(brokerVersion), "3.11.0") >= 0;
   }
 
-  static StreamException propagateException(short responseCode, String stream) {
+  static StreamException convertCodeToException(
+      short responseCode, String stream, Supplier<String> fallbackMessage) {
     if (responseCode == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
       return new StreamDoesNotExistException(stream);
     } else if (responseCode == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
       return new StreamNotAvailableException(stream);
     } else {
-      String message = "Error while querying stream info: " + formatConstant(responseCode) + ".";
-      return new StreamException(message, responseCode);
+      return new StreamException(fallbackMessage.get(), responseCode);
     }
   }
 

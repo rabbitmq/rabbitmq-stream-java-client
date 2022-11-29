@@ -340,7 +340,7 @@ public class ConsumersCoordinatorTest {
                     Collections.emptyMap()))
         .isInstanceOf(StreamException.class)
         .hasMessage(exceptionMessage);
-    assertThat(MonitoringTestUtils.extract(coordinator)).isEmpty();
+    assertThat(MonitoringTestUtils.extract(coordinator).isEmpty()).isTrue();
   }
 
   @Test
@@ -1081,7 +1081,8 @@ public class ConsumersCoordinatorTest {
     verify(client, times(subscriptionCount))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
-    List<ConsumersPoolInfo> info = MonitoringTestUtils.extract(coordinator);
+    List<ConsumersPoolInfo> info =
+        MonitoringTestUtils.extract(coordinator).consumerCoordinatorInfos();
     assertThat(info)
         .hasSize(1)
         .element(0)
@@ -1093,7 +1094,7 @@ public class ConsumersCoordinatorTest {
 
     Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
 
-    info = MonitoringTestUtils.extract(coordinator);
+    info = MonitoringTestUtils.extract(coordinator).consumerCoordinatorInfos();
     assertThat(info)
         .hasSize(1)
         .element(0)
@@ -1116,7 +1117,7 @@ public class ConsumersCoordinatorTest {
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
-    info = MonitoringTestUtils.extract(coordinator);
+    info = MonitoringTestUtils.extract(coordinator).consumerCoordinatorInfos();
     assertThat(info)
         .hasSize(1)
         .element(0)
@@ -1346,7 +1347,7 @@ public class ConsumersCoordinatorTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void shouldRetryAssignmentOnManagerClientTimeout() throws Exception {
+  void shouldRetryAssignmentOnRecoveryTimeout() throws Exception {
     scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
@@ -1420,6 +1421,128 @@ public class ConsumersCoordinatorTest {
     verify(client, times(1 + 3 + 1))
         .queryOffset(
             consumerName, "stream-2"); // subscription call, times out 3 times, retry that succeeds
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void shouldRetryAssignmentOnRecoveryStreamNotAvailableFailure() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            })
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+            })
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    coordinator.subscribe(
+        consumer,
+        "stream",
+        null,
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap());
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
+
+    verify(locator, times(3)).metadata("stream");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void shouldRetryAssignmentOnRecoveryCandidateLookupFailure() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata("stream", null, replicas()))
+        .thenReturn(metadata("stream", null, replicas()))
+        .thenReturn(metadata("stream", null, null))
+        .thenReturn(metadata("stream", null, replicas()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              // first subscription
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            })
+        .thenAnswer(
+            invocation -> {
+              // on recovery, subscription fails, to trigger candidate lookup
+              subscriptionCount.incrementAndGet();
+              return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+            })
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    coordinator.subscribe(
+        consumer,
+        "stream",
+        null,
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap());
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
+
+    verify(locator, times(4)).metadata("stream");
   }
 
   @Test

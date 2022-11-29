@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.isSac;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
@@ -27,6 +28,7 @@ import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
 import com.rabbitmq.stream.impl.Client.Broker;
@@ -40,6 +42,7 @@ import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -74,6 +77,7 @@ class ConsumersCoordinator {
   private final ClientFactory clientFactory;
   private final int maxConsumersByConnection;
   private final Function<ClientConnectionType, String> connectionNamingStrategy;
+  private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
 
   ConsumersCoordinator(
       StreamEnvironment environment,
@@ -87,8 +91,11 @@ class ConsumersCoordinator {
   }
 
   private static String keyForClientSubscription(Client.Broker broker) {
-    // FIXME make sure this is a reasonable key for brokers
     return broker.getHost() + ":" + broker.getPort();
+  }
+
+  private BackOffDelayPolicy recoveryBackOffDelayPolicy() {
+    return this.environment.recoveryBackOffDelayPolicy();
   }
 
   private BackOffDelayPolicy metadataUpdateBackOffDelayPolicy() {
@@ -142,6 +149,7 @@ class ConsumersCoordinator {
       managerPool.clean();
       throw e;
     }
+    this.trackers.add(subscriptionTracker);
     return subscriptionTracker::cancel;
   }
 
@@ -206,29 +214,76 @@ class ConsumersCoordinator {
     return pools.size();
   }
 
+  private static String quote(String value) {
+    if (value == null) {
+      return "null";
+    } else {
+      return "\"" + value + "\"";
+    }
+  }
+
   @Override
   public String toString() {
-    return ("[ \n"
-        + pools.entrySet().stream()
+    StringBuilder builder = new StringBuilder("{");
+    builder.append("\"subscription_count\" : ").append(this.trackers.size()).append(",");
+    builder.append("\"subscriptions\" : [");
+    builder.append(
+        this.trackers.stream()
             .map(
-                poolEntry ->
-                    "  { \"broker\" : \""
-                        + poolEntry.getKey()
-                        + "\", \"client_count\" : "
-                        + poolEntry.getValue().managers.size()
-                        + ", \"clients\" : [ "
-                        + poolEntry.getValue().managers.stream()
-                            .map(
-                                manager ->
-                                    "{ \"consumer_count\" : "
-                                        + manager.subscriptionTrackers.stream()
-                                            .filter(Objects::nonNull)
-                                            .count()
-                                        + " }")
-                            .collect(Collectors.joining(", "))
-                        + " ] }")
-            .collect(Collectors.joining(", \n"))
-        + "\n]");
+                t -> {
+                  StringBuilder b = new StringBuilder("{");
+                  b.append(quote("stream")).append(":").append(quote(t.stream)).append(",");
+                  b.append(quote("node")).append(":");
+                  Client client = null;
+                  ClientSubscriptionsManager manager = t.manager;
+                  if (manager != null) {
+                    client = manager.client;
+                  }
+                  if (client == null) {
+                    b.append("null");
+                  } else {
+                    b.append(quote(client.getHost() + ":" + client.getPort()));
+                  }
+                  b.append(", ").append(quote("pool")).append(" : ");
+                  ManagerPool pool = null;
+                  if (manager != null) {
+                    pool = manager.owner;
+                  }
+                  if (pool == null) {
+                    b.append("null");
+                  } else {
+                    b.append(quote(pool.name));
+                  }
+                  b.append("}");
+                  return b.toString();
+                })
+            .collect(Collectors.joining(",")));
+    builder.append("],");
+    builder.append("\"pool_count\" : ").append(this.pools.size()).append(",");
+    builder.append("\"pools\" : ");
+    builder.append(
+        "[ \n"
+            + pools.entrySet().stream()
+                .map(
+                    poolEntry ->
+                        "  { \"broker\" : \""
+                            + poolEntry.getKey()
+                            + "\", \"client_count\" : "
+                            + poolEntry.getValue().managers.size()
+                            + ", \"clients\" : [ "
+                            + poolEntry.getValue().managers.stream()
+                                .map(
+                                    manager ->
+                                        "{ \"consumer_count\" : "
+                                            + manager.subscriptionTrackers.stream()
+                                                .filter(Objects::nonNull)
+                                                .count()
+                                            + " }")
+                                .collect(Collectors.joining(", "))
+                            + " ] }")
+                .collect(Collectors.joining(", \n"))
+            + "\n]}");
+    return builder.toString();
   }
 
   /**
@@ -426,9 +481,9 @@ class ConsumersCoordinator {
           pickedManager.add(subscriptionTracker, offsetSpecification, isInitialSubscription);
         } catch (IllegalStateException e) {
           pickedManager = null;
-        } catch (TimeoutStreamException | ClientClosedException e) {
-          // it's very likely the manager connection is dead
-          // scheduling its closing in another thread to avoid blocking this one
+        } catch (TimeoutStreamException | ClientClosedException | StreamNotAvailableException e) {
+          // manager connection is dead or stream not available
+          // scheduling manager closing if necessary in another thread to avoid blocking this one
           if (pickedManager.isEmpty()) {
             ClientSubscriptionsManager manager = pickedManager;
             ConsumersCoordinator.this.environment.execute(
@@ -590,8 +645,7 @@ class ConsumersCoordinator {
                                 assignConsumersToStream(
                                     trackersToReAssign,
                                     stream,
-                                    attempt ->
-                                        environment.recoveryBackOffDelayPolicy().delay(attempt),
+                                    recoveryBackOffDelayPolicy(),
                                     false);
                               }
                             }
@@ -763,13 +817,16 @@ class ConsumersCoordinator {
             subscriptionPool =
                 pools.computeIfAbsent(
                     key,
-                    s ->
-                        new ManagerPool(
-                            key,
-                            environment
-                                .clientParametersCopy()
-                                .host(broker.getHost())
-                                .port(broker.getPort())));
+                    s -> {
+                      LOGGER.debug(
+                          "Creating new connection pool {} to consume from {}", key, stream);
+                      return new ManagerPool(
+                          key,
+                          environment
+                              .clientParametersCopy()
+                              .host(broker.getHost())
+                              .port(broker.getPort()));
+                    });
             synchronized (affectedSubscription.consumer) {
               if (affectedSubscription.consumer.isOpen()) {
                 OffsetSpecification offsetSpecification;
@@ -788,9 +845,10 @@ class ConsumersCoordinator {
             LOGGER.debug("Not re-assigning consumer because it has been closed");
             reassignmentCompleted = true;
           }
-        } catch (TimeoutStreamException | ClientClosedException e) {
+        } catch (TimeoutStreamException | ClientClosedException | StreamNotAvailableException e) {
           LOGGER.debug(
-              "Consumer {} re-assignment on stream {} timed out or connection closed, refreshing candidates and retrying",
+              "Consumer {} re-assignment on stream {} timed out or connection closed or stream not available, "
+                  + "refreshing candidates and retrying",
               affectedSubscription.consumer.id(),
               affectedSubscription.stream);
           if (subscriptionPool != null) {
@@ -801,6 +859,7 @@ class ConsumersCoordinator {
               callAndMaybeRetry(
                   () -> findBrokersForStream(stream),
                   ex -> !(ex instanceof StreamDoesNotExistException),
+                  environment.recoveryBackOffDelayPolicy(),
                   "Candidate lookup to consume from '%s'",
                   stream);
 
@@ -921,7 +980,9 @@ class ConsumersCoordinator {
                   + " failed with code "
                   + formatConstant(subscribeResponse.getResponseCode());
           LOGGER.debug(message);
-          throw new StreamException(message);
+          throw convertCodeToException(
+              subscribeResponse.getResponseCode(), subscriptionTracker.stream, () -> message);
+          //          throw new StreamException(message);
         }
       } catch (RuntimeException e) {
         subscriptionTracker.assign((byte) -1, null);
@@ -1076,16 +1137,35 @@ class ConsumersCoordinator {
 
   static <T> T callAndMaybeRetry(
       Supplier<T> operation, Predicate<Exception> retryCondition, String format, Object... args) {
+    return callAndMaybeRetry(operation, retryCondition, i -> Duration.ZERO, format, args);
+  }
+
+  static <T> T callAndMaybeRetry(
+      Supplier<T> operation,
+      Predicate<Exception> retryCondition,
+      BackOffDelayPolicy delayPolicy,
+      String format,
+      Object... args) {
     String description = format(format, args);
     int attempt = 0;
-    RuntimeException lastException = null;
+    Exception lastException = null;
     while (attempt++ < 3) {
       try {
         return operation.get();
-      } catch (RuntimeException e) {
+      } catch (Exception e) {
         lastException = e;
         if (retryCondition.test(e)) {
-          LOGGER.debug("Operation '{}' timed out, retrying...", description);
+          LOGGER.debug("Operation '{}' failed, retrying...", description);
+          Duration delay = delayPolicy.delay(attempt - 1);
+          if (!delay.isZero()) {
+            try {
+              Thread.sleep(delay.toMillis());
+            } catch (InterruptedException ex) {
+              Thread.interrupted();
+              lastException = ex;
+              break;
+            }
+          }
         } else {
           break;
         }
@@ -1096,8 +1176,10 @@ class ConsumersCoordinator {
     LOGGER.debug(message);
     if (lastException == null) {
       throw new StreamException(message);
+    } else if (lastException instanceof RuntimeException) {
+      throw (RuntimeException) lastException;
     } else {
-      throw lastException;
+      throw new StreamException(message, lastException);
     }
   }
 
