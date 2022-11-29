@@ -137,7 +137,7 @@ public class StreamPerfTestTest {
 
   private void waitRunEnds(int expectedExitCode) throws Exception {
     waitAtMost(
-        20,
+        Duration.ofSeconds(30),
         () -> exitCode.get() == expectedExitCode,
         () -> "Expected " + expectedExitCode + " exit code, got " + exitCode.get());
   }
@@ -544,7 +544,12 @@ public class StreamPerfTestTest {
 
   static class ArgumentsBuilder {
 
-    private final Map<String, String> arguments = new HashMap<>();
+    private final Map<String, String> arguments =
+        new HashMap<String, String>() {
+          {
+            put("rpc-timeout", "20");
+          }
+        };
 
     ArgumentsBuilder uris(String url) {
       arguments.put("uris", url);

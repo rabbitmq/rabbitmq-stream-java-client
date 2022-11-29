@@ -16,7 +16,6 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.Utils.TRUST_EVERYTHING_TRUST_MANAGER;
-import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -149,7 +148,7 @@ public class TlsTest {
   }
 
   @Test
-  void publishAndConsumeWithUnverifiedConnection() throws Exception {
+  void publishAndConsumeWithUnverifiedConnection() {
     int publishCount = 1_000_000;
 
     CountDownLatch consumedLatch = new CountDownLatch(publishCount);
@@ -196,8 +195,8 @@ public class TlsTest {
             })
         .start();
 
-    latchAssert(confirmedLatch).completes(ofSeconds(20));
-    latchAssert(consumedLatch).completes(ofSeconds(20));
+    latchAssert(confirmedLatch).completes();
+    latchAssert(consumedLatch).completes();
     client.unsubscribe(b(1));
   }
 

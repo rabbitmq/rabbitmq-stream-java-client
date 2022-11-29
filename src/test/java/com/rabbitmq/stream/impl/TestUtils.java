@@ -89,12 +89,12 @@ public final class TestUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TestUtils.class);
 
-  private static final Duration DEFAULT_CONDITION_TIMEOUT = Duration.ofSeconds(10);
+  private static final Duration DEFAULT_CONDITION_TIMEOUT = Duration.ofSeconds(20);
 
   private TestUtils() {}
 
   public static Duration waitAtMost(CallableBooleanSupplier condition) throws Exception {
-    return waitAtMost(10, condition, null);
+    return waitAtMost(DEFAULT_CONDITION_TIMEOUT, condition, null);
   }
 
   public static Duration waitAtMost(CallableBooleanSupplier condition, Supplier<String> message)
@@ -841,7 +841,7 @@ public final class TestUtils {
 
   static class CountDownLatchAssert implements AssertDelegateTarget {
 
-    private static final Duration TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration TIMEOUT = DEFAULT_CONDITION_TIMEOUT;
 
     private final CountDownLatch latch;
 

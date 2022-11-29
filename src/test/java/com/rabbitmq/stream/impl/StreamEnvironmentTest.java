@@ -235,7 +235,7 @@ public class StreamEnvironmentTest {
     int producersCount = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT * 3 + 10;
     int consumersCount = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT * 2 + 10;
 
-    try (Environment environment = environmentBuilder.build()) {
+    try (Environment environment = environmentBuilder.rpcTimeout(Duration.ofSeconds(20)).build()) {
       List<String> streams =
           IntStream.range(0, streamCount)
               .mapToObj(i -> streamName(info))
@@ -286,8 +286,8 @@ public class StreamEnvironmentTest {
                         });
               });
 
-      assertThat(confirmLatch.await(10, SECONDS)).isTrue();
-      assertThat(consumeLatch.await(10, SECONDS)).isTrue();
+      latchAssert(confirmLatch).completes();
+      latchAssert(consumeLatch).completes();
 
       EnvironmentInfo environmentInfo = MonitoringTestUtils.extract(environment);
       assertThat(environmentInfo.getProducers()).hasSize(1);
