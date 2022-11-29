@@ -34,6 +34,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -191,7 +192,9 @@ public class StreamEnvironmentUnitTest {
     AtomicInteger counter = new AtomicInteger();
     int result =
         StreamEnvironment.locatorOperation(
-            c -> counter.incrementAndGet(), () -> null, BackOffDelayPolicy.fixed(Duration.ZERO));
+            c -> counter.incrementAndGet(),
+            CLIENT_SUPPLIER,
+            BackOffDelayPolicy.fixed(Duration.ZERO));
     assertThat(result).isEqualTo(1);
   }
 
@@ -207,7 +210,7 @@ public class StreamEnvironmentUnitTest {
                 return counter.get();
               }
             },
-            () -> null,
+            CLIENT_SUPPLIER,
             BackOffDelayPolicy.fixed(Duration.ofMillis(10)));
     assertThat(result).isEqualTo(2);
   }
@@ -222,7 +225,7 @@ public class StreamEnvironmentUnitTest {
                       counter.incrementAndGet();
                       throw new LocatorNotAvailableException();
                     },
-                    () -> null,
+                    CLIENT_SUPPLIER,
                     BackOffDelayPolicy.fixed(Duration.ofMillis(10))))
         .isInstanceOf(LocatorNotAvailableException.class);
     assertThat(counter).hasValue(3);
@@ -242,7 +245,7 @@ public class StreamEnvironmentUnitTest {
                       latch.countDown();
                       throw new LocatorNotAvailableException();
                     },
-                    () -> null,
+                    CLIENT_SUPPLIER,
                     BackOffDelayPolicy.fixed(Duration.ofMinutes(10)));
               } catch (StreamException e) {
                 exception.set(e);
@@ -268,9 +271,11 @@ public class StreamEnvironmentUnitTest {
                       counter.incrementAndGet();
                       throw new RuntimeException();
                     },
-                    () -> null,
+                    CLIENT_SUPPLIER,
                     BackOffDelayPolicy.fixed(Duration.ofMillis(10))))
         .isInstanceOf(RuntimeException.class);
     assertThat(counter).hasValue(1);
   }
+
+  private static final Supplier<Client> CLIENT_SUPPLIER = () -> mock(Client.class);
 }

@@ -482,6 +482,7 @@ public class StreamConsumerTest {
       java.util.function.Consumer<Object> disruption, TestInfo info) throws Exception {
     String s = streamName(info);
     environment.streamCreator().stream(s).create();
+    StreamConsumer consumer = null;
     try {
       int messageCount = 10_000;
       CountDownLatch publishLatch = new CountDownLatch(messageCount);
@@ -499,7 +500,7 @@ public class StreamConsumerTest {
       AtomicInteger receivedMessageCount = new AtomicInteger(0);
       CountDownLatch consumeLatch = new CountDownLatch(messageCount);
       CountDownLatch consumeLatchSecondWave = new CountDownLatch(messageCount * 2);
-      StreamConsumer consumer =
+      consumer =
           (StreamConsumer)
               environment.consumerBuilder().stream(s)
                   .offset(OffsetSpecification.first())
@@ -519,7 +520,7 @@ public class StreamConsumerTest {
 
       Client client = cf.get();
       TestUtils.waitAtMost(
-          10,
+          recoveryInitialDelay.plusSeconds(2),
           () -> {
             Client.StreamMetadata metadata = client.metadata(s).get(s);
             return metadata.getLeader() != null || !metadata.getReplicas().isEmpty();
@@ -537,13 +538,15 @@ public class StreamConsumerTest {
       assertThat(publishLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
       producerSecondWave.close();
 
-      assertThat(consumeLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+      latchAssert(consumeLatchSecondWave).completes(recoveryInitialDelay.plusSeconds(2));
       assertThat(receivedMessageCount.get())
           .isBetween(messageCount * 2, messageCount * 2 + 1); // there can be a duplicate
       assertThat(consumer.isOpen()).isTrue();
 
-      consumer.close();
     } finally {
+      if (consumer != null) {
+        consumer.close();
+      }
       environment.deleteStream(s);
     }
   }

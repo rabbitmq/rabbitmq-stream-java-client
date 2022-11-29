@@ -695,7 +695,13 @@ class StreamEnvironment implements Environment {
     long start = System.nanoTime();
     while (attempt < maxAttempt) {
       try {
-        result = operation.apply(clientSupplier.get());
+        Client client = clientSupplier.get();
+        LOGGER.debug(
+            "Using locator on {}:{} to run operation '{}'",
+            client.getHost(),
+            client.getPort(),
+            operation);
+        result = operation.apply(client);
         LOGGER.debug(
             "Locator operation '{}' succeeded in {}",
             operation,

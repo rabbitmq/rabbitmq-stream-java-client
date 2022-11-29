@@ -20,4 +20,8 @@ class TimeoutStreamException extends StreamException {
   public TimeoutStreamException(String message) {
     super(message);
   }
+
+  public TimeoutStreamException(String message, Throwable cause) {
+    super(message, cause);
+  }
 }

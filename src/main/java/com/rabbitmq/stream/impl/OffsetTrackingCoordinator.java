@@ -90,7 +90,8 @@ class OffsetTrackingCoordinator {
                           try {
                             this.clock.setTime(System.nanoTime());
                             LOGGER.debug(
-                                "Background offset tracking flushing, {} tracker(s) to check");
+                                "Background offset tracking flushing, {} tracker(s) to check",
+                                this.trackers.size());
                             Iterator<Tracker> iterator = trackers.iterator();
                             while (iterator.hasNext()) {
                               if (Thread.currentThread().isInterrupted()) {

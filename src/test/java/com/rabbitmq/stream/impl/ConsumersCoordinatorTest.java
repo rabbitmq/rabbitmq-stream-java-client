@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -146,6 +147,7 @@ public class ConsumersCoordinatorTest {
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.addressResolver()).thenReturn(address -> address);
     when(client.brokerVersion()).thenReturn("3.11.0");
+    when(client.isOpen()).thenReturn(true);
 
     coordinator =
         new ConsumersCoordinator(
@@ -584,6 +586,69 @@ public class ConsumersCoordinatorTest {
     messageListener.handle(
         subscriptionIdCaptor.getValue(), 0, 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
+  }
+
+  @Test
+  void shouldSkipRecoveryIfRecoveryIsAlreadyInProgress() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return new Client.Response(Constants.RESPONSE_CODE_OK);
+            });
+
+    String trackingReference = "reference";
+
+    when(client.queryOffset(trackingReference, "stream"))
+        .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, 0L)) // first subscription
+        .thenAnswer(
+            invocation -> {
+              // during recovery, we trigger another disconnection
+              shutdownListener.handle(
+                  new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+              Thread.sleep(retryDelay.multipliedBy(3).toMillis());
+              throw new TimeoutStreamException("");
+            })
+        .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, 0L));
+
+    AtomicInteger messageHandlerCalls = new AtomicInteger();
+    coordinator.subscribe(
+        consumer,
+        "stream",
+        OffsetSpecification.first(),
+        trackingReference,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> messageHandlerCalls.incrementAndGet(),
+        Collections.emptyMap());
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(
+        () -> subscriptionCount.get() == 1 + 1,
+        () -> format("Subscription count is %s", subscriptionCount.get()));
+
+    verify(consumer, times(1)).setSubscriptionClient(isNull());
+    verify(client, times(1 + 1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
   }
 
   @Test
@@ -1317,38 +1382,34 @@ public class ConsumersCoordinatorTest {
               return new Client.Response(Constants.RESPONSE_CODE_OK);
             });
 
-    Runnable closingRunnable1 =
-        coordinator.subscribe(
-            consumer,
-            "stream-1",
-            null,
-            consumerName,
-            NO_OP_SUBSCRIPTION_LISTENER,
-            NO_OP_TRACKING_CLOSING_CALLBACK,
-            (offset, message) -> {},
-            Collections.emptyMap());
+    coordinator.subscribe(
+        consumer,
+        "stream-1",
+        null,
+        consumerName,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap());
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
-    Runnable closingRunnable2 =
-        coordinator.subscribe(
-            consumer,
-            "stream-2",
-            null,
-            consumerName,
-            NO_OP_SUBSCRIPTION_LISTENER,
-            NO_OP_TRACKING_CLOSING_CALLBACK,
-            (offset, message) -> {},
-            Collections.emptyMap());
+    coordinator.subscribe(
+        consumer,
+        "stream-2",
+        null,
+        consumerName,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap());
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     this.shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
-
-    Thread.sleep(retryDelay.toMillis() * 5);
 
     waitAtMost(() -> subscriptionCount.get() == (1 + 1) * 2);
 

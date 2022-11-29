@@ -86,6 +86,7 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
+import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -324,6 +325,13 @@ public class Client implements AutoCloseable {
       this.host = parameters.host;
       this.port = parameters.port;
     } catch (Exception e) {
+      if (e instanceof ConnectTimeoutException) {
+        throw new TimeoutStreamException(
+            String.format(
+                "Error while creating stream connection to %s:%d",
+                parameters.host, parameters.port),
+            e);
+      }
       throw new StreamException(e);
     }
 
