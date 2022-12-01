@@ -211,6 +211,7 @@ class StreamEnvironment implements Environment {
       executorService = scheduledExecutorService;
       this.privateScheduleExecutorService = false;
     }
+    // TODO remove executor wrapper (it's here just for debugging)
     this.scheduledExecutorService = new ScheduledExecutorServiceWrapper(executorService);
 
     this.producersCoordinator =

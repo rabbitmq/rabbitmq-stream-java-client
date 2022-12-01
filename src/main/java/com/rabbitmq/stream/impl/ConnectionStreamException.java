@@ -13,13 +13,15 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-class TimeoutStreamException extends ConnectionStreamException {
+import com.rabbitmq.stream.StreamException;
 
-  public TimeoutStreamException(String message) {
+class ConnectionStreamException extends StreamException {
+
+  public ConnectionStreamException(String message) {
     super(message);
   }
 
-  public TimeoutStreamException(String message, Throwable cause) {
+  public ConnectionStreamException(String message, Throwable cause) {
     super(message, cause);
   }
 }

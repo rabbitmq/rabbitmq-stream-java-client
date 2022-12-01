@@ -47,6 +47,7 @@ import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamStats;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
+import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerCoordinatorInfo;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
@@ -211,14 +212,10 @@ public class StreamEnvironmentTest {
         .isEqualTo(2);
     assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getTrackingConsumerCount())
         .isEqualTo(2);
-    assertThat(environmentInfo.getConsumers())
-        .hasSize(1)
-        .element(0)
-        .extracting(pool -> pool.getClients())
-        .asList()
-        .hasSize(1);
-    assertThat(environmentInfo.getConsumers().get(0).getClients().get(0).getConsumerCount())
-        .isEqualTo(2);
+    ConsumerCoordinatorInfo consumerInfo = environmentInfo.getConsumers();
+    assertThat(consumerInfo.nodesConnected()).hasSize(1);
+    assertThat(consumerInfo.clients()).hasSize(1);
+    assertThat(consumerInfo.consumerCount()).isEqualTo(2);
 
     environment.close();
 
@@ -228,7 +225,7 @@ public class StreamEnvironmentTest {
     environmentInfo = MonitoringTestUtils.extract(environment);
     assertThat(environmentInfo.getLocators()).isNotEmpty();
     assertThat(environmentInfo.getProducers()).isEmpty();
-    assertThat(environmentInfo.getConsumers()).isEmpty();
+    assertThat(environmentInfo.getConsumers().clients()).isEmpty();
   }
 
   @Test
@@ -296,8 +293,9 @@ public class StreamEnvironmentTest {
       assertThat(environmentInfo.getProducers()).hasSize(1);
       int producerManagerCount = environmentInfo.getProducers().get(0).getClients().size();
       assertThat(producerManagerCount).isPositive();
-      assertThat(environmentInfo.getConsumers()).hasSize(1);
-      int consumerManagerCount = environmentInfo.getConsumers().get(0).getClients().size();
+      ConsumerCoordinatorInfo consumerInfo = environmentInfo.getConsumers();
+      assertThat(consumerInfo.nodesConnected()).hasSize(1);
+      int consumerManagerCount = consumerInfo.clients().size();
       assertThat(consumerManagerCount).isPositive();
 
       java.util.function.Consumer<AutoCloseable> closing =
@@ -325,9 +323,9 @@ public class StreamEnvironmentTest {
       assertThat(environmentInfo.getProducers()).hasSize(1);
       assertThat(environmentInfo.getProducers().get(0).getClients())
           .hasSizeLessThan(producerManagerCount);
-      assertThat(environmentInfo.getConsumers()).hasSize(1);
-      assertThat(environmentInfo.getConsumers().get(0).getClients())
-          .hasSizeLessThan(consumerManagerCount);
+      consumerInfo = environmentInfo.getConsumers();
+      assertThat(consumerInfo.nodesConnected()).hasSize(1);
+      assertThat(consumerInfo.clients()).hasSizeLessThan(consumerManagerCount);
 
       producers.forEach(closing);
       consumers.forEach(closing);

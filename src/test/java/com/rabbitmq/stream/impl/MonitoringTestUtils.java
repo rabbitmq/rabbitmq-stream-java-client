@@ -22,6 +22,8 @@ import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 class MonitoringTestUtils {
 
@@ -77,8 +79,8 @@ class MonitoringTestUtils {
       return locators;
     }
 
-    public List<ConsumersPoolInfo> getConsumers() {
-      return this.consumers.consumerCoordinatorInfos();
+    public ConsumerCoordinatorInfo getConsumers() {
+      return this.consumers;
     }
 
     public List<ProducersPoolInfo> getProducers() {
@@ -102,67 +104,40 @@ class MonitoringTestUtils {
   public static class ConsumerCoordinatorInfo {
 
     private final int subscription_count;
-    private final int pool_count;
-    private final ConsumersPoolInfo[] pools;
-
-    public ConsumerCoordinatorInfo(
-        int subscription_count, int pool_count, ConsumersPoolInfo[] pools) {
-      this.subscription_count = subscription_count;
-      this.pool_count = pool_count;
-      this.pools = pools;
-    }
-
-    boolean isEmpty() {
-      return this.pool_count == 0;
-    }
-
-    List<ConsumersPoolInfo> consumerCoordinatorInfos() {
-      return Arrays.asList(this.pools);
-    }
-  }
-
-  public static class ConsumersPoolInfo {
-
-    private final String broker;
     private final ConsumerManager[] clients;
 
-    public ConsumersPoolInfo(String broker, ConsumerManager[] clients) {
-      this.broker = broker;
+    public ConsumerCoordinatorInfo(int subscription_count, ConsumerManager[] clients) {
+      this.subscription_count = subscription_count;
       this.clients = clients;
     }
 
-    public String getBroker() {
-      return broker;
+    boolean isEmpty() {
+      return this.clients.length == 0;
     }
 
-    public List<ConsumerManager> getClients() {
-      return arrayToList(this.clients);
+    Set<String> nodesConnected() {
+      return Arrays.stream(this.clients).map(m -> m.node).collect(Collectors.toSet());
     }
 
-    public int consumerCount() {
-      return getClients().stream()
-          .map(manager -> manager.getConsumerCount())
-          .reduce(0, (acc, count) -> acc + count);
+    List<ConsumerManager> clients() {
+      return Arrays.asList(this.clients);
     }
 
-    @Override
-    public String toString() {
-      return "ConsumerPoolInfo{"
-          + "broker='"
-          + broker
-          + '\''
-          + ", clients="
-          + Arrays.toString(clients)
-          + '}';
+    int consumerCount() {
+      return Arrays.stream(this.clients).mapToInt(ConsumerManager::getConsumerCount).sum();
     }
   }
 
   public static class ConsumerManager {
 
+    private final long id;
+    private final String node;
     private final int consumer_count;
 
-    public ConsumerManager(int consumerCount) {
-      this.consumer_count = consumerCount;
+    public ConsumerManager(long id, String node, int consumer_count) {
+      this.id = id;
+      this.node = node;
+      this.consumer_count = consumer_count;
     }
 
     public int getConsumerCount() {
@@ -171,7 +146,15 @@ class MonitoringTestUtils {
 
     @Override
     public String toString() {
-      return "ConsumerManager{" + "consumerCount=" + consumer_count + '}';
+      return "ConsumerManager{"
+          + "id="
+          + id
+          + ", node='"
+          + node
+          + '\''
+          + ", consumer_count="
+          + consumer_count
+          + '}';
     }
   }
 

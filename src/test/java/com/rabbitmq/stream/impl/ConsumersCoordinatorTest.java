@@ -43,7 +43,7 @@ import com.rabbitmq.stream.codec.WrapperMessageBuilder;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.Response;
-import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumersPoolInfo;
+import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerCoordinatorInfo;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -728,17 +728,18 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
-    lastMessageListener()
-        .handle(
-            subscriptionIdCaptor.getAllValues().get(0),
-            0,
-            0,
-            0,
-            new WrapperMessageBuilder().build());
+    // listener is per manager (connection), so it can have been disposed of,
+    // depending on which replica is chosen
+    // we dispatch to all of them, we should have only one subscription active
+    // we use the latest subscription ID though
+    this.messageListeners.forEach(
+        l -> {
+          l.handle(subscriptionIdCaptor.getValue(), 0, 0, 0, new WrapperMessageBuilder().build());
+        });
+
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
-        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+    when(client.unsubscribe(subscriptionIdCaptor.getValue())).thenReturn(responseOk());
 
     closingRunnable.run();
     verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
@@ -747,7 +748,7 @@ public class ConsumersCoordinatorTest {
         .handle(subscriptionIdCaptor.getValue(), 0, 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    assertThat(coordinator.poolSize()).isZero();
+    assertThat(coordinator.managerCount()).isZero();
   }
 
   @Test
@@ -764,13 +765,18 @@ public class ConsumersCoordinatorTest {
         .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
     when(client.subscribe(
             subscriptionIdCaptor.capture(),
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
             anyMap()))
-        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+        .then(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     Runnable closingRunnable =
@@ -794,7 +800,7 @@ public class ConsumersCoordinatorTest {
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-    Thread.sleep(delayPolicy.delay(0).toMillis() + delayPolicy.delay(1).toMillis() * 5);
+    waitAtMost(() -> subscriptionCount.get() == 2);
 
     verify(client, times(2))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -814,7 +820,7 @@ public class ConsumersCoordinatorTest {
         subscriptionIdCaptor.getValue(), 0, 0, 0, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    assertThat(coordinator.poolSize()).isZero();
+    assertThat(coordinator.managerCount()).isZero();
   }
 
   @Test
@@ -865,7 +871,7 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
     verify(client, times(0)).unsubscribe(anyByte());
 
-    assertThat(coordinator.poolSize()).isZero();
+    assertThat(coordinator.managerCount()).isZero();
   }
 
   @Test
@@ -917,7 +923,7 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
     verify(client, times(0)).unsubscribe(anyByte());
 
-    assertThat(coordinator.poolSize()).isZero();
+    assertThat(coordinator.managerCount()).isZero();
   }
 
   @Test
@@ -1081,28 +1087,21 @@ public class ConsumersCoordinatorTest {
     verify(client, times(subscriptionCount))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
-    List<ConsumersPoolInfo> info =
-        MonitoringTestUtils.extract(coordinator).consumerCoordinatorInfos();
-    assertThat(info)
-        .hasSize(1)
-        .element(0)
-        .extracting(pool -> pool.consumerCount())
-        .isEqualTo(subscriptionCount);
+    ConsumerCoordinatorInfo info = MonitoringTestUtils.extract(coordinator);
+    assertThat(info.nodesConnected());
+    assertThat(info.consumerCount()).isEqualTo(subscriptionCount);
 
-    // let's kill the first client connection
+    // let's make the stream unavailable on the first manager
     metadataListeners.get(0).handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
     Thread.sleep(delayPolicy.delay(0).toMillis() * 5);
 
-    info = MonitoringTestUtils.extract(coordinator).consumerCoordinatorInfos();
-    assertThat(info)
-        .hasSize(1)
-        .element(0)
-        .extracting(pool -> pool.consumerCount())
-        .isEqualTo(subscriptionCount);
+    info = MonitoringTestUtils.extract(coordinator);
+    assertThat(info.nodesConnected()).hasSize(1);
+    assertThat(info.consumerCount()).isEqualTo(subscriptionCount);
 
-    // the MAX consumers must have been re-allocated to the existing client and a new one
-    // let's add a new subscription to make sure we are still using the same pool
+    // the MAX consumers must have been re-allocated to the initial client because it's not closed
+    // let's add a new subscription to make sure we are still using the second client
     coordinator.subscribe(
         consumer,
         "stream",
@@ -1113,16 +1112,14 @@ public class ConsumersCoordinatorTest {
         (offset, message) -> {},
         Collections.emptyMap());
 
-    verify(clientFactory, times(2 + 1)).client(any());
+    // no more client creation
+    verify(clientFactory, times(2)).client(any());
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
-    info = MonitoringTestUtils.extract(coordinator).consumerCoordinatorInfos();
-    assertThat(info)
-        .hasSize(1)
-        .element(0)
-        .extracting(pool -> pool.consumerCount())
-        .isEqualTo(subscriptionCount + 1);
+    info = MonitoringTestUtils.extract(coordinator);
+    assertThat(info.nodesConnected()).hasSize(1);
+    assertThat(info.consumerCount()).isEqualTo(subscriptionCount + 1);
   }
 
   @ParameterizedTest
