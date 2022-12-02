@@ -723,6 +723,9 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
       throw new StreamException(e);
@@ -744,6 +747,9 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
       throw new StreamException(e);
@@ -2047,6 +2053,10 @@ public class Client implements AutoCloseable {
     @Override
     public int hashCode() {
       return Objects.hash(host, port);
+    }
+
+    String label() {
+      return this.host + ":" + this.port;
     }
   }
 

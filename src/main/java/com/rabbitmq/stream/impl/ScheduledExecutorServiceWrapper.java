@@ -106,7 +106,7 @@ class ScheduledExecutorServiceWrapper implements ScheduledExecutorService {
   public ScheduledFuture<?> scheduleAtFixedRate(
       Runnable command, long initialDelay, long period, TimeUnit unit) {
     // we don't track these, because they are expected to run for a long time
-    LOGGER.debug("Registering scheduled at fixed rate task '%s'", command.toString());
+    LOGGER.debug("Registering scheduled at fixed rate task '{}'", command.toString());
     return this.delegate.scheduleAtFixedRate(command, initialDelay, period, unit);
   }
 

@@ -13,7 +13,10 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static java.lang.String.format;
+
 import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -158,6 +161,54 @@ final class Utils {
 
   static <T, R> Function<T, R> namedFunction(Function<T, R> task, String format, Object... args) {
     return new NamedFunction<>(String.format(format, args), task);
+  }
+
+  static <T> T callAndMaybeRetry(
+      Supplier<T> operation, Predicate<Exception> retryCondition, String format, Object... args) {
+    return callAndMaybeRetry(operation, retryCondition, i -> Duration.ZERO, format, args);
+  }
+
+  static <T> T callAndMaybeRetry(
+      Supplier<T> operation,
+      Predicate<Exception> retryCondition,
+      BackOffDelayPolicy delayPolicy,
+      String format,
+      Object... args) {
+    String description = format(format, args);
+    int attempt = 0;
+    Exception lastException = null;
+    while (attempt++ < 3) {
+      try {
+        return operation.get();
+      } catch (Exception e) {
+        lastException = e;
+        if (retryCondition.test(e)) {
+          LOGGER.debug("Operation '{}' failed, retrying...", description);
+          Duration delay = delayPolicy.delay(attempt - 1);
+          if (!delay.isZero()) {
+            try {
+              Thread.sleep(delay.toMillis());
+            } catch (InterruptedException ex) {
+              Thread.interrupted();
+              lastException = ex;
+              break;
+            }
+          }
+        } else {
+          break;
+        }
+      }
+    }
+    String message =
+        format("Could not complete task '%s' after %d attempt(s)", description, --attempt);
+    LOGGER.debug(message);
+    if (lastException == null) {
+      throw new StreamException(message);
+    } else if (lastException instanceof RuntimeException) {
+      throw (RuntimeException) lastException;
+    } else {
+      throw new StreamException(message, lastException);
+    }
   }
 
   interface ClientFactory {

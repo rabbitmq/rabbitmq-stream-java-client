@@ -13,14 +13,11 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Producer;
-import java.lang.reflect.Type;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -29,17 +26,8 @@ class MonitoringTestUtils {
 
   private static final Gson GSON = new Gson();
 
-  private static <T> List<T> arrayToList(T[] array) {
-    if (array == null || array.length == 0) {
-      return Collections.emptyList();
-    } else {
-      return Arrays.asList(array);
-    }
-  }
-
-  static List<ProducersPoolInfo> extract(ProducersCoordinator coordinator) {
-    Type type = new TypeToken<List<ProducersPoolInfo>>() {}.getType();
-    return GSON.fromJson(coordinator.toString(), type);
+  static ProducersCoordinatorInfo extract(ProducersCoordinator coordinator) {
+    return GSON.fromJson(coordinator.toString(), ProducersCoordinatorInfo.class);
   }
 
   static ConsumerCoordinatorInfo extract(ConsumersCoordinator coordinator) {
@@ -65,11 +53,11 @@ class MonitoringTestUtils {
   public static class EnvironmentInfo {
 
     private final String[] locators;
-    private final ProducersPoolInfo[] producers;
+    private final ProducersCoordinatorInfo producers;
     private final ConsumerCoordinatorInfo consumers;
 
     public EnvironmentInfo(
-        String[] locators, ProducersPoolInfo[] producers, ConsumerCoordinatorInfo consumers) {
+        String[] locators, ProducersCoordinatorInfo producers, ConsumerCoordinatorInfo consumers) {
       this.locators = locators;
       this.producers = producers;
       this.consumers = consumers;
@@ -83,8 +71,8 @@ class MonitoringTestUtils {
       return this.consumers;
     }
 
-    public List<ProducersPoolInfo> getProducers() {
-      return arrayToList(this.producers);
+    public ProducersCoordinatorInfo getProducers() {
+      return this.producers;
     }
 
     @Override
@@ -94,7 +82,7 @@ class MonitoringTestUtils {
           + Arrays.toString(locators)
           + '\''
           + ", producers="
-          + Arrays.toString(producers)
+          + producers
           + ", consumers="
           + consumers
           + '}';
@@ -158,42 +146,51 @@ class MonitoringTestUtils {
     }
   }
 
-  public static class ProducersPoolInfo {
+  public static class ProducersCoordinatorInfo {
 
-    private final String broker;
+    private final int client_count;
+    private final int producer_count;
+    private final int tracking_consumer_count;
     private final ProducerManager[] clients;
 
-    public ProducersPoolInfo(String broker, ProducerManager[] clients) {
-      this.broker = broker;
+    public ProducersCoordinatorInfo(
+        int client_count,
+        int producer_count,
+        int tracking_consumer_count,
+        ProducerManager[] clients) {
+      this.client_count = client_count;
+      this.producer_count = producer_count;
+      this.tracking_consumer_count = tracking_consumer_count;
       this.clients = clients;
     }
 
-    public String getBroker() {
-      return broker;
+    int clientCount() {
+      return this.client_count;
     }
 
-    public List<ProducerManager> getClients() {
-      return arrayToList(this.clients);
+    int producerCount() {
+      return this.producer_count;
     }
 
-    @Override
-    public String toString() {
-      return "ProducersPoolInfo{"
-          + "broker='"
-          + broker
-          + '\''
-          + ", clients="
-          + Arrays.toString(clients)
-          + '}';
+    int trackingConsumerCount() {
+      return this.tracking_consumer_count;
+    }
+
+    Set<String> nodesConnected() {
+      return Arrays.stream(this.clients).map(m -> m.node).collect(Collectors.toSet());
     }
   }
 
   public static class ProducerManager {
 
+    private final long id;
+    private final String node;
     private final int producer_count;
     private final int tracking_consumer_count;
 
-    public ProducerManager(int producerCount, int tracking_consumer_count) {
+    public ProducerManager(long id, String node, int producerCount, int tracking_consumer_count) {
+      this.id = id;
+      this.node = node;
       this.producer_count = producerCount;
       this.tracking_consumer_count = tracking_consumer_count;
     }

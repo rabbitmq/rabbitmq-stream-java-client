@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,14 +13,19 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.callAndMaybeRetry;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
+import static java.util.stream.Collectors.toSet;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
+import com.rabbitmq.stream.impl.Client.Broker;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.MetadataListener;
 import com.rabbitmq.stream.impl.Client.PublishConfirmListener;
 import com.rabbitmq.stream.impl.Client.PublishErrorListener;
@@ -30,15 +35,19 @@ import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.Collection;
-import java.util.List;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.NavigableSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,9 +59,11 @@ class ProducersCoordinator {
   private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
   private final StreamEnvironment environment;
   private final ClientFactory clientFactory;
-  private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
   private final int maxProducersByClient, maxTrackingConsumersByClient;
   private final Function<ClientConnectionType, String> connectionNamingStrategy;
+  private final AtomicLong managerIdSequence = new AtomicLong(0);
+  private final NavigableSet<ClientProducersManager> managers = new ConcurrentSkipListSet<>();
+  private final AtomicLong trackerIdSequence = new AtomicLong(0);
 
   ProducersCoordinator(
       StreamEnvironment environment,
@@ -67,38 +78,90 @@ class ProducersCoordinator {
     this.connectionNamingStrategy = connectionNamingStrategy;
   }
 
-  private static String keyForManagerPool(Client.Broker broker) {
-    // FIXME make sure this is a reasonable key for brokers
+  private static String keyForNode(Client.Broker broker) {
     return broker.getHost() + ":" + broker.getPort();
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {
-    return registerAgentTracker(new ProducerTracker(reference, stream, producer), stream);
+    return registerAgentTracker(
+        new ProducerTracker(trackerIdSequence.getAndIncrement(), reference, stream, producer),
+        stream);
   }
 
   Runnable registerTrackingConsumer(StreamConsumer consumer) {
     return registerAgentTracker(
-        new TrackingConsumerTracker(consumer.stream(), consumer), consumer.stream());
+        new TrackingConsumerTracker(
+            trackerIdSequence.getAndIncrement(), consumer.stream(), consumer),
+        consumer.stream());
   }
 
   private Runnable registerAgentTracker(AgentTracker tracker, String stream) {
-    Client.Broker brokerForProducer = getBrokerForProducer(stream);
+    Client.Broker broker = getBrokerForProducer(stream);
 
-    String key = keyForManagerPool(brokerForProducer);
-    ManagerPool pool =
-        pools.computeIfAbsent(
-            key,
-            s ->
-                new ManagerPool(
-                    key,
-                    environment
-                        .clientParametersCopy()
-                        .host(brokerForProducer.getHost())
-                        .port(brokerForProducer.getPort())));
-
-    pool.add(tracker);
+    addToManager(broker, tracker);
 
     return tracker::cancel;
+  }
+
+  private void addToManager(Broker node, AgentTracker tracker) {
+    ClientParameters clientParameters =
+        environment.clientParametersCopy().host(node.getHost()).port(node.getPort());
+    ClientProducersManager pickedManager = null;
+    while (pickedManager == null) {
+      Iterator<ClientProducersManager> iterator = this.managers.iterator();
+      while (iterator.hasNext()) {
+        pickedManager = iterator.next();
+        if (pickedManager.isClosed()) {
+          iterator.remove();
+          pickedManager = null;
+        } else {
+          if (node.equals(pickedManager.node) && !pickedManager.isFullFor(tracker)) {
+            // let's try this one
+            break;
+          } else {
+            pickedManager = null;
+          }
+        }
+      }
+      if (pickedManager == null) {
+        String name = keyForNode(node);
+        LOGGER.debug("Creating producer manager on {}", name);
+        pickedManager = new ClientProducersManager(node, this.clientFactory, clientParameters);
+        LOGGER.debug("Created producer manager on {}, id {}", name, pickedManager.id);
+      }
+      try {
+        pickedManager.register(tracker);
+        LOGGER.debug(
+            "Assigned tracker {} (stream '{}') to manager {} (node {}), subscription ID {}",
+            tracker.uniqueId(),
+            tracker.stream(),
+            pickedManager.id,
+            pickedManager.name,
+            tracker.identifiable() ? tracker.id() : "N/A");
+        this.managers.add(pickedManager);
+      } catch (IllegalStateException e) {
+        pickedManager = null;
+      } catch (ConnectionStreamException | ClientClosedException | StreamNotAvailableException e) {
+        // manager connection is dead or stream not available
+        // scheduling manager closing if necessary in another thread to avoid blocking this one
+        if (pickedManager.isEmpty()) {
+          ClientProducersManager manager = pickedManager;
+          this.environment.execute(
+              () -> {
+                manager.closeIfEmpty();
+              },
+              "Producer manager closing after timeout, producer %d on stream '%s'",
+              tracker.uniqueId(),
+              tracker.stream());
+        }
+        throw e;
+      } catch (RuntimeException e) {
+        if (pickedManager != null) {
+          pickedManager.closeIfEmpty();
+        }
+        throw e;
+      }
+    }
   }
 
   private Client.Broker getBrokerForProducer(String stream) {
@@ -130,44 +193,80 @@ class ProducersCoordinator {
   }
 
   void close() {
-    for (ManagerPool pool : pools.values()) {
-      pool.close();
+    Iterator<ClientProducersManager> iterator = this.managers.iterator();
+    while (iterator.hasNext()) {
+      ClientProducersManager manager = iterator.next();
+      try {
+        iterator.remove();
+        manager.close();
+      } catch (Exception e) {
+        LOGGER.info(
+            "Error while closing manager {} connected to node {}: {}",
+            manager.id,
+            manager.name,
+            e.getMessage());
+      }
     }
-    pools.clear();
-  }
-
-  int poolSize() {
-    return pools.size();
   }
 
   int clientCount() {
-    return pools.values().stream().map(pool -> pool.managers.size()).reduce(0, Integer::sum);
+    return this.managers.size();
+  }
+
+  int nodesConnected() {
+    return this.managers.stream().map(m -> m.name).collect(toSet()).size();
+  }
+
+  private static String quote(String value) {
+    if (value == null) {
+      return "null";
+    } else {
+      return "\"" + value + "\"";
+    }
+  }
+
+  private static String jsonField(String name, Number value) {
+    return quote(name) + " : " + value.longValue();
+  }
+
+  private static String jsonField(String name, String value) {
+    return quote(name) + " : " + quote(value);
   }
 
   @Override
   public String toString() {
-    return ("[ \n"
-        + pools.entrySet().stream()
+    StringBuilder builder = new StringBuilder("{");
+    builder.append(jsonField("client_count", this.managers.size())).append(",");
+    builder
+        .append(
+            jsonField(
+                "producer_count", this.managers.stream().mapToInt(m -> m.producers.size()).sum()))
+        .append(",");
+    builder
+        .append(
+            jsonField(
+                "tracking_consumer_count",
+                this.managers.stream().mapToInt(m -> m.trackingConsumerTrackers.size()).sum()))
+        .append(",");
+    builder.append(quote("clients")).append(" : [");
+    builder.append(
+        this.managers.stream()
             .map(
-                poolEntry ->
-                    "  { \"broker\" : \""
-                        + poolEntry.getKey()
-                        + "\", \"client_count\" : "
-                        + poolEntry.getValue().managers.size()
-                        + ", \"clients\" : [ "
-                        + poolEntry.getValue().managers.stream()
-                            .map(
-                                manager ->
-                                    "{ \"producer_count\" : "
-                                        + manager.producers.size()
-                                        + ", "
-                                        + "  \"tracking_consumer_count\" : "
-                                        + manager.trackingConsumerTrackers.size()
-                                        + " }")
-                            .collect(Collectors.joining(", "))
-                        + " ] }")
-            .collect(Collectors.joining(", \n"))
-        + "\n]");
+                m -> {
+                  StringBuilder b = new StringBuilder("{");
+                  b.append(jsonField("id", m.id))
+                      .append(",")
+                      .append(jsonField("node", m.name))
+                      .append(",")
+                      .append(jsonField("producer_count", m.producers.size()))
+                      .append(",")
+                      .append(
+                          jsonField("tracking_consumer_count", m.trackingConsumerTrackers.size()));
+                  return b.append("}").toString();
+                })
+            .collect(Collectors.joining(",")));
+    builder.append("]");
+    return builder.append("}").toString();
   }
 
   private interface AgentTracker {
@@ -191,17 +290,27 @@ class ProducersCoordinator {
     String reference();
 
     boolean isOpen();
+
+    long uniqueId();
+
+    String type();
+
+    boolean markRecoveryInProgress();
   }
 
   private static class ProducerTracker implements AgentTracker {
 
+    private final long uniqueId;
     private final String reference;
     private final String stream;
     private final StreamProducer producer;
     private volatile byte publisherId;
     private volatile ClientProducersManager clientProducersManager;
+    private final AtomicBoolean recovering = new AtomicBoolean(false);
 
-    private ProducerTracker(String reference, String stream, StreamProducer producer) {
+    private ProducerTracker(
+        long uniqueId, String reference, String stream, StreamProducer producer) {
+      this.uniqueId = uniqueId;
       this.reference = reference;
       this.stream = stream;
       this.producer = producer;
@@ -248,6 +357,7 @@ class ProducersCoordinator {
     @Override
     public void running() {
       this.producer.running();
+      this.recovering.set(false);
     }
 
     @Override
@@ -266,15 +376,33 @@ class ProducersCoordinator {
     public boolean isOpen() {
       return producer.isOpen();
     }
+
+    @Override
+    public long uniqueId() {
+      return this.uniqueId;
+    }
+
+    @Override
+    public String type() {
+      return "producer";
+    }
+
+    @Override
+    public boolean markRecoveryInProgress() {
+      return this.recovering.compareAndSet(false, true);
+    }
   }
 
   private static class TrackingConsumerTracker implements AgentTracker {
 
+    private final long uniqueId;
     private final String stream;
     private final StreamConsumer consumer;
     private volatile ClientProducersManager clientProducersManager;
+    private final AtomicBoolean recovering = new AtomicBoolean(false);
 
-    private TrackingConsumerTracker(String stream, StreamConsumer consumer) {
+    private TrackingConsumerTracker(long uniqueId, String stream, StreamConsumer consumer) {
+      this.uniqueId = uniqueId;
       this.stream = stream;
       this.consumer = consumer;
     }
@@ -318,6 +446,7 @@ class ProducersCoordinator {
     @Override
     public void running() {
       this.consumer.running();
+      this.recovering.set(false);
     }
 
     @Override
@@ -337,78 +466,41 @@ class ProducersCoordinator {
     public boolean isOpen() {
       return this.consumer.isOpen();
     }
+
+    @Override
+    public long uniqueId() {
+      return this.uniqueId;
+    }
+
+    @Override
+    public String type() {
+      return "tracking consumer";
+    }
+
+    @Override
+    public boolean markRecoveryInProgress() {
+      return this.recovering.compareAndSet(false, true);
+    }
   }
 
-  private class ManagerPool {
+  private class ClientProducersManager implements Comparable<ClientProducersManager> {
 
-    private final List<ClientProducersManager> managers = new CopyOnWriteArrayList<>();
+    private final long id;
     private final String name;
-    private final Client.ClientParameters clientParameters;
-
-    private ManagerPool(String name, Client.ClientParameters clientParameters) {
-      this.name = name;
-      this.clientParameters = clientParameters;
-      this.managers.add(new ClientProducersManager(this, clientFactory, clientParameters));
-    }
-
-    private synchronized void add(AgentTracker producerTracker) {
-      boolean added = false;
-      // FIXME deal with state unavailability (state may be closing because of connection closing)
-      // try all of them until it succeeds, throw exception if failure
-      for (ClientProducersManager manager : this.managers) {
-        if (!manager.isFullFor(producerTracker)) {
-          manager.register(producerTracker);
-          added = true;
-          break;
-        }
-      }
-      if (!added) {
-        LOGGER.debug(
-            "Creating producers tracker on {}, this is subscription state #{}",
-            name,
-            managers.size() + 1);
-        ClientProducersManager manager =
-            new ClientProducersManager(this, clientFactory, clientParameters);
-        this.managers.add(manager);
-        manager.register(producerTracker);
-      }
-    }
-
-    synchronized void maybeDisposeManager(ClientProducersManager manager) {
-      if (manager.isEmpty()) {
-        manager.close();
-        this.remove(manager);
-      }
-    }
-
-    private synchronized void remove(ClientProducersManager manager) {
-      this.managers.remove(manager);
-      if (this.managers.isEmpty()) {
-        pools.remove(this.name);
-      }
-    }
-
-    synchronized void close() {
-      for (ClientProducersManager manager : managers) {
-        manager.close();
-      }
-      managers.clear();
-    }
-  }
-
-  private class ClientProducersManager {
-
+    private final Broker node;
     private final ConcurrentMap<Byte, ProducerTracker> producers =
         new ConcurrentHashMap<>(maxProducersByClient);
     private final Set<AgentTracker> trackingConsumerTrackers =
         ConcurrentHashMap.newKeySet(maxTrackingConsumersByClient);
     private final Map<String, Set<AgentTracker>> streamToTrackers = new ConcurrentHashMap<>();
     private final Client client;
-    private final ManagerPool owner;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private ClientProducersManager(
-        ManagerPool owner, ClientFactory cf, Client.ClientParameters clientParameters) {
-      this.owner = owner;
+        Broker node, ClientFactory cf, Client.ClientParameters clientParameters) {
+      this.id = managerIdSequence.getAndIncrement();
+      this.name = keyForNode(node);
+      this.node = node;
       AtomicReference<Client> ref = new AtomicReference<>();
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       PublishConfirmListener publishConfirmListener =
@@ -434,11 +526,7 @@ class ProducersCoordinator {
           };
       ShutdownListener shutdownListener =
           shutdownContext -> {
-            // we may be closing the client because it's not the right node, so the manager
-            // should not be removed from its pool, because it's not really in it already
-            if (clientInitializedInManager.get()) {
-              owner.remove(this);
-            }
+            managers.remove(this);
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
                   "Recovering {} producer(s) after unexpected connection termination",
@@ -463,13 +551,20 @@ class ProducersCoordinator {
                                 });
                           },
                           "Producer recovery after disconnection from %s",
-                          owner.name));
+                          name));
             }
           };
       MetadataListener metadataListener =
           (stream, code) -> {
+            LOGGER.debug(
+                "Received metadata notification for '{}', stream is likely to have become unavailable",
+                stream);
+            Set<AgentTracker> affectedTrackers;
             synchronized (ClientProducersManager.this) {
-              Set<AgentTracker> affectedTrackers = streamToTrackers.remove(stream);
+              affectedTrackers = streamToTrackers.remove(stream);
+              LOGGER.debug(
+                  "Affected publishers and consumer trackers after metadata update: {}",
+                  affectedTrackers.size());
               if (affectedTrackers != null && !affectedTrackers.isEmpty()) {
                 affectedTrackers.forEach(
                     tracker -> {
@@ -480,25 +575,27 @@ class ProducersCoordinator {
                         trackingConsumerTrackers.remove(tracker);
                       }
                     });
-                environment
-                    .scheduledExecutorService()
-                    .execute(
-                        namedRunnable(
-                            () -> {
-                              if (Thread.currentThread().isInterrupted()) {
-                                return;
-                              }
-                              // close manager if no more trackers for it
-                              // needs to be done in another thread than the IO thread
-                              this.owner.maybeDisposeManager(this);
-                              assignProducersToNewManagers(
-                                  affectedTrackers,
-                                  stream,
-                                  environment.topologyUpdateBackOffDelayPolicy());
-                            },
-                            "Producer re-assignment after metadata update on stream '%s'",
-                            stream));
               }
+            }
+            if (affectedTrackers != null && !affectedTrackers.isEmpty()) {
+              environment
+                  .scheduledExecutorService()
+                  .execute(
+                      namedRunnable(
+                          () -> {
+                            if (Thread.currentThread().isInterrupted()) {
+                              return;
+                            }
+                            // close manager if no more trackers for it
+                            // needs to be done in another thread than the IO thread
+                            closeIfEmpty();
+                            assignProducersToNewManagers(
+                                affectedTrackers,
+                                stream,
+                                environment.topologyUpdateBackOffDelayPolicy());
+                          },
+                          "Producer re-assignment after metadata update on stream '%s'",
+                          stream));
             }
           };
       String connectionName = connectionNamingStrategy.apply(ClientConnectionType.PRODUCER);
@@ -510,7 +607,7 @@ class ProducersCoordinator {
                       .shutdownListener(shutdownListener)
                       .metadataListener(metadataListener)
                       .clientProperty("connection_name", connectionName))
-              .key(owner.name);
+              .key(name);
       this.client = cf.client(connectionFactoryContext);
       LOGGER.debug("Created producer connection '{}'", connectionName);
       clientInitializedInManager.set(true);
@@ -527,48 +624,21 @@ class ProducersCoordinator {
           .build()
           .thenAccept(
               broker -> {
-                String key = keyForManagerPool(broker);
+                String key = keyForNode(broker);
                 LOGGER.debug("Assigning {} producer(s) to {}", trackers.size(), key);
-
                 trackers.forEach(
                     tracker -> {
-                      try {
-                        if (tracker.isOpen()) {
-                          // we create the pool only if necessary
-                          ManagerPool pool =
-                              pools.computeIfAbsent(
-                                  key,
-                                  s ->
-                                      new ManagerPool(
-                                          key,
-                                          environment
-                                              .clientParametersCopy()
-                                              .host(broker.getHost())
-                                              .port(broker.getPort())));
-                          pool.add(tracker);
-                          tracker.running();
-                        } else {
-                          LOGGER.debug("Not re-assigning producer because it has been closed");
-                        }
-                      } catch (Exception e) {
-                        LOGGER.info(
-                            "Error while re-assigning producer {} to {}: {}. Moving on.",
-                            tracker.identifiable() ? tracker.id() : "(tracking consumer)",
-                            key,
-                            e.getMessage());
+                      if (tracker.markRecoveryInProgress()) {
+                        recoverAgent(broker, tracker);
                       }
                     });
               })
           .exceptionally(
               ex -> {
-                LOGGER.info("Error while re-assigning producers: {}", ex.getMessage());
+                LOGGER.info(
+                    "Error while re-assigning producers and consumer trackers, closing them: {}",
+                    ex.getMessage());
                 for (AgentTracker tracker : trackers) {
-                  // FIXME what to do with tracking consumers after a timeout?
-                  // here they are left as "unavailable" and not, meaning they will not be
-                  // able to store. Yet recovery mechanism could try to reconnect them, but
-                  // that seems far-fetched (the first recovery already failed). They could
-                  // be put in a state whereby they refuse all new store commands and inform
-                  // with an exception they should be restarted.
                   try {
                     short code;
                     if (ex instanceof StreamDoesNotExistException
@@ -586,15 +656,70 @@ class ProducersCoordinator {
               });
     }
 
+    private void recoverAgent(Broker node, AgentTracker tracker) {
+      boolean reassignmentCompleted = false;
+      while (!reassignmentCompleted) {
+        try {
+          if (tracker.isOpen()) {
+            LOGGER.debug(
+                "Using {} to resume {} to {}", node.label(), tracker.type(), tracker.stream());
+            addToManager(node, tracker);
+            tracker.running();
+          } else {
+            LOGGER.debug("Not recovering {} because it has been closed", tracker.type());
+          }
+          reassignmentCompleted = true;
+        } catch (ConnectionStreamException
+            | ClientClosedException
+            | StreamNotAvailableException e) {
+          LOGGER.debug(
+              "{} re-assignment on stream {} timed out or connection closed or stream not available, "
+                  + "refreshing candidate leader and retrying",
+              tracker.type(),
+              tracker.id(),
+              tracker.stream());
+          // maybe not a good candidate, let's refresh and retry for this one
+          node =
+              Utils.callAndMaybeRetry(
+                  () -> getBrokerForProducer(tracker.stream()),
+                  ex -> !(ex instanceof StreamDoesNotExistException),
+                  environment.recoveryBackOffDelayPolicy(),
+                  "Candidate lookup for %s on stream '%s'",
+                  tracker.type(),
+                  tracker.stream());
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Error while re-assigning %s (stream '{}')", tracker.type(), tracker.stream(), e);
+          reassignmentCompleted = true;
+        }
+      }
+    }
+
     private synchronized void register(AgentTracker tracker) {
+      if (this.isFullFor(tracker)) {
+        throw new IllegalStateException("Cannot add subscription tracker, the manager is full");
+      }
+      if (this.isClosed()) {
+        throw new IllegalStateException("Cannot add subscription tracker, the manager is closed");
+      }
+      checkNotClosed();
       if (tracker.identifiable()) {
         ProducerTracker producerTracker = (ProducerTracker) tracker;
         // using the next available slot
         for (int i = 0; i < maxProducersByClient; i++) {
           ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
           if (previousValue == null) {
+            this.checkNotClosed();
+            int index = i;
             Response response =
-                this.client.declarePublisher((byte) i, tracker.reference(), tracker.stream());
+                callAndMaybeRetry(
+                    () ->
+                        this.client.declarePublisher(
+                            (byte) index, tracker.reference(), tracker.stream()),
+                    RETRY_ON_TIMEOUT,
+                    "Declare publisher request for publisher %d on stream '%s'",
+                    producerTracker.uniqueId(),
+                    producerTracker.stream());
             if (response.isOk()) {
               tracker.assign((byte) i, this.client, this);
             } else {
@@ -613,13 +738,14 @@ class ProducersCoordinator {
         tracker.assign((byte) 0, this.client, this);
         trackingConsumerTrackers.add(tracker);
       }
-
       streamToTrackers
           .computeIfAbsent(tracker.stream(), s -> ConcurrentHashMap.newKeySet())
           .add(tracker);
     }
 
     private synchronized void unregister(AgentTracker tracker) {
+      LOGGER.debug(
+          "Unregistering {} {} from manager on {}", tracker.type(), tracker.uniqueId(), this.name);
       if (tracker.identifiable()) {
         producers.remove(tracker.id());
       } else {
@@ -636,7 +762,7 @@ class ProducersCoordinator {
               return trackersForThisStream.isEmpty() ? null : trackersForThisStream;
             }
           });
-      this.owner.maybeDisposeManager(this);
+      closeIfEmpty();
     }
 
     synchronized boolean isFullFor(AgentTracker tracker) {
@@ -651,14 +777,74 @@ class ProducersCoordinator {
       return producers.isEmpty() && trackingConsumerTrackers.isEmpty();
     }
 
-    private void close() {
-      try {
-        if (this.client.isOpen()) {
-          this.client.close();
-        }
-      } catch (Exception e) {
-        // ok
+    private void checkNotClosed() {
+      if (!this.client.isOpen()) {
+        throw new ClientClosedException();
       }
+    }
+
+    boolean isClosed() {
+      if (!this.client.isOpen()) {
+        this.close();
+      }
+      return this.closed.get();
+    }
+
+    private void closeIfEmpty() {
+      if (!closed.get()) {
+        synchronized (this) {
+          if (this.isEmpty()) {
+            this.close();
+          } else {
+            LOGGER.debug("Not closing producer manager {} because it is not empty", this.id);
+          }
+        }
+      }
+    }
+
+    private void close() {
+      if (closed.compareAndSet(false, true)) {
+        managers.remove(this);
+        try {
+          if (this.client.isOpen()) {
+            this.client.close();
+          }
+        } catch (Exception e) {
+          LOGGER.debug("Error while closing client producer connection: ", e.getMessage());
+        }
+      }
+    }
+
+    @Override
+    public int compareTo(ClientProducersManager o) {
+      return Long.compare(this.id, o.id);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      ClientProducersManager that = (ClientProducersManager) o;
+      return id == that.id;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(id);
+    }
+  }
+
+  private static final Predicate<Exception> RETRY_ON_TIMEOUT =
+      e -> e instanceof TimeoutStreamException;
+
+  private static class ClientClosedException extends StreamException {
+
+    public ClientClosedException() {
+      super("Client already closed");
     }
   }
 }

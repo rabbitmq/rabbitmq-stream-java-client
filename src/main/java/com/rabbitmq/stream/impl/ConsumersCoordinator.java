@@ -18,7 +18,6 @@ import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.isSac;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
-import static java.lang.String.format;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
@@ -43,7 +42,6 @@ import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -63,7 +61,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -171,11 +168,14 @@ class ConsumersCoordinator {
         pickedManager = iterator.next();
         if (pickedManager.isClosed()) {
           iterator.remove();
-        }
-        if (node.equals(pickedManager.node) && !pickedManager.isFull()) {
-          break;
-        } else {
           pickedManager = null;
+        } else {
+          if (node.equals(pickedManager.node) && !pickedManager.isFull()) {
+            // let's try this one
+            break;
+          } else {
+            pickedManager = null;
+          }
         }
       }
       if (pickedManager == null) {
@@ -744,7 +744,7 @@ class ConsumersCoordinator {
                   for (SubscriptionTracker affectedSubscription : subscriptions) {
                     if (affectedSubscription.compareAndSet(
                         SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
-                      recoverSubscription(stream, candidates, affectedSubscription);
+                      recoverSubscription(candidates, affectedSubscription);
                     } else {
                       LOGGER.debug(
                           "Not recovering consumer {} from stream {}, state is {}, expected is {}",
@@ -774,51 +774,46 @@ class ConsumersCoordinator {
               });
     }
 
-    private void recoverSubscription(
-        String stream, List<Broker> candidates, SubscriptionTracker affectedSubscription) {
+    private void recoverSubscription(List<Broker> candidates, SubscriptionTracker tracker) {
       boolean reassignmentCompleted = false;
       while (!reassignmentCompleted) {
         try {
-          if (affectedSubscription.consumer.isOpen()) {
+          if (tracker.consumer.isOpen()) {
             Broker broker = pickBroker(candidates);
-            LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
-            synchronized (affectedSubscription.consumer) {
-              if (affectedSubscription.consumer.isOpen()) {
+            LOGGER.debug("Using {} to resume consuming from {}", broker, tracker.stream);
+            synchronized (tracker.consumer) {
+              if (tracker.consumer.isOpen()) {
                 OffsetSpecification offsetSpecification;
-                if (affectedSubscription.hasReceivedSomething) {
-                  offsetSpecification = OffsetSpecification.offset(affectedSubscription.offset);
+                if (tracker.hasReceivedSomething) {
+                  offsetSpecification = OffsetSpecification.offset(tracker.offset);
                 } else {
-                  offsetSpecification = affectedSubscription.initialOffsetSpecification;
+                  offsetSpecification = tracker.initialOffsetSpecification;
                 }
-                addToManager(broker, affectedSubscription, offsetSpecification, false);
-                reassignmentCompleted = true;
-              } else {
-                reassignmentCompleted = true;
+                addToManager(broker, tracker, offsetSpecification, false);
               }
             }
           } else {
             LOGGER.debug("Not re-assigning consumer because it has been closed");
-            reassignmentCompleted = true;
           }
+          reassignmentCompleted = true;
         } catch (ConnectionStreamException
             | ClientClosedException
             | StreamNotAvailableException e) {
           LOGGER.debug(
               "Consumer {} re-assignment on stream {} timed out or connection closed or stream not available, "
                   + "refreshing candidates and retrying",
-              affectedSubscription.consumer.id(),
-              affectedSubscription.stream);
+              tracker.consumer.id(),
+              tracker.stream);
           // maybe not a good candidate, let's refresh and retry for this one
           candidates =
-              callAndMaybeRetry(
-                  () -> findBrokersForStream(stream),
+              Utils.callAndMaybeRetry(
+                  () -> findBrokersForStream(tracker.stream),
                   ex -> !(ex instanceof StreamDoesNotExistException),
                   environment.recoveryBackOffDelayPolicy(),
                   "Candidate lookup to consume from '%s'",
-                  stream);
-
+                  tracker.stream);
         } catch (Exception e) {
-          LOGGER.warn("Error while re-assigning subscription from stream {}", stream, e);
+          LOGGER.warn("Error while re-assigning subscription from stream {}", tracker.stream, e);
           reassignmentCompleted = true;
         }
       }
@@ -873,7 +868,7 @@ class ConsumersCoordinator {
         if (offsetTrackingReference != null) {
           checkNotClosed();
           QueryOffsetResponse queryOffsetResponse =
-              callAndMaybeRetry(
+              Utils.callAndMaybeRetry(
                   () -> client.queryOffset(offsetTrackingReference, subscriptionTracker.stream),
                   RETRY_ON_TIMEOUT,
                   "Offset query for consumer %s on stream '%s' (reference %s)",
@@ -917,7 +912,7 @@ class ConsumersCoordinator {
         // FIXME consider using fewer initial credits
         byte subId = subscriptionId;
         Client.Response subscribeResponse =
-            callAndMaybeRetry(
+            Utils.callAndMaybeRetry(
                 () ->
                     client.subscribe(
                         subId,
@@ -968,7 +963,7 @@ class ConsumersCoordinator {
       byte subscriptionIdInClient = subscriptionTracker.subscriptionIdInClient;
       try {
         Client.Response unsubscribeResponse =
-            callAndMaybeRetry(
+            Utils.callAndMaybeRetry(
                 () -> client.unsubscribe(subscriptionIdInClient),
                 RETRY_ON_TIMEOUT,
                 "Unsubscribe request for consumer %d on stream '%s'",
@@ -1126,54 +1121,6 @@ class ConsumersCoordinator {
       }
     } catch (Exception e) {
       LOGGER.info("Error while exchanging command versions: {}", e.getMessage());
-    }
-  }
-
-  static <T> T callAndMaybeRetry(
-      Supplier<T> operation, Predicate<Exception> retryCondition, String format, Object... args) {
-    return callAndMaybeRetry(operation, retryCondition, i -> Duration.ZERO, format, args);
-  }
-
-  static <T> T callAndMaybeRetry(
-      Supplier<T> operation,
-      Predicate<Exception> retryCondition,
-      BackOffDelayPolicy delayPolicy,
-      String format,
-      Object... args) {
-    String description = format(format, args);
-    int attempt = 0;
-    Exception lastException = null;
-    while (attempt++ < 3) {
-      try {
-        return operation.get();
-      } catch (Exception e) {
-        lastException = e;
-        if (retryCondition.test(e)) {
-          LOGGER.debug("Operation '{}' failed, retrying...", description);
-          Duration delay = delayPolicy.delay(attempt - 1);
-          if (!delay.isZero()) {
-            try {
-              Thread.sleep(delay.toMillis());
-            } catch (InterruptedException ex) {
-              Thread.interrupted();
-              lastException = ex;
-              break;
-            }
-          }
-        } else {
-          break;
-        }
-      }
-    }
-    String message =
-        format("Could not complete task '%s' after %d attempt(s)", description, --attempt);
-    LOGGER.debug(message);
-    if (lastException == null) {
-      throw new StreamException(message);
-    } else if (lastException instanceof RuntimeException) {
-      throw (RuntimeException) lastException;
-    } else {
-      throw new StreamException(message, lastException);
     }
   }
 

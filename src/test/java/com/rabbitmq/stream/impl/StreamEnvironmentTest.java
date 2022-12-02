@@ -202,16 +202,9 @@ public class StreamEnvironmentTest {
 
     EnvironmentInfo environmentInfo = MonitoringTestUtils.extract(environment);
     assertThat(environmentInfo.getLocators()).isNotEmpty();
-    assertThat(environmentInfo.getProducers())
-        .hasSize(1)
-        .element(0)
-        .extracting(pool -> pool.getClients())
-        .asList()
-        .hasSize(1);
-    assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getProducerCount())
-        .isEqualTo(2);
-    assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getTrackingConsumerCount())
-        .isEqualTo(2);
+    assertThat(environmentInfo.getProducers().clientCount()).isEqualTo(1);
+    assertThat(environmentInfo.getProducers().producerCount()).isEqualTo(2);
+    assertThat(environmentInfo.getProducers().trackingConsumerCount()).isEqualTo(2);
     ConsumerCoordinatorInfo consumerInfo = environmentInfo.getConsumers();
     assertThat(consumerInfo.nodesConnected()).hasSize(1);
     assertThat(consumerInfo.clients()).hasSize(1);
@@ -224,7 +217,7 @@ public class StreamEnvironmentTest {
 
     environmentInfo = MonitoringTestUtils.extract(environment);
     assertThat(environmentInfo.getLocators()).isNotEmpty();
-    assertThat(environmentInfo.getProducers()).isEmpty();
+    assertThat(environmentInfo.getProducers().clientCount()).isZero();
     assertThat(environmentInfo.getConsumers().clients()).isEmpty();
   }
 
@@ -290,8 +283,8 @@ public class StreamEnvironmentTest {
       latchAssert(consumeLatch).completes();
 
       EnvironmentInfo environmentInfo = MonitoringTestUtils.extract(environment);
-      assertThat(environmentInfo.getProducers()).hasSize(1);
-      int producerManagerCount = environmentInfo.getProducers().get(0).getClients().size();
+      assertThat(environmentInfo.getProducers().nodesConnected()).hasSize(1);
+      int producerManagerCount = environmentInfo.getProducers().clientCount();
       assertThat(producerManagerCount).isPositive();
       ConsumerCoordinatorInfo consumerInfo = environmentInfo.getConsumers();
       assertThat(consumerInfo.nodesConnected()).hasSize(1);
@@ -320,9 +313,8 @@ public class StreamEnvironmentTest {
       consumers.removeAll(subConsumers);
 
       environmentInfo = MonitoringTestUtils.extract(environment);
-      assertThat(environmentInfo.getProducers()).hasSize(1);
-      assertThat(environmentInfo.getProducers().get(0).getClients())
-          .hasSizeLessThan(producerManagerCount);
+      assertThat(environmentInfo.getProducers().nodesConnected()).hasSize(1);
+      assertThat(environmentInfo.getProducers().clientCount()).isLessThan(producerManagerCount);
       consumerInfo = environmentInfo.getConsumers();
       assertThat(consumerInfo.nodesConnected()).hasSize(1);
       assertThat(consumerInfo.clients()).hasSizeLessThan(consumerManagerCount);
@@ -380,7 +372,7 @@ public class StreamEnvironmentTest {
 
   @Test
   @TestUtils.DisabledIfRabbitMqCtlNotSet
-  void locatorShouldReconnectIfConnectionIsLost(TestInfo info) throws Exception {
+  void locatorShouldReconnectIfConnectionIsLost(TestInfo info) {
     try (Environment environment =
         environmentBuilder
             .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(1)))
