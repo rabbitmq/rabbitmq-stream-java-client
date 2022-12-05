@@ -9,9 +9,9 @@ FINAL_NAME="$PERF_TOOL_BASE_NAME-$RELEASE_VERSION"
 mkdir packages
 mkdir packages-latest
 
-./mvnv clean package checksum:files gpg:sign -Dgpg.skip=false -Dmaven.test.skip -P performance-tool -DfinalName="$FINAL_NAME" --no-transfer-progress
+./mvnw clean package checksum:files gpg:sign -Dgpg.skip=false -Dmaven.test.skip -P performance-tool -DfinalName="$FINAL_NAME" --no-transfer-progress
 
-./mvnv test-compile exec:java -Dexec.mainClass="picocli.AutoComplete" -Dexec.classpathScope=test -Dexec.args="-f -n $PERF_TOOL_BASE_NAME com.rabbitmq.stream.perf.AggregatingCommandForAutoComplete" --no-transfer-progress
+./mvnw test-compile exec:java -Dexec.mainClass="picocli.AutoComplete" -Dexec.classpathScope=test -Dexec.args="-f -n $PERF_TOOL_BASE_NAME com.rabbitmq.stream.perf.AggregatingCommandForAutoComplete" --no-transfer-progress
 cp "$PERF_TOOL_BASE_NAME"_completion packages/"$PERF_TOOL_BASE_NAME"-"$RELEASE_VERSION"_completion
 
 rm target/*.original
