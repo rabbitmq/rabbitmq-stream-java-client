@@ -37,19 +37,21 @@ jobs:
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
       - name: Start broker
         run: ci/start-broker.sh
-      - name: Test
-        run: |
-          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
-            -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
-            -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
-            -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
-      - name: Upload Codecov report
-        run: bash <(curl -s https://codecov.io/bash)
+#      - name: Test
+#        run: |
+#          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
+#            -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
+#            -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
+#            -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
-      - name: Publish snapshot
-        run: ./mvnw clean deploy -Psnapshots -DskipITs -DskipTests
-        env:
-          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+#      - name: Upload Codecov report
+#        run: bash <(curl -s https://codecov.io/bash)
+#      - name: Publish snapshot
+#        run: ./mvnw clean deploy -Psnapshots -DskipITs -DskipTests
+#        env:
+#          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+#          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+#          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      - name: Package Stream Perf Test
+        run: ci/package-stream-perf-test.sh
