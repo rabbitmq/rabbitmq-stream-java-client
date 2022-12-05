@@ -3,6 +3,9 @@ name: Test against Java LTS and latest versions
 on:
   schedule:
     - cron:  '0 23 * * *'
+  push:
+    branches:
+      - main
 
 env:
   RABBITMQ_IMAGE_TAG: 3.11
