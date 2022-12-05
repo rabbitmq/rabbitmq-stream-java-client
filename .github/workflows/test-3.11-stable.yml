@@ -11,6 +11,7 @@ on:
 env:
   RABBITMQ_IMAGE_TAG: 3.11
   RABBITMQ_IMAGE: rabbitmq
+  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
 jobs:
   build:
@@ -42,6 +43,8 @@ jobs:
             -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
+      - name: Upload Codecov report
+        run: bash <(curl -s https://codecov.io/bash)
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
       - name: Publish snapshot
