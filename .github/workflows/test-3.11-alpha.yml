@@ -30,7 +30,7 @@ jobs:
         run: ci/start-broker.sh
       - name: Test
         run: |
-          ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq \
+          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
             -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
