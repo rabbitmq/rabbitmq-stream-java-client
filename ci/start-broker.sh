@@ -15,7 +15,8 @@ wait_for_message() {
 
 make -C "${PWD}"/tls-gen/basic
 
-mkdir rabbitmq-configuration
+mkdir -p rabbitmq-configuration/tls
+cp -R "${PWD}"/tls-gen/basic/result rabbitmq-configuration/tls
 
 echo "[rabbitmq_stream,rabbitmq_mqtt,rabbitmq_stomp]." >> rabbitmq-configuration/enabled_plugins
 
@@ -23,9 +24,9 @@ echo "loopback_users = none
 
 listeners.ssl.default = 5671
 
-ssl_options.cacertfile = ${PWD}/tls-gen/basic/result/ca_certificate.pem
-ssl_options.certfile   = ${PWD}/tls-gen/basic/result/server_$(hostname)_certificate.pem
-ssl_options.keyfile    = ${PWD}/tls-gen/basic/result/server_$(hostname)_key.pem
+ssl_options.cacertfile = /etc/rabbitmq/tls/ca_certificate.pem
+ssl_options.certfile   = /etc/rabbitmq/tls/server_$(hostname)_certificate.pem
+ssl_options.keyfile    = /etc/rabbitmq/tls/server_$(hostname)_key.pem
 ssl_options.verify     = verify_peer
 ssl_options.fail_if_no_peer_cert = false
 
