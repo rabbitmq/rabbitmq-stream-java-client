@@ -37,9 +37,8 @@ echo "Running RabbitMQ ${RABBITMQ_IMAGE}:${RABBITMQ_IMAGE_TAG}"
 
 docker rm -f rabbitmq 2>/dev/null || echo "rabbitmq was not running"
 docker run -d --name rabbitmq \
-    -p 5672:5672 -p 5552:5552 -p 1883:1883 -p 61613:61613 \
+    --network host \
     -v "${PWD}"/rabbitmq-configuration:/etc/rabbitmq \
-    -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
     "${RABBITMQ_IMAGE}":"${RABBITMQ_IMAGE_TAG}"
 
 wait_for_message rabbitmq "Server startup complete"
