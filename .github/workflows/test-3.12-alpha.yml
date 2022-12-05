@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 env:
   RABBITMQ_IMAGE_TAG: latest
@@ -29,7 +26,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           cache: 'maven'
-          server-id: ossrh
       - name: Start broker
         run: ci/start-broker.sh
       - name: Test
