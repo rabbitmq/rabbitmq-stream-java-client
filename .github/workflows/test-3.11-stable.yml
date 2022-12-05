@@ -57,3 +57,13 @@ jobs:
         run: ci/package-stream-perf-test.sh
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      - name: Push to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: packages/*
+          name: stream-perf-test-latest
+          tag_name: v-stream-perf-test-latest
+          target_commitish: main
+          token: ${{ secrets.CI_GITHUB_TOKEN }}
+        env:
+          GITHUB_REPOSITORY: rabbitmq/rabbitmq-java-tools-binaries-dev
