@@ -1,4 +1,4 @@
-name: Test against Java LTS and latest versions
+name: Test against supported Java versions
 
 on:
   schedule:
