@@ -55,3 +55,5 @@ jobs:
 #          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
       - name: Package Stream Perf Test
         run: ci/package-stream-perf-test.sh
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
