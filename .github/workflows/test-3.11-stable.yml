@@ -18,6 +18,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+      - name: Checkout tls-gen
+        uses: actions/checkout@v3
+        with:
+          repository: rabbitmq/tls-gen
+          path: './tls-gen'
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
@@ -28,3 +33,5 @@ jobs:
         run: ci/start-broker.sh
       - name: Test
         run: ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq
+      - name: Stop broker
+        run: docker stop rabbitmq

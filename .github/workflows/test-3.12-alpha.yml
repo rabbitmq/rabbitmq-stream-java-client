@@ -28,3 +28,5 @@ jobs:
         run: ci/start-broker.sh
       - name: Test
         run: ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq
+      - name: Stop broker
+        run: docker stop rabbitmq
