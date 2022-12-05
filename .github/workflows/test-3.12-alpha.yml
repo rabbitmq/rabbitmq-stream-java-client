@@ -29,6 +29,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           cache: 'maven'
+          server-id: ossrh
       - name: Start broker
         run: ci/start-broker.sh
       - name: Test
@@ -38,4 +39,4 @@ jobs:
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
       - name: Stop broker
-        run: docker stop rabbitmq
+        run: docker stop rabbitmq && docker rm rabbitmq

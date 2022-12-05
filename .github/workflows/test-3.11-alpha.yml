@@ -38,4 +38,4 @@ jobs:
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
       - name: Stop broker
-        run: docker stop rabbitmq
+        run: docker stop rabbitmq && docker rm rabbitmq

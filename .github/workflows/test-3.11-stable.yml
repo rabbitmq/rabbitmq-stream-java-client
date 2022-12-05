@@ -29,13 +29,21 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           cache: 'maven'
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
       - name: Start broker
         run: ci/start-broker.sh
       - name: Test
         run: |
-          ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq \
+          ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq -Dtest=TlsTest \
             -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
       - name: Stop broker
-        run: docker stop rabbitmq
+        run: docker stop rabbitmq && docker rm rabbitmq
+      - name: Publish snapshot
+        run: ./mvnw clean deploy -Psnapshots -DskipITs -DskipTests
+        env:
+          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
