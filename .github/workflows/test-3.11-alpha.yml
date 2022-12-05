@@ -1,4 +1,4 @@
-name: Test against 3.11 alpha
+name: Test against RabbitMQ 3.11 alpha
 
 on:
   push:
@@ -8,37 +8,23 @@ on:
     branches:
       - main
 
+env:
+  RABBITMQ_IMAGE_TAG: 3.11
+  RABBITMQ_IMAGE: pivotalrabbitmq/rabbitmq-dev
+
 jobs:
   build:
     runs-on: ubuntu-22.04
 
-    services:
-      rabbitmq:
-        image: pivotalrabbitmq/rabbitmq-dev:3.11
-        env:
-          RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbitmq_stream advertised_host localhost
-        ports:
-          - 5552:5552
-          - 5672:5672
-          - 1883:1883
-          - 61613:61613
-
     steps:
       - uses: actions/checkout@v3
-
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
           cache: 'maven'
-      - name: Enable Stream, MQTT and STOMP plugins
-        run: docker exec ${{job.services.rabbitmq.id}} rabbitmq-plugins enable rabbitmq_stream rabbitmq_mqtt rabbitmq_stomp --offline
-      - name: Wait before stopping broker
-        run: sleep 5
-      - name: Stop RabbitMQ application
-        run: docker exec ${{job.services.rabbitmq.id}} rabbitmqctl stop_app
-      - name: Start RabbitMQ application
-        run: docker exec ${{job.services.rabbitmq.id}} rabbitmqctl start_app
+      - name: Start broker
+        run: ci/start-broker.sh
       - name: Test
-        run: ./mvnw test -Drabbitmqctl.bin=DOCKER:${{job.services.rabbitmq.id}}
+        run: ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq
