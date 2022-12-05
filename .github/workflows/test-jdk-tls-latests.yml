@@ -33,17 +33,13 @@ jobs:
           cache: 'maven'
       - name: Start broker
         run: ci/start-broker.sh
+      - name: Display Java version
+        run: ./mvnw --version
       - name: Test
         run: |
-          ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq -Dtest=TlsTest \
+          ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq \
             -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
-      - name: Publish snapshot
-        run: ./mvnw clean deploy -Psnapshots -DskipITs -DskipTests
-        env:
-          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
