@@ -16,7 +16,8 @@ wait_for_message() {
 make -C "${PWD}"/tls-gen/basic
 
 mkdir -p rabbitmq-configuration/tls
-cp -R "${PWD}"/tls-gen/basic/result rabbitmq-configuration/tls
+cp -R "${PWD}"/tls-gen/basic/result/* rabbitmq-configuration/tls
+chmod o+r rabbitmq-configuration/tls/*
 
 echo "[rabbitmq_stream,rabbitmq_mqtt,rabbitmq_stomp]." >> rabbitmq-configuration/enabled_plugins
 
@@ -31,7 +32,6 @@ ssl_options.verify     = verify_peer
 ssl_options.fail_if_no_peer_cert = false
 
 stream.listeners.ssl.1 = 5551" >> rabbitmq-configuration/rabbitmq.conf
-
 
 echo "Running RabbitMQ ${RABBITMQ_IMAGE}:${RABBITMQ_IMAGE_TAG}"
 
