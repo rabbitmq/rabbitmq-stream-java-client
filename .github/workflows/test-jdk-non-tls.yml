@@ -2,7 +2,7 @@ name: Test against Java non-LTS versions
 
 on:
   schedule:
-    - cron:  '0 23 * * *'
+    - cron:  '0 23 * * SUN'
   push:
     branches:
       - main
