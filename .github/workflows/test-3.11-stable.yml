@@ -58,7 +58,7 @@ jobs:
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
       - name: Delete old releases
-        uses: rabbitmq/delete-release-action
+        uses: rabbitmq/delete-release-action@main
         with:
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
           token: dummy
