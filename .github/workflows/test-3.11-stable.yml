@@ -61,9 +61,27 @@ jobs:
         uses: rabbitmq/delete-release-action@main
         with:
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
-          token: dummy
           tag-filter: '^v-stream-perf-test-0.[0-9]+.0-SNAPSHOT-[0-9]{8}-[0-9]{6}$'
           keep-last-n: 2
+        env:
+          DELETE_RELEASE_ACTION_TOKEN: ${{ secrets.DUMMY_TOKEN }}
+      - name: Push to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: packages/*
+          name: ${{ env.release_name }}
+          tag_name: ${{ env.tag_name }}
+          target_commitish: main
+          token: ${{ secrets.CI_GITHUB_TOKEN }}
+          repository: rabbitmq/rabbitmq-java-tools-binaries-dev
+      - name: Delete latest release
+        uses: rabbitmq/delete-release-action@main
+        with:
+          repository: rabbitmq/rabbitmq-java-tools-binaries-dev
+          tag-filter: '^v-stream-perf-test-latest$'
+          keep-last-n: 0
+        env:
+          DELETE_RELEASE_ACTION_TOKEN: ${{ secrets.DUMMY_TOKEN }}
       - name: Push to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
