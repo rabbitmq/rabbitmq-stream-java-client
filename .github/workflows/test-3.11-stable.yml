@@ -35,16 +35,16 @@ jobs:
           server-password: MAVEN_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
-      - name: Start broker
-        run: ci/start-broker.sh
+#      - name: Start broker
+#        run: ci/start-broker.sh
 #      - name: Test
 #        run: |
 #          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
 #            -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
 #            -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
 #            -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
-      - name: Stop broker
-        run: docker stop rabbitmq && docker rm rabbitmq
+#      - name: Stop broker
+#        run: docker stop rabbitmq && docker rm rabbitmq
 #      - name: Upload Codecov report
 #        run: bash <(curl -s https://codecov.io/bash)
 #      - name: Publish snapshot
@@ -57,6 +57,13 @@ jobs:
         run: ci/package-stream-perf-test.sh
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      - name: Delete old releases
+        uses: rabbitmq/delete-release-action
+        with:
+          repository: rabbitmq/rabbitmq-java-tools-binaries-dev
+          token: dummy
+          tag-filter: '^v-stream-perf-test-0.[0-9]+.0-SNAPSHOT-[0-9]{8}-[0-9]{6}$'
+          keep-last-n: 2
       - name: Push to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
