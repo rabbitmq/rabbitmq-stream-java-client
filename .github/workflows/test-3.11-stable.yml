@@ -100,4 +100,4 @@ jobs:
 #            "url" : "https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/download/v-stream-perf-test-${{ env.release_version }}/stream-perf-test-${{ env.release_version }}.jar",
 #            "tags": "pivotalrabbitmq/stream-perf-test:dev,pivotalrabbitmq/stream-perf-test:${{ env.release_version }}"}
       - name: Publish Documentation
-        run: publish-documentation-to-github-pages.sh
+        run: ./publish-documentation-to-github-pages.sh
