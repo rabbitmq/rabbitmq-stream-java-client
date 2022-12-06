@@ -58,7 +58,7 @@ jobs:
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
       - name: Delete old releases
-        uses: rabbitmq/delete-release-action@v1
+        uses: docker://pivotalrabbitmq/delete-release-action:latest
         with:
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
           tag-filter: '^v-stream-perf-test-0.[0-9]+.0-SNAPSHOT-[0-9]{8}-[0-9]{6}$'
@@ -76,7 +76,7 @@ jobs:
           token: ${{ secrets.CI_GITHUB_TOKEN }}
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
       - name: Delete latest release
-        uses: rabbitmq/delete-release-action@v1
+        uses: docker://pivotalrabbitmq/delete-release-action:latest
         with:
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
           tag-filter: '^v-stream-perf-test-latest$'
