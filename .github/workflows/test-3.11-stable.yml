@@ -61,10 +61,9 @@ jobs:
         uses: docker://pivotalrabbitmq/delete-release-action:latest
         with:
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
+          token: ${{ secrets.CI_GITHUB_TOKEN }}
           tag-filter: '^v-stream-perf-test-0.[0-9]+.0-SNAPSHOT-[0-9]{8}-[0-9]{6}$'
           keep-last-n: 2
-        env:
-          DELETE_RELEASE_ACTION_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
       - name: Push to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -79,10 +78,9 @@ jobs:
         uses: docker://pivotalrabbitmq/delete-release-action:latest
         with:
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
+          token: ${{ secrets.CI_GITHUB_TOKEN }}
           tag-filter: '^v-stream-perf-test-latest$'
           keep-last-n: 0
-        env:
-          DELETE_RELEASE_ACTION_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
       - name: Push to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
