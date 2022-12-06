@@ -93,3 +93,11 @@ jobs:
           prerelease: true
           token: ${{ secrets.CI_GITHUB_TOKEN }}
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
+      - name: Trigger Stream Perf Test Docker image build
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          event-type: new_release
+          client-payload: >-
+            {"version": "${{ env.release_version }}",
+            "url" : "https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/download/v-stream-perf-test-${{ env.release_version }}/stream-perf-test-${{ env.release_version }}.jar",
+            "tags": "pivotalrabbitmq/stream-perf-test:dev,pivotalrabbitmq/stream-perf-test:${{ env.release_version }}"}
