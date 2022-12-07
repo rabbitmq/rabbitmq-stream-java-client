@@ -1,4 +1,4 @@
-name: Publish documentation
+name: Publish performance tool
 
 on: workflow_dispatch
 
