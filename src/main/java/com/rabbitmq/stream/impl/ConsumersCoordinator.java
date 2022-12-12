@@ -305,7 +305,7 @@ class ConsumersCoordinator {
   }
 
   private static String jsonField(String name, String value) {
-    return quote(name) + " : " + quote(value);
+    return quote(name) + " : " + (value == null ? "null" : quote(value));
   }
 
   @Override
@@ -317,13 +317,30 @@ class ConsumersCoordinator {
         this.managers.stream()
             .map(
                 m -> {
-                  StringBuilder b = new StringBuilder("{");
-                  b.append(jsonField("id", m.id))
+                  StringBuilder managerBuilder = new StringBuilder("{");
+                  managerBuilder
+                      .append(jsonField("id", m.id))
                       .append(",")
                       .append(jsonField("node", m.name))
                       .append(",")
-                      .append(jsonField("consumer_count", m.trackerCount));
-                  return b.append("}").toString();
+                      .append(jsonField("consumer_count", m.trackerCount))
+                      .append(",");
+                  managerBuilder.append("\"subscriptions\" : [");
+                  List<SubscriptionTracker> trackers = m.subscriptionTrackers;
+                  managerBuilder.append(
+                      trackers.stream()
+                          .filter(Objects::nonNull)
+                          .map(
+                              t -> {
+                                StringBuilder trackerBuilder = new StringBuilder("{");
+                                trackerBuilder.append(jsonField("stream", t.stream)).append(",");
+                                trackerBuilder.append(
+                                    jsonField("subscription_id", t.subscriptionIdInClient));
+                                return trackerBuilder.append("}").toString();
+                              })
+                          .collect(Collectors.joining(",")));
+                  managerBuilder.append("]");
+                  return managerBuilder.append("}").toString();
                 })
             .collect(Collectors.joining(",")));
     builder.append("],");

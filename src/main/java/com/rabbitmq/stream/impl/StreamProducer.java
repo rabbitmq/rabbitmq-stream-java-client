@@ -484,9 +484,10 @@ class StreamProducer implements Producer {
         }
       }
       publishBatch(false);
-      if (unconfirmedMessagesSemaphore.availablePermits() != maxUnconfirmedMessages) {
-        unconfirmedMessagesSemaphore.release(
-            maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits());
+
+      int toRelease = maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits();
+      if (toRelease > 0) {
+        unconfirmedMessagesSemaphore.release(toRelease);
         if (!unconfirmedMessagesSemaphore.tryAcquire(this.unconfirmedMessages.size())) {
           LOGGER.debug(
               "Could not acquire {} permit(s) for message republishing",

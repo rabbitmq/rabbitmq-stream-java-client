@@ -36,6 +36,7 @@ import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Objects;
@@ -43,6 +44,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -64,6 +66,8 @@ class ProducersCoordinator {
   private final AtomicLong managerIdSequence = new AtomicLong(0);
   private final NavigableSet<ClientProducersManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
+  // TODO remove the list of trackers (it's here just for debugging)
+  private final List<ProducerTracker> producerTrackers = new CopyOnWriteArrayList<>();
 
   ProducersCoordinator(
       StreamEnvironment environment,
@@ -83,9 +87,10 @@ class ProducersCoordinator {
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {
-    return registerAgentTracker(
-        new ProducerTracker(trackerIdSequence.getAndIncrement(), reference, stream, producer),
-        stream);
+    ProducerTracker tracker =
+        new ProducerTracker(trackerIdSequence.getAndIncrement(), reference, stream, producer);
+    this.producerTrackers.add(tracker);
+    return registerAgentTracker(tracker, stream);
   }
 
   Runnable registerTrackingConsumer(StreamConsumer consumer) {
@@ -100,7 +105,16 @@ class ProducersCoordinator {
 
     addToManager(broker, tracker);
 
-    return tracker::cancel;
+    return () -> {
+      if (tracker instanceof ProducerTracker) {
+        try {
+          this.producerTrackers.remove(tracker);
+        } catch (Exception e) {
+          LOGGER.debug("Error while removing producer tracker from list");
+        }
+      }
+      tracker.cancel();
+    };
   }
 
   private void addToManager(Broker node, AgentTracker tracker) {
@@ -248,20 +262,68 @@ class ProducersCoordinator {
                 "tracking_consumer_count",
                 this.managers.stream().mapToInt(m -> m.trackingConsumerTrackers.size()).sum()))
         .append(",");
+    builder.append(jsonField("producer_tracker_count", this.producerTrackers.size())).append(",");
     builder.append(quote("clients")).append(" : [");
     builder.append(
         this.managers.stream()
             .map(
                 m -> {
-                  StringBuilder b = new StringBuilder("{");
-                  b.append(jsonField("id", m.id))
+                  StringBuilder managerBuilder = new StringBuilder("{");
+                  managerBuilder
+                      .append(jsonField("id", m.id))
                       .append(",")
                       .append(jsonField("node", m.name))
                       .append(",")
                       .append(jsonField("producer_count", m.producers.size()))
                       .append(",")
                       .append(
-                          jsonField("tracking_consumer_count", m.trackingConsumerTrackers.size()));
+                          jsonField("tracking_consumer_count", m.trackingConsumerTrackers.size()))
+                      .append(",");
+                  managerBuilder.append("\"producers\" : [");
+                  managerBuilder.append(
+                      m.producers.values().stream()
+                          .map(
+                              p -> {
+                                StringBuilder producerBuilder = new StringBuilder("{");
+                                producerBuilder.append(jsonField("stream", p.stream())).append(",");
+                                producerBuilder.append(jsonField("producer_id", p.publisherId));
+                                return producerBuilder.append("}").toString();
+                              })
+                          .collect(Collectors.joining(",")));
+                  managerBuilder.append("],");
+                  managerBuilder.append("\"tracking_consumers\" : [");
+                  managerBuilder.append(
+                      m.trackingConsumerTrackers.stream()
+                          .map(
+                              t -> {
+                                StringBuilder trackerBuilder = new StringBuilder("{");
+                                trackerBuilder.append(jsonField("stream", t.stream()));
+                                return trackerBuilder.append("}").toString();
+                              })
+                          .collect(Collectors.joining(",")));
+                  managerBuilder.append("]");
+                  return managerBuilder.append("}").toString();
+                })
+            .collect(Collectors.joining(",")));
+    builder.append("],");
+    builder.append("\"producer_trackers\" : [");
+    builder.append(
+        this.producerTrackers.stream()
+            .map(
+                t -> {
+                  StringBuilder b = new StringBuilder("{");
+                  b.append(quote("stream")).append(":").append(quote(t.stream)).append(",");
+                  b.append(quote("node")).append(":");
+                  Client client = null;
+                  ClientProducersManager manager = t.clientProducersManager;
+                  if (manager != null) {
+                    client = manager.client;
+                  }
+                  if (client == null) {
+                    b.append("null");
+                  } else {
+                    b.append(quote(client.getHost() + ":" + client.getPort()));
+                  }
                   return b.append("}").toString();
                 })
             .collect(Collectors.joining(",")));
@@ -630,6 +692,11 @@ class ProducersCoordinator {
                     tracker -> {
                       if (tracker.markRecoveryInProgress()) {
                         recoverAgent(broker, tracker);
+                      } else {
+                        LOGGER.debug(
+                            "Not recovering {} (stream {}), recovery is already is progress",
+                            tracker.type(),
+                            tracker.stream());
                       }
                     });
               })
@@ -689,7 +756,7 @@ class ProducersCoordinator {
                   tracker.stream());
         } catch (Exception e) {
           LOGGER.warn(
-              "Error while re-assigning %s (stream '{}')", tracker.type(), tracker.stream(), e);
+              "Error while re-assigning {} (stream '{}')", tracker.type(), tracker.stream(), e);
           reassignmentCompleted = true;
         }
       }
