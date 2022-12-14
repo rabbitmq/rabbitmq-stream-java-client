@@ -200,7 +200,9 @@ final class Utils {
       }
     }
     String message =
-        format("Could not complete task '%s' after %d attempt(s)", description, --attempt);
+        format(
+            "Could not complete task '%s' after %d attempt(s) (reason: {})",
+            description, --attempt, exceptionMessage(lastException));
     LOGGER.debug(message);
     if (lastException == null) {
       throw new StreamException(message);
@@ -208,6 +210,16 @@ final class Utils {
       throw (RuntimeException) lastException;
     } else {
       throw new StreamException(message, lastException);
+    }
+  }
+
+  static String exceptionMessage(Exception e) {
+    if (e == null) {
+      return "unknown";
+    } else if (e.getMessage() == null) {
+      return e.getClass().getSimpleName();
+    } else {
+      return e.getMessage() + " [" + e.getClass().getSimpleName() + "]";
     }
   }
 

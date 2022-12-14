@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
+import static com.rabbitmq.stream.impl.Utils.exceptionMessage;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -725,7 +726,7 @@ class StreamEnvironment implements Environment {
           break;
         }
       } catch (Exception e) {
-        LOGGER.debug("Exception during locator operation '{}': {}", operation, e.getMessage());
+        LOGGER.debug("Exception during locator operation '{}': {}", operation, exceptionMessage(e));
         lastException = e;
         break;
       }

@@ -33,7 +33,7 @@ class CompressionCodecs {
               .getConstructor()
               .newInstance();
     } catch (Exception e) {
-      throw new StreamException(e);
+      throw new StreamException("Error while creating compression codec factory", e);
     }
   }
 }

@@ -42,7 +42,7 @@ public interface Environment extends AutoCloseable {
               .getConstructor()
               .newInstance();
     } catch (Exception e) {
-      throw new StreamException(e);
+      throw new StreamException("Error while creating stream environment builder", e);
     }
   }
 

@@ -31,7 +31,7 @@ final class Codecs {
       return (Codec)
           Class.forName("com.rabbitmq.stream.codec.QpidProtonCodec").getConstructor().newInstance();
     } catch (Exception e) {
-      throw new StreamException(e);
+      throw new StreamException("Error while creating QPid Proton codec", e);
     }
   }
 }

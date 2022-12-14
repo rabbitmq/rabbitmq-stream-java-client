@@ -78,11 +78,12 @@ class ConsumersCoordinator {
   private final ClientFactory clientFactory;
   private final int maxConsumersByConnection;
   private final Function<ClientConnectionType, String> connectionNamingStrategy;
-  // TODO remove the list of trackers (it's here just for debugging)
-  private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
   private final AtomicLong managerIdSequence = new AtomicLong(0);
   private final NavigableSet<ClientSubscriptionsManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
+
+  private final boolean debug = true;
+  private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
 
   ConsumersCoordinator(
       StreamEnvironment environment,
@@ -143,15 +144,19 @@ class ConsumersCoordinator {
       throw new StreamException(e.getMessage());
     }
 
-    this.trackers.add(subscriptionTracker);
-    return () -> {
-      try {
-        this.trackers.remove(subscriptionTracker);
-      } catch (Exception e) {
-        LOGGER.debug("Error while removing subscription tracker from list");
-      }
-      subscriptionTracker.cancel();
-    };
+    if (debug) {
+      this.trackers.add(subscriptionTracker);
+      return () -> {
+        try {
+          this.trackers.remove(subscriptionTracker);
+        } catch (Exception e) {
+          LOGGER.debug("Error while removing subscription tracker from list");
+        }
+        subscriptionTracker.cancel();
+      };
+    } else {
+      return subscriptionTracker::cancel;
+    }
   }
 
   private void addToManager(
@@ -343,30 +348,34 @@ class ConsumersCoordinator {
                   return managerBuilder.append("}").toString();
                 })
             .collect(Collectors.joining(",")));
-    builder.append("],");
-    builder.append("\"subscription_count\" : ").append(this.trackers.size()).append(",");
-    builder.append("\"subscriptions\" : [");
-    builder.append(
-        this.trackers.stream()
-            .map(
-                t -> {
-                  StringBuilder b = new StringBuilder("{");
-                  b.append(quote("stream")).append(":").append(quote(t.stream)).append(",");
-                  b.append(quote("node")).append(":");
-                  Client client = null;
-                  ClientSubscriptionsManager manager = t.manager;
-                  if (manager != null) {
-                    client = manager.client;
-                  }
-                  if (client == null) {
-                    b.append("null");
-                  } else {
-                    b.append(quote(client.getHost() + ":" + client.getPort()));
-                  }
-                  return b.append("}").toString();
-                })
-            .collect(Collectors.joining(",")));
-    builder.append("]}");
+    builder.append("]");
+    if (debug) {
+      builder.append(",");
+      builder.append("\"subscription_count\" : ").append(this.trackers.size()).append(",");
+      builder.append("\"subscriptions\" : [");
+      builder.append(
+          this.trackers.stream()
+              .map(
+                  t -> {
+                    StringBuilder b = new StringBuilder("{");
+                    b.append(quote("stream")).append(":").append(quote(t.stream)).append(",");
+                    b.append(quote("node")).append(":");
+                    Client client = null;
+                    ClientSubscriptionsManager manager = t.manager;
+                    if (manager != null) {
+                      client = manager.client;
+                    }
+                    if (client == null) {
+                      b.append("null");
+                    } else {
+                      b.append(quote(client.getHost() + ":" + client.getPort()));
+                    }
+                    return b.append("}").toString();
+                  })
+              .collect(Collectors.joining(",")));
+      builder.append("]");
+    }
+    builder.append("}");
     return builder.toString();
   }
 
@@ -810,7 +819,10 @@ class ConsumersCoordinator {
               }
             }
           } else {
-            LOGGER.debug("Not re-assigning consumer because it has been closed");
+            LOGGER.debug(
+                "Not re-assigning consumer {} (stream '{}') because it has been closed",
+                tracker.consumer.id(),
+                tracker.stream);
           }
           reassignmentCompleted = true;
         } catch (ConnectionStreamException

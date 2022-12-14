@@ -46,6 +46,7 @@ import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static java.lang.String.format;
+import static java.lang.String.join;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.AuthenticationFailureException;
@@ -421,10 +422,11 @@ public class Client implements AutoCloseable {
         throw new StreamException("Error when establishing stream connection", request.error());
       }
     } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
       throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while trying to exchange peer properties", e);
     }
   }
 
@@ -484,9 +486,12 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while trying to authenticate", e);
     }
   }
 
@@ -516,7 +521,7 @@ public class Client implements AutoCloseable {
       throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error during open command", e);
     }
   }
 
@@ -527,7 +532,7 @@ public class Client implements AutoCloseable {
     try {
       channel.writeAndFlush(bb).sync();
     } catch (InterruptedException e) {
-      throw new StreamException(e);
+      throw new StreamException("Error while sending bytes", e);
     }
   }
 
@@ -555,9 +560,12 @@ public class Client implements AutoCloseable {
             "Unexpected response code when closing: "
                 + formatConstant(request.response.get().getResponseCode()));
       }
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while closing connection", e);
     }
   }
 
@@ -575,9 +583,12 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while exchanging SASL mechanisms", e);
     }
   }
 
@@ -611,9 +622,12 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(format("Error while creating stream '%s'", stream), e);
     }
   }
 
@@ -656,9 +670,12 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(format("Error while deleting stream '%s'", stream), e);
     }
   }
 
@@ -688,9 +705,13 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while getting metadata for stream(s) '%s'", join(",", streams)), e);
     }
   }
 
@@ -728,7 +749,8 @@ public class Client implements AutoCloseable {
       throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while declaring publisher for stream '%s'", stream), e);
     }
   }
 
@@ -752,7 +774,7 @@ public class Client implements AutoCloseable {
       throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while deleting publisher", e);
     }
   }
 
@@ -1090,7 +1112,8 @@ public class Client implements AutoCloseable {
       throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while trying to subscribe to stream '%s'", stream), e);
     }
   }
 
@@ -1147,7 +1170,10 @@ public class Client implements AutoCloseable {
       throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format(
+              "Error while querying offset for reference '%s' on stream '%s'", reference, stream),
+          e);
     }
   }
 
@@ -1185,9 +1211,16 @@ public class Client implements AutoCloseable {
             formatConstant(response.getResponseCode()));
       }
       return response.getSequence();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format(
+              "Error while querying publisher sequence for '%s' on stream '%s'",
+              publisherReference, stream),
+          e);
     }
   }
 
@@ -1206,9 +1239,12 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while unsubscribing", e);
     }
   }
 
@@ -1330,9 +1366,16 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format(
+              "Error while querying route for routing key '%s' on super stream '%s'",
+              routingKey, superStream),
+          e);
     }
   }
 
@@ -1356,9 +1399,13 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while querying partitions for super stream '%s'", superStream), e);
     }
   }
 
@@ -1384,9 +1431,12 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while exchanging command version", e);
     }
   }
 
@@ -1409,9 +1459,13 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while querying statistics for stream '%s'", stream), e);
     }
   }
 
