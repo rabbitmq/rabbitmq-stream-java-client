@@ -13,8 +13,13 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.isSac;
+import static com.rabbitmq.stream.impl.Utils.jsonField;
+import static com.rabbitmq.stream.impl.Utils.namedFunction;
+import static com.rabbitmq.stream.impl.Utils.namedRunnable;
+import static com.rabbitmq.stream.impl.Utils.quote;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
@@ -24,9 +29,12 @@ import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
+import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ChunkListener;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
 import com.rabbitmq.stream.impl.Client.CreditNotification;
 import com.rabbitmq.stream.impl.Client.MessageListener;
@@ -39,16 +47,22 @@ import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -63,10 +77,15 @@ class ConsumersCoordinator {
   private static final Logger LOGGER = LoggerFactory.getLogger(ConsumersCoordinator.class);
   private final Random random = new Random();
   private final StreamEnvironment environment;
-  private final Map<String, ManagerPool> pools = new ConcurrentHashMap<>();
   private final ClientFactory clientFactory;
   private final int maxConsumersByConnection;
   private final Function<ClientConnectionType, String> connectionNamingStrategy;
+  private final AtomicLong managerIdSequence = new AtomicLong(0);
+  private final NavigableSet<ClientSubscriptionsManager> managers = new ConcurrentSkipListSet<>();
+  private final AtomicLong trackerIdSequence = new AtomicLong(0);
+
+  private final boolean debug = true;
+  private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
 
   ConsumersCoordinator(
       StreamEnvironment environment,
@@ -80,8 +99,11 @@ class ConsumersCoordinator {
   }
 
   private static String keyForClientSubscription(Client.Broker broker) {
-    // FIXME make sure this is a reasonable key for brokers
     return broker.getHost() + ":" + broker.getPort();
+  }
+
+  private BackOffDelayPolicy recoveryBackOffDelayPolicy() {
+    return this.environment.recoveryBackOffDelayPolicy();
   }
 
   private BackOffDelayPolicy metadataUpdateBackOffDelayPolicy() {
@@ -97,7 +119,6 @@ class ConsumersCoordinator {
       Runnable trackingClosingCallback,
       MessageHandler messageHandler,
       Map<String, String> subscriptionProperties) {
-    // FIXME fail immediately if there's no locator (can provide a supplier that does not retry)
     List<Client.Broker> candidates = findBrokersForStream(stream);
     Client.Broker newNode = pickBroker(candidates);
     if (newNode == null) {
@@ -108,6 +129,7 @@ class ConsumersCoordinator {
     // we keep this instance when we move the subscription from a client to another one
     SubscriptionTracker subscriptionTracker =
         new SubscriptionTracker(
+            this.trackerIdSequence.getAndIncrement(),
             consumer,
             stream,
             offsetSpecification,
@@ -117,33 +139,103 @@ class ConsumersCoordinator {
             messageHandler,
             subscriptionProperties);
 
-    String key = keyForClientSubscription(newNode);
-
-    ManagerPool managerPool =
-        pools.computeIfAbsent(
-            key,
-            s ->
-                new ManagerPool(
-                    key,
-                    environment
-                        .clientParametersCopy()
-                        .host(newNode.getHost())
-                        .port(newNode.getPort())));
-
     try {
-      managerPool.add(subscriptionTracker, offsetSpecification, true);
-    } catch (RuntimeException e) {
-      managerPool.clean();
-      throw e;
+      addToManager(newNode, subscriptionTracker, offsetSpecification, true);
+    } catch (ConnectionStreamException e) {
+      // these exceptions are not public
+      throw new StreamException(e.getMessage());
     }
-    return subscriptionTracker::cancel;
+
+    if (debug) {
+      this.trackers.add(subscriptionTracker);
+      return () -> {
+        try {
+          this.trackers.remove(subscriptionTracker);
+        } catch (Exception e) {
+          LOGGER.debug("Error while removing subscription tracker from list");
+        }
+        subscriptionTracker.cancel();
+      };
+    } else {
+      return subscriptionTracker::cancel;
+    }
+  }
+
+  private void addToManager(
+      Broker node,
+      SubscriptionTracker tracker,
+      OffsetSpecification offsetSpecification,
+      boolean isInitialSubscription) {
+    ClientParameters clientParameters =
+        environment.clientParametersCopy().host(node.getHost()).port(node.getPort());
+    ClientSubscriptionsManager pickedManager = null;
+    while (pickedManager == null) {
+      Iterator<ClientSubscriptionsManager> iterator = this.managers.iterator();
+      while (iterator.hasNext()) {
+        pickedManager = iterator.next();
+        if (pickedManager.isClosed()) {
+          iterator.remove();
+          pickedManager = null;
+        } else {
+          if (node.equals(pickedManager.node) && !pickedManager.isFull()) {
+            // let's try this one
+            break;
+          } else {
+            pickedManager = null;
+          }
+        }
+      }
+      if (pickedManager == null) {
+        String name = keyForClientSubscription(node);
+        LOGGER.debug("Creating subscription manager on {}", name);
+        pickedManager = new ClientSubscriptionsManager(node, clientParameters);
+        LOGGER.debug("Created subscription manager on {}, id {}", name, pickedManager.id);
+      }
+      try {
+        pickedManager.add(tracker, offsetSpecification, isInitialSubscription);
+        LOGGER.debug(
+            "Assigned tracker {} (stream '{}') to manager {} (node {}), subscription ID {}",
+            tracker.id,
+            tracker.stream,
+            pickedManager.id,
+            pickedManager.name,
+            tracker.subscriptionIdInClient);
+        this.managers.add(pickedManager);
+      } catch (IllegalStateException e) {
+        pickedManager = null;
+      } catch (ConnectionStreamException | ClientClosedException | StreamNotAvailableException e) {
+        // manager connection is dead or stream not available
+        // scheduling manager closing if necessary in another thread to avoid blocking this one
+        if (pickedManager.isEmpty()) {
+          ClientSubscriptionsManager manager = pickedManager;
+          ConsumersCoordinator.this.environment.execute(
+              () -> {
+                manager.closeIfEmpty();
+              },
+              "Consumer manager closing after timeout, consumer %d on stream '%s'",
+              tracker.consumer.id(),
+              tracker.stream);
+        }
+        throw e;
+      } catch (RuntimeException e) {
+        if (pickedManager != null) {
+          pickedManager.closeIfEmpty();
+        }
+        throw e;
+      }
+    }
+  }
+
+  int managerCount() {
+    return this.managers.size();
   }
 
   // package protected for testing
   List<Client.Broker> findBrokersForStream(String stream) {
-    // FIXME make sure locator is not null (retry)
     Map<String, Client.StreamMetadata> metadata =
-        this.environment.locatorOperation(c -> c.metadata(stream));
+        this.environment.locatorOperation(
+            namedFunction(
+                c -> c.metadata(stream), "Candidate lookup to consume from '%s'", stream));
     if (metadata.size() == 0 || metadata.get(stream) == null) {
       // this is not supposed to happen
       throw new StreamDoesNotExistException(stream);
@@ -168,7 +260,7 @@ class ConsumersCoordinator {
     List<Client.Broker> brokers;
     if (replicas == null || replicas.isEmpty()) {
       brokers = Collections.singletonList(streamMetadata.getLeader());
-      LOGGER.debug("Consuming from {} on leader node {}", stream, streamMetadata.getLeader());
+      LOGGER.debug("Only leader node {} for consuming from {}", streamMetadata.getLeader(), stream);
     } else {
       LOGGER.debug("Replicas for consuming from {}: {}", stream, replicas);
       brokers = new ArrayList<>(replicas);
@@ -190,38 +282,86 @@ class ConsumersCoordinator {
   }
 
   public void close() {
-    for (ManagerPool subscriptionPool : this.pools.values()) {
-      subscriptionPool.close();
+    Iterator<ClientSubscriptionsManager> iterator = this.managers.iterator();
+    while (iterator.hasNext()) {
+      ClientSubscriptionsManager manager = iterator.next();
+      try {
+        iterator.remove();
+        manager.close();
+      } catch (Exception e) {
+        LOGGER.info(
+            "Error while closing manager {} connected to node {}: {}",
+            manager.id,
+            manager.name,
+            e.getMessage());
+      }
     }
-  }
-
-  int poolSize() {
-    return pools.size();
   }
 
   @Override
   public String toString() {
-    return ("[ \n"
-        + pools.entrySet().stream()
+    StringBuilder builder = new StringBuilder("{");
+    builder.append(jsonField("client_count", this.managers.size())).append(", ");
+    builder.append(quote("clients")).append(" : [");
+    builder.append(
+        this.managers.stream()
             .map(
-                poolEntry ->
-                    "  { \"broker\" : \""
-                        + poolEntry.getKey()
-                        + "\", \"client_count\" : "
-                        + poolEntry.getValue().managers.size()
-                        + ", \"clients\" : [ "
-                        + poolEntry.getValue().managers.stream()
-                            .map(
-                                manager ->
-                                    "{ \"consumer_count\" : "
-                                        + manager.subscriptionTrackers.stream()
-                                            .filter(Objects::nonNull)
-                                            .count()
-                                        + " }")
-                            .collect(Collectors.joining(", "))
-                        + " ] }")
-            .collect(Collectors.joining(", \n"))
-        + "\n]");
+                m -> {
+                  StringBuilder managerBuilder = new StringBuilder("{");
+                  managerBuilder
+                      .append(jsonField("id", m.id))
+                      .append(",")
+                      .append(jsonField("node", m.name))
+                      .append(",")
+                      .append(jsonField("consumer_count", m.trackerCount))
+                      .append(",");
+                  managerBuilder.append("\"subscriptions\" : [");
+                  List<SubscriptionTracker> trackers = m.subscriptionTrackers;
+                  managerBuilder.append(
+                      trackers.stream()
+                          .filter(Objects::nonNull)
+                          .map(
+                              t -> {
+                                StringBuilder trackerBuilder = new StringBuilder("{");
+                                trackerBuilder.append(jsonField("stream", t.stream)).append(",");
+                                trackerBuilder.append(
+                                    jsonField("subscription_id", t.subscriptionIdInClient));
+                                return trackerBuilder.append("}").toString();
+                              })
+                          .collect(Collectors.joining(",")));
+                  managerBuilder.append("]");
+                  return managerBuilder.append("}").toString();
+                })
+            .collect(Collectors.joining(",")));
+    builder.append("]");
+    if (debug) {
+      builder.append(",");
+      builder.append("\"subscription_count\" : ").append(this.trackers.size()).append(",");
+      builder.append("\"subscriptions\" : [");
+      builder.append(
+          this.trackers.stream()
+              .map(
+                  t -> {
+                    StringBuilder b = new StringBuilder("{");
+                    b.append(quote("stream")).append(":").append(quote(t.stream)).append(",");
+                    b.append(quote("node")).append(":");
+                    Client client = null;
+                    ClientSubscriptionsManager manager = t.manager;
+                    if (manager != null) {
+                      client = manager.client;
+                    }
+                    if (client == null) {
+                      b.append("null");
+                    } else {
+                      b.append(quote(client.getHost() + ":" + client.getPort()));
+                    }
+                    return b.append("}").toString();
+                  })
+              .collect(Collectors.joining(",")));
+      builder.append("]");
+    }
+    builder.append("}");
+    return builder.toString();
   }
 
   /**
@@ -232,6 +372,7 @@ class ConsumersCoordinator {
    */
   private static class SubscriptionTracker {
 
+    private final long id;
     private final String stream;
     private final OffsetSpecification initialOffsetSpecification;
     private final String offsetTrackingReference;
@@ -244,8 +385,11 @@ class ConsumersCoordinator {
     private volatile boolean hasReceivedSomething = false;
     private volatile byte subscriptionIdInClient;
     private volatile ClientSubscriptionsManager manager;
+    private volatile AtomicReference<SubscriptionState> state =
+        new AtomicReference<>(SubscriptionState.OPENING);
 
     private SubscriptionTracker(
+        long id,
         StreamConsumer consumer,
         String stream,
         OffsetSpecification initialOffsetSpecification,
@@ -254,6 +398,7 @@ class ConsumersCoordinator {
         Runnable trackingClosingCallback,
         MessageHandler messageHandler,
         Map<String, String> subscriptionProperties) {
+      this.id = id;
       this.consumer = consumer;
       this.stream = stream;
       this.initialOffsetSpecification = initialOffsetSpecification;
@@ -284,6 +429,7 @@ class ConsumersCoordinator {
       } else {
         LOGGER.debug("No manager to remove consumer from");
       }
+      this.state(SubscriptionState.CLOSED);
     }
 
     synchronized void assign(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
@@ -302,6 +448,25 @@ class ConsumersCoordinator {
       this.manager = null;
       this.consumer.setSubscriptionClient(null);
     }
+
+    void state(SubscriptionState state) {
+      this.state.set(state);
+    }
+
+    boolean compareAndSet(SubscriptionState expected, SubscriptionState newValue) {
+      return this.state.compareAndSet(expected, newValue);
+    }
+
+    SubscriptionState state() {
+      return this.state.get();
+    }
+  }
+
+  private enum SubscriptionState {
+    OPENING,
+    ACTIVE,
+    RECOVERING,
+    CLOSED
   }
 
   private static final class MessageHandlerContext implements Context {
@@ -350,102 +515,33 @@ class ConsumersCoordinator {
   }
 
   /**
-   * Maintains {@link ClientSubscriptionsManager} instances for a given host.
-   *
-   * <p>Creates new {@link ClientSubscriptionsManager} instances (and so {@link Client}s, i.e.
-   * connections) when needed and disposes them when appropriate.
-   */
-  private class ManagerPool {
-
-    private final List<ClientSubscriptionsManager> managers = new CopyOnWriteArrayList<>();
-    private final String name;
-    private final Client.ClientParameters clientParameters;
-
-    private ManagerPool(String name, Client.ClientParameters clientParameters) {
-      this.name = name;
-      this.clientParameters = clientParameters;
-      LOGGER.debug("Creating client subscription pool on {}", name);
-      managers.add(new ClientSubscriptionsManager(this, clientParameters));
-    }
-
-    private synchronized void add(
-        SubscriptionTracker subscriptionTracker,
-        OffsetSpecification offsetSpecification,
-        boolean isInitialSubscription) {
-      boolean added = false;
-      // FIXME deal with manager unavailability (manager may be closing because of connection
-      // closing)
-      // try all of them until it succeeds, throw exception if failure
-      for (ClientSubscriptionsManager manager : managers) {
-        if (!manager.isFull()) {
-          manager.add(subscriptionTracker, offsetSpecification, isInitialSubscription);
-          added = true;
-          break;
-        }
-      }
-      if (!added) {
-        LOGGER.debug(
-            "Creating subscription manager on {}, this is subscription manager #{}",
-            name,
-            managers.size() + 1);
-        ClientSubscriptionsManager manager = new ClientSubscriptionsManager(this, clientParameters);
-        managers.add(manager);
-        manager.add(subscriptionTracker, offsetSpecification, isInitialSubscription);
-      }
-    }
-
-    private synchronized void clean() {
-      for (ClientSubscriptionsManager manager : managers) {
-        maybeDisposeManager(manager);
-      }
-    }
-
-    private synchronized void maybeDisposeManager(
-        ClientSubscriptionsManager clientSubscriptionsManager) {
-      if (clientSubscriptionsManager.isEmpty()) {
-        clientSubscriptionsManager.close();
-        this.remove(clientSubscriptionsManager);
-      }
-    }
-
-    private synchronized void remove(ClientSubscriptionsManager clientSubscriptionsManager) {
-      managers.remove(clientSubscriptionsManager);
-      if (managers.isEmpty()) {
-        pools.remove(name);
-        LOGGER.debug("Disposed client subscription pool on {} because it was empty", name);
-      }
-    }
-
-    synchronized void close() {
-      for (ClientSubscriptionsManager manager : managers) {
-        manager.close();
-      }
-      managers.clear();
-    }
-  }
-
-  /**
    * Maintains a set of {@link SubscriptionTracker} instances on a {@link Client}.
    *
    * <p>It dispatches inbound messages to the appropriate {@link SubscriptionTracker} and
    * re-allocates {@link SubscriptionTracker}s in case of stream unavailability or disconnection.
    */
-  private class ClientSubscriptionsManager {
+  private class ClientSubscriptionsManager implements Comparable<ClientSubscriptionsManager> {
 
+    private final long id;
+    private final Broker node;
     private final Client client;
+    private final String name;
     // the 2 data structures track the subscriptions, they must remain consistent
     private final Map<String, Set<SubscriptionTracker>> streamToStreamSubscriptions =
         new ConcurrentHashMap<>();
-    private final ManagerPool owner;
+    // trackers and tracker count must be kept in sync
     private volatile List<SubscriptionTracker> subscriptionTrackers =
         new ArrayList<>(maxConsumersByConnection);
+    private volatile int trackerCount = 0;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private ClientSubscriptionsManager(
-        ManagerPool owner, Client.ClientParameters clientParameters) {
-      this.owner = owner;
-      String name = owner.name;
+    private ClientSubscriptionsManager(Broker node, Client.ClientParameters clientParameters) {
+      this.id = managerIdSequence.getAndIncrement();
+      this.node = node;
+      this.name = keyForClientSubscription(node);
       LOGGER.debug("creating subscription manager on {}", name);
       IntStream.range(0, maxConsumersByConnection).forEach(i -> subscriptionTrackers.add(null));
+      this.trackerCount = 0;
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       ChunkListener chunkListener =
           (client, subscriptionId, offset, messageCount, dataSize) -> {
@@ -470,7 +566,6 @@ class ConsumersCoordinator {
           (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
-
             if (subscriptionTracker != null) {
               subscriptionTracker.offset = offset;
               subscriptionTracker.hasReceivedSomething = true;
@@ -480,50 +575,64 @@ class ConsumersCoordinator {
                   message);
               // FIXME set offset here as well, best effort to avoid duplicates?
             } else {
-              LOGGER.debug("Could not find stream subscription {}", subscriptionId);
+              LOGGER.debug(
+                  "Could not find stream subscription {} in manager {}, node {}",
+                  subscriptionId,
+                  this.id,
+                  this.name);
             }
           };
       ShutdownListener shutdownListener =
           shutdownContext -> {
-            // FIXME should the pool check if it's empty and so remove itself from the
-            // pools data structure?
-
-            // we may be closing the client because it's not the right node, so the manager
-            // should not be removed from its pool, because it's not really in it already
-            if (clientInitializedInManager.get()) {
-              owner.remove(this);
-            }
+            this.closed.set(true);
+            managers.remove(this);
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
-                  "Unexpected shutdown notification on subscription client {}, scheduling consumers re-assignment",
+                  "Unexpected shutdown notification on subscription connection {}, scheduling consumers re-assignment",
                   name);
+              LOGGER.debug(
+                  "Subscription connection has {} consumer(s) over {} stream(s) to recover",
+                  this.subscriptionTrackers.stream().filter(Objects::nonNull).count(),
+                  this.streamToStreamSubscriptions.size());
               environment
                   .scheduledExecutorService()
                   .execute(
-                      () -> {
-                        if (Thread.currentThread().isInterrupted()) {
-                          return;
-                        }
-                        subscriptionTrackers.stream()
-                            .filter(Objects::nonNull)
-                            .forEach(SubscriptionTracker::detachFromManager);
-                        for (Entry<String, Set<SubscriptionTracker>> entry :
-                            streamToStreamSubscriptions.entrySet()) {
-                          if (Thread.currentThread().isInterrupted()) {
-                            break;
-                          }
-                          String stream = entry.getKey();
-                          LOGGER.debug(
-                              "Re-assigning {} consumer(s) to stream {} after disconnection",
-                              entry.getValue().size(),
-                              stream);
-                          assignConsumersToStream(
-                              entry.getValue(),
-                              stream,
-                              attempt -> environment.recoveryBackOffDelayPolicy().delay(attempt),
-                              false);
-                        }
-                      });
+                      namedRunnable(
+                          () -> {
+                            if (Thread.currentThread().isInterrupted()) {
+                              return;
+                            }
+                            subscriptionTrackers.stream()
+                                .filter(Objects::nonNull)
+                                .filter(t -> t.state() == SubscriptionState.ACTIVE)
+                                .forEach(SubscriptionTracker::detachFromManager);
+                            for (Entry<String, Set<SubscriptionTracker>> entry :
+                                streamToStreamSubscriptions.entrySet()) {
+                              if (Thread.currentThread().isInterrupted()) {
+                                LOGGER.debug("Interrupting consumer re-assignment task");
+                                break;
+                              }
+                              String stream = entry.getKey();
+                              Set<SubscriptionTracker> trackersToReAssign = entry.getValue();
+                              if (trackersToReAssign == null || trackersToReAssign.isEmpty()) {
+                                LOGGER.debug(
+                                    "No consumer to re-assign to stream {} after disconnection",
+                                    stream);
+                              } else {
+                                LOGGER.debug(
+                                    "Re-assigning {} consumer(s) to stream {} after disconnection",
+                                    trackersToReAssign.size(),
+                                    stream);
+                                assignConsumersToStream(
+                                    trackersToReAssign,
+                                    stream,
+                                    recoveryBackOffDelayPolicy(),
+                                    false);
+                              }
+                            }
+                          },
+                          "Consumers re-assignment after disconnection from %s",
+                          name));
             }
           };
       MetadataListener metadataListener =
@@ -531,9 +640,8 @@ class ConsumersCoordinator {
             LOGGER.debug(
                 "Received metadata notification for '{}', stream is likely to have become unavailable",
                 stream);
-
             Set<SubscriptionTracker> affectedSubscriptions;
-            synchronized (this.owner) {
+            synchronized (this) {
               Set<SubscriptionTracker> subscriptions = streamToStreamSubscriptions.remove(stream);
               if (subscriptions != null && !subscriptions.isEmpty()) {
                 List<SubscriptionTracker> newSubscriptions =
@@ -550,31 +658,32 @@ class ConsumersCoordinator {
                   newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
                   subscription.consumer.setSubscriptionClient(null);
                 }
-                this.subscriptionTrackers = newSubscriptions;
+                this.setSubscriptionTrackers(newSubscriptions);
               }
               affectedSubscriptions = subscriptions;
             }
-            if (isEmpty()) {
-              this.owner.remove(this);
-            }
+
             if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
               environment
                   .scheduledExecutorService()
                   .execute(
-                      () -> {
-                        if (Thread.currentThread().isInterrupted()) {
-                          return;
-                        }
-                        LOGGER.debug(
-                            "Trying to move {} subscription(s) (stream {})",
-                            affectedSubscriptions.size(),
-                            stream);
-                        assignConsumersToStream(
-                            affectedSubscriptions,
-                            stream,
-                            metadataUpdateBackOffDelayPolicy(),
-                            isEmpty());
-                      });
+                      namedRunnable(
+                          () -> {
+                            if (Thread.currentThread().isInterrupted()) {
+                              return;
+                            }
+                            LOGGER.debug(
+                                "Trying to move {} subscription(s) (stream '{}')",
+                                affectedSubscriptions.size(),
+                                stream);
+                            assignConsumersToStream(
+                                affectedSubscriptions,
+                                stream,
+                                metadataUpdateBackOffDelayPolicy(),
+                                true);
+                          },
+                          "Consumers re-assignment after metadata update on stream '%s'",
+                          stream));
             }
           };
       ConsumerUpdateListener consumerUpdateListener =
@@ -607,7 +716,7 @@ class ConsumersCoordinator {
                       .shutdownListener(shutdownListener)
                       .metadataListener(metadataListener)
                       .consumerUpdateListener(consumerUpdateListener))
-              .key(owner.name);
+              .key(name);
       this.client = clientFactory.client(clientFactoryContext);
       LOGGER.debug("Created consumer connection '{}'", connectionName);
       maybeExchangeCommandVersions(client);
@@ -618,7 +727,7 @@ class ConsumersCoordinator {
         Collection<SubscriptionTracker> subscriptions,
         String stream,
         BackOffDelayPolicy delayPolicy,
-        boolean closeClient) {
+        boolean maybeCloseClient) {
       Runnable consumersClosingCallback =
           () -> {
             for (SubscriptionTracker affectedSubscription : subscriptions) {
@@ -631,57 +740,23 @@ class ConsumersCoordinator {
           };
 
       AsyncRetry.asyncRetry(() -> findBrokersForStream(stream))
-          .description("Candidate lookup to consume from " + stream)
+          .description("Candidate lookup to consume from '%s'", stream)
           .scheduler(environment.scheduledExecutorService())
           .retry(ex -> !(ex instanceof StreamDoesNotExistException))
           .delayPolicy(delayPolicy)
           .build()
           .thenAccept(
-              candidates -> {
+              candidateNodes -> {
+                List<Broker> candidates = candidateNodes;
                 if (candidates == null) {
+                  LOGGER.debug("No candidate nodes to consume from '{}'", stream);
                   consumersClosingCallback.run();
                 } else {
                   for (SubscriptionTracker affectedSubscription : subscriptions) {
-                    try {
-                      if (affectedSubscription.consumer.isOpen()) {
-                        Client.Broker broker = pickBroker(candidates);
-                        LOGGER.debug("Using {} to resume consuming from {}", broker, stream);
-                        String key = keyForClientSubscription(broker);
-                        // FIXME in case the broker is no longer there, we may have to deal with an
-                        // error here
-                        // we could renew the list of candidates for the stream
-                        ManagerPool subscriptionPool =
-                            pools.computeIfAbsent(
-                                key,
-                                s ->
-                                    new ManagerPool(
-                                        key,
-                                        environment
-                                            .clientParametersCopy()
-                                            .host(broker.getHost())
-                                            .port(broker.getPort())));
-                        synchronized (affectedSubscription.consumer) {
-                          if (affectedSubscription.consumer.isOpen()) {
-                            OffsetSpecification offsetSpecification;
-                            if (affectedSubscription.hasReceivedSomething) {
-                              offsetSpecification =
-                                  OffsetSpecification.offset(affectedSubscription.offset);
-                            } else {
-                              offsetSpecification = affectedSubscription.initialOffsetSpecification;
-                            }
-                            subscriptionPool.add(affectedSubscription, offsetSpecification, false);
-                          }
-                        }
-                      } else {
-                        LOGGER.debug("Not re-assigning consumer because it has been closed");
-                      }
-                    } catch (Exception e) {
-                      LOGGER.warn(
-                          "Error while re-assigning subscription from stream {}", stream, e);
-                    }
+                    maybeRecoverSubscription(candidates, affectedSubscription);
                   }
-                  if (closeClient) {
-                    this.close();
+                  if (maybeCloseClient) {
+                    this.closeIfEmpty();
                   }
                 }
               })
@@ -693,116 +768,232 @@ class ConsumersCoordinator {
                     stream,
                     ex);
                 consumersClosingCallback.run();
+                if (maybeCloseClient) {
+                  this.closeIfEmpty();
+                }
                 return null;
               });
     }
 
-    void add(
-        SubscriptionTracker subscriptionTracker,
-        OffsetSpecification offsetSpecification,
-        boolean isInitialSubscription) {
-      synchronized (this.owner) {
-
-        // FIXME check manager is still open (not closed because of connection failure)
-        byte subscriptionId = 0;
-        for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-          if (subscriptionTrackers.get(i) == null) {
-            subscriptionId = (byte) i;
-            break;
-          }
-        }
-
-        List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
-
-        LOGGER.debug(
-            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}",
-            subscriptionTracker.stream,
-            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
-            subscriptionTracker.offsetTrackingReference,
-            subscriptionTracker.subscriptionProperties);
+    private void maybeRecoverSubscription(List<Broker> candidates, SubscriptionTracker tracker) {
+      if (tracker.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
         try {
-          // updating data structures before subscribing
-          // (to make sure they are up-to-date in case message would arrive super fast)
-          subscriptionTracker.assign(subscriptionId, this);
-          streamToStreamSubscriptions
-              .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
-              .add(subscriptionTracker);
-          this.subscriptionTrackers =
-              update(previousSubscriptions, subscriptionId, subscriptionTracker);
-
-          String offsetTrackingReference = subscriptionTracker.offsetTrackingReference;
-          if (offsetTrackingReference != null) {
-            QueryOffsetResponse queryOffsetResponse =
-                client.queryOffset(offsetTrackingReference, subscriptionTracker.stream);
-            if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
-              if (offsetSpecification != null && isInitialSubscription) {
-                // subscription call (not recovery), so telling the user their offset specification
-                // is
-                // ignored
-                LOGGER.info(
-                    "Requested offset specification {} not used in favor of stored offset found for reference {}",
-                    offsetSpecification,
-                    offsetTrackingReference);
-              }
-              LOGGER.debug(
-                  "Using offset {} to start consuming from {} with consumer {} "
-                      + "(instead of {})",
-                  queryOffsetResponse.getOffset(),
-                  subscriptionTracker.stream,
-                  offsetTrackingReference,
-                  offsetSpecification);
-              offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
-            }
-          }
-
-          offsetSpecification =
-              offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
-
-          // TODO consider using/emulating ConsumerUpdateListener, to have only one API, not 2
-          // even when the consumer is not a SAC.
-          SubscriptionContext subscriptionContext =
-              new DefaultSubscriptionContext(offsetSpecification);
-          subscriptionTracker.subscriptionListener.preSubscribe(subscriptionContext);
-          LOGGER.info(
-              "Computed offset specification {}, offset specification used after subscription listener {}",
-              offsetSpecification,
-              subscriptionContext.offsetSpecification());
-
-          // FIXME consider using fewer initial credits
-          Client.Response subscribeResponse =
-              client.subscribe(
-                  subscriptionId,
-                  subscriptionTracker.stream,
-                  subscriptionContext.offsetSpecification(),
-                  10,
-                  subscriptionTracker.subscriptionProperties);
-          if (!subscribeResponse.isOk()) {
-            String message =
-                "Subscription to stream "
-                    + subscriptionTracker.stream
-                    + " failed with code "
-                    + formatConstant(subscribeResponse.getResponseCode());
-            LOGGER.debug(message);
-            throw new StreamException(message);
-          }
-        } catch (RuntimeException e) {
-          subscriptionTracker.assign((byte) -1, null);
-          this.subscriptionTrackers = previousSubscriptions;
-          streamToStreamSubscriptions
-              .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
-              .remove(subscriptionTracker);
-          throw e;
+          recoverSubscription(candidates, tracker);
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Error while recovering consumer {} from stream '{}'. Reason: {}",
+              tracker.consumer.id(),
+              tracker.stream,
+              Utils.exceptionMessage(e));
         }
-        LOGGER.debug("Subscribed to {}", subscriptionTracker.stream);
+      } else {
+        LOGGER.debug(
+            "Not recovering consumer {} from stream {}, state is {}, expected is {}",
+            tracker.consumer.id(),
+            tracker.stream,
+            tracker.state(),
+            SubscriptionState.ACTIVE);
       }
     }
 
-    void remove(SubscriptionTracker subscriptionTracker) {
-      synchronized (this.owner) {
+    private void recoverSubscription(List<Broker> candidates, SubscriptionTracker tracker) {
+      boolean reassignmentCompleted = false;
+      while (!reassignmentCompleted) {
+        try {
+          if (tracker.consumer.isOpen()) {
+            Broker broker = pickBroker(candidates);
+            LOGGER.debug("Using {} to resume consuming from {}", broker, tracker.stream);
+            synchronized (tracker.consumer) {
+              if (tracker.consumer.isOpen()) {
+                OffsetSpecification offsetSpecification;
+                if (tracker.hasReceivedSomething) {
+                  offsetSpecification = OffsetSpecification.offset(tracker.offset);
+                } else {
+                  offsetSpecification = tracker.initialOffsetSpecification;
+                }
+                addToManager(broker, tracker, offsetSpecification, false);
+              }
+            }
+          } else {
+            LOGGER.debug(
+                "Not re-assigning consumer {} (stream '{}') because it has been closed",
+                tracker.consumer.id(),
+                tracker.stream);
+          }
+          reassignmentCompleted = true;
+        } catch (ConnectionStreamException
+            | ClientClosedException
+            | StreamNotAvailableException e) {
+          LOGGER.debug(
+              "Consumer {} re-assignment on stream {} timed out or connection closed or stream not available, "
+                  + "refreshing candidates and retrying",
+              tracker.consumer.id(),
+              tracker.stream);
+          // maybe not a good candidate, let's refresh and retry for this one
+          candidates =
+              Utils.callAndMaybeRetry(
+                  () -> findBrokersForStream(tracker.stream),
+                  ex -> !(ex instanceof StreamDoesNotExistException),
+                  environment.recoveryBackOffDelayPolicy(),
+                  "Candidate lookup to consume from '%s'",
+                  tracker.stream);
+        } catch (Exception e) {
+          LOGGER.warn("Error while re-assigning subscription from stream {}", tracker.stream, e);
+          reassignmentCompleted = true;
+        }
+      }
+    }
 
-        // FIXME check manager is still open (not closed because of connection failure)
-        byte subscriptionIdInClient = subscriptionTracker.subscriptionIdInClient;
-        Client.Response unsubscribeResponse = client.unsubscribe(subscriptionIdInClient);
+    private void checkNotClosed() {
+      if (!this.client.isOpen()) {
+        throw new ClientClosedException();
+      }
+    }
+
+    synchronized void add(
+        SubscriptionTracker subscriptionTracker,
+        OffsetSpecification offsetSpecification,
+        boolean isInitialSubscription) {
+      if (this.isFull()) {
+        throw new IllegalStateException("Cannot add subscription tracker, the manager is full");
+      }
+      if (this.isClosed()) {
+        throw new IllegalStateException("Cannot add subscription tracker, the manager is closed");
+      }
+
+      checkNotClosed();
+
+      byte subscriptionId = 0;
+      for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+        if (subscriptionTrackers.get(i) == null) {
+          subscriptionId = (byte) i;
+          break;
+        }
+      }
+
+      List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
+
+      LOGGER.debug(
+          "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}",
+          subscriptionTracker.stream,
+          offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
+          subscriptionTracker.offsetTrackingReference,
+          subscriptionTracker.subscriptionProperties);
+      try {
+        // updating data structures before subscribing
+        // (to make sure they are up-to-date in case message would arrive super fast)
+        subscriptionTracker.assign(subscriptionId, this);
+        streamToStreamSubscriptions
+            .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
+            .add(subscriptionTracker);
+        this.setSubscriptionTrackers(
+            update(previousSubscriptions, subscriptionId, subscriptionTracker));
+
+        String offsetTrackingReference = subscriptionTracker.offsetTrackingReference;
+        if (offsetTrackingReference != null) {
+          checkNotClosed();
+          QueryOffsetResponse queryOffsetResponse =
+              Utils.callAndMaybeRetry(
+                  () -> client.queryOffset(offsetTrackingReference, subscriptionTracker.stream),
+                  RETRY_ON_TIMEOUT,
+                  "Offset query for consumer %s on stream '%s' (reference %s)",
+                  subscriptionTracker.consumer.id(),
+                  subscriptionTracker.stream,
+                  offsetTrackingReference);
+          if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
+            if (offsetSpecification != null && isInitialSubscription) {
+              // subscription call (not recovery), so telling the user their offset specification
+              // is
+              // ignored
+              LOGGER.info(
+                  "Requested offset specification {} not used in favor of stored offset found for reference {}",
+                  offsetSpecification,
+                  offsetTrackingReference);
+            }
+            LOGGER.debug(
+                "Using offset {} to start consuming from {} with consumer {} " + "(instead of {})",
+                queryOffsetResponse.getOffset(),
+                subscriptionTracker.stream,
+                offsetTrackingReference,
+                offsetSpecification);
+            offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
+          }
+        }
+
+        offsetSpecification =
+            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
+
+        // TODO consider using/emulating ConsumerUpdateListener, to have only one API, not 2
+        // even when the consumer is not a SAC.
+        SubscriptionContext subscriptionContext =
+            new DefaultSubscriptionContext(offsetSpecification);
+        subscriptionTracker.subscriptionListener.preSubscribe(subscriptionContext);
+        LOGGER.info(
+            "Computed offset specification {}, offset specification used after subscription listener {}",
+            offsetSpecification,
+            subscriptionContext.offsetSpecification());
+
+        checkNotClosed();
+        // FIXME consider using fewer initial credits
+        byte subId = subscriptionId;
+        Client.Response subscribeResponse =
+            Utils.callAndMaybeRetry(
+                () ->
+                    client.subscribe(
+                        subId,
+                        subscriptionTracker.stream,
+                        subscriptionContext.offsetSpecification(),
+                        10,
+                        subscriptionTracker.subscriptionProperties),
+                RETRY_ON_TIMEOUT,
+                "Subscribe request for consumer %s on stream '%s'",
+                subscriptionTracker.consumer.id(),
+                subscriptionTracker.stream);
+        if (!subscribeResponse.isOk()) {
+          String message =
+              "Subscription to stream "
+                  + subscriptionTracker.stream
+                  + " failed with code "
+                  + formatConstant(subscribeResponse.getResponseCode());
+          LOGGER.debug(message);
+          throw convertCodeToException(
+              subscribeResponse.getResponseCode(), subscriptionTracker.stream, () -> message);
+        }
+      } catch (RuntimeException e) {
+        subscriptionTracker.assign((byte) -1, null);
+        this.setSubscriptionTrackers(previousSubscriptions);
+        streamToStreamSubscriptions
+            .computeIfAbsent(subscriptionTracker.stream, s -> ConcurrentHashMap.newKeySet())
+            .remove(subscriptionTracker);
+        maybeCleanStreamToStreamSubscriptions(subscriptionTracker.stream);
+        throw e;
+      }
+      subscriptionTracker.state(SubscriptionState.ACTIVE);
+      LOGGER.debug("Subscribed to '{}'", subscriptionTracker.stream);
+    }
+
+    private void maybeCleanStreamToStreamSubscriptions(String stream) {
+      this.streamToStreamSubscriptions.compute(
+          stream,
+          (s, trackers) -> {
+            if (trackers == null || trackers.isEmpty()) {
+              return null;
+            } else {
+              return trackers;
+            }
+          });
+    }
+
+    synchronized void remove(SubscriptionTracker subscriptionTracker) {
+      byte subscriptionIdInClient = subscriptionTracker.subscriptionIdInClient;
+      try {
+        Client.Response unsubscribeResponse =
+            Utils.callAndMaybeRetry(
+                () -> client.unsubscribe(subscriptionIdInClient),
+                RETRY_ON_TIMEOUT,
+                "Unsubscribe request for consumer %d on stream '%s'",
+                subscriptionTracker.consumer.id(),
+                subscriptionTracker.stream);
         if (!unsubscribeResponse.isOk()) {
           LOGGER.warn(
               "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
@@ -810,20 +1001,27 @@ class ConsumersCoordinator {
               formatConstant(unsubscribeResponse.getResponseCode()),
               subscriptionIdInClient);
         }
-        this.subscriptionTrackers = update(this.subscriptionTrackers, subscriptionIdInClient, null);
-        streamToStreamSubscriptions.compute(
-            subscriptionTracker.stream,
-            (stream, subscriptionsForThisStream) -> {
-              if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
-                // should not happen
-                return null;
-              } else {
-                subscriptionsForThisStream.remove(subscriptionTracker);
-                return subscriptionsForThisStream.isEmpty() ? null : subscriptionsForThisStream;
-              }
-            });
-        this.owner.maybeDisposeManager(this);
+      } catch (TimeoutStreamException e) {
+        LOGGER.debug(
+            "Reached timeout when trying to unsubscribe consumer {} from stream '{}'",
+            subscriptionTracker.consumer.id(),
+            subscriptionTracker.stream);
       }
+
+      this.setSubscriptionTrackers(update(this.subscriptionTrackers, subscriptionIdInClient, null));
+      streamToStreamSubscriptions.compute(
+          subscriptionTracker.stream,
+          (stream, subscriptionsForThisStream) -> {
+            if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
+              // should not happen
+              return null;
+            } else {
+              subscriptionsForThisStream.remove(subscriptionTracker);
+              return subscriptionsForThisStream.isEmpty() ? null : subscriptionsForThisStream;
+            }
+          });
+      closeIfEmpty();
+      //      this.owner.maybeDisposeManager(this);
     }
 
     private List<SubscriptionTracker> update(
@@ -836,40 +1034,84 @@ class ConsumersCoordinator {
       return newSubcriptions;
     }
 
-    synchronized boolean isFull() {
-      return trackersCount() == maxConsumersByConnection;
+    private void setSubscriptionTrackers(List<SubscriptionTracker> trackers) {
+      this.subscriptionTrackers = trackers;
+      this.trackerCount = (int) this.subscriptionTrackers.stream().filter(Objects::nonNull).count();
     }
 
-    synchronized boolean isEmpty() {
-      return trackersCount() == 0;
+    boolean isFull() {
+      return this.trackerCount == maxConsumersByConnection;
     }
 
-    private synchronized int trackersCount() {
-      return (int) this.subscriptionTrackers.stream().filter(Objects::nonNull).count();
+    boolean isEmpty() {
+      return this.trackerCount == 0;
+    }
+
+    boolean isClosed() {
+      if (!this.client.isOpen()) {
+        this.close();
+      }
+      return this.closed.get();
+    }
+
+    synchronized void closeIfEmpty() {
+      if (this.isEmpty()) {
+        this.close();
+      }
     }
 
     synchronized void close() {
-      if (this.client != null && this.client.isOpen()) {
-        subscriptionTrackers.stream()
-            .filter(Objects::nonNull)
-            .forEach(
-                tracker -> {
-                  try {
-                    if (this.client != null && this.client.isOpen() && tracker.consumer.isOpen()) {
-                      this.client.unsubscribe(tracker.subscriptionIdInClient);
-                    }
-                  } catch (Exception e) {
-                    // OK, moving on
-                  }
-                });
-
-        streamToStreamSubscriptions.clear();
-        subscriptionTrackers.clear();
-
+      if (this.closed.compareAndSet(false, true)) {
+        managers.remove(this);
+        LOGGER.debug("Closing consumer subscription manager on {}, id {}", this.name, this.id);
         if (this.client != null && this.client.isOpen()) {
-          this.client.close();
+          for (int i = 0; i < this.subscriptionTrackers.size(); i++) {
+            SubscriptionTracker tracker = this.subscriptionTrackers.get(i);
+            if (tracker != null) {
+              try {
+                if (this.client != null && this.client.isOpen() && tracker.consumer.isOpen()) {
+                  this.client.unsubscribe(tracker.subscriptionIdInClient);
+                }
+              } catch (Exception e) {
+                // OK, moving on
+                LOGGER.debug(
+                    "Error while unsubscribing from {}, registration {}",
+                    tracker.stream,
+                    tracker.subscriptionIdInClient);
+              }
+              this.subscriptionTrackers.set(i, null);
+            }
+          }
+
+          streamToStreamSubscriptions.clear();
+
+          if (this.client != null && this.client.isOpen()) {
+            this.client.close();
+          }
         }
       }
+    }
+
+    @Override
+    public int compareTo(ClientSubscriptionsManager o) {
+      return Long.compare(this.id, o.id);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      ClientSubscriptionsManager that = (ClientSubscriptionsManager) o;
+      return id == that.id;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(id);
     }
   }
 
@@ -904,6 +1146,16 @@ class ConsumersCoordinator {
       }
     } catch (Exception e) {
       LOGGER.info("Error while exchanging command versions: {}", e.getMessage());
+    }
+  }
+
+  private static final Predicate<Exception> RETRY_ON_TIMEOUT =
+      e -> e instanceof TimeoutStreamException;
+
+  private static class ClientClosedException extends StreamException {
+
+    public ClientClosedException() {
+      super("Client already closed");
     }
   }
 }

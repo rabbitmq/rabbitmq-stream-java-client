@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.namedFunction;
+
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.ConfirmationStatus;
@@ -70,12 +72,23 @@ class SuperStreamProducer implements Producer {
   @Override
   public long getLastPublishingId() {
     if (this.name != null && !this.name.isEmpty()) {
-      List<String> streams = this.environment.locatorOperation(c -> c.partitions(superStream));
+      List<String> streams =
+          this.environment.locatorOperation(
+              namedFunction(
+                  c -> c.partitions(superStream),
+                  "Partition lookup for super stream '%s'",
+                  this.superStream));
       long publishingId = 0;
       boolean first = true;
       for (String partition : streams) {
         long pubId =
-            this.environment.locatorOperation(c -> c.queryPublisherSequence(this.name, partition));
+            this.environment.locatorOperation(
+                namedFunction(
+                    c -> c.queryPublisherSequence(this.name, partition),
+                    "Publisher sequence query for on partition '%s' of super stream '%s', publisher name '%s'",
+                    partition,
+                    this.superStream,
+                    this.name));
         if (first) {
           publishingId = pubId;
           first = false;
@@ -148,7 +161,12 @@ class SuperStreamProducer implements Producer {
     private DefaultSuperStreamMetadata(String superStream, StreamEnvironment environment) {
       this.superStream = superStream;
       this.environment = environment;
-      List<String> ps = environment.locatorOperation(c -> c.partitions(superStream));
+      List<String> ps =
+          environment.locatorOperation(
+              namedFunction(
+                  c -> c.partitions(superStream),
+                  "Partition lookup for super stream '%s'",
+                  superStream));
       this.partitions = new CopyOnWriteArrayList<>(ps);
     }
 
@@ -161,7 +179,13 @@ class SuperStreamProducer implements Producer {
     public List<String> route(String routingKey) {
       return routes.computeIfAbsent(
           routingKey,
-          routingKey1 -> environment.locatorOperation(c -> c.route(routingKey1, superStream)));
+          routingKey1 ->
+              environment.locatorOperation(
+                  namedFunction(
+                      c -> c.route(routingKey1, superStream),
+                      "Route lookup on super stream '%s' for key '%s'",
+                      this.superStream,
+                      routingKey1)));
     }
   }
 }

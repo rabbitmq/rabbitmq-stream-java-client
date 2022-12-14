@@ -20,6 +20,8 @@ import static com.rabbitmq.stream.impl.TestUtils.localhostTls;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -34,6 +36,7 @@ import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.Host.ConnectionInfo;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -44,6 +47,7 @@ import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamStats;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
+import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerCoordinatorInfo;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
@@ -64,8 +68,8 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLParameters;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -180,42 +184,31 @@ public class StreamEnvironmentTest {
   void producersAndConsumersShouldBeClosedWhenEnvironmentIsClosed(boolean lazyInit) {
     Environment environment = environmentBuilder.lazyInitialization(lazyInit).build();
     Collection<Producer> producers =
-        IntStream.range(0, 2)
+        range(0, 2)
             .mapToObj(i -> environment.producerBuilder().stream(stream).build())
-            .collect(Collectors.toList());
+            .collect(toList());
     Collection<Consumer> consumers =
-        IntStream.range(0, 2)
+        range(0, 2)
             .mapToObj(
                 i ->
                     environment.consumerBuilder().stream(stream)
                         .name(UUID.randomUUID().toString())
                         .messageHandler((offset, message) -> {})
                         .build())
-            .collect(Collectors.toList());
+            .collect(toList());
 
     producers.forEach(producer -> assertThat(((StreamProducer) producer).isOpen()).isTrue());
     consumers.forEach(consumer -> assertThat(((StreamConsumer) consumer).isOpen()).isTrue());
 
     EnvironmentInfo environmentInfo = MonitoringTestUtils.extract(environment);
-    assertThat(environmentInfo.getLocator()).isNotNull();
-    assertThat(environmentInfo.getProducers())
-        .hasSize(1)
-        .element(0)
-        .extracting(pool -> pool.getClients())
-        .asList()
-        .hasSize(1);
-    assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getProducerCount())
-        .isEqualTo(2);
-    assertThat(environmentInfo.getProducers().get(0).getClients().get(0).getTrackingConsumerCount())
-        .isEqualTo(2);
-    assertThat(environmentInfo.getConsumers())
-        .hasSize(1)
-        .element(0)
-        .extracting(pool -> pool.getClients())
-        .asList()
-        .hasSize(1);
-    assertThat(environmentInfo.getConsumers().get(0).getClients().get(0).getConsumerCount())
-        .isEqualTo(2);
+    assertThat(environmentInfo.getLocators()).isNotEmpty();
+    assertThat(environmentInfo.getProducers().clientCount()).isEqualTo(1);
+    assertThat(environmentInfo.getProducers().producerCount()).isEqualTo(2);
+    assertThat(environmentInfo.getProducers().trackingConsumerCount()).isEqualTo(2);
+    ConsumerCoordinatorInfo consumerInfo = environmentInfo.getConsumers();
+    assertThat(consumerInfo.nodesConnected()).hasSize(1);
+    assertThat(consumerInfo.clients()).hasSize(1);
+    assertThat(consumerInfo.consumerCount()).isEqualTo(2);
 
     environment.close();
 
@@ -223,9 +216,9 @@ public class StreamEnvironmentTest {
     consumers.forEach(consumer -> assertThat(((StreamConsumer) consumer).isOpen()).isFalse());
 
     environmentInfo = MonitoringTestUtils.extract(environment);
-    assertThat(environmentInfo.getLocator()).isNull();
-    assertThat(environmentInfo.getProducers()).isEmpty();
-    assertThat(environmentInfo.getConsumers()).isEmpty();
+    assertThat(environmentInfo.getLocators()).isNotEmpty();
+    assertThat(environmentInfo.getProducers().clientCount()).isZero();
+    assertThat(environmentInfo.getConsumers().clients()).isEmpty();
   }
 
   @Test
@@ -237,7 +230,7 @@ public class StreamEnvironmentTest {
 
     try (Environment environment = environmentBuilder.rpcTimeout(Duration.ofSeconds(20)).build()) {
       List<String> streams =
-          IntStream.range(0, streamCount)
+          range(0, streamCount)
               .mapToObj(i -> streamName(info))
               .map(
                   s -> {
@@ -250,16 +243,16 @@ public class StreamEnvironmentTest {
       CountDownLatch consumeLatch = new CountDownLatch(messageCount * producersCount);
 
       List<Producer> producers =
-          IntStream.range(0, producersCount)
+          range(0, producersCount)
               .mapToObj(
                   i -> {
                     String s = streams.get(i % streams.size());
                     return environment.producerBuilder().stream(s).build();
                   })
-              .collect(Collectors.toList());
+              .collect(toList());
 
       List<Consumer> consumers =
-          IntStream.range(0, consumersCount)
+          range(0, consumersCount)
               .mapToObj(
                   i -> {
                     String s = streams.get(new Random().nextInt(streams.size()));
@@ -267,13 +260,13 @@ public class StreamEnvironmentTest {
                         .messageHandler((offset, message) -> consumeLatch.countDown())
                         .build();
                   })
-              .collect(Collectors.toList());
+              .collect(toList());
 
       producers.stream()
           .parallel()
           .forEach(
               producer -> {
-                IntStream.range(0, messageCount)
+                range(0, messageCount)
                     .forEach(
                         messageIndex -> {
                           producer.send(
@@ -290,11 +283,12 @@ public class StreamEnvironmentTest {
       latchAssert(consumeLatch).completes();
 
       EnvironmentInfo environmentInfo = MonitoringTestUtils.extract(environment);
-      assertThat(environmentInfo.getProducers()).hasSize(1);
-      int producerManagerCount = environmentInfo.getProducers().get(0).getClients().size();
+      assertThat(environmentInfo.getProducers().nodesConnected()).hasSize(1);
+      int producerManagerCount = environmentInfo.getProducers().clientCount();
       assertThat(producerManagerCount).isPositive();
-      assertThat(environmentInfo.getConsumers()).hasSize(1);
-      int consumerManagerCount = environmentInfo.getConsumers().get(0).getClients().size();
+      ConsumerCoordinatorInfo consumerInfo = environmentInfo.getConsumers();
+      assertThat(consumerInfo.nodesConnected()).hasSize(1);
+      int consumerManagerCount = consumerInfo.clients().size();
       assertThat(consumerManagerCount).isPositive();
 
       java.util.function.Consumer<AutoCloseable> closing =
@@ -319,12 +313,11 @@ public class StreamEnvironmentTest {
       consumers.removeAll(subConsumers);
 
       environmentInfo = MonitoringTestUtils.extract(environment);
-      assertThat(environmentInfo.getProducers()).hasSize(1);
-      assertThat(environmentInfo.getProducers().get(0).getClients())
-          .hasSizeLessThan(producerManagerCount);
-      assertThat(environmentInfo.getConsumers()).hasSize(1);
-      assertThat(environmentInfo.getConsumers().get(0).getClients())
-          .hasSizeLessThan(consumerManagerCount);
+      assertThat(environmentInfo.getProducers().nodesConnected()).hasSize(1);
+      assertThat(environmentInfo.getProducers().clientCount()).isLessThan(producerManagerCount);
+      consumerInfo = environmentInfo.getConsumers();
+      assertThat(consumerInfo.nodesConnected()).hasSize(1);
+      assertThat(consumerInfo.clients()).hasSizeLessThan(consumerManagerCount);
 
       producers.forEach(closing);
       consumers.forEach(closing);
@@ -379,7 +372,7 @@ public class StreamEnvironmentTest {
 
   @Test
   @TestUtils.DisabledIfRabbitMqCtlNotSet
-  void locatorShouldReconnectIfConnectionIsLost(TestInfo info) throws Exception {
+  void locatorShouldReconnectIfConnectionIsLost(TestInfo info) {
     try (Environment environment =
         environmentBuilder
             .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(1)))
@@ -400,6 +393,48 @@ public class StreamEnvironmentTest {
       } finally {
         environment.deleteStream(s);
       }
+    }
+  }
+
+  @Test
+  @TestUtils.DisabledIfRabbitMqCtlNotSet
+  void shouldHaveSeveralLocatorsWhenSeveralUrisSpecifiedAndShouldRecoverThemIfClosed(TestInfo info)
+      throws Exception {
+    List<String> uris =
+        range(0, 3).mapToObj(ignored -> "rabbitmq-stream://localhost:5552").collect(toList());
+    try (Environment environment =
+        environmentBuilder
+            .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(1)))
+            .uris(uris)
+            .build()) {
+      String s = streamName(info);
+      environment.streamCreator().stream(s).create();
+      environment.deleteStream(s);
+
+      Supplier<List<String>> locatorConnectionNamesSupplier =
+          () ->
+              Host.listConnections().stream()
+                  .map(ConnectionInfo::clientProvidedName)
+                  .filter(name -> name.contains("-locator-"))
+                  .collect(toList());
+      List<String> locatorConnectionNames = locatorConnectionNamesSupplier.get();
+      assertThat(locatorConnectionNames).hasSameSizeAs(uris);
+
+      locatorConnectionNames.forEach(connectionName -> Host.killConnection(connectionName));
+
+      environment.streamCreator().stream(s).create();
+      try {
+        Producer producer = environment.producerBuilder().stream(s).build();
+        Consumer consumer =
+            environment.consumerBuilder().stream(s)
+                .messageHandler((context, message) -> {})
+                .build();
+        producer.close();
+        consumer.close();
+      } finally {
+        environment.deleteStream(s);
+      }
+      waitAtMost(() -> locatorConnectionNamesSupplier.get().size() == uris.size());
     }
   }
 
@@ -482,7 +517,7 @@ public class StreamEnvironmentTest {
 
       Producer producer = env.producerBuilder().stream(s).build();
       ConfirmationHandler confirmationHandler = confirmationStatus -> confirmLatch.countDown();
-      IntStream.range(0, messageCount)
+      range(0, messageCount)
           .forEach(
               i -> {
                 Message message =

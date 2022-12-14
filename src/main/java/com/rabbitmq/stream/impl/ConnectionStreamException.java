@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,25 +13,15 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.StreamException;
 
-final class Codecs {
+class ConnectionStreamException extends StreamException {
 
-  private Codecs() {}
-
-  static final Codec DEFAULT;
-
-  static {
-    DEFAULT = instanciateDefault();
+  public ConnectionStreamException(String message) {
+    super(message);
   }
 
-  private static Codec instanciateDefault() {
-    try {
-      return (Codec)
-          Class.forName("com.rabbitmq.stream.codec.QpidProtonCodec").getConstructor().newInstance();
-    } catch (Exception e) {
-      throw new StreamException("Error while creating QPid Proton codec", e);
-    }
+  public ConnectionStreamException(String message, Throwable cause) {
+    super(message, cause);
   }
 }

@@ -17,6 +17,7 @@ import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
 import static com.rabbitmq.stream.Constants.CODE_PRODUCER_CLOSED;
 import static com.rabbitmq.stream.Constants.CODE_PRODUCER_NOT_AVAILABLE;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
@@ -166,13 +167,26 @@ class StreamProducer implements Producer {
               environment
                   .scheduledExecutorService()
                   .schedule(
-                      taskReference.get(), batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
+                      namedRunnable(
+                          taskReference.get(),
+                          "Background batch publishing task for publisher %d on stream '%s'",
+                          this.id,
+                          this.stream),
+                      batchPublishingDelay.toMillis(),
+                      TimeUnit.MILLISECONDS);
             }
           };
       taskReference.set(task);
       environment
           .scheduledExecutorService()
-          .schedule(task, batchPublishingDelay.toMillis(), TimeUnit.MILLISECONDS);
+          .schedule(
+              namedRunnable(
+                  task,
+                  "Background batch publishing task for publisher %d on stream '%s'",
+                  this.id,
+                  this.stream),
+              batchPublishingDelay.toMillis(),
+              TimeUnit.MILLISECONDS);
     }
     this.batchSize = batchSize;
     this.codec = environment.codec();
@@ -192,14 +206,27 @@ class StreamProducer implements Producer {
                   this.environment
                       .scheduledExecutorService()
                       .schedule(
-                          taskReference.get(), confirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                          namedRunnable(
+                              taskReference.get(),
+                              "Background confirm timeout task for producer %d on stream %s",
+                              this.id,
+                              this.stream),
+                          confirmTimeout.toMillis(),
+                          TimeUnit.MILLISECONDS);
             }
           };
       taskReference.set(wrapperTask);
       this.confirmTimeoutFuture =
           this.environment
               .scheduledExecutorService()
-              .schedule(taskReference.get(), confirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
+              .schedule(
+                  namedRunnable(
+                      taskReference.get(),
+                      "Background confirm timeout task for producer %d on stream %s",
+                      this.id,
+                      this.stream),
+                  confirmTimeout.toMillis(),
+                  TimeUnit.MILLISECONDS);
     }
     this.status = Status.RUNNING;
   }
@@ -209,7 +236,6 @@ class StreamProducer implements Producer {
       long limit = this.environment.clock().time() - confirmTimeout.toNanos();
       SortedMap<Long, AccumulatedEntity> unconfirmedSnapshot =
           new TreeMap<>(this.unconfirmedMessages);
-      LOGGER.debug("Starting confirm timeout check task");
       int count = 0;
       for (Entry<Long, AccumulatedEntity> unconfirmedEntry : unconfirmedSnapshot.entrySet()) {
         if (unconfirmedEntry.getValue().time() < limit) {
@@ -223,7 +249,15 @@ class StreamProducer implements Producer {
           break;
         }
       }
-      LOGGER.debug("Failed {} message(s) which had timed out (limit {})", count, limit);
+      if (count > 0) {
+        LOGGER.debug(
+            "{} outbound message(s) had reached the confirm timeout (limit {}) "
+                + "for producer {} on stream '{}', application notified with callback",
+            count,
+            limit,
+            this.id,
+            this.stream);
+      }
     };
   }
 
@@ -450,9 +484,10 @@ class StreamProducer implements Producer {
         }
       }
       publishBatch(false);
-      if (unconfirmedMessagesSemaphore.availablePermits() != maxUnconfirmedMessages) {
-        unconfirmedMessagesSemaphore.release(
-            maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits());
+
+      int toRelease = maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits();
+      if (toRelease > 0) {
+        unconfirmedMessagesSemaphore.release(toRelease);
         if (!unconfirmedMessagesSemaphore.tryAcquire(this.unconfirmedMessages.size())) {
           LOGGER.debug(
               "Could not acquire {} permit(s) for message republishing",

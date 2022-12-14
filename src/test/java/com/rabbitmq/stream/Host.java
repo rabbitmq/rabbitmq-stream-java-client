@@ -98,24 +98,32 @@ public class Host {
     return executeCommand(rabbitmqctlCommand() + " " + command);
   }
 
-  public static Process killConnection(String connectionName) throws IOException {
-    List<ConnectionInfo> cs = listConnections();
-    if (cs.stream().filter(c -> connectionName.equals(c.clientProvidedName())).count() != 1) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Could not find 1 connection '%s' in stream connections: %s",
-              connectionName,
-              cs.stream()
-                  .map(ConnectionInfo::clientProvidedName)
-                  .collect(Collectors.joining(", "))));
+  public static Process killConnection(String connectionName) {
+    try {
+      List<ConnectionInfo> cs = listConnections();
+      if (cs.stream().filter(c -> connectionName.equals(c.clientProvidedName())).count() != 1) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Could not find 1 connection '%s' in stream connections: %s",
+                connectionName,
+                cs.stream()
+                    .map(ConnectionInfo::clientProvidedName)
+                    .collect(Collectors.joining(", "))));
+      }
+      return rabbitmqctl("eval 'rabbit_stream:kill_connection(\"" + connectionName + "\").'");
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
-    return rabbitmqctl("eval 'rabbit_stream:kill_connection(\"" + connectionName + "\").'");
   }
 
-  public static List<ConnectionInfo> listConnections() throws IOException {
-    Process process =
-        rabbitmqctl("list_stream_connections --formatter json conn_name,client_properties");
-    return toConnectionInfoList(capture(process.getInputStream()));
+  public static List<ConnectionInfo> listConnections() {
+    try {
+      Process process =
+          rabbitmqctl("list_stream_connections --formatter json conn_name,client_properties");
+      return toConnectionInfoList(capture(process.getInputStream()));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   static List<ConnectionInfo> toConnectionInfoList(String json) {

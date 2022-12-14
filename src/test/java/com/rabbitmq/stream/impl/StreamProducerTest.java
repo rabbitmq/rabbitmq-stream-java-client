@@ -637,7 +637,7 @@ public class StreamProducerTest {
   }
 
   @Test
-  void methodsShouldThrowExceptionWhenProducerIsClosed() {
+  void methodsShouldThrowExceptionWhenProducerIsClosed() throws InterruptedException {
     Producer producer = environment.producerBuilder().stream(stream).build();
     producer.close();
     assertThatThrownBy(() -> producer.getLastPublishingId())

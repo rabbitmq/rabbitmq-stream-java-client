@@ -13,10 +13,11 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
+import static java.time.Duration.ofMillis;
 
-import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
@@ -30,7 +31,6 @@ import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
@@ -283,7 +283,7 @@ class StreamConsumer implements Consumer {
               .scheduler(environment.scheduledExecutorService())
               .retry(ex -> ex instanceof IllegalStateException)
               .delayPolicy(
-                  BackOffDelayPolicy.fixedWithInitialDelay(
+                  fixedWithInitialDelay(
                       environment.recoveryBackOffDelayPolicy().delay(0),
                       environment.recoveryBackOffDelayPolicy().delay(1),
                       environment.recoveryBackOffDelayPolicy().delay(0).multipliedBy(3)))
@@ -346,9 +346,7 @@ class StreamConsumer implements Consumer {
             .description(
                 "Last stored offset for consumer %s on stream %s must be %d",
                 this.name, this.stream, expectedStoredOffset)
-            .delayPolicy(
-                BackOffDelayPolicy.fixedWithInitialDelay(
-                    Duration.ofMillis(200), Duration.ofMillis(200)))
+            .delayPolicy(fixedWithInitialDelay(ofMillis(200), ofMillis(200)))
             .retry(exception -> exception instanceof IllegalStateException)
             .scheduler(environment.scheduledExecutorService())
             .build();
@@ -498,7 +496,7 @@ class StreamConsumer implements Consumer {
     return !this.closed.get();
   }
 
-  synchronized void setTrackingClient(Client client) {
+  void setTrackingClient(Client client) {
     this.trackingClient = client;
   }
 
@@ -529,8 +527,8 @@ class StreamConsumer implements Consumer {
       } catch (Exception e) {
         throw new IllegalStateException(
             String.format(
-                "Not possible to query offset for consumer %s on stream %s for now",
-                this.name, this.stream),
+                "Not possible to query offset for consumer %s on stream %s for now: %s",
+                this.name, this.stream, e.getMessage()),
             e);
       }
       if (response.isOk()) {
@@ -554,8 +552,8 @@ class StreamConsumer implements Consumer {
     } else {
       throw new IllegalStateException(
           String.format(
-              "Not possible to query offset for consumer %s on stream %s for now",
-              this.name, this.stream));
+              "Not possible to query offset for consumer %s on stream %s for now, consumer status is %s",
+              this.name, this.stream, this.status.name()));
     }
   }
 
@@ -617,5 +615,9 @@ class StreamConsumer implements Consumer {
     if (this.status == Status.CLOSED) {
       throw new IllegalStateException("This producer instance has been closed");
     }
+  }
+
+  long id() {
+    return this.id;
   }
 }

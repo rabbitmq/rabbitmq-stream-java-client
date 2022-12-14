@@ -13,7 +13,10 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static java.lang.String.format;
+
 import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -38,6 +41,7 @@ import java.util.function.Function;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,6 +153,85 @@ final class Utils {
           return success;
         },
         retryInterval);
+  }
+
+  static Runnable namedRunnable(Runnable task, String format, Object... args) {
+    return new NamedRunnable(String.format(format, args), task);
+  }
+
+  static <T, R> Function<T, R> namedFunction(Function<T, R> task, String format, Object... args) {
+    return new NamedFunction<>(String.format(format, args), task);
+  }
+
+  static <T> T callAndMaybeRetry(
+      Supplier<T> operation, Predicate<Exception> retryCondition, String format, Object... args) {
+    return callAndMaybeRetry(
+        operation,
+        retryCondition,
+        i -> i >= 3 ? BackOffDelayPolicy.TIMEOUT : Duration.ZERO,
+        format,
+        args);
+  }
+
+  static <T> T callAndMaybeRetry(
+      Supplier<T> operation,
+      Predicate<Exception> retryCondition,
+      BackOffDelayPolicy delayPolicy,
+      String format,
+      Object... args) {
+    String description = format(format, args);
+    int attempt = 0;
+    Exception lastException = null;
+    boolean keepTrying = true;
+    while (keepTrying) {
+      try {
+        attempt++;
+        T result = operation.get();
+        LOGGER.debug("Operation '{}' completed after {} attempt(s)", description, attempt);
+        return result;
+      } catch (Exception e) {
+        lastException = e;
+        if (retryCondition.test(e)) {
+          LOGGER.debug("Operation '{}' failed, retrying...", description);
+          Duration delay = delayPolicy.delay(attempt);
+          if (BackOffDelayPolicy.TIMEOUT.equals(delay)) {
+            keepTrying = false;
+          } else if (!delay.isZero()) {
+            try {
+              Thread.sleep(delay.toMillis());
+            } catch (InterruptedException ex) {
+              Thread.interrupted();
+              lastException = ex;
+              keepTrying = false;
+            }
+          }
+        } else {
+          keepTrying = false;
+        }
+      }
+    }
+    String message =
+        format(
+            "Could not complete task '%s' after %d attempt(s) (reason: %s)",
+            description, attempt, exceptionMessage(lastException));
+    LOGGER.debug(message);
+    if (lastException == null) {
+      throw new StreamException(message);
+    } else if (lastException instanceof RuntimeException) {
+      throw (RuntimeException) lastException;
+    } else {
+      throw new StreamException(message, lastException);
+    }
+  }
+
+  static String exceptionMessage(Exception e) {
+    if (e == null) {
+      return "unknown";
+    } else if (e.getMessage() == null) {
+      return e.getClass().getSimpleName();
+    } else {
+      return e.getMessage() + " [" + e.getClass().getSimpleName() + "]";
+    }
   }
 
   interface ClientFactory {
@@ -331,14 +414,72 @@ final class Utils {
     return versionCompare(currentVersion(brokerVersion), "3.11.0") >= 0;
   }
 
-  static StreamException propagateException(short responseCode, String stream) {
+  static StreamException convertCodeToException(
+      short responseCode, String stream, Supplier<String> fallbackMessage) {
     if (responseCode == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
       return new StreamDoesNotExistException(stream);
     } else if (responseCode == Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
       return new StreamNotAvailableException(stream);
     } else {
-      String message = "Error while querying stream info: " + formatConstant(responseCode) + ".";
-      return new StreamException(message, responseCode);
+      return new StreamException(fallbackMessage.get(), responseCode);
     }
+  }
+
+  private static class NamedRunnable implements Runnable {
+
+    private final String name;
+    private final Runnable delegate;
+
+    private NamedRunnable(String name, Runnable delegate) {
+      this.name = name;
+      this.delegate = delegate;
+    }
+
+    @Override
+    public void run() {
+      this.delegate.run();
+    }
+
+    @Override
+    public String toString() {
+      return this.name;
+    }
+  }
+
+  private static class NamedFunction<T, R> implements Function<T, R> {
+
+    private final String name;
+    private final Function<T, R> delegate;
+
+    private NamedFunction(String name, Function<T, R> delegate) {
+      this.name = name;
+      this.delegate = delegate;
+    }
+
+    @Override
+    public R apply(T t) {
+      return this.delegate.apply(t);
+    }
+
+    @Override
+    public String toString() {
+      return this.name;
+    }
+  }
+
+  static String quote(String value) {
+    if (value == null) {
+      return "null";
+    } else {
+      return "\"" + value + "\"";
+    }
+  }
+
+  static String jsonField(String name, Number value) {
+    return quote(name) + " : " + value.longValue();
+  }
+
+  static String jsonField(String name, String value) {
+    return quote(name) + " : " + quote(value);
   }
 }

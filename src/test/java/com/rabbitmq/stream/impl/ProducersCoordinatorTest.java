@@ -118,6 +118,8 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             clientFactory);
+    when(client.isOpen()).thenReturn(true);
+    when(client.deletePublisher(anyByte())).thenReturn(new Response(Constants.RESPONSE_CODE_OK));
   }
 
   @AfterEach
@@ -229,7 +231,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void shouldRedistributeProducerAndTrackingConsumerIfConnectionIsLost() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -272,7 +274,7 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).setClient(client);
     verify(trackingConsumer, times(1)).setTrackingClient(client);
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
-    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     shutdownListener.handle(
@@ -289,13 +291,13 @@ public class ProducersCoordinatorTest {
     verify(producerClosedAfterDisconnection, times(1)).unavailable();
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
     verify(producerClosedAfterDisconnection, never()).running();
-    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
   }
 
   @Test
   void shouldDisposeProducerAndNotTrackingConsumerIfRecoveryTimesOut() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.recoveryBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -316,7 +318,7 @@ public class ProducersCoordinatorTest {
 
     verify(producer, times(1)).setClient(client);
     verify(trackingConsumer, times(1)).setTrackingClient(client);
-    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     shutdownListener.handle(
@@ -330,13 +332,13 @@ public class ProducersCoordinatorTest {
     verify(trackingConsumer, times(1)).setTrackingClient(client);
     verify(trackingConsumer, never()).running();
     verify(trackingConsumer, never()).closeAfterStreamDeletion();
-    assertThat(coordinator.poolSize()).isEqualTo(0);
+    assertThat(coordinator.nodesConnected()).isEqualTo(0);
     assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
   void shouldRedistributeProducersAndTrackingConsumersOnMetadataUpdate() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.topologyUpdateBackOffDelayPolicy())
@@ -396,7 +398,6 @@ public class ProducersCoordinatorTest {
     verify(producerClosedAfterDisconnection, times(1)).setClient(client);
     verify(movingTrackingConsumer, times(1)).setTrackingClient(client);
     verify(fixedTrackingConsumer, times(1)).setTrackingClient(client);
-    assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     metadataListener.handle(movingStream, Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -420,13 +421,13 @@ public class ProducersCoordinatorTest {
     verify(fixedTrackingConsumer, never()).unavailable();
     verify(fixedTrackingConsumer, times(1)).setTrackingClient(client);
     verify(fixedTrackingConsumer, never()).running();
-    assertThat(coordinator.poolSize()).isEqualTo(2);
+    assertThat(coordinator.nodesConnected()).isEqualTo(2);
     assertThat(coordinator.clientCount()).isEqualTo(2);
   }
 
   @Test
   void shouldDisposeProducerIfStreamIsDeleted() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -444,7 +445,6 @@ public class ProducersCoordinatorTest {
     coordinator.registerProducer(producer, null, "stream");
 
     verify(producer, times(1)).setClient(client);
-    assertThat(coordinator.poolSize()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -454,13 +454,12 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
 
-    assertThat(coordinator.poolSize()).isEqualTo(0);
     assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
   void shouldDisposeProducerAndNotTrackingConsumerIfMetadataUpdateTimesOut() throws Exception {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -481,7 +480,7 @@ public class ProducersCoordinatorTest {
 
     verify(producer, times(1)).setClient(client);
     verify(trackingConsumer, times(1)).setTrackingClient(client);
-    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -494,13 +493,13 @@ public class ProducersCoordinatorTest {
     verify(trackingConsumer, times(1)).setTrackingClient(client);
     verify(trackingConsumer, never()).running();
     verify(trackingConsumer, never()).closeAfterStreamDeletion();
-    assertThat(coordinator.poolSize()).isEqualTo(0);
+    assertThat(coordinator.nodesConnected()).isEqualTo(0);
     assertThat(coordinator.clientCount()).isEqualTo(0);
   }
 
   @Test
   void growShrinkResourcesBasedOnProducersAndTrackingConsumersCount() {
-    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
 
@@ -529,7 +528,7 @@ public class ProducersCoordinatorTest {
               producerInfos.add(info);
             });
 
-    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(2);
 
     // let's add some tracking consumers
@@ -554,7 +553,7 @@ public class ProducersCoordinatorTest {
               trackingConsumerInfos.add(info);
             });
 
-    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount())
         .as("new tracking consumers needs yet another client")
         .isEqualTo(3);
@@ -588,7 +587,7 @@ public class ProducersCoordinatorTest {
     verify(p, times(1)).setClient(client);
     assertThat(publishingIdForNewProducer.get()).isEqualTo(info.publishingId);
 
-    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(2);
 
     // close some of the last producers, this should free a whole producer manager and a bit of the
@@ -598,7 +597,11 @@ public class ProducersCoordinatorTest {
       producerInfo.cleaningCallback.run();
     }
 
-    assertThat(coordinator.poolSize()).isEqualTo(1);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
+  }
+
+  private static ScheduledExecutorService createScheduledExecutorService() {
+    return new ScheduledExecutorServiceWrapper(Executors.newSingleThreadScheduledExecutor());
   }
 }

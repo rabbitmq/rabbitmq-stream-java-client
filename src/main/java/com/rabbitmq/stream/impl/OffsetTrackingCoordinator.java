@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 
 import com.rabbitmq.stream.MessageHandler.Context;
@@ -83,36 +84,42 @@ class OffsetTrackingCoordinator {
       this.checkFuture =
           this.executor()
               .scheduleAtFixedRate(
-                  () -> {
-                    if (flushingOnGoing.compareAndSet(false, true)) {
-                      try {
-                        this.clock.setTime(System.nanoTime());
-                        Iterator<Tracker> iterator = trackers.iterator();
-                        while (iterator.hasNext()) {
-                          if (Thread.currentThread().isInterrupted()) {
-                            Thread.currentThread().interrupt();
-                            break;
-                          }
-                          Tracker t = iterator.next();
-                          if (t.consumer().isOpen()) {
-                            try {
-                              t.flushIfNecessary();
-                            } catch (Exception e) {
-                              LOGGER.info("Error while flushing tracker: {}", e.getMessage());
+                  namedRunnable(
+                      () -> {
+                        if (flushingOnGoing.compareAndSet(false, true)) {
+                          try {
+                            this.clock.setTime(System.nanoTime());
+                            LOGGER.debug(
+                                "Background offset tracking flushing, {} tracker(s) to check",
+                                this.trackers.size());
+                            Iterator<Tracker> iterator = trackers.iterator();
+                            while (iterator.hasNext()) {
+                              if (Thread.currentThread().isInterrupted()) {
+                                Thread.currentThread().interrupt();
+                                break;
+                              }
+                              Tracker t = iterator.next();
+                              if (t.consumer().isOpen()) {
+                                try {
+                                  t.flushIfNecessary();
+                                } catch (Exception e) {
+                                  LOGGER.info("Error while flushing tracker: {}", e.getMessage());
+                                }
+                              } else {
+                                iterator.remove();
+                              }
                             }
-                          } else {
-                            iterator.remove();
+                          } finally {
+                            flushingOnGoing.set(false);
                           }
+
+                          // TODO consider cancelling the task if there are no more consumers to
+                          // track
+                          // it should then be restarted on demand.
+
                         }
-                      } finally {
-                        flushingOnGoing.set(false);
-                      }
-
-                      // TODO consider cancelling the task if there are no more consumers to track
-                      // it should then be restarted on demand.
-
-                    }
-                  },
+                      },
+                      "Offset tracking background task"),
                   this.checkInterval.toMillis(),
                   this.checkInterval.toMillis(),
                   TimeUnit.MILLISECONDS);

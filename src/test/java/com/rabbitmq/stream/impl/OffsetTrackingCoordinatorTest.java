@@ -50,7 +50,7 @@ public class OffsetTrackingCoordinatorTest {
   @BeforeEach
   void init() {
     mocks = MockitoAnnotations.openMocks(this);
-    executorService = Executors.newScheduledThreadPool(2);
+    executorService = new ScheduledExecutorServiceWrapper(Executors.newScheduledThreadPool(2));
     when(env.scheduledExecutorService()).thenReturn(executorService);
     when(consumer.isOpen()).thenReturn(true);
   }

@@ -45,6 +45,8 @@ import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
 import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static java.lang.String.format;
+import static java.lang.String.join;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.AuthenticationFailureException;
@@ -86,6 +88,7 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
+import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -101,6 +104,7 @@ import io.netty.handler.timeout.IdleStateHandler;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
+import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -308,13 +312,32 @@ public class Client implements AutoCloseable {
         });
 
     ChannelFuture f;
+    String clientConnectionName =
+        parameters.clientProperties == null
+            ? ""
+            : (parameters.clientProperties.containsKey("connection_name")
+                ? parameters.clientProperties.get("connection_name")
+                : "");
     try {
-      LOGGER.debug("Trying to create stream connection to {}:{}", parameters.host, parameters.port);
+      LOGGER.debug(
+          "Trying to create stream connection to {}:{}, with client connection name '{}'",
+          parameters.host,
+          parameters.port,
+          clientConnectionName);
       f = b.connect(parameters.host, parameters.port).sync();
       this.host = parameters.host;
       this.port = parameters.port;
     } catch (Exception e) {
-      throw new StreamException(e);
+      String message =
+          format(
+              "Error while creating stream connection to %s:%d", parameters.host, parameters.port);
+      if (e instanceof ConnectTimeoutException) {
+        throw new TimeoutStreamException(message, e);
+      } else if (e instanceof ConnectException) {
+        throw new ConnectionStreamException(message, e);
+      } else {
+        throw new StreamException(message, e);
+      }
     }
 
     this.channel = f.channel();
@@ -389,7 +412,7 @@ public class Client implements AutoCloseable {
             .writeShort(entry.getValue().length())
             .writeBytes(entry.getValue().getBytes(StandardCharsets.UTF_8));
       }
-      OutstandingRequest<Map<String, String>> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Map<String, String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -399,10 +422,11 @@ public class Client implements AutoCloseable {
         throw new StreamException("Error when establishing stream connection", request.error());
       }
     } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
       throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while trying to exchange peer properties", e);
     }
   }
 
@@ -457,15 +481,17 @@ public class Client implements AutoCloseable {
       } else {
         bb.writeInt(challengeResponse.length).writeBytes(challengeResponse);
       }
-      OutstandingRequest<SaslAuthenticateResponse> request =
-          new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<SaslAuthenticateResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while trying to authenticate", e);
     }
   }
 
@@ -480,7 +506,7 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(virtualHost.length());
       bb.writeBytes(virtualHost.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<OpenResponse> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<OpenResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -495,7 +521,7 @@ public class Client implements AutoCloseable {
       throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error during open command", e);
     }
   }
 
@@ -506,7 +532,7 @@ public class Client implements AutoCloseable {
     try {
       channel.writeAndFlush(bb).sync();
     } catch (InterruptedException e) {
-      throw new StreamException(e);
+      throw new StreamException("Error while sending bytes", e);
     }
   }
 
@@ -522,7 +548,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(code);
       bb.writeShort(reason.length());
       bb.writeBytes(reason.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -534,9 +560,12 @@ public class Client implements AutoCloseable {
             "Unexpected response code when closing: "
                 + formatConstant(request.response.get().getResponseCode()));
       }
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while closing connection", e);
     }
   }
 
@@ -549,14 +578,17 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_SASL_HANDSHAKE));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      OutstandingRequest<List<String>> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while exchanging SASL mechanisms", e);
     }
   }
 
@@ -585,14 +617,17 @@ public class Client implements AutoCloseable {
         bb.writeShort(argument.getValue().length());
         bb.writeBytes(argument.getValue().getBytes(StandardCharsets.UTF_8));
       }
-      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(format("Error while creating stream '%s'", stream), e);
     }
   }
 
@@ -630,14 +665,17 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(format("Error while deleting stream '%s'", stream), e);
     }
   }
 
@@ -662,15 +700,18 @@ public class Client implements AutoCloseable {
         bb.writeShort(stream.length());
         bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
       }
-      OutstandingRequest<Map<String, StreamMetadata>> request =
-          new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Map<String, StreamMetadata>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while getting metadata for stream(s) '%s'", join(",", streams)), e);
     }
   }
 
@@ -698,14 +739,18 @@ public class Client implements AutoCloseable {
       }
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while declaring publisher for stream '%s'", stream), e);
     }
   }
 
@@ -719,14 +764,17 @@ public class Client implements AutoCloseable {
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(publisherId);
-      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while deleting publisher", e);
     }
   }
 
@@ -1050,7 +1098,7 @@ public class Client implements AutoCloseable {
               .writeBytes(entry.getValue().getBytes(StandardCharsets.UTF_8));
         }
       }
-      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       if (offsetSpecification.isOffset()) {
         subscriptionOffsets.add(
@@ -1059,9 +1107,13 @@ public class Client implements AutoCloseable {
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while trying to subscribe to stream '%s'", stream), e);
     }
   }
 
@@ -1107,15 +1159,21 @@ public class Client implements AutoCloseable {
       bb.writeBytes(reference.getBytes(StandardCharsets.UTF_8));
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<QueryOffsetResponse> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<QueryOffsetResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       QueryOffsetResponse response = request.response.get();
       return response;
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format(
+              "Error while querying offset for reference '%s' on stream '%s'", reference, stream),
+          e);
     }
   }
 
@@ -1142,8 +1200,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(publisherReference.getBytes(StandardCharsets.UTF_8));
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<QueryPublisherSequenceResponse> request =
-          new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<QueryPublisherSequenceResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -1154,9 +1211,16 @@ public class Client implements AutoCloseable {
             formatConstant(response.getResponseCode()));
       }
       return response.getSequence();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format(
+              "Error while querying publisher sequence for '%s' on stream '%s'",
+              publisherReference, stream),
+          e);
     }
   }
 
@@ -1170,14 +1234,17 @@ public class Client implements AutoCloseable {
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(subscriptionId);
-      OutstandingRequest<Response> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while unsubscribing", e);
     }
   }
 
@@ -1294,14 +1361,21 @@ public class Client implements AutoCloseable {
       bb.writeBytes(routingKey.getBytes(StandardCharsets.UTF_8));
       bb.writeShort(superStream.length());
       bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<List<String>> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format(
+              "Error while querying route for routing key '%s' on super stream '%s'",
+              routingKey, superStream),
+          e);
     }
   }
 
@@ -1320,14 +1394,18 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(superStream.length());
       bb.writeBytes(superStream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<List<String>> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while querying partitions for super stream '%s'", superStream), e);
     }
   }
 
@@ -1348,15 +1426,17 @@ public class Client implements AutoCloseable {
         bb.writeShort(commandVersion.getMinVersion());
         bb.writeShort(commandVersion.getMaxVersion());
       }
-      OutstandingRequest<List<FrameHandlerInfo>> request =
-          new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<List<FrameHandlerInfo>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException("Error while exchanging command version", e);
     }
   }
 
@@ -1374,14 +1454,18 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       bb.writeShort(stream.length());
       bb.writeBytes(stream.getBytes(StandardCharsets.UTF_8));
-      OutstandingRequest<StreamStatsResponse> request = new OutstandingRequest<>(this.rpcTimeout);
+      OutstandingRequest<StreamStatsResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
       return request.response.get();
+    } catch (StreamException e) {
+      outstandingRequests.remove(correlationId);
+      throw e;
     } catch (RuntimeException e) {
       outstandingRequests.remove(correlationId);
-      throw new StreamException(e);
+      throw new StreamException(
+          format("Error while querying statistics for stream '%s'", stream), e);
     }
   }
 
@@ -2024,6 +2108,10 @@ public class Client implements AutoCloseable {
     public int hashCode() {
       return Objects.hash(host, port);
     }
+
+    String label() {
+      return this.host + ":" + this.port;
+    }
   }
 
   public static class ClientParameters {
@@ -2267,12 +2355,15 @@ public class Client implements AutoCloseable {
 
     private final Duration timeout;
 
+    private final String node;
+
     private final AtomicReference<T> response = new AtomicReference<>();
 
     private final AtomicReference<Throwable> error = new AtomicReference<>();
 
-    private OutstandingRequest(Duration timeout) {
+    private OutstandingRequest(Duration timeout, String node) {
       this.timeout = timeout;
+      this.node = node;
     }
 
     void block() {
@@ -2284,7 +2375,8 @@ public class Client implements AutoCloseable {
         throw new StreamException("Interrupted while waiting for response");
       }
       if (!completed) {
-        throw new StreamException("Could not get response in " + timeout.toMillis() + " ms");
+        throw new TimeoutStreamException(
+            format("Could not get response in %d ms from node %s", timeout.toMillis(), node));
       }
     }
 
@@ -2490,5 +2582,9 @@ public class Client implements AutoCloseable {
       LOGGER.warn("Error in stream handler", cause);
       ctx.close();
     }
+  }
+
+  private <T> OutstandingRequest<T> outstandingRequest() {
+    return new OutstandingRequest<>(this.rpcTimeout, this.host + ":" + this.port);
   }
 }

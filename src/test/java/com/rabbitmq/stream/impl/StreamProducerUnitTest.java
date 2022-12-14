@@ -111,7 +111,6 @@ public class StreamProducerUnitTest {
             any(ToLongFunction.class)))
         .thenCallRealMethod();
     when(env.scheduledExecutorService()).thenReturn(executorService);
-    when(env.locator()).thenReturn(client);
     when(env.locatorOperation(any())).thenCallRealMethod();
     when(env.clock()).thenReturn(clock);
     when(env.codec()).thenReturn(new SimpleCodec());

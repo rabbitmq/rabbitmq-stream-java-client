@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.namedFunction;
 
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Constants;
@@ -73,7 +74,11 @@ class StreamStreamCreator implements StreamCreator {
     }
     this.environment.maybeInitializeLocator();
     Client.Response response =
-        environment.locatorOperation(c -> c.create(stream, streamParametersBuilder.build()));
+        environment.locatorOperation(
+            namedFunction(
+                c -> c.create(stream, streamParametersBuilder.build()),
+                "Creation of stream '%s'",
+                this.stream));
     if (!response.isOk()
         && response.getResponseCode() != Constants.RESPONSE_CODE_STREAM_ALREADY_EXISTS) {
       throw new StreamException(
