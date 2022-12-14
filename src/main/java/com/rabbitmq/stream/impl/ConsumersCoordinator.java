@@ -16,8 +16,10 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.isSac;
+import static com.rabbitmq.stream.impl.Utils.jsonField;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
+import static com.rabbitmq.stream.impl.Utils.quote;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
@@ -224,7 +226,6 @@ class ConsumersCoordinator {
     }
   }
 
-  // for testing
   int managerCount() {
     return this.managers.size();
   }
@@ -295,22 +296,6 @@ class ConsumersCoordinator {
             e.getMessage());
       }
     }
-  }
-
-  private static String quote(String value) {
-    if (value == null) {
-      return "null";
-    } else {
-      return "\"" + value + "\"";
-    }
-  }
-
-  private static String jsonField(String name, Number value) {
-    return quote(name) + " : " + value.longValue();
-  }
-
-  private static String jsonField(String name, String value) {
-    return quote(name) + " : " + (value == null ? "null" : quote(value));
   }
 
   @Override
@@ -768,17 +753,7 @@ class ConsumersCoordinator {
                   consumersClosingCallback.run();
                 } else {
                   for (SubscriptionTracker affectedSubscription : subscriptions) {
-                    if (affectedSubscription.compareAndSet(
-                        SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
-                      recoverSubscription(candidates, affectedSubscription);
-                    } else {
-                      LOGGER.debug(
-                          "Not recovering consumer {} from stream {}, state is {}, expected is {}",
-                          affectedSubscription.consumer.id(),
-                          affectedSubscription.stream,
-                          affectedSubscription.state(),
-                          SubscriptionState.ACTIVE);
-                    }
+                    maybeRecoverSubscription(candidates, affectedSubscription);
                   }
                   if (maybeCloseClient) {
                     this.closeIfEmpty();
@@ -798,6 +773,27 @@ class ConsumersCoordinator {
                 }
                 return null;
               });
+    }
+
+    private void maybeRecoverSubscription(List<Broker> candidates, SubscriptionTracker tracker) {
+      if (tracker.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
+        try {
+          recoverSubscription(candidates, tracker);
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Error while recovering consumer {} from stream '{}'. Reason: {}",
+              tracker.consumer.id(),
+              tracker.stream,
+              Utils.exceptionMessage(e));
+        }
+      } else {
+        LOGGER.debug(
+            "Not recovering consumer {} from stream {}, state is {}, expected is {}",
+            tracker.consumer.id(),
+            tracker.stream,
+            tracker.state(),
+            SubscriptionState.ACTIVE);
+      }
     }
 
     private void recoverSubscription(List<Broker> candidates, SubscriptionTracker tracker) {

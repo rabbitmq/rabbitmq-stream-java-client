@@ -15,8 +15,10 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.callAndMaybeRetry;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.jsonField;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
+import static com.rabbitmq.stream.impl.Utils.quote;
 import static java.util.stream.Collectors.toSet;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
@@ -236,22 +238,6 @@ class ProducersCoordinator {
 
   int nodesConnected() {
     return this.managers.stream().map(m -> m.name).collect(toSet()).size();
-  }
-
-  private static String quote(String value) {
-    if (value == null) {
-      return "null";
-    } else {
-      return "\"" + value + "\"";
-    }
-  }
-
-  private static String jsonField(String name, Number value) {
-    return quote(name) + " : " + value.longValue();
-  }
-
-  private static String jsonField(String name, String value) {
-    return quote(name) + " : " + quote(value);
   }
 
   @Override
@@ -700,17 +686,7 @@ class ProducersCoordinator {
               broker -> {
                 String key = keyForNode(broker);
                 LOGGER.debug("Assigning {} producer(s) to {}", trackers.size(), key);
-                trackers.forEach(
-                    tracker -> {
-                      if (tracker.markRecoveryInProgress()) {
-                        recoverAgent(broker, tracker);
-                      } else {
-                        LOGGER.debug(
-                            "Not recovering {} (stream '{}'), recovery is already is progress",
-                            tracker.type(),
-                            tracker.stream());
-                      }
-                    });
+                trackers.forEach(tracker -> maybeRecoverAgent(broker, tracker));
               })
           .exceptionally(
               ex -> {
@@ -733,6 +709,26 @@ class ProducersCoordinator {
                 }
                 return null;
               });
+    }
+
+    private void maybeRecoverAgent(Broker broker, AgentTracker tracker) {
+      if (tracker.markRecoveryInProgress()) {
+        try {
+          recoverAgent(broker, tracker);
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Error while recovering {} tracker {} (stream '{}'). Reason: {}",
+              tracker.type(),
+              tracker.uniqueId(),
+              tracker.stream(),
+              Utils.exceptionMessage(e));
+        }
+      } else {
+        LOGGER.debug(
+            "Not recovering {} (stream '{}'), recovery is already is progress",
+            tracker.type(),
+            tracker.stream());
+      }
     }
 
     private void recoverAgent(Broker node, AgentTracker tracker) {

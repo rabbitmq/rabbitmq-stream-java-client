@@ -165,7 +165,12 @@ final class Utils {
 
   static <T> T callAndMaybeRetry(
       Supplier<T> operation, Predicate<Exception> retryCondition, String format, Object... args) {
-    return callAndMaybeRetry(operation, retryCondition, i -> Duration.ZERO, format, args);
+    return callAndMaybeRetry(
+        operation,
+        retryCondition,
+        i -> i >= 3 ? BackOffDelayPolicy.TIMEOUT : Duration.ZERO,
+        format,
+        args);
   }
 
   static <T> T callAndMaybeRetry(
@@ -177,32 +182,38 @@ final class Utils {
     String description = format(format, args);
     int attempt = 0;
     Exception lastException = null;
-    while (attempt++ < 3) {
+    boolean keepTrying = true;
+    while (keepTrying) {
       try {
-        return operation.get();
+        attempt++;
+        T result = operation.get();
+        LOGGER.debug("Operation '{}' completed after {} attempt(s)", description, attempt);
+        return result;
       } catch (Exception e) {
         lastException = e;
         if (retryCondition.test(e)) {
           LOGGER.debug("Operation '{}' failed, retrying...", description);
-          Duration delay = delayPolicy.delay(attempt - 1);
-          if (!delay.isZero()) {
+          Duration delay = delayPolicy.delay(attempt);
+          if (BackOffDelayPolicy.TIMEOUT.equals(delay)) {
+            keepTrying = false;
+          } else if (!delay.isZero()) {
             try {
               Thread.sleep(delay.toMillis());
             } catch (InterruptedException ex) {
               Thread.interrupted();
               lastException = ex;
-              break;
+              keepTrying = false;
             }
           }
         } else {
-          break;
+          keepTrying = false;
         }
       }
     }
     String message =
         format(
-            "Could not complete task '%s' after %d attempt(s) (reason: {})",
-            description, --attempt, exceptionMessage(lastException));
+            "Could not complete task '%s' after %d attempt(s) (reason: %s)",
+            description, attempt, exceptionMessage(lastException));
     LOGGER.debug(message);
     if (lastException == null) {
       throw new StreamException(message);
@@ -454,5 +465,21 @@ final class Utils {
     public String toString() {
       return this.name;
     }
+  }
+
+  static String quote(String value) {
+    if (value == null) {
+      return "null";
+    } else {
+      return "\"" + value + "\"";
+    }
+  }
+
+  static String jsonField(String name, Number value) {
+    return quote(name) + " : " + value.longValue();
+  }
+
+  static String jsonField(String name, String value) {
+    return quote(name) + " : " + quote(value);
   }
 }

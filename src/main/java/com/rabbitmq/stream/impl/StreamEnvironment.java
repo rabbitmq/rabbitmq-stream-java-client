@@ -812,6 +812,10 @@ class StreamEnvironment implements Environment {
                 })
             .collect(Collectors.joining(","))
         + "], "
+        + Utils.jsonField("producer_client_count", this.producersCoordinator.clientCount())
+        + ","
+        + Utils.jsonField("consumer_client_count", this.consumersCoordinator.managerCount())
+        + ","
         + "\"producers\" : "
         + this.producersCoordinator
         + ", \"consumers\" : "
