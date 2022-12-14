@@ -53,7 +53,7 @@
     <logback.version>1.2.11</logback.version>
     <slf4j.perftool.version>2.0.6</slf4j.perftool.version>
     <logback.perftool.version>1.3.5</logback.perftool.version>
-    <netty.version>4.1.85.Final</netty.version>
+    <netty.version>4.1.86.Final</netty.version>
     <proton-j.version>0.34.0</proton-j.version>
     <metrics.version>4.2.13</metrics.version>
     <micrometer.version>1.10.2</micrometer.version>
@@ -85,7 +85,7 @@
     <maven.jar.plugin.version>3.3.0</maven.jar.plugin.version>
     <asciidoctor.maven.plugin.version>2.2.2</asciidoctor.maven.plugin.version>
     <asciidoctorj.version>2.5.7</asciidoctorj.version>
-    <asciidoctorj.pdf.version>2.3.3</asciidoctorj.pdf.version>
+    <asciidoctorj.pdf.version>2.3.4</asciidoctorj.pdf.version>
     <asciidoctorj.diagram.version>2.2.3</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jmh.version>1.36</jmh.version>

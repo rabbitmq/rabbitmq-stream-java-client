@@ -3,9 +3,9 @@
 . $(pwd)/release-versions.txt
 
 MESSAGE=$(git log -1 --pretty=%B)
-./mvnw clean buildnumber:create pre-site
+./mvnw clean buildnumber:create pre-site --no-transfer-progress
 
-./mvnw javadoc:javadoc -Dmaven.javadoc.skip=false
+./mvnw javadoc:javadoc -Dmaven.javadoc.skip=false --no-transfer-progress
 
 RELEASE_VERSION=$(cat pom.xml | grep -oPm1 "(?<=<version>)[^<]+")
 

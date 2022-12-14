@@ -100,7 +100,8 @@ public class TlsTest {
   }
 
   static String caCertificateFile() {
-    return System.getProperty("ca.certificate", "/tmp/tls-gen/basic/result/ca_certificate.pem");
+    return tlsArtefactPath(
+        System.getProperty("ca.certificate", "/tmp/tls-gen/basic/result/ca_certificate.pem"));
   }
 
   static X509Certificate clientCertificate() throws Exception {
@@ -108,9 +109,10 @@ public class TlsTest {
   }
 
   static String clientCertificateFile() {
-    return System.getProperty(
-        "client.certificate",
-        "/tmp/tls-gen/basic/result/client_" + hostname() + "_certificate.pem");
+    return tlsArtefactPath(
+        System.getProperty(
+            "client.certificate",
+            "/tmp/tls-gen/basic/result/client_" + hostname() + "_certificate.pem"));
   }
 
   static PrivateKey clientKey() throws Exception {
@@ -135,8 +137,9 @@ public class TlsTest {
   }
 
   static String clientKeyFile() {
-    return System.getProperty(
-        "client.key", "/tmp/tls-gen/basic/result/client_" + hostname() + "_key.pem");
+    return tlsArtefactPath(
+        System.getProperty(
+            "client.key", "/tmp/tls-gen/basic/result/client_" + hostname() + "_key.pem"));
   }
 
   static X509Certificate loadCertificate(String file) throws Exception {
@@ -331,5 +334,9 @@ public class TlsTest {
         throw new RuntimeException(ex);
       }
     }
+  }
+
+  private static String tlsArtefactPath(String in) {
+    return in.replace("$(hostname)", hostname()).replace("$(hostname -s)", hostname());
   }
 }

@@ -1,21 +1,21 @@
-name: Test against RabbitMQ 3.12 alpha
+name: Test against supported Java versions
 
 on:
-  push:
-    branches:
-      - main
   schedule:
     - cron:  '0 4 * * *'
   workflow_dispatch:
 
 env:
-  RABBITMQ_IMAGE_TAG: latest
-  RABBITMQ_IMAGE: pivotalrabbitmq/rabbitmq-stream
+  RABBITMQ_IMAGE_TAG: 3.11
+  RABBITMQ_IMAGE: rabbitmq
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-
+    strategy:
+      matrix:
+        java: [ '8', '11', '17', '19', '20-ea' ]
+    name:  Test against Java ${{ matrix.java }}
     steps:
       - uses: actions/checkout@v3
       - name: Checkout tls-gen
@@ -26,11 +26,13 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: 'zulu'
+          java-version: ${{ matrix.java }}
           cache: 'maven'
       - name: Start broker
         run: ci/start-broker.sh
+      - name: Display Java version
+        run: ./mvnw --version
       - name: Test
         run: |
           ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \

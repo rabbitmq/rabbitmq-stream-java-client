@@ -1,15 +1,6 @@
-name: Test against RabbitMQ 3.11 stable
+name: Publish performance tool
 
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
-env:
-  RABBITMQ_IMAGE_TAG: 3.11
-  RABBITMQ_IMAGE: rabbitmq
-  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+on: workflow_dispatch
 
 jobs:
   build:
@@ -17,40 +8,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - name: Checkout tls-gen
-        uses: actions/checkout@v3
-        with:
-          repository: rabbitmq/tls-gen
-          path: './tls-gen'
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
           cache: 'maven'
-          server-id: ossrh
-          server-username: MAVEN_USERNAME
-          server-password: MAVEN_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
-      - name: Start broker
-        run: ci/start-broker.sh
-      - name: Test
-        run: |
-          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
-            -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
-            -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
-            -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
-      - name: Stop broker
-        run: docker stop rabbitmq && docker rm rabbitmq
-      - name: Upload Codecov report
-        run: bash <(curl -s https://codecov.io/bash)
-      - name: Publish snapshot
-        run: ./mvnw clean deploy -Psnapshots -DskipITs -DskipTests
-        env:
-          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
       - name: Package Stream Perf Test
         run: ci/package-stream-perf-test.sh
         env:
@@ -97,8 +62,3 @@ jobs:
             {"version": "${{ env.release_version }}",
             "url" : "https://github.com/rabbitmq/rabbitmq-java-tools-binaries-dev/releases/download/v-stream-perf-test-${{ env.release_version }}/stream-perf-test-${{ env.release_version }}.jar",
             "tags": "pivotalrabbitmq/stream-perf-test:dev,pivotalrabbitmq/stream-perf-test:${{ env.release_version }}"}
-      - name: Publish Documentation
-        run: |
-          git config user.name "rabbitmq-ci"
-          git config user.email "rabbitmq-ci@users.noreply.github.com"
-          ./publish-documentation-to-github-pages.sh
