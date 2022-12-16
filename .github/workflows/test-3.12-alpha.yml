@@ -1,9 +1,9 @@
 name: Test against RabbitMQ 3.12 alpha
 
 on:
-  push:
-    branches:
-      - main
+#  push:
+#    branches:
+#      - main
   schedule:
     - cron:  '0 4 * * *'
   workflow_dispatch:
