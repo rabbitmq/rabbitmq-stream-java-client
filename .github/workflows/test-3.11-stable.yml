@@ -1,9 +1,9 @@
 name: Test against RabbitMQ 3.11 stable
 
 on:
-#  push:
-#    branches:
-#      - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
