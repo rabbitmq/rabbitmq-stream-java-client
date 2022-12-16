@@ -33,7 +33,7 @@ jobs:
           files: packages/*
           name: ${{ env.release_name }}
           tag_name: ${{ env.tag_name }}
-          target_commitish: main
+          target_commitish: ${{ env.release_branch }}
           prerelease: true
           token: ${{ secrets.CI_GITHUB_TOKEN }}
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
@@ -50,7 +50,7 @@ jobs:
           files: packages-latest/*
           name: stream-perf-test-latest
           tag_name: v-stream-perf-test-latest
-          target_commitish: main
+          target_commitish: ${{ env.release_branch }}
           prerelease: true
           token: ${{ secrets.CI_GITHUB_TOKEN }}
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev

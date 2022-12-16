@@ -1,0 +1,58 @@
+name: Release Stream Java Client and StreamPerfTest
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+          cache: 'maven'
+          server-id: ossrh
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - name: Release Stream Java Client
+        run:  |
+          git config user.name "rabbitmq-ci"
+          git config user.email "rabbitmq-ci@users.noreply.github.com"
+          ci/release-stream-java-client.sh
+        env:
+          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      - name: Package Stream Perf Test
+        run: ci/package-stream-perf-test.sh
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          RELEASE: true
+      - name: Push to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: packages/*
+          name: ${{ env.release_name }}
+          tag_name: ${{ env.tag_name }}
+          target_commitish: ${{ env.release_branch }}
+          prerelease: ${{ env.prerelease }}
+          repository: rabbitmq/rabbitmq-stream-java-client
+      - name: Trigger Stream Perf Test Docker image build
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          event-type: new_release
+          client-payload: >-
+            {"version": "${{ env.release_version }}",
+            "url" : "https://github.com/rabbitmq/rabbitmq-stream-java-client/releases/download/v${{ env.release_version }}/stream-perf-test-${{ env.release_version }}.jar"
+            "tags": "pivotalrabbitmq/stream-perf-test:latest,pivotalrabbitmq/stream-perf-test:${{ env.release_version }}"}
+      - name: Publish Documentation
+        run: |
+          git config user.name "rabbitmq-ci"
+          git config user.email "rabbitmq-ci@users.noreply.github.com"
+          ./publish-documentation-to-github-pages.sh

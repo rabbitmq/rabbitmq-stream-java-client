@@ -33,18 +33,18 @@ jobs:
           server-password: MAVEN_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
-      - name: Start broker
-        run: ci/start-broker.sh
-      - name: Test
-        run: |
-          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
-            -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
-            -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
-            -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
-      - name: Stop broker
-        run: docker stop rabbitmq && docker rm rabbitmq
-      - name: Upload Codecov report
-        run: bash <(curl -s https://codecov.io/bash)
+#      - name: Start broker
+#        run: ci/start-broker.sh
+#      - name: Test
+#        run: |
+#          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
+#            -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
+#            -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
+#            -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
+#      - name: Stop broker
+#        run: docker stop rabbitmq && docker rm rabbitmq
+#      - name: Upload Codecov report
+#        run: bash <(curl -s https://codecov.io/bash)
       - name: Publish snapshot
         run: ./mvnw clean deploy -Psnapshots -DskipITs -DskipTests
         env:
@@ -68,7 +68,7 @@ jobs:
           files: packages/*
           name: ${{ env.release_name }}
           tag_name: ${{ env.tag_name }}
-          target_commitish: main
+          target_commitish: ${{ env.release_branch }}
           prerelease: true
           token: ${{ secrets.CI_GITHUB_TOKEN }}
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
@@ -85,7 +85,7 @@ jobs:
           files: packages-latest/*
           name: stream-perf-test-latest
           tag_name: v-stream-perf-test-latest
-          target_commitish: main
+          target_commitish: ${{ env.release_branch }}
           prerelease: true
           token: ${{ secrets.CI_GITHUB_TOKEN }}
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
