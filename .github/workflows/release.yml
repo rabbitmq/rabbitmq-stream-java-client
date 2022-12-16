@@ -32,7 +32,6 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
       - name: Release Stream Java Client (Milestone/RC)
         if: ${{ env.ga_release != 'true' }}
         run:  |
@@ -43,7 +42,6 @@ jobs:
           MAVEN_USERNAME: ''
           MAVEN_PASSWORD: ${{ secrets.PACKAGECLOUD_TOKEN }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
       - name: Package Stream Perf Test
         run: ci/package-stream-perf-test.sh
         env:
@@ -64,7 +62,7 @@ jobs:
           event-type: new_release
           client-payload: >-
             {"version": "${{ env.release_version }}",
-            "url" : "https://github.com/rabbitmq/rabbitmq-stream-java-client/releases/download/v${{ env.release_version }}/stream-perf-test-${{ env.release_version }}.jar"
+            "url" : "https://github.com/rabbitmq/rabbitmq-stream-java-client/releases/download/v${{ env.release_version }}/stream-perf-test-${{ env.release_version }}.jar",
             "tags": "pivotalrabbitmq/stream-perf-test:latest,pivotalrabbitmq/stream-perf-test:${{ env.release_version }}"}
       - name: Publish Documentation
         run: |

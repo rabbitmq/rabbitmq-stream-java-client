@@ -42,8 +42,7 @@
   <scm>
     <url>https://github.com/rabbitmq/rabbitmq-stream-java-client</url>
     <connection>scm:git:git://github.com/rabbitmq/rabbitmq-stream-java-client.git</connection>
-    <developerConnection>scm:git:git@github.com:rabbitmq/rabbitmq-stream-java-client.git
-    </developerConnection>
+    <developerConnection>scm:git:https://github.com/rabbitmq/rabbitmq-stream-java-client.git</developerConnection>
     <tag>HEAD</tag>
   </scm>
 
