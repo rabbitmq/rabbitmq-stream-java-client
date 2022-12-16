@@ -50,7 +50,7 @@ jobs:
           files: packages-latest/*
           name: stream-perf-test-latest
           tag_name: v-stream-perf-test-latest
-          target_commitish: ${{ env.release_branch }}
+          target_commitish: main
           prerelease: true
           token: ${{ secrets.CI_GITHUB_TOKEN }}
           repository: rabbitmq/rabbitmq-java-tools-binaries-dev
