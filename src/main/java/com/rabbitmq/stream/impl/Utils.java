@@ -34,6 +34,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -481,5 +483,30 @@ final class Utils {
 
   static String jsonField(String name, String value) {
     return quote(name) + " : " + quote(value);
+  }
+
+  static class NamedThreadFactory implements ThreadFactory {
+
+    private final ThreadFactory backingThreaFactory;
+
+    private final String prefix;
+
+    private final AtomicLong count = new AtomicLong(0);
+
+    public NamedThreadFactory(String prefix) {
+      this(Executors.defaultThreadFactory(), prefix);
+    }
+
+    public NamedThreadFactory(ThreadFactory backingThreadFactory, String prefix) {
+      this.backingThreaFactory = backingThreadFactory;
+      this.prefix = prefix;
+    }
+
+    @Override
+    public Thread newThread(Runnable r) {
+      Thread thread = this.backingThreaFactory.newThread(r);
+      thread.setName(prefix + count.getAndIncrement());
+      return thread;
+    }
   }
 }

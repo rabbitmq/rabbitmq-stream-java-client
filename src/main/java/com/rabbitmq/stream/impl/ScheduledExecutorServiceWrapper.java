@@ -13,7 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import io.micrometer.core.instrument.util.NamedThreadFactory;
+import com.rabbitmq.stream.impl.Utils.NamedThreadFactory;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
