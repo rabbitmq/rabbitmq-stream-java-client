@@ -158,7 +158,9 @@ public class StreamPerfTestTest {
   void helpShouldReturnImmediately() throws Exception {
     run(builder().help());
     waitRunEnds();
-    assertThat(consoleOutput()).contains("Usage: stream-perf-test");
+    assertThat(consoleOutput())
+        .contains("Display help information about the specified command")
+        .contains("stream-perf-test");
   }
 
   @Test
