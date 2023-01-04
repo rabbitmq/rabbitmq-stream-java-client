@@ -14,6 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,8 +25,10 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +40,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 public class MetadataTest {
 
   TestUtils.ClientFactory cf;
+
+  String stream;
 
   @ValueSource(ints = {1, 2, 3, 4, 5})
   @ParameterizedTest
@@ -151,5 +156,18 @@ public class MetadataTest {
         throw new RuntimeException(ex);
       }
     }
+  }
+
+  // TODO enable this test when the server fix is available
+  @Test
+  @Disabled
+  void shouldFilterOutNodesInMaintenance() throws Exception {
+    Client client = cf.get();
+    BooleanSupplier hasLeader = () -> client.metadata(stream).get(stream).getLeader() != null;
+    waitAtMost(() -> hasLeader.getAsBoolean());
+    Host.rabbitmqctl("eval 'rabbit_maintenance:drain().'");
+    waitAtMost(() -> !hasLeader.getAsBoolean());
+    Host.rabbitmqctl("eval 'rabbit_maintenance:revive().'");
+    waitAtMost(() -> hasLeader.getAsBoolean());
   }
 }
