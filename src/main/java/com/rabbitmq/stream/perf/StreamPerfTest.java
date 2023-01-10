@@ -17,6 +17,7 @@ import static com.rabbitmq.stream.perf.Utils.ENVIRONMENT_VARIABLE_LOOKUP;
 import static com.rabbitmq.stream.perf.Utils.ENVIRONMENT_VARIABLE_PREFIX;
 import static com.rabbitmq.stream.perf.Utils.OPTION_TO_ENVIRONMENT_VARIABLE;
 import static java.lang.String.format;
+import static java.time.Duration.ofMillis;
 
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.client.Channel;
@@ -202,6 +203,13 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "100",
       converter = Utils.PositiveIntegerTypeConverter.class)
   private int batchSize;
+
+  @CommandLine.Option(
+      names = {"--batch-publishing-delay", "-bpd"},
+      description = "Period to send a batch of messages in milliseconds",
+      defaultValue = "100",
+      converter = Utils.GreaterThanOrEqualToZeroIntegerTypeConverter.class)
+  private int batchPublishingDelay;
 
   @CommandLine.Option(
       names = {"--sub-entry-size", "-ses"},
@@ -763,7 +771,10 @@ public class StreamPerfTest implements Callable<Integer> {
                     }
 
                     String stream = stream(this.streams, i);
-                    ProducerBuilder producerBuilder = environment.producerBuilder();
+                    ProducerBuilder producerBuilder =
+                        environment
+                            .producerBuilder()
+                            .batchPublishingDelay(ofMillis(this.batchPublishingDelay));
 
                     String producerName = this.producerNameStrategy.apply(stream, i + 1);
                     if (producerName != null && !producerName.trim().isEmpty()) {
