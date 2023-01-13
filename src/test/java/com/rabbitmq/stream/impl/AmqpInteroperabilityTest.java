@@ -13,8 +13,11 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
+import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,11 +30,16 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.amqp.UnsignedByte;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -469,7 +477,7 @@ public class AmqpInteroperabilityTest {
                                 messageOperation ->
                                     messageOperation.messageBuilderConsumer.accept(messageBuilder));
 
-                        client.publish(b(1), Collections.singletonList(messageBuilder.build()));
+                        client.publish(b(1), singletonList(messageBuilder.build()));
                       });
 
               try (Connection c = connectionFactory.newConnection()) {
@@ -515,6 +523,37 @@ public class AmqpInteroperabilityTest {
               response = client.delete(s);
               assertThat(response.isOk()).isTrue();
             });
+  }
+
+  @ParameterizedTest
+  @MethodSource("codecs")
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_7)
+  void messageWithEmptyBodyAndPropertiesShouldBeConvertedInAmqp(Codec codec) throws Exception {
+    Client client = cf.get(new ClientParameters().codec(codec));
+    Response response = client.declarePublisher(b(1), null, stream);
+    assertThat(response).is(ok());
+    Message message = codec.messageBuilder().properties().messageId(1L).messageBuilder().build();
+    client.publish(b(1), singletonList(message));
+
+    CountDownLatch consumeLatch = new CountDownLatch(1);
+    AtomicReference<Delivery> delivery = new AtomicReference<>();
+    ConnectionFactory cf = new ConnectionFactory();
+    try (Connection c = cf.newConnection()) {
+      Channel ch = c.createChannel();
+      ch.basicQos(10);
+      ch.basicConsume(
+          stream,
+          false,
+          Collections.singletonMap("x-stream-offset", "first"),
+          (consumerTag, message1) -> {
+            ch.basicAck(message1.getEnvelope().getDeliveryTag(), false);
+            delivery.set(message1);
+            consumeLatch.countDown();
+          },
+          consumerTag -> {});
+
+      assertThat(latchAssert(consumeLatch)).completes();
+    }
   }
 
   private static class PropertiesTestConfiguration {
