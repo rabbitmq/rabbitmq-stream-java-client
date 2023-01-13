@@ -118,7 +118,9 @@ class ConsumersCoordinator {
       SubscriptionListener subscriptionListener,
       Runnable trackingClosingCallback,
       MessageHandler messageHandler,
-      Map<String, String> subscriptionProperties) {
+      Map<String, String> subscriptionProperties,
+      int initialCredits,
+      int additionalCredits) {
     List<Client.Broker> candidates = findBrokersForStream(stream);
     Client.Broker newNode = pickBroker(candidates);
     if (newNode == null) {
@@ -137,7 +139,9 @@ class ConsumersCoordinator {
             subscriptionListener,
             trackingClosingCallback,
             messageHandler,
-            subscriptionProperties);
+            subscriptionProperties,
+            initialCredits,
+            additionalCredits);
 
     try {
       addToManager(newNode, subscriptionTracker, offsetSpecification, true);
@@ -387,6 +391,8 @@ class ConsumersCoordinator {
     private volatile ClientSubscriptionsManager manager;
     private volatile AtomicReference<SubscriptionState> state =
         new AtomicReference<>(SubscriptionState.OPENING);
+    private final int initialCredits;
+    private final int additionalCredits;
 
     private SubscriptionTracker(
         long id,
@@ -397,7 +403,9 @@ class ConsumersCoordinator {
         SubscriptionListener subscriptionListener,
         Runnable trackingClosingCallback,
         MessageHandler messageHandler,
-        Map<String, String> subscriptionProperties) {
+        Map<String, String> subscriptionProperties,
+        int initialCredits,
+        int additionalCredits) {
       this.id = id;
       this.consumer = consumer;
       this.stream = stream;
@@ -406,6 +414,8 @@ class ConsumersCoordinator {
       this.subscriptionListener = subscriptionListener;
       this.trackingClosingCallback = trackingClosingCallback;
       this.messageHandler = messageHandler;
+      this.initialCredits = initialCredits;
+      this.additionalCredits = additionalCredits;
       if (this.offsetTrackingReference == null) {
         this.subscriptionProperties = subscriptionProperties;
       } else {
@@ -548,7 +558,7 @@ class ConsumersCoordinator {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
-              client.credit(subscriptionId, 1);
+              client.credit(subscriptionId, subscriptionTracker.additionalCredits);
             } else {
               LOGGER.debug(
                   "Could not find stream subscription {} or subscription closing, not providing credits",
@@ -943,7 +953,7 @@ class ConsumersCoordinator {
                         subId,
                         subscriptionTracker.stream,
                         subscriptionContext.offsetSpecification(),
-                        10,
+                        subscriptionTracker.initialCredits,
                         subscriptionTracker.subscriptionProperties),
                 RETRY_ON_TIMEOUT,
                 "Subscribe request for consumer %s on stream '%s'",

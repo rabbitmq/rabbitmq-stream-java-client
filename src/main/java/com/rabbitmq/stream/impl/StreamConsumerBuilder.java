@@ -42,6 +42,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private SubscriptionListener subscriptionListener = subscriptionContext -> {};
   private Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
   private ConsumerUpdateListener consumerUpdateListener;
+  private int initialCredits = 1;
+  private int additionalCredits = 1;
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -130,6 +132,16 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     return this;
   }
 
+  @Override
+  public ConsumerBuilder credits(int initial, int onChunkDelivery) {
+    if (initial <= 0 || onChunkDelivery <= 0) {
+      throw new IllegalArgumentException("Credits must be positive");
+    }
+    this.initialCredits = initial;
+    this.additionalCredits = onChunkDelivery;
+    return this;
+  }
+
   StreamConsumerBuilder lazyInit(boolean lazyInit) {
     this.lazyInit = lazyInit;
     return this;
@@ -192,7 +204,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.lazyInit,
               this.subscriptionListener,
               this.subscriptionProperties,
-              this.consumerUpdateListener);
+              this.consumerUpdateListener,
+              this.initialCredits,
+              this.additionalCredits);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       if (Utils.isSac(this.subscriptionProperties)) {

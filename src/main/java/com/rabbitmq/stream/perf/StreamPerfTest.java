@@ -47,6 +47,7 @@ import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
+import com.rabbitmq.stream.perf.Utils.CreditSettings;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import com.rabbitmq.stream.perf.Utils.PerformanceMicrometerMetricsCollector;
 import io.micrometer.core.instrument.Counter;
@@ -424,6 +425,13 @@ public class StreamPerfTest implements Callable<Integer> {
       description = "add fixed metrics with command line arguments label",
       defaultValue = "false")
   private boolean metricsCommandLineArguments;
+
+  @CommandLine.Option(
+      names = {"--credits", "-cr"},
+      description = "initial and additional credits for subscriptions",
+      defaultValue = "10:1",
+      converter = Utils.CreditsTypeConverter.class)
+  private CreditSettings credits;
 
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
@@ -883,8 +891,11 @@ public class StreamPerfTest implements Callable<Integer> {
 
                         AtomicLong messageCount = new AtomicLong(0);
                         String stream = stream(streams, i);
-                        ConsumerBuilder consumerBuilder = environment.consumerBuilder();
-                        consumerBuilder = consumerBuilder.offset(this.offset);
+                        ConsumerBuilder consumerBuilder =
+                            environment
+                                .consumerBuilder()
+                                .offset(this.offset)
+                                .credits(this.credits.initial(), this.credits.additional());
 
                         if (this.superStreams) {
                           consumerBuilder.superStream(stream);

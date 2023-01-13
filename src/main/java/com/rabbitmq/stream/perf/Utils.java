@@ -647,6 +647,69 @@ class Utils {
     }
   }
 
+  static class CreditsTypeConverter implements CommandLine.ITypeConverter<CreditSettings> {
+
+    @Override
+    public CreditSettings convert(String input) {
+      String errorMessage =
+          input + " is not a valid credits setting, " + "valid example values: 20:1, 15";
+      if (input == null || input.trim().isEmpty()) {
+        typeConversionException(errorMessage);
+      }
+      if (input.contains(":") || input.contains("-")) {
+        String separator = input.contains(":") ? ":" : "-";
+        String[] split = input.split(separator);
+        if (split.length != 2) {
+          typeConversionException(errorMessage);
+        } else {
+          int[] credits =
+              Arrays.stream(split)
+                  .mapToInt(Integer::valueOf)
+                  .peek(
+                      c -> {
+                        if (c <= 0) {
+                          typeConversionException("credit values must be positive");
+                        }
+                      })
+                  .toArray();
+          return new CreditSettings(credits[0], credits[1]);
+        }
+      }
+      try {
+        int value = Integer.parseInt(input);
+        if (value <= 0) {
+          typeConversionException("credit values must be positive");
+        }
+        return new CreditSettings(value, 1);
+      } catch (Exception e) {
+        typeConversionException(errorMessage);
+      }
+      return new CreditSettings(10, 1);
+    }
+  }
+
+  static class CreditSettings {
+
+    private final int initial, additional;
+
+    CreditSettings(int initial, int additional) {
+      this.initial = initial;
+      this.additional = additional;
+    }
+
+    int initial() {
+      return this.initial;
+    }
+
+    int additional() {
+      return this.additional;
+    }
+  }
+
+  private static void typeConversionException(String message) {
+    throw new TypeConversionException(message);
+  }
+
   static class CompressionTypeConverter implements CommandLine.ITypeConverter<Compression> {
 
     @Override

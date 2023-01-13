@@ -76,6 +76,8 @@ public class ConsumersCoordinatorTest {
 
   private static final SubscriptionListener NO_OP_SUBSCRIPTION_LISTENER = subscriptionContext -> {};
   private static final Runnable NO_OP_TRACKING_CLOSING_CALLBACK = () -> {};
+  private int initialCredits = 10;
+  private int additionalCredits = 1;
 
   @Mock StreamEnvironment environment;
   @Mock StreamConsumer consumer;
@@ -202,7 +204,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(2)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -242,7 +246,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -271,7 +277,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -291,7 +299,9 @@ public class ConsumersCoordinatorTest {
                     NO_OP_SUBSCRIPTION_LISTENER,
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
-                    Collections.emptyMap()))
+                    Collections.emptyMap(),
+                    initialCredits,
+                    additionalCredits))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -309,7 +319,9 @@ public class ConsumersCoordinatorTest {
                     NO_OP_SUBSCRIPTION_LISTENER,
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
-                    Collections.emptyMap()))
+                    Collections.emptyMap(),
+                    initialCredits,
+                    additionalCredits))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -337,7 +349,9 @@ public class ConsumersCoordinatorTest {
                     NO_OP_SUBSCRIPTION_LISTENER,
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
-                    Collections.emptyMap()))
+                    Collections.emptyMap(),
+                    initialCredits,
+                    additionalCredits))
         .isInstanceOf(StreamException.class)
         .hasMessage(exceptionMessage);
     assertThat(MonitoringTestUtils.extract(coordinator).isEmpty()).isTrue();
@@ -357,7 +371,9 @@ public class ConsumersCoordinatorTest {
                     NO_OP_SUBSCRIPTION_LISTENER,
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
-                    Collections.emptyMap()))
+                    Collections.emptyMap(),
+                    initialCredits,
+                    additionalCredits))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -374,7 +390,9 @@ public class ConsumersCoordinatorTest {
                     NO_OP_SUBSCRIPTION_LISTENER,
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
-                    Collections.emptyMap()))
+                    Collections.emptyMap(),
+                    initialCredits,
+                    additionalCredits))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -414,7 +432,9 @@ public class ConsumersCoordinatorTest {
             NO_OP_SUBSCRIPTION_LISTENER,
             () -> trackingClosingCallbackCalls.incrementAndGet(),
             (offset, message) -> messageHandlerCalls.incrementAndGet(),
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            initialCredits,
+            additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -463,7 +483,9 @@ public class ConsumersCoordinatorTest {
               NO_OP_TRACKING_CLOSING_CALLBACK,
               (offset, message) ->
                   messageHandlerCalls.compute(subId, (k, v) -> (v == null) ? 1 : ++v),
-              Collections.emptyMap());
+              Collections.emptyMap(),
+              initialCredits,
+              additionalCredits);
       closingRunnables.add(closingRunnable);
     }
 
@@ -537,7 +559,9 @@ public class ConsumersCoordinatorTest {
             NO_OP_SUBSCRIPTION_LISTENER,
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> messageHandlerCalls.incrementAndGet(),
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            initialCredits,
+            additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -555,7 +579,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
 
     verify(client, times(1 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -634,7 +660,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> messageHandlerCalls.incrementAndGet(),
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -688,7 +716,9 @@ public class ConsumersCoordinatorTest {
             NO_OP_SUBSCRIPTION_LISTENER,
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> messageHandlerCalls.incrementAndGet(),
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            initialCredits,
+            additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -701,7 +731,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
 
     verify(client, times(1 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -788,7 +820,9 @@ public class ConsumersCoordinatorTest {
             NO_OP_SUBSCRIPTION_LISTENER,
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> messageHandlerCalls.incrementAndGet(),
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            initialCredits,
+            additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -852,7 +886,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> messageHandlerCalls.incrementAndGet(),
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -904,7 +940,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> messageHandlerCalls.incrementAndGet(),
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -957,7 +995,9 @@ public class ConsumersCoordinatorTest {
                         NO_OP_SUBSCRIPTION_LISTENER,
                         NO_OP_TRACKING_CLOSING_CALLBACK,
                         (offset, message) -> {},
-                        Collections.emptyMap()))
+                        Collections.emptyMap(),
+                        initialCredits,
+                        additionalCredits))
             .collect(Collectors.toList());
 
     verify(clientFactory, times(2)).client(any());
@@ -1017,7 +1057,9 @@ public class ConsumersCoordinatorTest {
                   NO_OP_SUBSCRIPTION_LISTENER,
                   NO_OP_TRACKING_CLOSING_CALLBACK,
                   (offset, message) -> {},
-                  Collections.emptyMap());
+                  Collections.emptyMap(),
+                  initialCredits,
+                  additionalCredits);
             });
     // the extra is allocated on another client from the same pool
     verify(clientFactory, times(2)).client(any());
@@ -1041,7 +1083,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
 
     verify(clientFactory, times(2 + 1)).client(any());
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
@@ -1080,7 +1124,9 @@ public class ConsumersCoordinatorTest {
                   NO_OP_SUBSCRIPTION_LISTENER,
                   NO_OP_TRACKING_CLOSING_CALLBACK,
                   (offset, message) -> {},
-                  Collections.emptyMap());
+                  Collections.emptyMap(),
+                  initialCredits,
+                  additionalCredits);
             });
     // the extra is allocated on another client from the same pool
     verify(clientFactory, times(2)).client(any());
@@ -1110,7 +1156,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
 
     // no more client creation
     verify(clientFactory, times(2)).client(any());
@@ -1159,7 +1207,9 @@ public class ConsumersCoordinatorTest {
             NO_OP_SUBSCRIPTION_LISTENER,
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> {},
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            initialCredits,
+            additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1230,7 +1280,9 @@ public class ConsumersCoordinatorTest {
             NO_OP_SUBSCRIPTION_LISTENER,
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> {},
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            initialCredits,
+            additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1303,7 +1355,9 @@ public class ConsumersCoordinatorTest {
             NO_OP_SUBSCRIPTION_LISTENER,
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> {},
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            initialCredits,
+            additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1388,7 +1442,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1401,7 +1457,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1465,7 +1523,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1529,7 +1589,9 @@ public class ConsumersCoordinatorTest {
         NO_OP_SUBSCRIPTION_LISTENER,
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        initialCredits,
+        additionalCredits);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1570,7 +1632,9 @@ public class ConsumersCoordinatorTest {
                     NO_OP_SUBSCRIPTION_LISTENER,
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
-                    Collections.emptyMap());
+                    Collections.emptyMap(),
+                    initialCredits,
+                    additionalCredits);
 
             closingRunnable.run();
           };

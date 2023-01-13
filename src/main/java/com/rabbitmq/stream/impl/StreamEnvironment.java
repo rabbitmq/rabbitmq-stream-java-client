@@ -659,7 +659,9 @@ class StreamEnvironment implements Environment {
       SubscriptionListener subscriptionListener,
       Runnable trackingClosingCallback,
       MessageHandler messageHandler,
-      Map<String, String> subscriptionProperties) {
+      Map<String, String> subscriptionProperties,
+      int initialCredits,
+      int additionalCredits) {
     Runnable closingCallback =
         this.consumersCoordinator.subscribe(
             consumer,
@@ -669,7 +671,9 @@ class StreamEnvironment implements Environment {
             subscriptionListener,
             trackingClosingCallback,
             messageHandler,
-            subscriptionProperties);
+            subscriptionProperties,
+            initialCredits,
+            additionalCredits);
     return closingCallback;
   }
 

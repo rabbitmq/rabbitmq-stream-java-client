@@ -80,7 +80,9 @@ class StreamConsumer implements Consumer {
       boolean lazyInit,
       SubscriptionListener subscriptionListener,
       Map<String, String> subscriptionProperties,
-      ConsumerUpdateListener consumerUpdateListener) {
+      ConsumerUpdateListener consumerUpdateListener,
+      int initialCredits,
+      int additionalCredits) {
 
     this.id = ID_SEQUENCE.getAndIncrement();
     Runnable trackingClosingCallback;
@@ -253,7 +255,9 @@ class StreamConsumer implements Consumer {
                     subscriptionListener,
                     trackingClosingCallback,
                     closedAwareMessageHandler,
-                    Collections.unmodifiableMap(subscriptionProperties));
+                    Collections.unmodifiableMap(subscriptionProperties),
+                    initialCredits,
+                    additionalCredits);
 
             this.status = Status.RUNNING;
           };
