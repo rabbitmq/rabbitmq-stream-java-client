@@ -433,6 +433,13 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.CreditsTypeConverter.class)
   private CreditSettings credits;
 
+  @CommandLine.Option(
+      names = {"--requested-max-frame-size", "-rmfs"},
+      description = "maximum frame size to request",
+      defaultValue = "1048576",
+      converter = Utils.ByteCapacityTypeConverter.class)
+  private ByteCapacity requestedMaxFrameSize;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -666,7 +673,8 @@ public class StreamPerfTest implements Callable<Integer> {
               .maxProducersByConnection(this.producersByConnection)
               .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
               .maxConsumersByConnection(this.consumersByConnection)
-              .rpcTimeout(Duration.ofSeconds(this.rpcTimeout));
+              .rpcTimeout(Duration.ofSeconds(this.rpcTimeout))
+              .requestedMaxFrameSize((int) this.requestedMaxFrameSize.toBytes());
 
       ChannelCustomizer channelCustomizer = channel -> {};
 
