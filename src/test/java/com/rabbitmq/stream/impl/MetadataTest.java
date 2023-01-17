@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.impl.Client.Broker;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -28,7 +30,6 @@ import java.util.*;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -158,9 +159,8 @@ public class MetadataTest {
     }
   }
 
-  // TODO enable this test when the server fix is available
   @Test
-  @Disabled
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_7)
   void shouldFilterOutNodesInMaintenance() throws Exception {
     Client client = cf.get();
     BooleanSupplier hasLeader = () -> client.metadata(stream).get(stream).getLeader() != null;
