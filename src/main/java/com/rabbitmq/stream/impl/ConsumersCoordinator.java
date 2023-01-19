@@ -84,7 +84,7 @@ class ConsumersCoordinator {
   private final NavigableSet<ClientSubscriptionsManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
 
-  private final boolean debug = true;
+  private final boolean debug = false;
   private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
 
   ConsumersCoordinator(
