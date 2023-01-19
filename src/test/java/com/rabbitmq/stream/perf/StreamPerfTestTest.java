@@ -36,6 +36,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.ServerSocket;
 import java.net.URL;
@@ -165,7 +166,7 @@ public class StreamPerfTestTest {
 
   @Test
   void versionShouldReturnAppropriateInformation() {
-    StreamPerfTest.versionInformation(new PrintStream(out, true));
+    StreamPerfTest.versionInformation(new PrintWriter(out, true));
     assertThat(consoleOutput()).contains("RabbitMQ Stream Perf Test");
   }
 
