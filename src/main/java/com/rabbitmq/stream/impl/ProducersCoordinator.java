@@ -68,7 +68,7 @@ class ProducersCoordinator {
   private final AtomicLong managerIdSequence = new AtomicLong(0);
   private final NavigableSet<ClientProducersManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
-  private final boolean debug = true;
+  private final boolean debug = false;
   private final List<ProducerTracker> producerTrackers = new CopyOnWriteArrayList<>();
 
   ProducersCoordinator(

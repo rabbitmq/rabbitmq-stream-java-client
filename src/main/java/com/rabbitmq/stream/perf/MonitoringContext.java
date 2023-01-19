@@ -18,6 +18,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -37,14 +38,19 @@ class MonitoringContext {
   private final Environment environment;
 
   private final Collection<Endpoint> endpoints = Collections.synchronizedList(new ArrayList<>());
+  private final PrintWriter out;
 
   private volatile HttpServer server;
 
   MonitoringContext(
-      int monitoringPort, CompositeMeterRegistry meterRegistry, Environment environment) {
+      int monitoringPort,
+      CompositeMeterRegistry meterRegistry,
+      Environment environment,
+      PrintWriter out) {
     this.monitoringPort = monitoringPort;
     this.meterRegistry = meterRegistry;
     this.environment = environment;
+    this.out = out;
   }
 
   void addHttpEndpoint(String path, String description, HttpHandler handler) {
@@ -88,7 +94,7 @@ class MonitoringContext {
           });
 
       server.start();
-      System.out.println("Monitoring endpoints started on http://localhost:" + this.monitoringPort);
+      this.out.println("Monitoring endpoints started on http://localhost:" + this.monitoringPort);
     }
   }
 

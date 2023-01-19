@@ -184,12 +184,18 @@ final class Utils {
     String description = format(format, args);
     int attempt = 0;
     Exception lastException = null;
+    long startTime = System.nanoTime();
     boolean keepTrying = true;
     while (keepTrying) {
       try {
         attempt++;
         T result = operation.get();
-        LOGGER.debug("Operation '{}' completed after {} attempt(s)", description, attempt);
+        Duration operationDuration = Duration.ofNanos(System.nanoTime() - startTime);
+        LOGGER.debug(
+            "Operation '{}' completed in {} ms after {} attempt(s)",
+            description,
+            operationDuration.toMillis(),
+            attempt);
         return result;
       } catch (Exception e) {
         lastException = e;

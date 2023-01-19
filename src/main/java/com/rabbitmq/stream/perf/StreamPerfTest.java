@@ -58,6 +58,8 @@ import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufAllocatorMetric;
 import io.netty.buffer.ByteBufAllocatorMetricProvider;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.internal.PlatformDependent;
@@ -491,7 +493,7 @@ public class StreamPerfTest implements Callable<Integer> {
     return commandLine.execute(args);
   }
 
-  static void versionInformation(PrintStream out) {
+  static void versionInformation(PrintWriter out) {
     String lineSeparator = System.getProperty("line.separator");
     String version =
         format(
@@ -661,6 +663,8 @@ public class StreamPerfTest implements Callable<Integer> {
         }
       }
 
+      EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
+
       EnvironmentBuilder environmentBuilder =
           Environment.builder()
               .id("stream-perf-test")
@@ -668,6 +672,7 @@ public class StreamPerfTest implements Callable<Integer> {
               .addressResolver(addrResolver)
               .scheduledExecutorService(envExecutor)
               .metricsCollector(metricsCollector)
+              .eventLoopGroup(eventLoopGroup)
               .byteBufAllocator(byteBufAllocator)
               .codec(codec)
               .maxProducersByConnection(this.producersByConnection)
@@ -701,10 +706,20 @@ public class StreamPerfTest implements Callable<Integer> {
       }
 
       Environment environment = environmentBuilder.channelCustomizer(channelCustomizer).build();
-      shutdownService.wrap(closeStep("Closing environment(s)", () -> environment.close()));
+      if (!isRunTimeLimited()) {
+        shutdownService.wrap(
+            closeStep(
+                "Closing Netty event loop group",
+                () -> {
+                  if (!eventLoopGroup.isShuttingDown() || !eventLoopGroup.isShutdown()) {
+                    eventLoopGroup.shutdownGracefully(0, 0, TimeUnit.SECONDS);
+                  }
+                }));
+        shutdownService.wrap(closeStep("Closing environment", () -> environment.close()));
+      }
 
       MonitoringContext monitoringContext =
-          new MonitoringContext(this.monitoringPort, meterRegistry, environment);
+          new MonitoringContext(this.monitoringPort, meterRegistry, environment, this.out);
       this.monitorings.forEach(m -> m.configure(monitoringContext));
       monitoringContext.start();
 
@@ -958,14 +973,16 @@ public class StreamPerfTest implements Callable<Integer> {
                       })
                   .collect(Collectors.toList()));
 
-      shutdownService.wrap(
-          closeStep(
-              "Closing consumers",
-              () -> {
-                for (Consumer consumer : consumers) {
-                  consumer.close();
-                }
-              }));
+      if (!isRunTimeLimited()) {
+        shutdownService.wrap(
+            closeStep(
+                "Closing consumers",
+                () -> {
+                  for (Consumer consumer : consumers) {
+                    consumer.close();
+                  }
+                }));
+      }
 
       ExecutorService executorService;
       if (this.producers > 0) {
@@ -980,23 +997,25 @@ public class StreamPerfTest implements Callable<Integer> {
         executorService = null;
       }
 
-      shutdownService.wrap(
-          closeStep(
-              "Closing producers",
-              () -> {
-                for (Producer p : producers) {
-                  p.close();
-                }
-              }));
+      if (!isRunTimeLimited()) {
+        shutdownService.wrap(
+            closeStep(
+                "Closing producers",
+                () -> {
+                  for (Producer p : producers) {
+                    p.close();
+                  }
+                }));
 
-      shutdownService.wrap(
-          closeStep(
-              "Closing producers executor service",
-              () -> {
-                if (executorService != null) {
-                  executorService.shutdownNow();
-                }
-              }));
+        shutdownService.wrap(
+            closeStep(
+                "Closing producers executor service",
+                () -> {
+                  if (executorService != null) {
+                    executorService.shutdownNow();
+                  }
+                }));
+      }
 
       String metricsHeader = "Arguments: " + String.join(" ", arguments);
 
@@ -1008,7 +1027,7 @@ public class StreamPerfTest implements Callable<Integer> {
       Thread shutdownHook = new Thread(() -> latch.countDown());
       Runtime.getRuntime().addShutdownHook(shutdownHook);
       try {
-        if (this.time > 0) {
+        if (isRunTimeLimited()) {
           latch.await(this.time, TimeUnit.SECONDS);
         } else {
           latch.await();
@@ -1091,7 +1110,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
   private void maybeDisplayVersion() {
     if (this.version) {
-      versionInformation(System.out);
+      versionInformation(this.out);
       System.exit(0);
     }
   }
@@ -1110,6 +1129,10 @@ public class StreamPerfTest implements Callable<Integer> {
         return message;
       }
     };
+  }
+
+  private boolean isRunTimeLimited() {
+    return this.time > 0;
   }
 
   public void monitorings(List<Monitoring> monitorings) {
