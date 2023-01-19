@@ -31,6 +31,7 @@ import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.CallableConsumer;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
+import com.rabbitmq.stream.perf.StreamPerfTest.RunContext;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -49,6 +50,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -67,6 +69,7 @@ public class StreamPerfTestTest {
   TestUtils.ClientFactory cf;
   Client client;
   AtomicInteger exitCode;
+  AtomicReference<StreamPerfTest> command;
   String s;
   ByteArrayOutputStream out, err;
   boolean checkErrIsEmpty;
@@ -121,6 +124,7 @@ public class StreamPerfTestTest {
   @BeforeEach
   void initTest(TestInfo info) {
     exitCode = new AtomicInteger(-1);
+    command = new AtomicReference<>();
     client = cf.get();
     s = TestUtils.streamName(info);
     out = new ByteArrayOutputStream();
@@ -451,6 +455,7 @@ public class StreamPerfTestTest {
     waitRunEnds();
     assertThat(Duration.ofNanos(System.nanoTime() - start))
         .isGreaterThanOrEqualTo(Duration.ofSeconds(3));
+    command.get().close();
   }
 
   @Test
@@ -525,13 +530,16 @@ public class StreamPerfTestTest {
                 ? new Address("localhost", Client.DEFAULT_PORT)
                 : new Address("localhost", Client.DEFAULT_TLS_PORT);
     return executor.submit(
-        () ->
-            exitCode.set(
-                StreamPerfTest.run(
-                    builder.build().split(" "),
-                    new PrintStream(out, true),
-                    new PrintStream(err, true),
-                    addressResolver)));
+        () -> {
+          RunContext context =
+              StreamPerfTest.run(
+                  builder.build().split(" "),
+                  new PrintStream(out, true),
+                  new PrintStream(err, true),
+                  addressResolver);
+          exitCode.set(context.exitCode());
+          command.set(context.command());
+        });
   }
 
   private static class HttpResponse {

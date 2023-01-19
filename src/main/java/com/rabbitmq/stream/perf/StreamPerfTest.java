@@ -445,6 +445,8 @@ public class StreamPerfTest implements Callable<Integer> {
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
+  private volatile Environment environment;
+  private volatile EventLoopGroup eventLoopGroup;
 
   // constructor for completion script generation
   public StreamPerfTest() {
@@ -470,11 +472,11 @@ public class StreamPerfTest implements Callable<Integer> {
 
   public static void main(String[] args) throws IOException {
     LogUtils.configureLog();
-    int exitCode = run(args, System.out, System.err, null);
+    int exitCode = run(args, System.out, System.err, null).exitCode();
     System.exit(exitCode);
   }
 
-  static int run(
+  static RunContext run(
       String[] args,
       PrintStream consoleOut,
       PrintStream consoleErr,
@@ -490,7 +492,7 @@ public class StreamPerfTest implements Callable<Integer> {
     monitorings.forEach(m -> commandLine.addMixin(m.getClass().getSimpleName(), m));
 
     streamPerfTest.monitorings(monitorings);
-    return commandLine.execute(args);
+    return new RunContext(commandLine.execute(args), streamPerfTest);
   }
 
   static void versionInformation(PrintWriter out) {
@@ -663,7 +665,7 @@ public class StreamPerfTest implements Callable<Integer> {
         }
       }
 
-      EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
+      this.eventLoopGroup = new NioEventLoopGroup();
 
       EnvironmentBuilder environmentBuilder =
           Environment.builder()
@@ -705,7 +707,7 @@ public class StreamPerfTest implements Callable<Integer> {
         }
       }
 
-      Environment environment = environmentBuilder.channelCustomizer(channelCustomizer).build();
+      this.environment = environmentBuilder.channelCustomizer(channelCustomizer).build();
       if (!isRunTimeLimited()) {
         shutdownService.wrap(
             closeStep(
@@ -1135,11 +1137,38 @@ public class StreamPerfTest implements Callable<Integer> {
     return this.time > 0;
   }
 
+  // for testing
+  void close() {
+    if (this.isRunTimeLimited()) {
+      this.environment.close();
+      this.eventLoopGroup.shutdownGracefully(0, 0, TimeUnit.SECONDS);
+    }
+  }
+
   public void monitorings(List<Monitoring> monitorings) {
     this.monitorings = monitorings;
   }
 
   private static String stream(List<String> streams, int i) {
     return streams.get(i % streams.size());
+  }
+
+  static class RunContext {
+
+    private final int exitCode;
+    private final StreamPerfTest command;
+
+    private RunContext(int exitCode, StreamPerfTest command) {
+      this.exitCode = exitCode;
+      this.command = command;
+    }
+
+    int exitCode() {
+      return this.exitCode;
+    }
+
+    StreamPerfTest command() {
+      return this.command;
+    }
   }
 }
