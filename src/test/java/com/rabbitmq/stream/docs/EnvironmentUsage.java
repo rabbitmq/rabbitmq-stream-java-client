@@ -18,6 +18,11 @@ import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Environment;
 
+import com.rabbitmq.stream.EnvironmentBuilder;
+import io.netty.channel.Channel;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import java.io.FileInputStream;
@@ -25,6 +30,8 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class EnvironmentUsage {
 
@@ -132,6 +139,18 @@ public class EnvironmentUsage {
         // tag::stream-deletion[]
         environment.deleteStream("my-stream");  // <1>
         // end::stream-deletion[]
+    }
+
+    void nativeEpoll() {
+        // tag::native-epoll[]
+        EventLoopGroup epollEventLoopGroup = new EpollEventLoopGroup();  // <1>
+        Environment environment = Environment.builder()
+            .netty()  // <2>
+                .eventLoopGroup(epollEventLoopGroup)  // <3>
+                .bootstrapCustomizer(b -> b.channel(EpollSocketChannel.class))  // <4>
+                .environmentBuilder()
+            .build();
+        // end::native-epoll[]
     }
 
 }

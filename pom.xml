@@ -416,7 +416,7 @@
           <attributes>
             <project-artifact-id>${project.artifactId}</project-artifact-id>
             <project-version>${project.version}</project-version>
-            <protonj-version>${proton-j.version}</protonj-version>
+            <netty-version>${netty.version}</netty-version>
             <build-number>${buildNumber}</build-number>
             <imagesdir>./images</imagesdir>
             <idprefix />

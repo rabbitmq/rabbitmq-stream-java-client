@@ -1,0 +1,57 @@
+:test-examples: ../../test/java/com/rabbitmq/stream/docs
+
+=== Advanced Topics
+
+==== Using Native `epoll`
+
+The stream Java client uses the https://netty.io/[Netty] network framework and its Java NIO transport implementation by default.
+This should be a reasonable default for most applications.
+
+Netty also allows using https://netty.io/wiki/native-transports.html[JNI transports].
+They are less portable than Java NIO, but they can be more performant for some workloads (even though the RabbitMQ team has not seen any significant improvement in their own tests).
+
+The https://en.wikipedia.org/wiki/Epoll[Linux `epoll` transport] is a popular choice, so we'll see how to configure with the stream Java client.
+Other JNI transports can be configured in the same way.
+
+The native transport dependency must be added to the dependency manager.
+We must pull the native binaries compiled for our OS and architecture, in our example Linux x86-64, so we are using the `linux-x86_64` classifier.
+Here is the declaration for Maven:
+
+.Declaring the Linux x86-64 native `epoll` transport dependency with Maven
+[source,xml,subs="attributes,specialcharacters"]
+----
+<dependencies>
+
+  <dependency>
+    <groupId>io.netty</groupId>
+    <artifactId>netty-transport-native-epoll</artifactId>
+    <version>{netty-version}</version>
+    <classifier>linux-x86_64</classifier>
+  </dependency>
+
+</dependencies>
+----
+
+And for Gradle:
+
+.Declaring the Linux x86-64 native `epoll` transport dependency with Gradle
+[source,groovy,subs="attributes,specialcharacters"]
+----
+dependencies {
+  compile "io.netty:netty-transport-native-epoll:{netty-version}:linux-x86_64"
+}
+----
+
+The native `epoll` transport is set up when the environment is configured:
+
+.Configuring the native `epoll` transport in the environment
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=native-epoll]
+--------
+<1> Create the `epoll` event loop group (don't forget to close it!)
+<2> Use the Netty configuration helper
+<3> Set the event loop group
+<4> Set the channel class to use
+
+Note the event loop group must be closed explicitly: the environment will not close it itself as it is provided externally.

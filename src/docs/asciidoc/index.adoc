@@ -24,6 +24,8 @@ include::api.adoc[]
 
 include::super-streams.adoc[]
 
+include::advanced-topics.adoc[]
+
 include::building.adoc[]
 
 include::performance-tool.adoc[]

@@ -431,7 +431,7 @@ public interface EnvironmentBuilder {
 
     /**
      * An extension point to customize Netty's {@link io.netty.channel.Channel}s used for
-     * connection.
+     * connections.
      *
      * @param channelCustomizer
      * @return the Netty configuration helper
