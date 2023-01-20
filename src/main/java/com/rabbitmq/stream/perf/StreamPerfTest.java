@@ -54,10 +54,13 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufAllocatorMetric;
 import io.netty.buffer.ByteBufAllocatorMetricProvider;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
@@ -441,6 +444,12 @@ public class StreamPerfTest implements Callable<Integer> {
       converter = Utils.ByteCapacityTypeConverter.class)
   private ByteCapacity requestedMaxFrameSize;
 
+  @CommandLine.Option(
+      names = {"--native-epoll", "-ne"},
+      description = "use Netty's native epoll transport (Linux x86-64 only)",
+      defaultValue = "false")
+  private boolean nativeEpoll;
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
@@ -664,7 +673,14 @@ public class StreamPerfTest implements Callable<Integer> {
         }
       }
 
-      this.eventLoopGroup = new NioEventLoopGroup();
+      java.util.function.Consumer<Bootstrap> bootstrapCustomizer;
+      if (this.nativeEpoll) {
+        this.eventLoopGroup = new EpollEventLoopGroup();
+        bootstrapCustomizer = b -> b.channel(EpollSocketChannel.class);
+      } else {
+        this.eventLoopGroup = new NioEventLoopGroup();
+        bootstrapCustomizer = b -> {};
+      }
 
       EnvironmentBuilder environmentBuilder =
           Environment.builder()
@@ -676,6 +692,7 @@ public class StreamPerfTest implements Callable<Integer> {
               .netty()
               .byteBufAllocator(byteBufAllocator)
               .eventLoopGroup(eventLoopGroup)
+              .bootstrapCustomizer(bootstrapCustomizer)
               .environmentBuilder()
               .codec(codec)
               .maxProducersByConnection(this.producersByConnection)

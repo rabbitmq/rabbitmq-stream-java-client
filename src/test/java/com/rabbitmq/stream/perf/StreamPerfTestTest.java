@@ -60,6 +60,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -496,6 +499,18 @@ public class StreamPerfTestTest {
                     .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
   }
 
+  @Test
+  @EnabledOnOs(OS.LINUX)
+  @EnabledIfSystemProperty(named = "os.arch", matches = "amd64")
+  void nativeEpollWorksOnLinux() throws Exception {
+    Future<?> run = run(builder().nativeEpoll());
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(streamExists(s)).isTrue();
+  }
+
   private static <T> Consumer<T> wrap(CallableConsumer<T> action) {
     return t -> {
       try {
@@ -705,6 +720,11 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder time(int time) {
       arguments.put("time", String.valueOf(time));
+      return this;
+    }
+
+    ArgumentsBuilder nativeEpoll() {
+      arguments.put("native-epoll", "");
       return this;
     }
 
