@@ -134,8 +134,10 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
+  @SuppressWarnings("deprecation")
+  @Override
   public EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup) {
-    this.clientParameters.eventLoopGroup(eventLoopGroup);
+    this.netty().eventLoopGroup(eventLoopGroup);
     return this;
   }
 
@@ -309,6 +311,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     }
     this.id = this.id == null ? "rabbitmq-stream" : this.id;
     this.connectionNamingStrategy = Utils.defaultConnectionNamingStrategy(this.id + "-");
+    this.clientParameters.eventLoopGroup(this.netty.eventLoopGroup);
     this.clientParameters.byteBufAllocator(this.netty.byteBufAllocator);
     this.clientParameters.channelCustomizer(this.netty.channelCustomizer);
     this.clientParameters.bootstrapCustomizer(this.netty.bootstrapCustomizer);
@@ -400,14 +403,20 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   static class DefaultNettyConfiguration implements NettyConfiguration {
 
     private final EnvironmentBuilder environmentBuilder;
+    private EventLoopGroup eventLoopGroup;
+    private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
+    private Consumer<Channel> channelCustomizer = noOpConsumer();
+    private Consumer<Bootstrap> bootstrapCustomizer = noOpConsumer();
 
     private DefaultNettyConfiguration(EnvironmentBuilder environmentBuilder) {
       this.environmentBuilder = environmentBuilder;
     }
 
-    private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
-    private Consumer<Channel> channelCustomizer = noOpConsumer();
-    private Consumer<Bootstrap> bootstrapCustomizer = noOpConsumer();
+    @Override
+    public NettyConfiguration eventLoopGroup(EventLoopGroup eventLoopGroup) {
+      this.eventLoopGroup = eventLoopGroup;
+      return this;
+    }
 
     @Override
     public NettyConfiguration byteBufAllocator(ByteBufAllocator byteBufAllocator) {

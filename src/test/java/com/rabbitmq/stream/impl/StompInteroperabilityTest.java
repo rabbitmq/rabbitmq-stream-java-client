@@ -1,4 +1,4 @@
-// Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -110,7 +110,7 @@ public class StompInteroperabilityTest {
   void init() throws Exception {
     environmentBuilder = Environment.builder();
     environmentBuilder.addressResolver(add -> localhost());
-    env = environmentBuilder.eventLoopGroup(eventLoopGroup).build();
+    env = environmentBuilder.netty().eventLoopGroup(eventLoopGroup).environmentBuilder().build();
     socket = new Socket("localhost", 61613);
     out = socket.getOutputStream();
     in = new BufferedReader(new InputStreamReader(socket.getInputStream()));

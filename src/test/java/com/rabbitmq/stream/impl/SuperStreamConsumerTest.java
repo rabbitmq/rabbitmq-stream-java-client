@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -60,7 +60,8 @@ public class SuperStreamConsumerTest {
 
   @BeforeEach
   void init(TestInfo info) throws Exception {
-    EnvironmentBuilder environmentBuilder = Environment.builder().eventLoopGroup(eventLoopGroup);
+    EnvironmentBuilder environmentBuilder =
+        Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
     environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
     superStream = TestUtils.streamName(info);

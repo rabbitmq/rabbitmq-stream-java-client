@@ -93,17 +93,6 @@ public interface EnvironmentBuilder {
   EnvironmentBuilder codec(Codec codec);
 
   /**
-   * The Netty {@link EventLoopGroup} instance to use.
-   *
-   * <p>The environment uses its own instance by default. It is the developer's responsibility to
-   * close the {@link EventLoopGroup} they provide.
-   *
-   * @param eventLoopGroup
-   * @return this builder instance
-   */
-  EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
-
-  /**
    * Informational ID for this environment instance.
    *
    * <p>This is currently used as a prefix for connection names. The broker does not enforce any
@@ -197,6 +186,19 @@ public interface EnvironmentBuilder {
    * @see <a href="https://rabbitmq.com/stream.html#protocol">See stream plugin documentation</a>
    */
   EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
+
+  /**
+   * The Netty {@link EventLoopGroup} instance to use.
+   *
+   * <p>The environment uses its own instance by default. It is the developer's responsibility to
+   * close the {@link EventLoopGroup} they provide.
+   *
+   * @param eventLoopGroup
+   * @return this builder instance
+   * @deprecated use {@link NettyConfiguration#eventLoopGroup(EventLoopGroup)} from {@link #netty()}
+   *     instead
+   */
+  EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
 
   /**
    * Netty's {@link io.netty.buffer.ByteBuf} allocator.
@@ -407,6 +409,17 @@ public interface EnvironmentBuilder {
 
   /** Helper to configure Netty */
   interface NettyConfiguration {
+
+    /**
+     * The {@link EventLoopGroup} instance to use.
+     *
+     * <p>The environment uses its own instance by default. It is the developer's responsibility to
+     * close the {@link EventLoopGroup} they provide.
+     *
+     * @param eventLoopGroup
+     * @return the Netty configuration helper
+     */
+    NettyConfiguration eventLoopGroup(EventLoopGroup eventLoopGroup);
 
     /**
      * Netty's {@link io.netty.buffer.ByteBuf} allocator.

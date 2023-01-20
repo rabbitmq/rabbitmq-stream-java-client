@@ -108,7 +108,7 @@ public class StreamEnvironmentTest {
     environmentBuilder = Environment.builder();
     environmentBuilder.addressResolver(
         add -> add.port() == Client.DEFAULT_PORT ? localhost() : localhostTls());
-    environmentBuilder.eventLoopGroup(eventLoopGroup);
+    environmentBuilder.netty().eventLoopGroup(eventLoopGroup);
   }
 
   @Test

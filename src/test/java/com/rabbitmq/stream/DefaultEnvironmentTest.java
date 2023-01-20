@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -44,7 +44,12 @@ public class DefaultEnvironmentTest {
     try (Client client = new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup))) {
       Client.Response response = client.create(stream);
       assertThat(response.isOk()).isTrue();
-      try (Environment environment = Environment.builder().eventLoopGroup(eventLoopGroup).build()) {
+      try (Environment environment =
+          Environment.builder()
+              .netty()
+              .eventLoopGroup(eventLoopGroup)
+              .environmentBuilder()
+              .build()) {
         environment.producerBuilder().stream(stream);
       } finally {
         response = client.delete(stream);
