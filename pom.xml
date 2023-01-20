@@ -192,6 +192,14 @@
       <version>${amqp-client.version}</version>
       <optional>true</optional>
     </dependency>
+
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-epoll</artifactId>
+      <version>${netty.version}</version>
+      <classifier>linux-x86_64</classifier>
+      <optional>true</optional>
+    </dependency>
     <!-- end of dependencies for performance tool -->
 
     <dependency>
@@ -283,14 +291,6 @@
       <groupId>io.vavr</groupId>
       <artifactId>vavr</artifactId>
       <version>${vavr.version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-transport-native-epoll</artifactId>
-      <version>${netty.version}</version>
-      <classifier>linux-x86_64</classifier>
       <scope>test</scope>
     </dependency>
 
