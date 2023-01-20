@@ -53,6 +53,8 @@ import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslHandler;
 import java.net.ConnectException;
@@ -64,13 +66,16 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLParameters;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -79,6 +84,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -614,5 +622,45 @@ public class StreamEnvironmentTest {
             .build()) {}
     assertThat(bootstrapCalled).isTrue();
     assertThat(channelCalled).isTrue();
+  }
+
+  @Test
+  @EnabledOnOs(OS.LINUX)
+  @EnabledIfSystemProperty(named = "os.arch", matches = "amd64")
+  void nativeEpollWorksOnLinux() {
+    int messageCount = 10_000;
+    EventLoopGroup epollEventLoopGroup = new EpollEventLoopGroup();
+    try {
+      Set<Channel> channels = ConcurrentHashMap.newKeySet();
+      try (Environment env =
+          environmentBuilder
+              .netty()
+              .eventLoopGroup(epollEventLoopGroup)
+              .bootstrapCustomizer(b -> b.channel(EpollSocketChannel.class))
+              .channelCustomizer(ch -> channels.add(ch))
+              .environmentBuilder()
+              .build()) {
+        Producer producer = env.producerBuilder().stream(this.stream).build();
+        ConfirmationHandler handler = confirmationStatus -> {};
+        IntStream.range(0, messageCount)
+            .forEach(
+                i ->
+                    producer.send(
+                        producer
+                            .messageBuilder()
+                            .addData("hello".getBytes(StandardCharsets.UTF_8))
+                            .build(),
+                        handler));
+        CountDownLatch latch = new CountDownLatch(messageCount);
+        env.consumerBuilder().stream(this.stream)
+            .offset(OffsetSpecification.first())
+            .messageHandler((context, message) -> latch.countDown())
+            .build();
+        assertThat(latchAssert(latch)).completes();
+      }
+      assertThat(channels).isNotEmpty().allMatch(ch -> ch instanceof EpollSocketChannel);
+    } finally {
+      epollEventLoopGroup.shutdownGracefully(0, 0, SECONDS);
+    }
   }
 }

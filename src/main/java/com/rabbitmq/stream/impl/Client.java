@@ -248,24 +248,38 @@ public class Client implements AutoCloseable {
               }
             });
 
-    EventLoopGroup eventLoopGroup;
-    if (parameters.eventLoopGroup == null) {
-      this.eventLoopGroup = new NioEventLoopGroup();
-      eventLoopGroup = this.eventLoopGroup;
-    } else {
-      this.eventLoopGroup = null;
-      eventLoopGroup = parameters.eventLoopGroup;
-    }
+    Consumer<Bootstrap> bootstrapCustomizer =
+        parameters.bootstrapCustomizer == null ? noOpConsumer() : parameters.bootstrapCustomizer;
 
     Bootstrap b = new Bootstrap();
-    b.group(eventLoopGroup);
-    b.channel(NioSocketChannel.class);
-    b.option(ChannelOption.SO_KEEPALIVE, true);
-    b.option(
-        ChannelOption.ALLOCATOR,
-        parameters.byteBufAllocator == null
-            ? ByteBufAllocator.DEFAULT
-            : parameters.byteBufAllocator);
+    bootstrapCustomizer.accept(b);
+    if (b.config().group() == null) {
+      EventLoopGroup eventLoopGroup;
+      if (parameters.eventLoopGroup == null) {
+        this.eventLoopGroup = new NioEventLoopGroup();
+        eventLoopGroup = this.eventLoopGroup;
+      } else {
+        this.eventLoopGroup = null;
+        eventLoopGroup = parameters.eventLoopGroup;
+      }
+      b.group(eventLoopGroup);
+    } else {
+      this.eventLoopGroup = null;
+    }
+    if (b.config().channelFactory() == null) {
+      b.channel(NioSocketChannel.class);
+    }
+    if (!b.config().options().containsKey(ChannelOption.SO_KEEPALIVE)) {
+      b.option(ChannelOption.SO_KEEPALIVE, true);
+    }
+    if (!b.config().options().containsKey(ChannelOption.ALLOCATOR)) {
+      b.option(
+          ChannelOption.ALLOCATOR,
+          parameters.byteBufAllocator == null
+              ? ByteBufAllocator.DEFAULT
+              : parameters.byteBufAllocator);
+    }
+
     Consumer<Channel> channelCustomizer =
         parameters.channelCustomizer == null ? noOpConsumer() : parameters.channelCustomizer;
     b.handler(
@@ -310,9 +324,6 @@ public class Client implements AutoCloseable {
             channelCustomizer.accept(ch);
           }
         });
-    Consumer<Bootstrap> bootstrapCustomizer =
-        parameters.bootstrapCustomizer == null ? noOpConsumer() : parameters.bootstrapCustomizer;
-    bootstrapCustomizer.accept(b);
 
     ChannelFuture f;
     String clientConnectionName =
