@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.10.0-SNAPSHOT</span>
-<br><span id="revremark">(f52da5a)</span>
+<br><span id="revremark">(317b40c)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -634,6 +634,11 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </li>
 </ul>
 </li>
+</ul>
+</li>
+<li><a href="#advanced-topics">Advanced Topics</a>
+<ul class="sectlevel3">
+<li><a href="#using-native-epoll">Using Native <code>epoll</code></a></li>
 </ul>
 </li>
 <li><a href="#building-the-client">Building the Client</a></li>
@@ -1671,6 +1676,32 @@ elements that need to be configured.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Helper to configure a <code>SslContext</code> that trusts all server certificates
 and does not use a client private key. <strong>Only for development</strong>.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Disabled by default.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>netty</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Configuration helper for Netty.</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>netty#eventLoopGroup</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Netty&#8217;s event dispatcher.
+It is the developer&#8217;s responsibility to close the <code>EventLoopGroup</code> they provide.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>NioEventLoopGroup</code> instance closed automatically with the <code>Environment</code> instance.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>netty#ByteBufAllocator</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ByteBuf</code> allocator.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ByteBufAllocator.DEFAULT</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>netty#channelCustomizer</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Extension point to customize Netty&#8217;s <code>Channel</code> instances used for connections.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">None</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>netty#bootstrapCustomizer</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Extension point to customize Netty&#8217;s <code>Bootstrap</code> instances used to configure connections.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">None</p></td>
 </tr>
 </tbody>
 </table>
@@ -4114,6 +4145,93 @@ Make sure to store the last processed offset when the consumer becomes inactive 
 </div>
 </div>
 <div class="sect2">
+<h3 id="advanced-topics"><a class="anchor" href="#advanced-topics"></a>Advanced Topics</h3>
+<div class="sect3">
+<h4 id="using-native-epoll"><a class="anchor" href="#using-native-epoll"></a>Using Native <code>epoll</code></h4>
+<div class="paragraph">
+<p>The stream Java client uses the <a href="https://netty.io/">Netty</a> network framework and its Java NIO transport implementation by default.
+This should be a reasonable default for most applications.</p>
+</div>
+<div class="paragraph">
+<p>Netty also allows using <a href="https://netty.io/wiki/native-transports.html">JNI transports</a>.
+They are less portable than Java NIO, but they can be more performant for some workloads (even though the RabbitMQ team has not seen any significant improvement in their own tests).</p>
+</div>
+<div class="paragraph">
+<p>The <a href="https://en.wikipedia.org/wiki/Epoll">Linux <code>epoll</code> transport</a> is a popular choice, so we&#8217;ll see how to configure with the stream Java client.
+Other JNI transports can be configured in the same way.</p>
+</div>
+<div class="paragraph">
+<p>The native transport dependency must be added to the dependency manager.
+We must pull the native binaries compiled for our OS and architecture, in our example Linux x86-64, so we are using the <code>linux-x86_64</code> classifier.
+Here is the declaration for Maven:</p>
+</div>
+<div class="listingblock">
+<div class="title">Declaring the Linux x86-64 native <code>epoll</code> transport dependency with Maven</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="xml"><span class="tag">&lt;dependencies&gt;</span>
+
+  <span class="tag">&lt;dependency&gt;</span>
+    <span class="tag">&lt;groupId&gt;</span>io.netty<span class="tag">&lt;/groupId&gt;</span>
+    <span class="tag">&lt;artifactId&gt;</span>netty-transport-native-epoll<span class="tag">&lt;/artifactId&gt;</span>
+    <span class="tag">&lt;version&gt;</span>4.1.87.Final<span class="tag">&lt;/version&gt;</span>
+    <span class="tag">&lt;classifier&gt;</span>linux-x86_64<span class="tag">&lt;/classifier&gt;</span>
+  <span class="tag">&lt;/dependency&gt;</span>
+
+<span class="tag">&lt;/dependencies&gt;</span></code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>And for Gradle:</p>
+</div>
+<div class="listingblock">
+<div class="title">Declaring the Linux x86-64 native <code>epoll</code> transport dependency with Gradle</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
+  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">io.netty:netty-transport-native-epoll:4.1.87.Final:linux-x86_64</span><span class="delimiter">&quot;</span></span>
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The native <code>epoll</code> transport is set up when the environment is configured:</p>
+</div>
+<div class="listingblock">
+<div class="title">Configuring the native <code>epoll</code> transport in the environment</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">EventLoopGroup epollEventLoopGroup = <span class="keyword">new</span> EpollEventLoopGroup();  <i class="conum" data-value="1"></i><b>(1)</b>
+Environment environment = Environment.builder()
+    .netty()  <i class="conum" data-value="2"></i><b>(2)</b>
+        .eventLoopGroup(epollEventLoopGroup)  <i class="conum" data-value="3"></i><b>(3)</b>
+        .bootstrapCustomizer(b -&gt; b.channel(EpollSocketChannel.class))  <i class="conum" data-value="4"></i><b>(4)</b>
+        .environmentBuilder()
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Create the <code>epoll</code> event loop group (don&#8217;t forget to close it!)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Use the Netty configuration helper</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Set the event loop group</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Set the channel class to use</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Note the event loop group must be closed explicitly: the environment will not close it itself as it is provided externally.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
 <h3 id="building-the-client"><a class="anchor" href="#building-the-client"></a>Building the Client</h3>
 <div class="paragraph">
 <p>You need JDK 1.8 or more installed.</p>
@@ -5001,7 +5119,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.10.0-SNAPSHOT<br>
-Last updated 2023-01-20 14:19:08 UTC
+Last updated 2023-01-20 15:52:17 UTC
 </div>
 </div>
 </body>
