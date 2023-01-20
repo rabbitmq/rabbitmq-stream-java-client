@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -18,7 +18,9 @@ import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
+import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -26,6 +28,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Consumer;
 
 /**
  * API to configure and create an {@link Environment}.
@@ -110,8 +113,6 @@ public interface EnvironmentBuilder {
    * @return this builder instance
    */
   EnvironmentBuilder id(String id);
-
-  EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator);
 
   /**
    * Compression codec factory to use for compression in sub-entry batching.
@@ -198,10 +199,22 @@ public interface EnvironmentBuilder {
   EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
 
   /**
+   * Netty's {@link io.netty.buffer.ByteBuf} allocator.
+   *
+   * @param byteBufAllocator
+   * @return this builder instance
+   * @deprecated use {@link NettyConfiguration#byteBufAllocator(ByteBufAllocator)} from {@link
+   *     #netty()} instead
+   */
+  EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator);
+
+  /**
    * An extension point to customize Netty's {@link io.netty.channel.Channel}s used for connection.
    *
    * @param channelCustomizer
    * @return this builder instance
+   * @deprecated use {@link NettyConfiguration#channelCustomizer(Consumer)} from {@link #netty()}
+   *     instead
    */
   EnvironmentBuilder channelCustomizer(ChannelCustomizer channelCustomizer);
 
@@ -376,6 +389,49 @@ public interface EnvironmentBuilder {
      * <p><strong>Use this only in development and QA environments</strong>.
      */
     TlsConfiguration trustEverything();
+
+    /**
+     * Go back to the environment builder
+     *
+     * @return the environment builder
+     */
+    EnvironmentBuilder environmentBuilder();
+  }
+
+  /**
+   * Helper to configure netty.
+   *
+   * @return Netty configuration helper
+   */
+  NettyConfiguration netty();
+
+  /** Helper to configure Netty */
+  interface NettyConfiguration {
+
+    /**
+     * Netty's {@link io.netty.buffer.ByteBuf} allocator.
+     *
+     * @param byteBufAllocator
+     * @return the Netty configuration helper
+     */
+    NettyConfiguration byteBufAllocator(ByteBufAllocator byteBufAllocator);
+
+    /**
+     * An extension point to customize Netty's {@link io.netty.channel.Channel}s used for
+     * connection.
+     *
+     * @param channelCustomizer
+     * @return the Netty configuration helper
+     */
+    NettyConfiguration channelCustomizer(Consumer<Channel> channelCustomizer);
+
+    /**
+     * An extension point to customize Netty's {@link Bootstrap}s used to configure connections.
+     *
+     * @param bootstrapCustomizer
+     * @return the Netty configuration helper
+     */
+    NettyConfiguration bootstrapCustomizer(Consumer<Bootstrap> bootstrapCustomizer);
 
     /**
      * Go back to the environment builder

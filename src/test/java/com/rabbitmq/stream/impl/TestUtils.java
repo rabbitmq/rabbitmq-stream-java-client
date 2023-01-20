@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -637,7 +637,7 @@ public final class TestUtils {
       wrapper.executorService.submit(
           () -> {
             try {
-              eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
+              eventLoopGroup.shutdownGracefully(0, 0, SECONDS).get(10, SECONDS);
             } catch (InterruptedException e) {
               // happens at the end of the test suite
               LOGGER.debug("Error while asynchronously closing Netty event loop group", e);

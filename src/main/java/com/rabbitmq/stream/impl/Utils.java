@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -50,6 +50,9 @@ import org.slf4j.LoggerFactory;
 
 final class Utils {
 
+  @SuppressWarnings("rawtypes")
+  private static final Consumer NO_OP_CONSUMER = o -> {};
+
   static final LongConsumer NO_OP_LONG_CONSUMER = someLong -> {};
   static final LongSupplier NO_OP_LONG_SUPPLIER = () -> 0;
   static final X509TrustManager TRUST_EVERYTHING_TRUST_MANAGER = new TrustEverythingTrustManager();
@@ -74,6 +77,11 @@ final class Utils {
   }
 
   private Utils() {}
+
+  @SuppressWarnings("unchecked")
+  static <T> Consumer<T> noOpConsumer() {
+    return (Consumer<T>) NO_OP_CONSUMER;
+  }
 
   static Runnable makeIdempotent(Runnable action) {
     AtomicBoolean executed = new AtomicBoolean(false);

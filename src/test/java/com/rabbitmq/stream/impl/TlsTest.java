@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.Address;
-import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Host;
@@ -29,6 +28,7 @@ import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
+import io.netty.channel.Channel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
@@ -48,6 +48,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLException;
@@ -210,7 +211,7 @@ public class TlsTest {
 
   @Test
   void unverifiedConnectionWithSni() {
-    ChannelCustomizer channelCustomizer =
+    Consumer<Channel> channelCustomizer =
         ch -> {
           SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
           if (sslHandler != null) {

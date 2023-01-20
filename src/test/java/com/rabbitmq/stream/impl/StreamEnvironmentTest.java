@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -28,7 +28,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
@@ -52,6 +51,7 @@ import com.rabbitmq.stream.impl.MonitoringTestUtils.EnvironmentInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
+import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslHandler;
@@ -67,6 +67,7 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -160,7 +161,7 @@ public class StreamEnvironmentTest {
   @DisabledIfTlsNotEnabled
   @Test
   void environmentCreationShouldSucceedWhenUsingTls() {
-    ChannelCustomizer channelCustomizer =
+    java.util.function.Consumer<Channel> channelCustomizer =
         ch -> {
           SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
           if (sslHandler != null) {
@@ -171,7 +172,9 @@ public class StreamEnvironmentTest {
         };
     environmentBuilder
         .uri("rabbitmq-stream+tls://guest:guest@localhost:5551/%2f")
+        .netty()
         .channelCustomizer(channelCustomizer)
+        .environmentBuilder()
         .tls()
         .trustEverything()
         .environmentBuilder()
@@ -596,5 +599,20 @@ public class StreamEnvironmentTest {
         };
     Arrays.stream(calls)
         .forEach(call -> assertThatThrownBy(call).isInstanceOf(IllegalStateException.class));
+  }
+
+  @Test
+  void nettyInitializersAreCalled() {
+    AtomicBoolean bootstrapCalled = new AtomicBoolean(false);
+    AtomicBoolean channelCalled = new AtomicBoolean(false);
+    try (Environment ignored =
+        environmentBuilder
+            .netty()
+            .bootstrapCustomizer(b -> bootstrapCalled.set(true))
+            .channelCustomizer(ch -> channelCalled.set(true))
+            .environmentBuilder()
+            .build()) {}
+    assertThat(bootstrapCalled).isTrue();
+    assertThat(channelCalled).isTrue();
   }
 }

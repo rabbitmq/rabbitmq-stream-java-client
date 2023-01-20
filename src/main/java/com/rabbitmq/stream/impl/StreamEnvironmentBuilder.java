@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,9 +13,10 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
+
 import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Environment;
@@ -26,7 +27,9 @@ import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
+import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -37,6 +40,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
@@ -50,6 +54,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private String id = "rabbitmq-stream";
   private final Client.ClientParameters clientParameters = new Client.ClientParameters();
   private final DefaultTlsConfiguration tls = new DefaultTlsConfiguration(this);
+  private final DefaultNettyConfiguration netty = new DefaultNettyConfiguration(this);
   private ScheduledExecutorService scheduledExecutorService;
   private List<URI> uris = Collections.emptyList();
   private BackOffDelayPolicy recoveryBackOffDelayPolicy =
@@ -62,7 +67,6 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT;
   private int maxConsumersByConnection = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
   private CompressionCodecFactory compressionCodecFactory;
-  private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
   private boolean lazyInit = false;
   private Function<ClientConnectionType, String> connectionNamingStrategy;
 
@@ -141,10 +145,10 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
+  @SuppressWarnings("deprecation")
   @Override
   public EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator) {
-    this.byteBufAllocator = byteBufAllocator;
-    this.clientParameters.byteBufAllocator(byteBufAllocator);
+    this.netty().byteBufAllocator(byteBufAllocator);
     return this;
   }
 
@@ -189,8 +193,10 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
-  public StreamEnvironmentBuilder channelCustomizer(ChannelCustomizer channelCustomizer) {
-    this.clientParameters.channelCustomizer(channelCustomizer);
+  @SuppressWarnings("deprecation")
+  public StreamEnvironmentBuilder channelCustomizer(
+      com.rabbitmq.stream.ChannelCustomizer channelCustomizer) {
+    this.netty().channelCustomizer(ch -> channelCustomizer.customize(ch));
     return this;
   }
 
@@ -290,6 +296,11 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
+  public NettyConfiguration netty() {
+    return this.netty;
+  }
+
+  @Override
   public Environment build() {
     if (this.compressionCodecFactory == null) {
       this.clientParameters.compressionCodecFactory(CompressionCodecs.DEFAULT);
@@ -298,6 +309,9 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     }
     this.id = this.id == null ? "rabbitmq-stream" : this.id;
     this.connectionNamingStrategy = Utils.defaultConnectionNamingStrategy(this.id + "-");
+    this.clientParameters.byteBufAllocator(this.netty.byteBufAllocator);
+    this.clientParameters.channelCustomizer(this.netty.channelCustomizer);
+    this.clientParameters.bootstrapCustomizer(this.netty.bootstrapCustomizer);
     return new StreamEnvironment(
         scheduledExecutorService,
         clientParameters,
@@ -309,7 +323,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         maxTrackingConsumersByConnection,
         maxConsumersByConnection,
         tls,
-        byteBufAllocator,
+        netty.byteBufAllocator,
         lazyInit,
         connectionNamingStrategy);
   }
@@ -380,6 +394,42 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
     public SslContext sslContext() {
       return sslContext;
+    }
+  }
+
+  static class DefaultNettyConfiguration implements NettyConfiguration {
+
+    private final EnvironmentBuilder environmentBuilder;
+
+    private DefaultNettyConfiguration(EnvironmentBuilder environmentBuilder) {
+      this.environmentBuilder = environmentBuilder;
+    }
+
+    private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
+    private Consumer<Channel> channelCustomizer = noOpConsumer();
+    private Consumer<Bootstrap> bootstrapCustomizer = noOpConsumer();
+
+    @Override
+    public NettyConfiguration byteBufAllocator(ByteBufAllocator byteBufAllocator) {
+      this.byteBufAllocator = byteBufAllocator;
+      return this;
+    }
+
+    @Override
+    public NettyConfiguration channelCustomizer(Consumer<Channel> channelCustomizer) {
+      this.channelCustomizer = channelCustomizer;
+      return this;
+    }
+
+    @Override
+    public NettyConfiguration bootstrapCustomizer(Consumer<Bootstrap> bootstrapCustomizer) {
+      this.bootstrapCustomizer = bootstrapCustomizer;
+      return this;
+    }
+
+    @Override
+    public EnvironmentBuilder environmentBuilder() {
+      return this.environmentBuilder;
     }
   }
 }

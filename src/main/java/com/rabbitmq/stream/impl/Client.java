@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -45,13 +45,13 @@ import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
 import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
 import static java.lang.String.format;
 import static java.lang.String.join;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.ByteCapacity;
-import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
@@ -266,8 +266,8 @@ public class Client implements AutoCloseable {
         parameters.byteBufAllocator == null
             ? ByteBufAllocator.DEFAULT
             : parameters.byteBufAllocator);
-    ChannelCustomizer channelCustomizer =
-        parameters.channelCustomizer == null ? ch -> {} : parameters.channelCustomizer;
+    Consumer<Channel> channelCustomizer =
+        parameters.channelCustomizer == null ? noOpConsumer() : parameters.channelCustomizer;
     b.handler(
         new ChannelInitializer<SocketChannel>() {
           @Override
@@ -307,9 +307,12 @@ public class Client implements AutoCloseable {
 
               ch.pipeline().addFirst("ssl", sslHandler);
             }
-            channelCustomizer.customize(ch);
+            channelCustomizer.accept(ch);
           }
         });
+    Consumer<Bootstrap> bootstrapCustomizer =
+        parameters.bootstrapCustomizer == null ? noOpConsumer() : parameters.bootstrapCustomizer;
+    bootstrapCustomizer.accept(b);
 
     ChannelFuture f;
     String clientConnectionName =
@@ -2144,13 +2147,14 @@ public class Client implements AutoCloseable {
     private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
     private CredentialsProvider credentialsProvider =
         new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
-    private ChannelCustomizer channelCustomizer = ch -> {};
     private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
     private boolean tlsHostnameVerification = true;
     private ByteBufAllocator byteBufAllocator;
     private Duration rpcTimeout;
+    private Consumer<Channel> channelCustomizer = noOpConsumer();
+    private Consumer<Bootstrap> bootstrapCustomizer = noOpConsumer();
 
     public ClientParameters host(String host) {
       this.host = host;
@@ -2256,11 +2260,6 @@ public class Client implements AutoCloseable {
       return this;
     }
 
-    public ClientParameters channelCustomizer(ChannelCustomizer channelCustomizer) {
-      this.channelCustomizer = channelCustomizer;
-      return this;
-    }
-
     public ClientParameters chunkChecksum(ChunkChecksum chunkChecksum) {
       this.chunkChecksum = chunkChecksum;
       return this;
@@ -2329,6 +2328,16 @@ public class Client implements AutoCloseable {
 
     Codec codec() {
       return this.codec;
+    }
+
+    public ClientParameters channelCustomizer(Consumer<Channel> channelCustomizer) {
+      this.channelCustomizer = channelCustomizer;
+      return this;
+    }
+
+    public ClientParameters bootstrapCustomizer(Consumer<Bootstrap> bootstrapCustomizer) {
+      this.bootstrapCustomizer = bootstrapCustomizer;
+      return this;
     }
 
     ClientParameters duplicate() {

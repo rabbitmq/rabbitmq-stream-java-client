@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,13 +13,17 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.EnvironmentBuilder.NettyConfiguration;
 import io.netty.channel.Channel;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * An extension point to customize Netty's {@link io.netty.channel.Channel}s used for connection.
  *
- * @see EnvironmentBuilder#channelCustomizer(ChannelCustomizer)
+ * @deprecated use {@link NettyConfiguration#channelCustomizer(Consumer)} from {@link
+ *     EnvironmentBuilder#netty()} instead
+ * @see NettyConfiguration#netty()
  */
 public interface ChannelCustomizer {
 

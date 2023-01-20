@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -25,7 +25,6 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.ByteCapacity;
-import com.rabbitmq.stream.ChannelCustomizer;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
@@ -675,7 +674,9 @@ public class StreamPerfTest implements Callable<Integer> {
               .scheduledExecutorService(envExecutor)
               .metricsCollector(metricsCollector)
               .eventLoopGroup(eventLoopGroup)
+              .netty()
               .byteBufAllocator(byteBufAllocator)
+              .environmentBuilder()
               .codec(codec)
               .maxProducersByConnection(this.producersByConnection)
               .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
@@ -683,7 +684,7 @@ public class StreamPerfTest implements Callable<Integer> {
               .rpcTimeout(Duration.ofSeconds(this.rpcTimeout))
               .requestedMaxFrameSize((int) this.requestedMaxFrameSize.toBytes());
 
-      ChannelCustomizer channelCustomizer = channel -> {};
+      java.util.function.Consumer<io.netty.channel.Channel> channelCustomizer = channel -> {};
 
       if (tls) {
         TlsConfiguration tlsConfiguration = environmentBuilder.tls();
@@ -707,7 +708,12 @@ public class StreamPerfTest implements Callable<Integer> {
         }
       }
 
-      this.environment = environmentBuilder.channelCustomizer(channelCustomizer).build();
+      this.environment =
+          environmentBuilder
+              .netty()
+              .channelCustomizer(channelCustomizer)
+              .environmentBuilder()
+              .build();
       if (!isRunTimeLimited()) {
         shutdownService.wrap(
             closeStep(
