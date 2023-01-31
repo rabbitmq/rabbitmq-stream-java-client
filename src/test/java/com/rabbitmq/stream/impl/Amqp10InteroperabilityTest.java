@@ -63,7 +63,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(StreamTestInfrastructureExtension.class)
 @DisabledIfAmqp10NotEnabled
-@BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
 public class Amqp10InteroperabilityTest {
 
   String stream;
@@ -93,6 +92,7 @@ public class Amqp10InteroperabilityTest {
   }
 
   @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishToStreamQueueConsumeFromStream() throws Exception {
     Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
@@ -134,6 +134,7 @@ public class Amqp10InteroperabilityTest {
   }
 
   @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishAmqpValueToStreamQueueConsumeFromStream() throws Exception {
     Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
@@ -149,6 +150,7 @@ public class Amqp10InteroperabilityTest {
   }
 
   @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishDataSectionsToStreamQueueConsumeFromStream() throws Exception {
     Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
@@ -170,6 +172,7 @@ public class Amqp10InteroperabilityTest {
   }
 
   @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishSequenceSectionsToStreamQueueConsumeFromStream() throws Exception {
     Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
