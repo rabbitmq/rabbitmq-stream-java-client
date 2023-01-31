@@ -83,6 +83,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
@@ -183,6 +184,23 @@ class ServerFrameHandler {
           + ", maxVersion="
           + maxVersion
           + '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      FrameHandlerInfo that = (FrameHandlerInfo) o;
+      return key == that.key && minVersion == that.minVersion && maxVersion == that.maxVersion;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(key, minVersion, maxVersion);
     }
   }
 
