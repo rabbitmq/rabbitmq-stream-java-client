@@ -1,4 +1,4 @@
-// Copyright (c) 2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -19,6 +19,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.RoutingStrategy;
 import com.rabbitmq.stream.RoutingStrategy.Metadata;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,23 +63,43 @@ public class HashRoutingStrategyTest {
         };
 
     Metadata metadata =
-        new Metadata() {
+        new MetadataAdapter() {
           List<String> partitions = Arrays.asList("invoices-01", "invoices-02", "invoices-03");
 
           @Override
           public List<String> partitions() {
             return partitions;
           }
-
-          @Override
-          public List<String> route(String routingKey) {
-            // not used here
-            return null;
-          }
         };
     for (String key : keys) {
       List<String> partitions = routingStrategy.route(null, metadata);
       assertThat(partitions).hasSize(1).element(0).isEqualTo(expectedRoutes.get(key));
+    }
+  }
+
+  @Test
+  void shouldReturnEmptyListIfNoPartition() {
+    RoutingStrategy routingStrategy = new HashRoutingStrategy(m -> "rk", HashUtils.MURMUR3);
+    Metadata metadata =
+        new MetadataAdapter() {
+          @Override
+          public List<String> partitions() {
+            return Collections.emptyList();
+          }
+        };
+    assertThat(routingStrategy.route(null, metadata)).isEmpty();
+  }
+
+  private static class MetadataAdapter implements Metadata {
+
+    @Override
+    public List<String> partitions() {
+      return null;
+    }
+
+    @Override
+    public List<String> route(String routingKey) {
+      return null;
     }
   }
 }

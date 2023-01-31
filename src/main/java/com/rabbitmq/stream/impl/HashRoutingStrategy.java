@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -33,10 +33,14 @@ class HashRoutingStrategy implements RoutingStrategy {
 
   @Override
   public List<String> route(Message message, Metadata metadata) {
-    String routingKey = routingKeyExtractor.apply(message);
-    int hashValue = hash.applyAsInt(routingKey);
     List<String> partitions = metadata.partitions();
-    return Collections.singletonList(
-        partitions.get(Integer.remainderUnsigned(hashValue, partitions.size())));
+    if (partitions.isEmpty()) {
+      return Collections.emptyList();
+    } else {
+      String routingKey = routingKeyExtractor.apply(message);
+      int hashValue = hash.applyAsInt(routingKey);
+      return Collections.singletonList(
+          partitions.get(Integer.remainderUnsigned(hashValue, partitions.size())));
+    }
   }
 }

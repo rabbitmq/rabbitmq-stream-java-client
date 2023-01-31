@@ -331,4 +331,22 @@ public class SuperStreamProducerTest {
     assertThat(latchAssert(publishLatch)).completes(5);
     assertThat(confirmationCodes).hasSize(1).containsExactly(Constants.CODE_PRODUCER_CLOSED);
   }
+
+  @Test
+  void producerCreationShouldFailIfNoPartition() throws Exception {
+    declareSuperStreamTopology(connection, superStream, 0);
+    String producerName = "super-stream-application";
+    assertThatThrownBy(
+            () -> {
+              environment
+                  .producerBuilder()
+                  .name(producerName)
+                  .superStream(superStream)
+                  .routing(message -> message.getProperties().getMessageIdAsString())
+                  .producerBuilder()
+                  .build();
+            })
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("no partition");
+  }
 }
