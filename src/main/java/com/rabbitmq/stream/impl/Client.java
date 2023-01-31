@@ -112,9 +112,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -210,6 +212,7 @@ public class Client implements AutoCloseable {
   private final Map<String, String> connectionProperties;
   private final Duration rpcTimeout;
   private volatile ShutdownReason shutdownReason = null;
+  private final Runnable exchangeCommandVersionsCheck;
 
   public Client() {
     this(new ClientParameters());
@@ -373,6 +376,19 @@ public class Client implements AutoCloseable {
           this.maxFrameSize(),
           tuneState.getHeartbeat());
       this.connectionProperties = open(parameters.virtualHost);
+      Set<FrameHandlerInfo> supportedCommands = maybeExchangeCommandVersions();
+      if (supportedCommands.stream()
+          .filter(i -> i.getKey() == COMMAND_STREAM_STATS)
+          .findAny()
+          .isPresent()) {
+        this.exchangeCommandVersionsCheck = () -> {};
+      } else {
+        this.exchangeCommandVersionsCheck =
+            () -> {
+              throw new UnsupportedOperationException(
+                  "QueryStreamInfo is available only on RabbitMQ 3.11 or more.");
+            };
+      }
       started.set(true);
       this.metricsCollector.openConnection();
     } catch (RuntimeException e) {
@@ -1455,6 +1471,7 @@ public class Client implements AutoCloseable {
   }
 
   StreamStatsResponse streamStats(String stream) {
+    this.exchangeCommandVersionsCheck.run();
     if (stream == null) {
       throw new IllegalArgumentException("stream must not be null");
     }
@@ -1546,6 +1563,22 @@ public class Client implements AutoCloseable {
   private EncodedMessageBatch createEncodedMessageBatch(Compression compression, int batchSize) {
     return EncodedMessageBatch.create(
         channel.alloc(), compression.code(), compressionCodecFactory.get(compression), batchSize);
+  }
+
+  private Set<FrameHandlerInfo> maybeExchangeCommandVersions() {
+    Set<FrameHandlerInfo> supported = new HashSet<>();
+    try {
+      if (Utils.is3_11_OrMore(brokerVersion())) {
+        for (FrameHandlerInfo info : exchangeCommandVersions()) {
+          if (info.getKey() == COMMAND_STREAM_STATS) {
+            supported.add(info);
+          }
+        }
+      }
+    } catch (Exception e) {
+      LOGGER.info("Error while exchanging command versions: {}", e.getMessage());
+    }
+    return supported;
   }
 
   public interface OutboundEntityMappingCallback {

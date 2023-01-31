@@ -729,7 +729,6 @@ class ConsumersCoordinator {
               .key(name);
       this.client = clientFactory.client(clientFactoryContext);
       LOGGER.debug("Created consumer connection '{}'", connectionName);
-      maybeExchangeCommandVersions(client);
       clientInitializedInManager.set(true);
     }
 
@@ -1146,16 +1145,6 @@ class ConsumersCoordinator {
     @Override
     public String toString() {
       return "SubscriptionContext{" + "offsetSpecification=" + offsetSpecification + '}';
-    }
-  }
-
-  private static void maybeExchangeCommandVersions(Client client) {
-    try {
-      if (Utils.is3_11_OrMore(client.brokerVersion())) {
-        client.exchangeCommandVersions();
-      }
-    } catch (Exception e) {
-      LOGGER.info("Error while exchanging command versions: {}", e.getMessage());
     }
   }
 
