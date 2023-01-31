@@ -477,6 +477,12 @@ public final class TestUtils {
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
+  @ExtendWith(DisabledIfAmqp10NotEnabledCondition.class)
+  @interface DisabledIfAmqp10NotEnabled {}
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
   @ExtendWith(DisabledIfTlsNotEnabledCondition.class)
   public @interface DisabledIfTlsNotEnabled {}
 
@@ -749,6 +755,30 @@ public final class TestUtils {
     }
   }
 
+  static class DisabledIfAmqp10NotEnabledCondition implements ExecutionCondition {
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      if (Host.rabbitmqctlCommand() == null) {
+        return ConditionEvaluationResult.disabled(
+            "rabbitmqctl.bin system property not set, cannot check if STOMP plugin is enabled");
+      } else {
+        try {
+          Process process = Host.rabbitmqctl("status");
+          String output = capture(process.getInputStream());
+          if (output.contains("rabbitmq_amqp1_0") && output.contains("AMQP 1.0")) {
+            return ConditionEvaluationResult.enabled("STOMP plugin enabled");
+          } else {
+            return ConditionEvaluationResult.disabled("STOMP plugin disabled");
+          }
+        } catch (Exception e) {
+          return ConditionEvaluationResult.disabled(
+              "Error while trying to detect STOMP plugin: " + e.getMessage());
+        }
+      }
+    }
+  }
+
   static class DisabledIfTlsNotEnabledCondition implements ExecutionCondition {
 
     @Override
@@ -907,7 +937,8 @@ public final class TestUtils {
 
   public enum BrokerVersion {
     RABBITMQ_3_11("3.11.0"),
-    RABBITMQ_3_11_7("3.11.7");
+    RABBITMQ_3_11_7("3.11.7"),
+    RABBITMQ_3_11_9("3.11.9");
 
     final String value;
 
