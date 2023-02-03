@@ -47,6 +47,6 @@ jobs:
           ./mvnw clean package -Dstream-client.version=${{ env.artefact_version }} --no-transfer-progress
       - name: Use native image program
         working-directory: rabbitmq-graal-vm-stream-test
-        run: ./rabbitmq-graal-vm-stream-test-full
+        run: target/rabbitmq-stream-graal-vm-test
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
