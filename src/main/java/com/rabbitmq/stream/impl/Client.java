@@ -299,18 +299,7 @@ public class Client implements AutoCloseable {
                     NETTY_HANDLER_FRAME_DECODER,
                     new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, 0, 4));
             ch.pipeline().addLast(NETTY_HANDLER_STREAM, new StreamHandler());
-            ch.pipeline()
-                .addLast(
-                    new ChannelOutboundHandlerAdapter() {
-
-                      @Override
-                      public void write(
-                          ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
-                          throws Exception {
-                        metricsCollector.writtenBytes(((ByteBuf) msg).capacity());
-                        super.write(ctx, msg, promise);
-                      }
-                    });
+            ch.pipeline().addLast(new MetricsHandler(metricsCollector));
             if (parameters.sslContext != null) {
               SslHandler sslHandler =
                   parameters.sslContext.newHandler(ch.alloc(), parameters.host, parameters.port);
@@ -394,6 +383,22 @@ public class Client implements AutoCloseable {
     } catch (RuntimeException e) {
       this.closingSequence(null);
       throw e;
+    }
+  }
+
+  private static class MetricsHandler extends ChannelOutboundHandlerAdapter {
+
+    private final MetricsCollector metricsCollector;
+
+    private MetricsHandler(MetricsCollector metricsCollector) {
+      this.metricsCollector = metricsCollector;
+    }
+
+    @Override
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
+        throws Exception {
+      metricsCollector.writtenBytes(((ByteBuf) msg).capacity());
+      super.write(ctx, msg, promise);
     }
   }
 
