@@ -85,7 +85,7 @@
     <asciidoctor.maven.plugin.version>2.2.2</asciidoctor.maven.plugin.version>
     <asciidoctorj.version>2.5.7</asciidoctorj.version>
     <asciidoctorj.pdf.version>2.3.4</asciidoctorj.pdf.version>
-    <asciidoctorj.diagram.version>2.2.3</asciidoctorj.diagram.version>
+    <asciidoctorj.diagram.version>2.2.4</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jmh.version>1.36</jmh.version>
     <spotless.version>2.31.0</spotless.version>
