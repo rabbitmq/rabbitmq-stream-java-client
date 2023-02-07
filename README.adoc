@@ -109,6 +109,6 @@ Please launch the `./mvnw spotless:apply` command to format your changes before 
 
 == Copyright and License
 
-(c) 2020-2022, VMware Inc or its affiliates.
+(c) 2020-2023, VMware Inc or its affiliates.
 
 Double licensed under the MPL2.0 and ASL2. See link:LICENSE[LICENSE] for details.
