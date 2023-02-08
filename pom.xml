@@ -63,6 +63,8 @@
     <zstd-jni.version>1.5.2-5</zstd-jni.version>
     <lz4-java.version>1.8.0</lz4-java.version>
     <snappy-java.version>1.1.9.1</snappy-java.version>
+    <jgroups.version>5.2.12.Final</jgroups.version>
+    <jgroups-kubernetes.version>2.0.1.Final</jgroups-kubernetes.version>
     <junit.jupiter.version>5.9.2</junit.jupiter.version>
     <assertj.version>3.24.2</assertj.version>
     <mockito.version>5.1.1</mockito.version>
@@ -200,6 +202,19 @@
       <classifier>linux-x86_64</classifier>
       <optional>true</optional>
     </dependency>
+
+    <dependency>
+      <groupId>org.jgroups</groupId>
+      <artifactId>jgroups</artifactId>
+      <version>${jgroups.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jgroups.kubernetes</groupId>
+      <artifactId>jgroups-kubernetes</artifactId>
+      <version>${jgroups-kubernetes.version}</version>
+      <optional>true</optional>
+    </dependency>
     <!-- end of dependencies for performance tool -->
 
     <dependency>
@@ -263,7 +278,7 @@
       <groupId>org.eclipse.paho</groupId>
       <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
       <version>${paho.version}</version>
-      <scope>test</scope>
+    <scope>test</scope>
     </dependency>
 
     <dependency>
@@ -330,6 +345,18 @@
         <filtering>true</filtering>
       </resource>
     </resources>
+
+    <testResources>
+      <testResource>
+        <directory>${basedir}/src/test/resources</directory>
+      </testResource>
+      <testResource>
+        <directory>${basedir}/src/performance-tool/resources</directory>
+        <includes>
+          <include>jgroups-*.xml</include>
+        </includes>
+      </testResource>
+    </testResources>
 
     <plugins>
 
@@ -644,6 +671,19 @@
           <artifactId>netty-transport-native-epoll</artifactId>
           <version>${netty.version}</version>
           <classifier>linux-x86_64</classifier>
+        </dependency>
+
+        <dependency>
+          <groupId>org.jgroups</groupId>
+          <artifactId>jgroups</artifactId>
+          <version>${jgroups.version}</version>
+          <optional>true</optional>
+        </dependency>
+        <dependency>
+          <groupId>org.jgroups.kubernetes</groupId>
+          <artifactId>jgroups-kubernetes</artifactId>
+          <version>${jgroups-kubernetes.version}</version>
+          <optional>true</optional>
         </dependency>
 
       </dependencies>

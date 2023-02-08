@@ -99,6 +99,7 @@ import javax.net.ssl.SSLParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
+import picocli.CommandLine.ArgGroup;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.ParameterException;
 import picocli.CommandLine.Spec;
@@ -120,14 +121,12 @@ public class StreamPerfTest implements Callable<Integer> {
       };
   private final String[] arguments;
 
-  @Spec CommandSpec spec; // injected by picocli
-
   @CommandLine.Mixin
   private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
-
   // for testing
   private final AddressResolver addressResolver;
   private final PrintWriter err, out;
+  @Spec CommandSpec spec; // injected by picocli
   int streamDispatching = 0;
 
   @CommandLine.Option(
@@ -245,20 +244,6 @@ public class StreamPerfTest implements Callable<Integer> {
   private ByteCapacity maxLengthBytes;
 
   private ByteCapacity maxSegmentSize;
-
-  @CommandLine.Option(
-      names = {"--stream-max-segment-size-bytes", "-smssb"},
-      description = "max size of segments",
-      defaultValue = "500mb",
-      converter = Utils.ByteCapacityTypeConverter.class)
-  public void setMaxSegmentSize(ByteCapacity in) {
-    if (in != null && in.compareTo(StreamCreator.MAX_SEGMENT_SIZE) > 0) {
-      throw new ParameterException(
-          spec.commandLine(),
-          "The maximum segment size cannot be more than " + StreamCreator.MAX_SEGMENT_SIZE);
-    }
-    this.maxSegmentSize = in;
-  }
 
   @CommandLine.Option(
       names = {"--max-age", "-ma"},
@@ -450,12 +435,48 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "false")
   private boolean nativeEpoll;
 
+  @ArgGroup(exclusive = false, multiplicity = "0..1")
+  InstanceSyncOptions instanceSyncOptions;
+
+  static class InstanceSyncOptions {
+
+    @CommandLine.Option(
+        names = {"--id"},
+        description = "Instance ID, for instance synchronization",
+        required = true)
+    private String id;
+
+    @CommandLine.Option(
+        names = {"--expected-instances", "-ei"},
+        description =
+            "number of expected StreamPerfTest instances "
+                + "to synchronize. Default is 0, that is no synchronization."
+                + "Test ID is mandatory when instance synchronization is in use.",
+        converter = Utils.GreaterThanOrEqualToZeroIntegerTypeConverter.class,
+        required = true)
+    private int expectedInstances;
+
+    @CommandLine.Option(
+        names = {"--instance-sync-timeout", "-ist"},
+        description = "Instance synchronization time " + "in seconds. Default is 600 seconds.",
+        defaultValue = "600",
+        converter = Utils.PositiveIntegerTypeConverter.class,
+        required = false)
+    private int instanceSyncTimeout;
+
+    @CommandLine.Option(
+        names = {"--instance-sync-namespace", "-isn"},
+        description = "Kubernetes namespace for " + "instance synchronization",
+        defaultValue = "",
+        required = false)
+    private String instanceSyncNamespace;
+  }
+
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
   private List<Monitoring> monitorings;
   private volatile Environment environment;
   private volatile EventLoopGroup eventLoopGroup;
-
   // constructor for completion script generation
   public StreamPerfTest() {
     this(null, null, null, null);
@@ -541,6 +562,24 @@ public class StreamPerfTest implements Callable<Integer> {
 
   private static boolean isTls(Collection<String> uris) {
     return uris.stream().anyMatch(uri -> uri.toLowerCase().startsWith("rabbitmq-stream+tls"));
+  }
+
+  private static String stream(List<String> streams, int i) {
+    return streams.get(i % streams.size());
+  }
+
+  @CommandLine.Option(
+      names = {"--stream-max-segment-size-bytes", "-smssb"},
+      description = "max size of segments",
+      defaultValue = "500mb",
+      converter = Utils.ByteCapacityTypeConverter.class)
+  public void setMaxSegmentSize(ByteCapacity in) {
+    if (in != null && in.compareTo(StreamCreator.MAX_SEGMENT_SIZE) > 0) {
+      throw new ParameterException(
+          spec.commandLine(),
+          "The maximum segment size cannot be more than " + StreamCreator.MAX_SEGMENT_SIZE);
+    }
+    this.maxSegmentSize = in;
   }
 
   @Override
@@ -746,9 +785,6 @@ public class StreamPerfTest implements Callable<Integer> {
       MonitoringContext monitoringContext =
           new MonitoringContext(this.monitoringPort, meterRegistry, environment, this.out);
       this.monitorings.forEach(m -> m.configure(monitoringContext));
-      monitoringContext.start();
-
-      shutdownService.wrap(closeStep("Closing monitoring context", monitoringContext::close));
 
       streams = Utils.streams(this.streamCount, this.streams);
 
@@ -929,6 +965,24 @@ public class StreamPerfTest implements Callable<Integer> {
                         };
                   })
               .collect(Collectors.toList());
+
+      if (this.instanceSyncOptions != null) {
+        String namespace = this.instanceSyncOptions.instanceSyncNamespace;
+        if (namespace == null || namespace.trim().isEmpty()) {
+          namespace = System.getenv("MY_POD_NAMESPACE");
+        }
+        InstanceSynchronization instanceSynchronization =
+            new DefaultInstanceSynchronization(
+                this.instanceSyncOptions.id,
+                this.instanceSyncOptions.expectedInstances,
+                namespace,
+                Duration.ofSeconds(this.instanceSyncOptions.instanceSyncTimeout),
+                this.out);
+        instanceSynchronization.synchronize();
+      }
+
+      monitoringContext.start();
+      shutdownService.wrap(closeStep("Closing monitoring context", monitoringContext::close));
 
       List<Consumer> consumers =
           Collections.synchronizedList(
@@ -1170,10 +1224,6 @@ public class StreamPerfTest implements Callable<Integer> {
 
   public void monitorings(List<Monitoring> monitorings) {
     this.monitorings = monitorings;
-  }
-
-  private static String stream(List<String> streams, int i) {
-    return streams.get(i % streams.size());
   }
 
   static class RunContext {
