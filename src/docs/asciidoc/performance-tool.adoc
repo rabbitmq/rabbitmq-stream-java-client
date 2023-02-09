@@ -602,7 +602,7 @@ Both instances _must_ share the same `--id` if they want to communicate to synch
 The default synchronization timeout is 10 minutes.
 This can be changed with the `--instance-sync-timeout` flag, using a value in seconds.
 
-NOTE: Instance synchronization is compatible with https://perftest-dev.rabbitmq.com/#instance-synchronization[PerfTest], the AMQP 0.9.1 performance tool for RabbitMQ.
+NOTE: Instance synchronization is compatible with https://perftest-dev.rabbitmq.com/#instance-synchronization[PerfTest], the AMQP 0.9.1 performance tool for RabbitMQ: instances of both tools can synchronize with each other.
 The 2 tools use the same flags for this feature.
 
 Instance synchronization requires https://en.wikipedia.org/wiki/IP_multicast[IP multicast] to be available.
