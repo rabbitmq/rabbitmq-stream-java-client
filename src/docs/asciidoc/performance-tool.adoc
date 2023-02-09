@@ -575,6 +575,52 @@ This can be useful to inspect threads if the tool seems blocked.
 The endpoint can then be declared in a Prometheus instance to scrape the metrics.
 * `--monitoring-port`: set the port to use for the web server.
 
+[[performant-tool-instance-synchronization]]
+===== Synchronizing Several Instances
+
+Instances of the performance tool can synchronize to start at the same time.
+This can prove useful when you apply different workloads and want to compare them on the same monitoring graphics.
+The `--id` flag identifies the group of instances that need to synchronize and the `--expected-instances` flag sets the size of the group.
+
+Let's start a couple of instances to compare the impact of message size.
+The first instance uses 100-byte message:
+
+----
+java -jar stream-perf-test.jar --id msg-size-comparison --expected-instances 2 \
+                               --size 100
+----
+
+The instance will wait until the second one is ready:
+
+----
+java -jar stream-perf-test.jar --id msg-size-comparison --expected-instances 2 \
+                               --size 200
+----
+
+Both instances _must_ share the same `--id` if they want to communicate to synchronize.
+
+The default synchronization timeout is 10 minutes.
+This can be changed with the `--instance-sync-timeout` flag, using a value in seconds.
+
+NOTE: Instance synchronization is compatible with https://perftest-dev.rabbitmq.com/#instance-synchronization[PerfTest], the AMQP 0.9.1 performance tool for RabbitMQ.
+The 2 tools use the same flags for this feature.
+
+Instance synchronization requires https://en.wikipedia.org/wiki/IP_multicast[IP multicast] to be available.
+IP multicast is not necessary when the performance tool runs on Kubernetes pods.
+In this case, the tool asks Kubernetes for a list of pod IPs.
+The performance tool instances are expected to run in the same namespace, and the namespace must be available in the `MY_POD_NAMESPACE` environment variable or provided with the `--instance-sync-namespace` flag.
+As soon as the namespace information is available, the tool will prefer listing pod IPs over using IP multicast.
+Here is an example of using instance synchronization on Kubernetes by providing the namespace explicitly:
+
+----
+java -jar stream-perf-test.jar --id workload-1 --expected-instances 2 \
+                               --instance-sync-namespace qa
+----
+
+NOTE: The performance tool needs permission to ask Kubernetes for a list of pod IPs.
+This is done by creating various policies e.g. with YAML.
+See the https://github.com/jgroups-extras/jgroups-kubernetes[Kubernetes discovery protocol for JGroups page] for more information.
+
 ===== Using Environment Variables as Options
 
 Environment variables can sometimes be easier to work with than command line options.
