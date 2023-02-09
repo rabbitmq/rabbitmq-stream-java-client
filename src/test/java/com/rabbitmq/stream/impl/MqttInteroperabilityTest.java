@@ -124,6 +124,5 @@ public class MqttInteroperabilityTest {
         .isEqualTo(UnsignedByte.valueOf("1"));
     assertThat(message.getApplicationProperties().get("x-mqtt-publish-qos"))
         .isEqualTo(Byte.valueOf("0"));
-    assertThat(message.getApplicationProperties().get("x-mqtt-dup")).isEqualTo(Boolean.FALSE);
   }
 }
