@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.10.0-SNAPSHOT</span>
-<br><span id="revremark">(9d963c5)</span>
+<br><span id="revremark">(7df736a)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -678,6 +678,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#performance-tool-sac">Single Active Consumer</a></li>
 <li><a href="#super-streams-2">Super Streams</a></li>
 <li><a href="#monitoring">Monitoring</a></li>
+<li><a href="#performant-tool-instance-synchronization">Synchronizing Several Instances</a></li>
 <li><a href="#using-environment-variables-as-options">Using Environment Variables as Options</a></li>
 <li><a href="#logging">Logging</a></li>
 </ul>
@@ -5019,6 +5020,81 @@ The endpoint can then be declared in a Prometheus instance to scrape the metrics
 </div>
 </div>
 <div class="sect4">
+<h5 id="performant-tool-instance-synchronization"><a class="anchor" href="#performant-tool-instance-synchronization"></a>Synchronizing Several Instances</h5>
+<div class="paragraph">
+<p>Instances of the performance tool can synchronize to start at the same time.
+This can prove useful when you apply different workloads and want to compare them on the same monitoring graphics.
+The <code>--id</code> flag identifies the group of instances that need to synchronize and the <code>--expected-instances</code> flag sets the size of the group.</p>
+</div>
+<div class="paragraph">
+<p>Let&#8217;s start a couple of instances to compare the impact of message size.
+The first instance uses 100-byte message:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --id msg-size-comparison --expected-instances 2 \
+                               --size 100</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The instance will wait until the second one is ready:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --id msg-size-comparison --expected-instances 2 \
+                               --size 200</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Both instances <em>must</em> share the same <code>--id</code> if they want to communicate to synchronize.</p>
+</div>
+<div class="paragraph">
+<p>The default synchronization timeout is 10 minutes.
+This can be changed with the <code>--instance-sync-timeout</code> flag, using a value in seconds.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+Instance synchronization is compatible with <a href="https://perftest-dev.rabbitmq.com/#instance-synchronization">PerfTest</a>, the AMQP 0.9.1 performance tool for RabbitMQ.
+The 2 tools use the same flags for this feature.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Instance synchronization requires <a href="https://en.wikipedia.org/wiki/IP_multicast">IP multicast</a> to be available.
+IP multicast is not necessary when the performance tool runs on Kubernetes pods.
+In this case, the tool asks Kubernetes for a list of pod IPs.
+The performance tool instances are expected to run in the same namespace, and the namespace must be available in the <code>MY_POD_NAMESPACE</code> environment variable or provided with the <code>--instance-sync-namespace</code> flag.
+As soon as the namespace information is available, the tool will prefer listing pod IPs over using IP multicast.
+Here is an example of using instance synchronization on Kubernetes by providing the namespace explicitly:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java -jar stream-perf-test.jar --id workload-1 --expected-instances 2 \
+                               --instance-sync-namespace qa</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+The performance tool needs permission to ask Kubernetes for a list of pod IPs.
+This is done by creating various policies e.g. with YAML.
+See the <a href="https://github.com/jgroups-extras/jgroups-kubernetes">Kubernetes discovery protocol for JGroups page</a> for more information.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect4">
 <h5 id="using-environment-variables-as-options"><a class="anchor" href="#using-environment-variables-as-options"></a>Using Environment Variables as Options</h5>
 <div class="paragraph">
 <p>Environment variables can sometimes be easier to work with than command line options.
@@ -5119,7 +5195,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.10.0-SNAPSHOT<br>
-Last updated 2023-02-09 08:40:08 UTC
+Last updated 2023-02-09 11:04:44 UTC
 </div>
 </div>
 </body>
