@@ -90,7 +90,7 @@
     <asciidoctorj.diagram.version>2.2.4</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jmh.version>1.36</jmh.version>
-    <spotless.version>2.32.0</spotless.version>
+    <spotless.version>2.33.0</spotless.version>
     <google-java-format.version>1.15.0</google-java-format.version>
     <jacoco.version>0.8.8</jacoco.version>
     <!-- to sign artifacts when releasing -->
