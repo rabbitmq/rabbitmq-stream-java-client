@@ -972,7 +972,7 @@ public class StreamPerfTest implements Callable<Integer> {
           namespace = System.getenv("MY_POD_NAMESPACE");
         }
         InstanceSynchronization instanceSynchronization =
-            new DefaultInstanceSynchronization(
+            Utils.defaultInstanceSynchronization(
                 this.instanceSyncOptions.id,
                 this.instanceSyncOptions.expectedInstances,
                 namespace,

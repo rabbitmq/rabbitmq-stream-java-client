@@ -20,6 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -34,7 +35,10 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.assertj.core.api.Condition;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledForJreRange;
+import org.junit.jupiter.api.condition.JRE;
 
+@EnabledForJreRange(min = JRE.JAVA_11)
 public class DefaultInstanceSynchronizationTest {
 
   static String XML =
@@ -85,7 +89,11 @@ public class DefaultInstanceSynchronizationTest {
 
   @Test
   void processConfigurationFileNamespaceIsReplaced() throws Exception {
-    assertThat(DefaultInstanceSynchronization.processConfigurationFile(xml(), "performance-test"))
+    Class<?> defaultClass =
+        Class.forName("com.rabbitmq.stream.perf.DefaultInstanceSynchronization");
+    Method method =
+        defaultClass.getDeclaredMethod("processConfigurationFile", InputStream.class, String.class);
+    assertThat(method.invoke(null, xml(), "performance-test").toString())
         .is(validXml())
         .contains("namespace=\"performance-test\"");
   }
@@ -95,11 +103,11 @@ public class DefaultInstanceSynchronizationTest {
     String id = UUID.randomUUID().toString();
     int expectedInstances = 3;
     Duration timeout = Duration.ofSeconds(30);
-    List<DefaultInstanceSynchronization> syncs =
+    List<InstanceSynchronization> syncs =
         IntStream.range(0, expectedInstances)
             .mapToObj(
                 unused ->
-                    new DefaultInstanceSynchronization(
+                    Utils.defaultInstanceSynchronization(
                         id, expectedInstances, null, timeout, noOpPrintWriter()))
             .collect(toList());
     CountDownLatch latch = new CountDownLatch(expectedInstances);

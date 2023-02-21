@@ -33,8 +33,10 @@ import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.dropwizard.DropwizardConfig;
 import io.micrometer.core.instrument.dropwizard.DropwizardMeterRegistry;
 import io.micrometer.core.instrument.util.HierarchicalNameMapper;
+import java.io.PrintWriter;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.security.SecureRandom;
@@ -887,5 +889,33 @@ class Utils {
           }
         };
     return dropwizardMeterRegistry;
+  }
+
+  @SuppressWarnings("unchecked")
+  static InstanceSynchronization defaultInstanceSynchronization(
+      String id, int expectedInstances, String namespace, Duration timeout, PrintWriter out) {
+    try {
+      Class<InstanceSynchronization> defaultClass =
+          (Class<InstanceSynchronization>)
+              Class.forName("com.rabbitmq.stream.perf.DefaultInstanceSynchronization");
+      Constructor<InstanceSynchronization> constructor =
+          defaultClass.getDeclaredConstructor(
+              String.class, int.class, String.class, Duration.class, PrintWriter.class);
+      return constructor.newInstance(id, expectedInstances, namespace, timeout, out);
+    } catch (ClassNotFoundException e) {
+      return () -> {
+        if (expectedInstances > 1) {
+          throw new IllegalArgumentException("Multi-instance synchronization is not available");
+        }
+      };
+    } catch (NoSuchMethodException e) {
+      throw new RuntimeException(e);
+    } catch (InvocationTargetException e) {
+      throw new RuntimeException(e);
+    } catch (InstantiationException e) {
+      throw new RuntimeException(e);
+    } catch (IllegalAccessException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

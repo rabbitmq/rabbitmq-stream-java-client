@@ -578,6 +578,8 @@ The endpoint can then be declared in a Prometheus instance to scrape the metrics
 [[performant-tool-instance-synchronization]]
 ===== Synchronizing Several Instances
 
+NOTE: This feature is available only on Java 11 or more.
+
 Instances of the performance tool can synchronize to start at the same time.
 This can prove useful when you apply different workloads and want to compare them on the same monitoring graphics.
 The `--id` flag identifies the group of instances that need to synchronize and the `--expected-instances` flag sets the size of the group.
