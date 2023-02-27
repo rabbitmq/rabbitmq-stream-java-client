@@ -664,7 +664,12 @@ public class StreamConsumerTest {
         5,
         () -> {
           QueryOffsetResponse response = client.queryOffset(reference, stream);
-          return response.isOk() && response.getOffset() == lastReceivedOffset.get();
+          // The field used to track and store the offset on closing may not be
+          // up-to-date if the consumer closes "too fast", so checking with 1 unit behind.
+          // This field is updated just after the message handler callback.
+          return response.isOk()
+              && (response.getOffset() == lastReceivedOffset.get()
+                  || response.getOffset() == lastReceivedOffset.get() - 1);
         },
         () ->
             format(
