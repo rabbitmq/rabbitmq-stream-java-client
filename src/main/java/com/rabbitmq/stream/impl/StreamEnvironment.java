@@ -99,7 +99,7 @@ class StreamEnvironment implements Environment {
   private final AtomicBoolean locatorsInitialized = new AtomicBoolean(false);
   private final Runnable locatorInitializationSequence;
   private final List<Locator> locators = new CopyOnWriteArrayList<>();
-  private final ExecutorServiceFactory executorServiceFactory = new DefaultExecutorServiceFactory();
+  private final ExecutorServiceFactory executorServiceFactory;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -150,10 +150,7 @@ class StreamEnvironment implements Environment {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
     this.byteBufAllocator = byteBufAllocator;
-    clientParametersPrototype =
-        clientParametersPrototype
-            .byteBufAllocator(byteBufAllocator)
-            .executorServiceFactory(this.executorServiceFactory);
+    clientParametersPrototype = clientParametersPrototype.byteBufAllocator(byteBufAllocator);
     clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
     this.addressResolver = addressResolver;
@@ -195,6 +192,9 @@ class StreamEnvironment implements Environment {
     }
 
     this.addresses.forEach(address -> this.locators.add(new Locator(address)));
+    this.executorServiceFactory =
+        new DefaultExecutorServiceFactory(
+            this.addresses.size(), 1, "rabbitmq-stream-locator-connection-");
 
     if (clientParametersPrototype.eventLoopGroup == null) {
       this.eventLoopGroup = new NioEventLoopGroup();
@@ -232,7 +232,7 @@ class StreamEnvironment implements Environment {
             connectionNamingStrategy,
             Utils.coordinatorClientFactory(this));
     this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
-    ClientParameters clientParametersForInit = clientParametersPrototype.duplicate();
+    ClientParameters clientParametersForInit = locatorParametersCopy();
     Runnable locatorInitSequence =
         () -> {
           RuntimeException lastException = null;
@@ -301,9 +301,7 @@ class StreamEnvironment implements Environment {
             LOGGER.debug("Unexpected locator disconnection, trying to reconnect");
             try {
               Client.ClientParameters newLocatorParameters =
-                  this.clientParametersPrototype
-                      .duplicate()
-                      .shutdownListener(shutdownListenerReference.get());
+                  this.locatorParametersCopy().shutdownListener(shutdownListenerReference.get());
               AsyncRetry.asyncRetry(
                       () -> {
                         LOGGER.debug("Locator reconnection...");
@@ -351,7 +349,7 @@ class StreamEnvironment implements Environment {
         shutdownListener(locator, connectionNamingStrategy, clientFactory);
     try {
       Client.ClientParameters newLocatorParameters =
-          this.clientParametersPrototype.duplicate().shutdownListener(shutdownListener);
+          this.locatorParametersCopy().shutdownListener(shutdownListener);
       AsyncRetry.asyncRetry(
               () -> {
                 LOGGER.debug("Locator reconnection...");
@@ -760,6 +758,13 @@ class StreamEnvironment implements Environment {
 
   Client.ClientParameters clientParametersCopy() {
     return this.clientParametersPrototype.duplicate();
+  }
+
+  private Client.ClientParameters locatorParametersCopy() {
+    return this.clientParametersPrototype
+        .duplicate()
+        .executorServiceFactory(this.executorServiceFactory)
+        .dispatchingExecutorServiceFactory(Utils.NO_OP_EXECUTOR_SERVICE_FACTORY);
   }
 
   TrackingConsumerRegistration registerTrackingConsumer(

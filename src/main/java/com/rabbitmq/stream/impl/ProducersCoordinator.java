@@ -36,7 +36,6 @@ import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
-import com.rabbitmq.stream.impl.Utils.NamedThreadFactory;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -48,8 +47,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -73,7 +70,9 @@ class ProducersCoordinator {
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
   private final boolean debug = false;
   private final List<ProducerTracker> producerTrackers = new CopyOnWriteArrayList<>();
-  private final ExecutorServiceFactory executorServiceFactory;
+  private final ExecutorServiceFactory executorServiceFactory =
+      new DefaultExecutorServiceFactory(
+          Runtime.getRuntime().availableProcessors(), 10, "rabbitmq-stream-producer-connection-");
 
   ProducersCoordinator(
       StreamEnvironment environment,
@@ -86,27 +85,6 @@ class ProducersCoordinator {
     this.maxProducersByClient = maxProducersByClient;
     this.maxTrackingConsumersByClient = maxTrackingConsumersByClient;
     this.connectionNamingStrategy = connectionNamingStrategy;
-    // use the same single-threaded executor for all client connections
-    // it's meant for message dispatching, so it should not be used
-    this.executorServiceFactory =
-        new ExecutorServiceFactory() {
-          private final ExecutorService executorService =
-              Executors.newSingleThreadExecutor(
-                  new NamedThreadFactory("rabbitmq-stream-producers-coordinator-dispatcher-"));
-
-          @Override
-          public ExecutorService get() {
-            return executorService;
-          }
-
-          @Override
-          public void clientClosed(ExecutorService executorService) {}
-
-          @Override
-          public void close() {
-            executorService.shutdownNow();
-          }
-        };
   }
 
   private static String keyForNode(Client.Broker broker) {
@@ -156,7 +134,8 @@ class ProducersCoordinator {
             .clientParametersCopy()
             .host(node.getHost())
             .port(node.getPort())
-            .dispatchingExecutorServiceFactory(this.executorServiceFactory);
+            .executorServiceFactory(this.executorServiceFactory)
+            .dispatchingExecutorServiceFactory(Utils.NO_OP_EXECUTOR_SERVICE_FACTORY);
     ClientProducersManager pickedManager = null;
     while (pickedManager == null) {
       Iterator<ClientProducersManager> iterator = this.managers.iterator();

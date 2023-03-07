@@ -89,7 +89,7 @@ public final class TestUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TestUtils.class);
 
-  private static final Duration DEFAULT_CONDITION_TIMEOUT = Duration.ofSeconds(20);
+  private static final Duration DEFAULT_CONDITION_TIMEOUT = Duration.ofSeconds(10);
 
   private TestUtils() {}
 

@@ -130,6 +130,7 @@ public class ProducersCoordinatorTest {
       scheduledExecutorService.shutdownNow();
     }
     mocks.close();
+    coordinator.close();
   }
 
   @Test

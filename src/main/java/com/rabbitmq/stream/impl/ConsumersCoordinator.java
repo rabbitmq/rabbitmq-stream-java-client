@@ -86,6 +86,9 @@ class ConsumersCoordinator {
 
   private final boolean debug = false;
   private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
+  private final ExecutorServiceFactory executorServiceFactory =
+      new DefaultExecutorServiceFactory(
+          Runtime.getRuntime().availableProcessors(), 10, "rabbitmq-stream-consumer-connection-");
 
   ConsumersCoordinator(
       StreamEnvironment environment,
@@ -171,7 +174,11 @@ class ConsumersCoordinator {
       OffsetSpecification offsetSpecification,
       boolean isInitialSubscription) {
     ClientParameters clientParameters =
-        environment.clientParametersCopy().host(node.getHost()).port(node.getPort());
+        environment
+            .clientParametersCopy()
+            .executorServiceFactory(this.executorServiceFactory)
+            .host(node.getHost())
+            .port(node.getPort());
     ClientSubscriptionsManager pickedManager = null;
     while (pickedManager == null) {
       Iterator<ClientSubscriptionsManager> iterator = this.managers.iterator();
@@ -299,6 +306,11 @@ class ConsumersCoordinator {
             manager.name,
             e.getMessage());
       }
+    }
+    try {
+      this.executorServiceFactory.close();
+    } catch (Exception e) {
+      LOGGER.info("Error while closing executor service factory: {}", e.getMessage());
     }
   }
 

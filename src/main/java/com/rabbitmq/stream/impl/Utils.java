@@ -27,15 +27,20 @@ import com.rabbitmq.stream.impl.Client.ClientParameters;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -522,5 +527,89 @@ final class Utils {
       thread.setName(prefix + count.getAndIncrement());
       return thread;
     }
+  }
+
+  static final ExecutorServiceFactory NO_OP_EXECUTOR_SERVICE_FACTORY =
+      new NoOpExecutorServiceFactory();
+
+  static class NoOpExecutorServiceFactory implements ExecutorServiceFactory {
+
+    private final ExecutorService executorService = new NoOpExecutorService();
+
+    @Override
+    public ExecutorService get() {
+      return executorService;
+    }
+
+    @Override
+    public void clientClosed(ExecutorService executorService) {}
+
+    @Override
+    public void close() {}
+  }
+
+  private static class NoOpExecutorService implements ExecutorService {
+
+    @Override
+    public void shutdown() {}
+
+    @Override
+    public List<Runnable> shutdownNow() {
+      return null;
+    }
+
+    @Override
+    public boolean isShutdown() {
+      return false;
+    }
+
+    @Override
+    public boolean isTerminated() {
+      return false;
+    }
+
+    @Override
+    public boolean awaitTermination(long timeout, TimeUnit unit) {
+      return false;
+    }
+
+    @Override
+    public <T> Future<T> submit(Callable<T> task) {
+      return null;
+    }
+
+    @Override
+    public <T> Future<T> submit(Runnable task, T result) {
+      return null;
+    }
+
+    @Override
+    public Future<?> submit(Runnable task) {
+      return null;
+    }
+
+    @Override
+    public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) {
+      return null;
+    }
+
+    @Override
+    public <T> List<Future<T>> invokeAll(
+        Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) {
+      return null;
+    }
+
+    @Override
+    public <T> T invokeAny(Collection<? extends Callable<T>> tasks) {
+      return null;
+    }
+
+    @Override
+    public <T> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) {
+      return null;
+    }
+
+    @Override
+    public void execute(Runnable command) {}
   }
 }

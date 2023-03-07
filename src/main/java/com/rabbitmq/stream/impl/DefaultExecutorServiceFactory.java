@@ -41,18 +41,13 @@ class DefaultExecutorServiceFactory implements ExecutorServiceFactory {
   private final int clientPerExecutor;
   private final Supplier<Executor> executorFactory;
 
-  DefaultExecutorServiceFactory() {
-    this(Runtime.getRuntime().availableProcessors(), 10);
-  }
-
-  DefaultExecutorServiceFactory(int minSize, int clientPerExecutor) {
+  DefaultExecutorServiceFactory(int minSize, int clientPerExecutor, String prefix) {
     this.minSize = minSize;
     this.clientPerExecutor = clientPerExecutor;
-    this.threadFactory = new NamedThreadFactory("rabbitmq-stream-connection-");
+    this.threadFactory = new NamedThreadFactory(prefix);
     this.executorFactory = () -> newExecutor();
-    List<Executor> l = new ArrayList<>(Runtime.getRuntime().availableProcessors());
-    IntStream.range(0, Runtime.getRuntime().availableProcessors())
-        .forEach(ignored -> l.add(this.executorFactory.get()));
+    List<Executor> l = new ArrayList<>(this.minSize);
+    IntStream.range(0, this.minSize).forEach(ignored -> l.add(this.executorFactory.get()));
     executors = new CopyOnWriteArrayList<>(l);
   }
 

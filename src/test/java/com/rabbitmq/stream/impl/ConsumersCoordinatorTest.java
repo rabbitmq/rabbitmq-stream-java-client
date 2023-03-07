@@ -143,7 +143,6 @@ public class ConsumersCoordinatorTest {
             return super.shutdownListener(shutdownListener);
           }
         };
-    clientParameters.executorServiceFactory(new DefaultExecutorServiceFactory());
     mocks = MockitoAnnotations.openMocks(this);
     when(environment.locator()).thenReturn(locator);
     when(environment.locatorOperation(any())).thenCallRealMethod();
@@ -168,6 +167,7 @@ public class ConsumersCoordinatorTest {
       scheduledExecutorService.shutdownNow();
     }
     mocks.close();
+    coordinator.close();
   }
 
   @Test
