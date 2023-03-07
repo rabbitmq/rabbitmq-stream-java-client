@@ -55,6 +55,7 @@ import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
@@ -68,6 +69,7 @@ import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
+import com.rabbitmq.stream.impl.Utils.NamedThreadFactory;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
@@ -179,6 +181,7 @@ public class Client implements AutoCloseable {
       new ConcurrentHashMap<>();
   final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
   final ExecutorService executorService;
+  final ExecutorService dispatchingExecutorService;
   final TuneState tuneState;
   final AtomicBoolean closing = new AtomicBoolean(false);
   final ChunkChecksum chunkChecksum;
@@ -348,8 +351,37 @@ public class Client implements AutoCloseable {
 
     this.channel = f.channel();
     this.nettyClosing = Utils.makeIdempotent(this::closeNetty);
-    this.executorService = Executors.newSingleThreadExecutor();
-    this.executorServiceClosing = Utils.makeIdempotent(this.executorService::shutdownNow);
+    ExecutorServiceFactory executorServiceFactory = parameters.executorServiceFactory;
+    if (executorServiceFactory == null) {
+      this.executorService =
+          Executors.newSingleThreadExecutor(new NamedThreadFactory(clientConnectionName + "-"));
+    } else {
+      this.executorService = executorServiceFactory.get();
+    }
+    ExecutorServiceFactory dispatchingExecutorServiceFactory =
+        parameters.dispatchingExecutorServiceFactory;
+    if (dispatchingExecutorServiceFactory == null) {
+      this.dispatchingExecutorService =
+          Executors.newSingleThreadExecutor(
+              new NamedThreadFactory("dispatching-" + clientConnectionName + "-"));
+    } else {
+      this.dispatchingExecutorService = dispatchingExecutorServiceFactory.get();
+    }
+    this.executorServiceClosing =
+        Utils.makeIdempotent(
+            () -> {
+              this.dispatchingExecutorService.shutdownNow();
+              if (dispatchingExecutorServiceFactory == null) {
+                this.dispatchingExecutorService.shutdownNow();
+              } else {
+                dispatchingExecutorServiceFactory.clientClosed(this.dispatchingExecutorService);
+              }
+              if (executorServiceFactory == null) {
+                this.executorService.shutdownNow();
+              } else {
+                executorServiceFactory.clientClosed(this.executorService);
+              }
+            });
     try {
       this.tuneState =
           new TuneState(
@@ -2204,6 +2236,10 @@ public class Client implements AutoCloseable {
     private Duration rpcTimeout;
     private Consumer<Channel> channelCustomizer = noOpConsumer();
     private Consumer<Bootstrap> bootstrapCustomizer = noOpConsumer();
+    // for messages
+    private ExecutorServiceFactory dispatchingExecutorServiceFactory;
+    // for other server frames
+    private ExecutorServiceFactory executorServiceFactory;
 
     public ClientParameters host(String host) {
       this.host = host;
@@ -2360,6 +2396,17 @@ public class Client implements AutoCloseable {
 
     public ClientParameters rpcTimeout(Duration rpcTimeout) {
       this.rpcTimeout = rpcTimeout;
+      return this;
+    }
+
+    public ClientParameters dispatchingExecutorServiceFactory(
+        ExecutorServiceFactory dispatchingExecutorServiceFactory) {
+      this.dispatchingExecutorServiceFactory = dispatchingExecutorServiceFactory;
+      return this;
+    }
+
+    public ClientParameters executorServiceFactory(ExecutorServiceFactory executorServiceFactory) {
+      this.executorServiceFactory = executorServiceFactory;
       return this;
     }
 
@@ -2585,7 +2632,11 @@ public class Client implements AutoCloseable {
       }
 
       if (task != null) {
-        executorService.submit(task);
+        if (commandId == Constants.COMMAND_DELIVER) {
+          dispatchingExecutorService.submit(task);
+        } else {
+          executorService.submit(task);
+        }
       }
     }
 

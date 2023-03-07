@@ -99,6 +99,7 @@ class StreamEnvironment implements Environment {
   private final AtomicBoolean locatorsInitialized = new AtomicBoolean(false);
   private final Runnable locatorInitializationSequence;
   private final List<Locator> locators = new CopyOnWriteArrayList<>();
+  private final ExecutorServiceFactory executorServiceFactory = new DefaultExecutorServiceFactory();
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -149,7 +150,10 @@ class StreamEnvironment implements Environment {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
     this.byteBufAllocator = byteBufAllocator;
-    clientParametersPrototype.byteBufAllocator(byteBufAllocator);
+    clientParametersPrototype =
+        clientParametersPrototype
+            .byteBufAllocator(byteBufAllocator)
+            .executorServiceFactory(this.executorServiceFactory);
     clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
     this.addressResolver = addressResolver;
@@ -599,6 +603,12 @@ class StreamEnvironment implements Environment {
         } catch (Exception e) {
           LOGGER.warn("Error while closing locator client", e);
         }
+      }
+
+      try {
+        this.executorServiceFactory.close();
+      } catch (Exception e) {
+        LOGGER.info("Error while closing executor service factory: {}", e.getMessage());
       }
 
       this.clockRefreshFuture.cancel(false);
