@@ -152,18 +152,6 @@ public interface ConsumerBuilder {
   ConsumerBuilder noTrackingStrategy();
 
   /**
-   * Define credit values for the subscription.
-   *
-   * <p>This is an experimental API, subject to change.
-   *
-   * @param initial the initial number of credits, default is 10
-   * @param onChunkDelivery the number of credits provided on each chunk delivery, default is 1
-   * @return this builder instance
-   * @since 0.10.0
-   */
-  ConsumerBuilder credits(int initial, int onChunkDelivery);
-
-  /**
    * Create the configured {@link Consumer}
    *
    * @return the configured consumer

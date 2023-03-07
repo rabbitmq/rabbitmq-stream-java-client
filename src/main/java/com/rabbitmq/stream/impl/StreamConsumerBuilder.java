@@ -132,7 +132,6 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     return this;
   }
 
-  @Override
   public ConsumerBuilder credits(int initial, int onChunkDelivery) {
     if (initial <= 0 || onChunkDelivery <= 0) {
       throw new IllegalArgumentException("Credits must be positive");

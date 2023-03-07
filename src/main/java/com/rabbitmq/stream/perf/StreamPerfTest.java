@@ -418,7 +418,7 @@ public class StreamPerfTest implements Callable<Integer> {
   @CommandLine.Option(
       names = {"--credits", "-cr"},
       description = "initial and additional credits for subscriptions",
-      defaultValue = "10:1",
+      defaultValue = "1:1",
       converter = Utils.CreditsTypeConverter.class)
   private CreditSettings credits;
 
@@ -994,10 +994,7 @@ public class StreamPerfTest implements Callable<Integer> {
                         AtomicLong messageCount = new AtomicLong(0);
                         String stream = stream(streams, i);
                         ConsumerBuilder consumerBuilder =
-                            environment
-                                .consumerBuilder()
-                                .offset(this.offset)
-                                .credits(this.credits.initial(), this.credits.additional());
+                            environment.consumerBuilder().offset(this.offset);
 
                         if (this.superStreams) {
                           consumerBuilder.superStream(stream);

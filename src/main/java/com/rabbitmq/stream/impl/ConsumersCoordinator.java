@@ -943,7 +943,6 @@ class ConsumersCoordinator {
             subscriptionContext.offsetSpecification());
 
         checkNotClosed();
-        // FIXME consider using fewer initial credits
         byte subId = subscriptionId;
         Client.Response subscribeResponse =
             Utils.callAndMaybeRetry(
