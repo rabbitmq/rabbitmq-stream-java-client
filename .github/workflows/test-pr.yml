@@ -1,16 +1,12 @@
-name: Test against RabbitMQ 3.12 alpha
+name: Test against RabbitMQ 3.11 stable (PR)
 
 on:
-  push:
+  pull_request:
     branches:
       - main
-  schedule:
-    - cron:  '0 4 * * *'
-  workflow_dispatch:
 
 env:
-  RABBITMQ_IMAGE_TAG: latest
-  RABBITMQ_IMAGE: pivotalrabbitmq/rabbitmq-stream
+  RABBITMQ_IMAGE: 'rabbitmq:3.11'
 
 jobs:
   build:

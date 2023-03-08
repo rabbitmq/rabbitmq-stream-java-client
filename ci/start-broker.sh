@@ -2,8 +2,7 @@
 
 LOCAL_SCRIPT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-RABBITMQ_IMAGE_TAG=${RABBITMQ_IMAGE_TAG:-3.11}
-RABBITMQ_IMAGE=${RABBITMQ_IMAGE:-rabbitmq}
+RABBITMQ_IMAGE=${RABBITMQ_IMAGE:-rabbitmq:3.11}
 
 wait_for_message() {
   while ! docker logs "$1" | grep -q "$2";
@@ -33,13 +32,13 @@ ssl_options.fail_if_no_peer_cert = false
 
 stream.listeners.ssl.1 = 5551" >> rabbitmq-configuration/rabbitmq.conf
 
-echo "Running RabbitMQ ${RABBITMQ_IMAGE}:${RABBITMQ_IMAGE_TAG}"
+echo "Running RabbitMQ ${RABBITMQ_IMAGE}"
 
 docker rm -f rabbitmq 2>/dev/null || echo "rabbitmq was not running"
 docker run -d --name rabbitmq \
     --network host \
     -v "${PWD}"/rabbitmq-configuration:/etc/rabbitmq \
-    "${RABBITMQ_IMAGE}":"${RABBITMQ_IMAGE_TAG}"
+    "${RABBITMQ_IMAGE}""
 
 wait_for_message rabbitmq "completed with"
 
