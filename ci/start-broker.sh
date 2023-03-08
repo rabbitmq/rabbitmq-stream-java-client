@@ -38,7 +38,7 @@ docker rm -f rabbitmq 2>/dev/null || echo "rabbitmq was not running"
 docker run -d --name rabbitmq \
     --network host \
     -v "${PWD}"/rabbitmq-configuration:/etc/rabbitmq \
-    "${RABBITMQ_IMAGE}""
+    "${RABBITMQ_IMAGE}"
 
 wait_for_message rabbitmq "completed with"
 
