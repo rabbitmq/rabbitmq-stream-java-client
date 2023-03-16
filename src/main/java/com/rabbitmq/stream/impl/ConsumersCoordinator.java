@@ -579,11 +579,17 @@ class ConsumersCoordinator {
           };
 
       CreditNotification creditNotification =
-          (subscriptionId, responseCode) ->
-              LOGGER.debug(
-                  "Received credit notification for subscription {}: {}",
-                  subscriptionId & 0xFF,
-                  Utils.formatConstant(responseCode));
+          (subscriptionId, responseCode) -> {
+            SubscriptionTracker subscriptionTracker =
+                subscriptionTrackers.get(subscriptionId & 0xFF);
+            String stream = subscriptionTracker == null ? "?" : subscriptionTracker.stream;
+            LOGGER.debug(
+                "Received credit notification for subscription {} (stream '{}'): {}",
+                subscriptionId & 0xFF,
+                stream,
+                Utils.formatConstant(responseCode));
+          };
+
       MessageListener messageListener =
           (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
             SubscriptionTracker subscriptionTracker =

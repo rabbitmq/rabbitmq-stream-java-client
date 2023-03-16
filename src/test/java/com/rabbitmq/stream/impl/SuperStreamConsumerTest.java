@@ -35,14 +35,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInfo;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -299,5 +298,66 @@ public class SuperStreamConsumerTest {
                         && response.getOffset() == lastOffsets.get(p).longValue();
                   });
             }));
+  }
+
+  @Test
+  @Disabled
+  void rebalancedPartitionShouldGetMessagesWhenItComesBackToOriginalConsumerInstance()
+      throws Exception {
+    declareSuperStreamTopology(connection, superStream, partitionCount);
+    Client client = cf.get();
+    List<String> partitions = client.partitions(superStream);
+    int messageCount = 10_000;
+    publishToPartitions(cf, partitions, messageCount);
+    String consumerName = "my-app";
+    Set<String> receivedPartitions = ConcurrentHashMap.newKeySet(partitionCount);
+    Runnable processing =
+        () -> {
+          try {
+            Thread.sleep(10);
+          } catch (InterruptedException e) {
+            // OK
+          }
+        };
+    Consumer consumer1 =
+        environment
+            .consumerBuilder()
+            .superStream(superStream)
+            .singleActiveConsumer()
+            .offset(OffsetSpecification.first())
+            .name(consumerName)
+            .autoTrackingStrategy()
+            .messageCountBeforeStorage(messageCount / partitionCount / 50)
+            .builder()
+            .messageHandler(
+                (context, message) -> {
+                  receivedPartitions.add(context.stream());
+                  processing.run();
+                })
+            .build();
+    waitAtMost(() -> receivedPartitions.size() == partitions.size());
+
+    AtomicReference<String> partition = new AtomicReference<>();
+    Consumer consumer2 =
+        environment
+            .consumerBuilder()
+            .superStream(superStream)
+            .singleActiveConsumer()
+            .offset(OffsetSpecification.first())
+            .name(consumerName)
+            .autoTrackingStrategy()
+            .messageCountBeforeStorage(messageCount / partitionCount / 50)
+            .builder()
+            .messageHandler(
+                (context, message) -> {
+                  partition.set(context.stream());
+                  processing.run();
+                })
+            .build();
+    waitAtMost(() -> partition.get() != null);
+    consumer2.close();
+    receivedPartitions.clear();
+    waitAtMost(() -> receivedPartitions.size() == partitions.size());
+    consumer1.close();
   }
 }
