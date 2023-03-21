@@ -781,13 +781,12 @@ include::{test-examples}/ConsumerUsage.java[tag=producer-creation]
 The broker start sending messages as soon as the `Consumer` instance is created.
 
 [WARNING]
-.Keep the message processing callback as short as possible
+.The message processing callback can take its time, but not too much
 ====
-The message processing callback should be kept as short as possible
-to avoid blocking the connection thread. Not doing so can
-make the `Environment`, `Producer`, `Consumer` instances sluggish
-or even block them. Any long processing should be done in
-a separate thread (e.g. with an asynchronous `ExecutorService`).
+The message processing callback should not take too long or it could impact other consumers sharing the same connection.
+The <<configuring-the-environment,`EnvironmentBuilder#maxConsumersByConnection(int)>>` method allows isolating consumers from each other, at the cost of creating and maintaining more connections.
+Consider using a separate thread for long processing (e.g. with an asynchronous `ExecutorService`).
+Note message processing callbacks run in a dedicated thread, they do not impact other network frames, which run in their own thread.
 ====
 
 The following table sums up the main settings to create a `Consumer`:
