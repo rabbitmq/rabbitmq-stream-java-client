@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.10.0-SNAPSHOT</span>
-<br><span id="revremark">(baa38b3)</span>
+<br><span id="revremark">(493a95c)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2699,13 +2699,12 @@ consumer.close();  <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
 <i class="fa icon-warning" title="Warning"></i>
 </td>
 <td class="content">
-<div class="title">Keep the message processing callback as short as possible</div>
+<div class="title">The message processing callback can take its time, but not too much</div>
 <div class="paragraph">
-<p>The message processing callback should be kept as short as possible
-to avoid blocking the connection thread. Not doing so can
-make the <code>Environment</code>, <code>Producer</code>, <code>Consumer</code> instances sluggish
-or even block them. Any long processing should be done in
-a separate thread (e.g. with an asynchronous <code>ExecutorService</code>).</p>
+<p>The message processing callback should not take too long or it could impact other consumers sharing the same connection.
+The <a href="#configuring-the-environment"><code>EnvironmentBuilder#maxConsumersByConnection(int)</a></code> method allows isolating consumers from each other, at the cost of creating and maintaining more connections.
+Consider using a separate thread for long processing (e.g. with an asynchronous <code>ExecutorService</code>).
+Note message processing callbacks run in a dedicated thread, they do not impact other network frames, which run in their own thread.</p>
 </div>
 </td>
 </tr>
@@ -5207,7 +5206,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.10.0-SNAPSHOT<br>
-Last updated 2023-03-20 20:55:57 UTC
+Last updated 2023-03-21 14:59:28 UTC
 </div>
 </div>
 </body>
