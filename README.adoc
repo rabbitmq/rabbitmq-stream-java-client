@@ -60,7 +60,7 @@ Breaking changes between releases can happen but will be kept to a minimum.
 
 == Build Instructions
 
-You need JDK 11 or later installed.
+You need JDK 8 or later installed.
 
 To build the JAR file:
 

@@ -8,7 +8,7 @@ ifndef::sourcedir[:sourcedir: ../../main/java]
 The RabbitMQ Stream Java Client is a Java library to communicate with
 the https://rabbitmq.com/stream.html[RabbitMQ Stream Plugin].
 It allows creating and deleting streams, as well as publishing to and consuming from
-these streams. Learn more in the <<overview.adoc#stream-client-overview,the client overview>>.
+these streams. Learn more in the <<overview.adoc#stream-client-overview,client overview>>.
 
 include::overview.adoc[]
 
