@@ -60,7 +60,7 @@ Breaking changes between releases can happen but will be kept to a minimum.
 
 == Build Instructions
 
-You need JDK 1.8 or more installed.
+You need JDK 11 or later installed.
 
 To build the JAR file:
 
@@ -75,7 +75,7 @@ Launch the broker:
 ----
 docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.10
+    rabbitmq:3.11
 ----
 
 Enable the stream plugin:
