@@ -531,7 +531,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.10.0-SNAPSHOT</span>
-<br><span id="revremark">(493a95c)</span>
+<br><span id="revremark">(fb744c3)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -928,7 +928,7 @@ same host).</p>
 <div class="content">
 <pre>docker run -it --rm --name rabbitmq -p 5552:5552 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.10</pre>
+    rabbitmq:3.11</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -940,7 +940,7 @@ ports for other protocols:</p>
 <div class="content">
 <pre>docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.10-management</pre>
+    rabbitmq:3.11-management</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -967,7 +967,7 @@ this is perfect for experimenting locally.</p>
 <div class="listingblock">
 <div class="title">Running RabbitMQ Stream with the host network driver</div>
 <div class="content">
-<pre>docker run -it --rm --name rabbitmq --network host rabbitmq:3.10</pre>
+<pre>docker run -it --rm --name rabbitmq --network host rabbitmq:3.11</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -1007,7 +1007,7 @@ this is perfect for experimenting locally.</p>
 <div class="ulist">
 <ul>
 <li>
-<p>Make sure to use <a href="https://github.com/rabbitmq/rabbitmq-server/releases">RabbitMQ 3.9 or more</a>.</p>
+<p>Make sure to use <a href="https://github.com/rabbitmq/rabbitmq-server/releases">RabbitMQ 3.11 or later</a>.</p>
 </li>
 <li>
 <p>Follow the steps to
@@ -5206,7 +5206,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.10.0-SNAPSHOT<br>
-Last updated 2023-03-21 14:59:28 UTC
+Last updated 2023-03-22 00:01:53 UTC
 </div>
 </div>
 </body>
