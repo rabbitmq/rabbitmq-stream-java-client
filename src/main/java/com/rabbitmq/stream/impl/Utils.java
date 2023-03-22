@@ -24,6 +24,7 @@ import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import java.net.UnknownHostException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Arrays;
@@ -141,9 +142,26 @@ final class Utils {
         throw new IllegalArgumentException("A key is necessary to create the client connection");
       }
 
-      return Utils.connectToAdvertisedNodeClientFactory(
-              context.key(), context1 -> new Client(context1.parameters()))
-          .client(Utils.ClientFactoryContext.fromParameters(parametersCopy).key(context.key()));
+      try {
+        return Utils.connectToAdvertisedNodeClientFactory(
+                context.key(), context1 -> new Client(context1.parameters()))
+            .client(Utils.ClientFactoryContext.fromParameters(parametersCopy).key(context.key()));
+      } catch (StreamException e) {
+        if (e.getCause() != null && e.getCause() instanceof UnknownHostException) {
+          String message =
+              e.getMessage()
+                  + ". "
+                  + e.getCause().getMessage()
+                  + ". "
+                  + "This may be due to the usage of a load balancer that makes topology discovery fail. "
+                  + "Use a custom AddressResolver or the --load-balancer flag if using StreamPerfTest. "
+                  + "See https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#understanding-connection-logic "
+                  + "and https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer.";
+          throw new StreamException(message, e.getCause());
+        } else {
+          throw e;
+        }
+      }
     };
   }
 

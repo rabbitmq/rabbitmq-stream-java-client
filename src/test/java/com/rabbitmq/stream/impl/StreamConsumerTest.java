@@ -23,23 +23,14 @@ import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.ConsumerBuilder;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.EnvironmentBuilder;
-import com.rabbitmq.stream.Host;
-import com.rabbitmq.stream.NoOffsetException;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -111,18 +102,20 @@ public class StreamConsumerTest {
     } else {
       recoveryInitialDelay = RECOVERY_DELAY;
     }
-    EnvironmentBuilder environmentBuilder =
-        Environment.builder()
-            .netty()
-            .eventLoopGroup(eventLoopGroup)
-            .environmentBuilder()
-            .recoveryBackOffDelayPolicy(
-                BackOffDelayPolicy.fixedWithInitialDelay(recoveryInitialDelay, RECOVERY_DELAY))
-            .topologyUpdateBackOffDelayPolicy(
-                BackOffDelayPolicy.fixedWithInitialDelay(TOPOLOGY_DELAY, TOPOLOGY_DELAY));
-
+    EnvironmentBuilder environmentBuilder = environmentBuilder();
     environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
+  }
+
+  private EnvironmentBuilder environmentBuilder() {
+    return Environment.builder()
+        .netty()
+        .eventLoopGroup(eventLoopGroup)
+        .environmentBuilder()
+        .recoveryBackOffDelayPolicy(
+            BackOffDelayPolicy.fixedWithInitialDelay(recoveryInitialDelay, RECOVERY_DELAY))
+        .topologyUpdateBackOffDelayPolicy(
+            BackOffDelayPolicy.fixedWithInitialDelay(TOPOLOGY_DELAY, TOPOLOGY_DELAY));
   }
 
   @AfterEach
@@ -903,5 +896,31 @@ public class StreamConsumerTest {
         new ThrowingCallable[] {() -> consumer.store(1), () -> consumer.storedOffset()};
     Arrays.stream(calls)
         .forEach(call -> assertThatThrownBy(call).isInstanceOf(IllegalStateException.class));
+  }
+
+  @Test
+  void creationShouldFailWithDetailsWhenUnknownHost() {
+    Address localhost = localhost();
+    EnvironmentBuilder builder =
+        environmentBuilder()
+            .host(localhost.host())
+            .port(localhost.port())
+            .addressResolver(
+                n ->
+                    n.equals(localhost)
+                        ? n
+                        : new Address(UUID.randomUUID().toString(), Client.DEFAULT_PORT));
+    try (Environment env = builder.build()) {
+      assertThatThrownBy(
+              () ->
+                  env.consumerBuilder().stream(stream)
+                      .messageHandler((context, message) -> {})
+                      .build())
+          .hasCauseInstanceOf(UnknownHostException.class)
+          .hasMessageContaining(
+              "https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#understanding-connection-logic")
+          .hasMessageContaining(
+              "https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer");
+    }
   }
 }

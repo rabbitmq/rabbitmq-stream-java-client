@@ -22,20 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.Level;
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.ConfirmationStatus;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.EnvironmentBuilder;
-import com.rabbitmq.stream.Host;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
 import com.rabbitmq.stream.impl.StreamProducer.Status;
 import io.netty.channel.EventLoopGroup;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -77,15 +69,18 @@ public class StreamProducerTest {
 
   @BeforeEach
   void init() {
-    EnvironmentBuilder environmentBuilder =
-        Environment.builder()
-            .netty()
-            .eventLoopGroup(eventLoopGroup)
-            .environmentBuilder()
-            .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
-            .topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)));
+    EnvironmentBuilder environmentBuilder = environmentBuilder();
     environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
+  }
+
+  private EnvironmentBuilder environmentBuilder() {
+    return Environment.builder()
+        .netty()
+        .eventLoopGroup(eventLoopGroup)
+        .environmentBuilder()
+        .recoveryBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)))
+        .topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy.fixed(Duration.ofSeconds(2)));
   }
 
   @AfterEach
@@ -644,5 +639,27 @@ public class StreamProducerTest {
     producer.close();
     assertThatThrownBy(() -> producer.getLastPublishingId())
         .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void creationShouldFailWithDetailsWhenUnknownHost() {
+    Address localhost = localhost();
+    EnvironmentBuilder builder =
+        environmentBuilder()
+            .host(localhost.host())
+            .port(localhost.port())
+            .addressResolver(
+                n ->
+                    n.equals(localhost)
+                        ? n
+                        : new Address(UUID.randomUUID().toString(), Client.DEFAULT_PORT));
+    try (Environment env = builder.build()) {
+      assertThatThrownBy(() -> env.producerBuilder().stream(stream).build())
+          .hasCauseInstanceOf(UnknownHostException.class)
+          .hasMessageContaining(
+              "https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#understanding-connection-logic")
+          .hasMessageContaining(
+              "https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer");
+    }
   }
 }
