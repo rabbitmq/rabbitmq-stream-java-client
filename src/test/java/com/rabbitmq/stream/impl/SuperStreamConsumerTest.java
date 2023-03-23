@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_11_11;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
@@ -30,6 +31,7 @@ import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -301,7 +303,7 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
-  @Disabled
+  @BrokerVersionAtLeast(RABBITMQ_3_11_11)
   void rebalancedPartitionShouldGetMessagesWhenItComesBackToOriginalConsumerInstance()
       throws Exception {
     declareSuperStreamTopology(connection, superStream, partitionCount);
