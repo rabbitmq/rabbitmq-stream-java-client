@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import static java.lang.String.format;
+
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import java.io.BufferedReader;
@@ -29,7 +31,7 @@ public class Host {
 
   private static final Gson GSON = new Gson();
 
-  private static String capture(InputStream is) throws IOException {
+  public static String capture(InputStream is) throws IOException {
     BufferedReader br = new BufferedReader(new InputStreamReader(is));
     String line;
     StringBuilder buff = new StringBuilder();
@@ -103,7 +105,7 @@ public class Host {
       List<ConnectionInfo> cs = listConnections();
       if (cs.stream().filter(c -> connectionName.equals(c.clientProvidedName())).count() != 1) {
         throw new IllegalArgumentException(
-            String.format(
+            format(
                 "Could not find 1 connection '%s' in stream connections: %s",
                 connectionName,
                 cs.stream()
@@ -135,6 +137,10 @@ public class Host {
         "eval 'case rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\""
             + stream
             + "\">>) of {ok, Pid} -> exit(Pid, kill); Pid -> exit(Pid, kill) end.'");
+  }
+
+  public static void setEnv(String parameter, String value) throws IOException {
+    rabbitmqctl(format("eval 'application:set_env(rabbitmq_stream, %s, %s).'", parameter, value));
   }
 
   public static String rabbitmqctlCommand() {

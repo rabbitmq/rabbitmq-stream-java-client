@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_11_14;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
@@ -35,9 +36,11 @@ import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
 import com.rabbitmq.stream.impl.Client.CreditNotification;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -578,6 +581,7 @@ public class SacClientTest {
     } finally {
       keepPublishing.set(false);
       deleteSuperStreamTopology(c, superStream, 3);
+      c.close();
     }
   }
 
@@ -592,5 +596,39 @@ public class SacClientTest {
             10,
             Collections.singletonMap("single-active-consumer", "true"));
     assertThat(response).is(ko()).has(responseCode(Constants.RESPONSE_CODE_PRECONDITION_FAILED));
+  }
+
+  @Test
+  @DisabledIfRabbitMqCtlNotSet
+  @BrokerVersionAtLeast(RABBITMQ_3_11_14)
+  void connectionShouldBeClosedIfConsumerUpdateTakesTooLong() throws Exception {
+    Duration timeout = Duration.ofSeconds(1);
+    try {
+      Host.setEnv("request_timeout", String.valueOf(timeout.getSeconds()));
+      CountDownLatch shutdownLatch = new CountDownLatch(1);
+      Client client =
+          cf.get(
+              new ClientParameters()
+                  .consumerUpdateListener(
+                      (c, subscriptionId, active) -> {
+                        try {
+                          Thread.sleep(timeout.multipliedBy(2).toMillis());
+                        } catch (InterruptedException e) {
+                          throw new RuntimeException(e);
+                        }
+                        return OffsetSpecification.first();
+                      })
+                  .shutdownListener(shutdownContext -> shutdownLatch.countDown()));
+      Map<String, String> parameters = new HashMap<>();
+      parameters.put("single-active-consumer", "true");
+      parameters.put("name", "foo");
+      Response response =
+          client.subscribe(b(0), stream, OffsetSpecification.first(), 1, parameters);
+      assertThat(response).is(ok());
+
+      assertThat(latchAssert(shutdownLatch)).completes(timeout.multipliedBy(5));
+    } finally {
+      Host.setEnv("request_timeout", "60000");
+    }
   }
 }

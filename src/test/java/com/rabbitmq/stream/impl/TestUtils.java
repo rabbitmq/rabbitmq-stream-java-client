@@ -939,7 +939,8 @@ public final class TestUtils {
     RABBITMQ_3_11("3.11.0"),
     RABBITMQ_3_11_7("3.11.7"),
     RABBITMQ_3_11_9("3.11.9"),
-    RABBITMQ_3_11_11("3.11.11");
+    RABBITMQ_3_11_11("3.11.11"),
+    RABBITMQ_3_11_14("3.11.14");
 
     final String value;
 
