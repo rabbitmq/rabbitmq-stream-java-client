@@ -180,8 +180,8 @@ public class ClientTest {
           }
         };
 
-    Map<Byte, Set<Long>> confirmed = new HashMap<>();
-    Map<Byte, Set<Long>> publishingSequences = new HashMap<>();
+    Map<Byte, Set<Long>> confirmed = new ConcurrentHashMap<>();
+    Map<Byte, Set<Long>> publishingSequences = new ConcurrentHashMap<>();
     AtomicInteger totalMessageCount = new AtomicInteger(0);
     outboundMessagesSpec
         .keySet()
@@ -232,23 +232,23 @@ public class ClientTest {
                   });
             })
         .collect(Collectors.toList())
-        .forEach(thread -> thread.start());
+        .forEach(Thread::start);
 
     assertThat(confirmLatch.await(10, SECONDS)).isTrue();
-    outboundMessagesSpec
-        .entrySet()
-        .forEach(
-            entry -> {
-              byte publisherId = entry.getKey();
-              int expectedMessageCount = entry.getValue();
-              Set<Long> sequences = publishingSequences.get(publisherId);
-              assertThat(confirmed.get(publisherId))
-                  .hasSize(expectedMessageCount)
-                  .hasSameSizeAs(sequences);
-              confirmed
-                  .get(publisherId)
-                  .forEach(publishingId -> assertThat(sequences.contains(publishingId)).isTrue());
-            });
+    outboundMessagesSpec.forEach(
+        (key, value) -> {
+          byte publisherId = key;
+          int expectedMessageCount = value;
+          Set<Long> sequences = publishingSequences.get(publisherId);
+          Set<Long> confirmedPublishingIds = confirmed.get(publisherId);
+          // Not using collection assertions because they dump the whole content
+          // This is unreadable for large collections
+          assertThat(sequences.size()).isEqualTo(expectedMessageCount);
+          assertThat(confirmedPublishingIds.size()).isEqualTo(expectedMessageCount);
+
+          confirmedPublishingIds.forEach(
+              publishingId -> assertThat(sequences.contains(publishingId)).isTrue());
+        });
   }
 
   void publishConsumeComplexMessage(
