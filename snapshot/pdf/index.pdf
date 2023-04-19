@@ -2,10 +2,10 @@
 %ÿÿÿÿ
 1 0 obj
 << /Title (RabbitMQ Stream Java Client)
-/Creator (Asciidoctor PDF 2.3.6, based on Prawn 2.4.0)
-/Producer (Asciidoctor PDF 2.3.6, based on Prawn 2.4.0)
-/ModDate (D:20230412182615+00'00')
-/CreationDate (D:20230412183637+00'00')
+/Creator (Asciidoctor PDF 2.3.7, based on Prawn 2.4.0)
+/Producer (Asciidoctor PDF 2.3.7, based on Prawn 2.4.0)
+/ModDate (D:20230419043607+00'00')
+/CreationDate (D:20230419044745+00'00')
 >>
 endobj
 2 0 obj
@@ -69,9 +69,9 @@ ET
 0.2 0.2 0.2 SCN
 
 BT
-366.28332 330.0735 Td
+367.49082 330.0735 Td
 /F1.0 10.5 Tf
-[<56> 60.05859 <657273696f6e20302e31302e302d534e415053484f> 20.01953 <543a20283966353435623329>] TJ
+[<56> 60.05859 <657273696f6e20302e31302e302d534e415053484f> 20.01953 <543a20283563616138663129>] TJ
 ET
 
 0.0 0.0 0.0 SCN
