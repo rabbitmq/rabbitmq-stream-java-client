@@ -93,7 +93,7 @@
     <jmh.version>1.36</jmh.version>
     <spotless.version>2.36.0</spotless.version>
     <google-java-format.version>1.15.0</google-java-format.version>
-    <jacoco.version>0.8.9</jacoco.version>
+    <jacoco.version>0.8.10</jacoco.version>
     <!-- for documentation -->
     <broker.version>3.11</broker.version>
     <!-- to sign artifacts when releasing -->
