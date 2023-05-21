@@ -13,13 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.ConsumerBuilder;
-import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.MessageHandler;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.SubscriptionListener;
+import com.rabbitmq.stream.*;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
@@ -44,6 +39,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private ConsumerUpdateListener consumerUpdateListener;
   private int initialCredits = 1;
   private int additionalCredits = 1;
+  private ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder = LegacyFlowControlStrategyBuilderFactory.INSTANCE.builder(this);
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -71,6 +67,13 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   public ConsumerBuilder messageHandler(MessageHandler messageHandler) {
     this.messageHandler = messageHandler;
     return this;
+  }
+
+  @Override
+  public <T extends ConsumerFlowControlStrategyBuilder<?>> T flowControlStrategy(ConsumerFlowControlStrategyBuilderFactory<?, T> consumerFlowControlStrategyBuilderFactory) {
+    T localConsumerFlowControlStrategyBuilder = consumerFlowControlStrategyBuilderFactory.builder(this);
+    this.consumerFlowControlStrategyBuilder = localConsumerFlowControlStrategyBuilder;
+    return localConsumerFlowControlStrategyBuilder;
   }
 
   MessageHandler messageHandler() {
@@ -132,12 +135,23 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     return this;
   }
 
-  public ConsumerBuilder credits(int initial, int onChunkDelivery) {
+  /**
+   *
+   * @param initial Credits to ask for with each new subscription
+   * @param onChunkDelivery Credits to ask for after a chunk is delivered
+   * @return this {@link StreamConsumerBuilder}
+   * @deprecated Prefer using {@link ConsumerBuilder#flowControlStrategy(ConsumerFlowControlStrategyBuilderFactory)}
+   *             to define flow control strategies instead.
+   */
+  @Deprecated
+  public StreamConsumerBuilder credits(int initial, int onChunkDelivery) {
     if (initial <= 0 || onChunkDelivery <= 0) {
       throw new IllegalArgumentException("Credits must be positive");
     }
-    this.initialCredits = initial;
-    this.additionalCredits = onChunkDelivery;
+    this.consumerFlowControlStrategyBuilder = LegacyFlowControlStrategyBuilderFactory.INSTANCE
+            .builder(this)
+            .initialCredits(initial)
+            .additionalCredits(additionalCredits);
     return this;
   }
 
@@ -197,6 +211,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.stream,
               this.offsetSpecification,
               this.messageHandler,
+              this.consumerFlowControlStrategyBuilder,
               this.name,
               this.environment,
               trackingConfiguration,

@@ -80,7 +80,7 @@ public class RetentionClientTest {
             // small retention in policy
             String policyCommand =
                 String.format(
-                    "set_policy stream-retention-test \"%s\" "
+                    "set_policy stream-retention-test '%s' "
                         + "'{\"max-length-bytes\":%d,\"stream-max-segment-size-bytes\":%d }' "
                         + "--priority 1 --apply-to queues",
                     stream, maxLengthBytes, maxSegmentSizeBytes);

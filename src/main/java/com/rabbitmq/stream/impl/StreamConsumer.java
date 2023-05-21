@@ -18,15 +18,8 @@ import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 import static java.time.Duration.ofMillis;
 
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.NoOffsetException;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
@@ -74,6 +67,7 @@ class StreamConsumer implements Consumer {
       String stream,
       OffsetSpecification offsetSpecification,
       MessageHandler messageHandler,
+      ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder,
       String name,
       StreamEnvironment environment,
       TrackingConfiguration trackingConfiguration,
@@ -255,9 +249,9 @@ class StreamConsumer implements Consumer {
                     subscriptionListener,
                     trackingClosingCallback,
                     closedAwareMessageHandler,
+                    consumerFlowControlStrategyBuilder,
                     Collections.unmodifiableMap(subscriptionProperties),
-                    initialCredits,
-                    additionalCredits);
+                    initialCredits);
 
             this.status = Status.RUNNING;
           };

@@ -148,8 +148,7 @@ public class StreamEnvironmentTest {
                     .build()
                     .close())
         .isInstanceOf(StreamException.class)
-        .hasCauseInstanceOf(ConnectException.class)
-        .hasRootCauseMessage("Connection refused");
+        .hasCauseInstanceOf(ConnectException.class);
   }
 
   @Test

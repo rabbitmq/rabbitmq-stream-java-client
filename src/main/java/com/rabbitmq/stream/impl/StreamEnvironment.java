@@ -19,21 +19,8 @@ import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.rabbitmq.stream.Address;
-import com.rabbitmq.stream.AddressResolver;
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConsumerBuilder;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.NoOffsetException;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.ProducerBuilder;
-import com.rabbitmq.stream.StreamCreator;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.StreamStats;
-import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.ShutdownListener;
@@ -658,22 +645,20 @@ class StreamEnvironment implements Environment {
       SubscriptionListener subscriptionListener,
       Runnable trackingClosingCallback,
       MessageHandler messageHandler,
+      ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder,
       Map<String, String> subscriptionProperties,
-      int initialCredits,
-      int additionalCredits) {
-    Runnable closingCallback =
-        this.consumersCoordinator.subscribe(
-            consumer,
-            stream,
-            offsetSpecification,
-            trackingReference,
-            subscriptionListener,
-            trackingClosingCallback,
-            messageHandler,
-            subscriptionProperties,
-            initialCredits,
-            additionalCredits);
-    return closingCallback;
+      int initialCredits) {
+    return this.consumersCoordinator.subscribe(
+        consumer,
+        stream,
+        offsetSpecification,
+        trackingReference,
+        subscriptionListener,
+        trackingClosingCallback,
+        messageHandler,
+        consumerFlowControlStrategyBuilder,
+        subscriptionProperties,
+        initialCredits);
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {

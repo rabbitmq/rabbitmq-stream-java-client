@@ -21,16 +21,8 @@ import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 import static com.rabbitmq.stream.impl.Utils.quote;
 
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.StreamDoesNotExistException;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.StreamNotAvailableException;
-import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ChunkListener;
@@ -121,9 +113,9 @@ class ConsumersCoordinator {
       SubscriptionListener subscriptionListener,
       Runnable trackingClosingCallback,
       MessageHandler messageHandler,
+      ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder,
       Map<String, String> subscriptionProperties,
-      int initialCredits,
-      int additionalCredits) {
+      int initialCredits) {
     List<Client.Broker> candidates = findBrokersForStream(stream);
     Client.Broker newNode = pickBroker(candidates);
     if (newNode == null) {
@@ -142,9 +134,9 @@ class ConsumersCoordinator {
             subscriptionListener,
             trackingClosingCallback,
             messageHandler,
+            consumerFlowControlStrategyBuilder,
             subscriptionProperties,
-            initialCredits,
-            additionalCredits);
+            initialCredits);
 
     try {
       addToManager(newNode, subscriptionTracker, offsetSpecification, true);
@@ -199,7 +191,7 @@ class ConsumersCoordinator {
       if (pickedManager == null) {
         String name = keyForClientSubscription(node);
         LOGGER.debug("Creating subscription manager on {}", name);
-        pickedManager = new ClientSubscriptionsManager(node, clientParameters);
+        pickedManager = new ClientSubscriptionsManager(node, clientParameters, tracker.consumerFlowControlStrategyBuilder);
         LOGGER.debug("Created subscription manager on {}, id {}", name, pickedManager.id);
       }
       try {
@@ -393,6 +385,7 @@ class ConsumersCoordinator {
     private final OffsetSpecification initialOffsetSpecification;
     private final String offsetTrackingReference;
     private final MessageHandler messageHandler;
+    private final ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder;
     private final StreamConsumer consumer;
     private final SubscriptionListener subscriptionListener;
     private final Runnable trackingClosingCallback;
@@ -404,7 +397,6 @@ class ConsumersCoordinator {
     private volatile AtomicReference<SubscriptionState> state =
         new AtomicReference<>(SubscriptionState.OPENING);
     private final int initialCredits;
-    private final int additionalCredits;
 
     private SubscriptionTracker(
         long id,
@@ -415,9 +407,9 @@ class ConsumersCoordinator {
         SubscriptionListener subscriptionListener,
         Runnable trackingClosingCallback,
         MessageHandler messageHandler,
+        ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder,
         Map<String, String> subscriptionProperties,
-        int initialCredits,
-        int additionalCredits) {
+        int initialCredits) {
       this.id = id;
       this.consumer = consumer;
       this.stream = stream;
@@ -426,8 +418,8 @@ class ConsumersCoordinator {
       this.subscriptionListener = subscriptionListener;
       this.trackingClosingCallback = trackingClosingCallback;
       this.messageHandler = messageHandler;
+      this.consumerFlowControlStrategyBuilder = consumerFlowControlStrategyBuilder;
       this.initialCredits = initialCredits;
-      this.additionalCredits = additionalCredits;
       if (this.offsetTrackingReference == null) {
         this.subscriptionProperties = subscriptionProperties;
       } else {
@@ -551,33 +543,29 @@ class ConsumersCoordinator {
     // the 2 data structures track the subscriptions, they must remain consistent
     private final Map<String, Set<SubscriptionTracker>> streamToStreamSubscriptions =
         new ConcurrentHashMap<>();
+    private final ConsumerFlowControlStrategy consumerFlowControlStrategy;
     // trackers and tracker count must be kept in sync
     private volatile List<SubscriptionTracker> subscriptionTrackers =
         new ArrayList<>(maxConsumersByConnection);
     private volatile int trackerCount = 0;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private ClientSubscriptionsManager(Broker node, Client.ClientParameters clientParameters) {
+    private ClientSubscriptionsManager(
+            Broker node,
+            Client.ClientParameters clientParameters,
+            ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder
+    ) {
       this.id = managerIdSequence.getAndIncrement();
       this.node = node;
       this.name = keyForClientSubscription(node);
       LOGGER.debug("creating subscription manager on {}", name);
       IntStream.range(0, maxConsumersByConnection).forEach(i -> subscriptionTrackers.add(null));
       this.trackerCount = 0;
-      AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
-      ChunkListener chunkListener =
-          (client, subscriptionId, offset, messageCount, dataSize) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
-            if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
-              client.credit(subscriptionId, subscriptionTracker.additionalCredits);
-            } else {
-              LOGGER.debug(
-                  "Could not find stream subscription {} or subscription closing, not providing credits",
-                  subscriptionId & 0xFF);
-            }
-          };
-
+      AtomicReference<Client> clientReference = new AtomicReference<>();
+      ConsumerFlowControlStrategy localConsumerFlowControlStrategy = consumerFlowControlStrategyBuilder.build(clientReference::get);
+      this.consumerFlowControlStrategy = localConsumerFlowControlStrategy;
+      ChunkListener chunkListener = (ignoredClient, subscriptionId, offset, messageCount, dataSize) ->
+              localConsumerFlowControlStrategy.handleChunk(subscriptionId, offset, messageCount, dataSize);
       CreditNotification creditNotification =
           (subscriptionId, responseCode) -> {
             SubscriptionTracker subscriptionTracker =
@@ -588,6 +576,7 @@ class ConsumersCoordinator {
                 subscriptionId & 0xFF,
                 stream,
                 Utils.formatConstant(responseCode));
+            localConsumerFlowControlStrategy.handleCreditNotification(subscriptionId, responseCode);
           };
 
       MessageListener messageListener =
@@ -609,6 +598,7 @@ class ConsumersCoordinator {
                   this.id,
                   this.name);
             }
+            localConsumerFlowControlStrategy.handleMessage(subscriptionId, offset, chunkTimestamp, committedOffset, message);
           };
       ShutdownListener shutdownListener =
           shutdownContext -> {
@@ -662,6 +652,7 @@ class ConsumersCoordinator {
                           "Consumers re-assignment after disconnection from %s",
                           name));
             }
+            localConsumerFlowControlStrategy.handleShutdown(shutdownContext);
           };
       MetadataListener metadataListener =
           (stream, code) -> {
@@ -713,6 +704,7 @@ class ConsumersCoordinator {
                           "Consumers re-assignment after metadata update on stream '%s'",
                           stream));
             }
+            localConsumerFlowControlStrategy.handleMetadata(stream, code);
           };
       ConsumerUpdateListener consumerUpdateListener =
           (client, subscriptionId, active) -> {
@@ -731,6 +723,7 @@ class ConsumersCoordinator {
               LOGGER.debug(
                   "Could not find stream subscription {} for consumer update", subscriptionId);
             }
+            localConsumerFlowControlStrategy.handleConsumerUpdate(subscriptionId, active);
             return result;
           };
       String connectionName = connectionNamingStrategy.apply(ClientConnectionType.CONSUMER);
@@ -745,9 +738,10 @@ class ConsumersCoordinator {
                       .metadataListener(metadataListener)
                       .consumerUpdateListener(consumerUpdateListener))
               .key(name);
-      this.client = clientFactory.client(clientFactoryContext);
+      Client localClient = clientFactory.client(clientFactoryContext);
+      this.client = localClient;
+      clientReference.set(localClient);
       LOGGER.debug("Created consumer connection '{}'", connectionName);
-      clientInitializedInManager.set(true);
     }
 
     private void assignConsumersToStream(
@@ -962,6 +956,12 @@ class ConsumersCoordinator {
 
         checkNotClosed();
         byte subId = subscriptionId;
+        int initialCredits = this.consumerFlowControlStrategy.handleSubscribe(
+                subId,
+                subscriptionTracker.stream,
+                subscriptionContext.offsetSpecification(),
+                subscriptionTracker.subscriptionProperties
+        );
         Client.Response subscribeResponse =
             Utils.callAndMaybeRetry(
                 () ->
@@ -969,7 +969,7 @@ class ConsumersCoordinator {
                         subId,
                         subscriptionTracker.stream,
                         subscriptionContext.offsetSpecification(),
-                        subscriptionTracker.initialCredits,
+                        initialCredits,
                         subscriptionTracker.subscriptionProperties),
                 RETRY_ON_TIMEOUT,
                 "Subscribe request for consumer %s on stream '%s'",
@@ -1033,7 +1033,7 @@ class ConsumersCoordinator {
             subscriptionTracker.consumer.id(),
             subscriptionTracker.stream);
       }
-
+      this.consumerFlowControlStrategy.handleUnsubscribe(subscriptionIdInClient);
       this.setSubscriptionTrackers(update(this.subscriptionTrackers, subscriptionIdInClient, null));
       streamToStreamSubscriptions.compute(
           subscriptionTracker.stream,
@@ -1098,6 +1098,7 @@ class ConsumersCoordinator {
                 if (this.client != null && this.client.isOpen() && tracker.consumer.isOpen()) {
                   this.client.unsubscribe(tracker.subscriptionIdInClient);
                 }
+                this.consumerFlowControlStrategy.handleUnsubscribe(tracker.subscriptionIdInClient);
               } catch (Exception e) {
                 // OK, moving on
                 LOGGER.debug(

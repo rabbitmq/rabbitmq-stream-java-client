@@ -60,6 +60,14 @@ public interface ConsumerBuilder {
   ConsumerBuilder messageHandler(MessageHandler messageHandler);
 
   /**
+   * Factory for the flow control strategy to be used when consuming messages.
+   * @param consumerFlowControlStrategyBuilderFactory the factory
+   * @return a fluent configurable builder for the flow control strategy
+   * @param <T>
+   */
+  <T extends ConsumerFlowControlStrategyBuilder<?>> T flowControlStrategy(ConsumerFlowControlStrategyBuilderFactory<?, T> consumerFlowControlStrategyBuilderFactory);
+
+  /**
    * The logical name of the {@link Consumer}.
    *
    * <p>Set a logical name to enable offset tracking.
@@ -159,7 +167,7 @@ public interface ConsumerBuilder {
   Consumer build();
 
   /** Manual tracking strategy. */
-  interface ManualTrackingStrategy {
+  interface ManualTrackingStrategy extends ConsumerBuilderAccessor {
 
     /**
      * Interval to check if the last requested stored offset has been actually stored.
@@ -170,17 +178,10 @@ public interface ConsumerBuilder {
      * @return the manual tracking strategy
      */
     ManualTrackingStrategy checkInterval(Duration checkInterval);
-
-    /**
-     * Go back to the builder.
-     *
-     * @return the consumer builder
-     */
-    ConsumerBuilder builder();
   }
 
   /** Auto-tracking strategy. */
-  interface AutoTrackingStrategy {
+  interface AutoTrackingStrategy extends ConsumerBuilderAccessor {
 
     /**
      * Number of messages before storing.
@@ -201,7 +202,9 @@ public interface ConsumerBuilder {
      * @return the auto-tracking strategy
      */
     AutoTrackingStrategy flushInterval(Duration flushInterval);
+  }
 
+  interface ConsumerBuilderAccessor {
     /**
      * Go back to the builder.
      *
@@ -209,4 +212,5 @@ public interface ConsumerBuilder {
      */
     ConsumerBuilder builder();
   }
+
 }

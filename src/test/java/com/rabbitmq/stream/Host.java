@@ -43,7 +43,6 @@ public class Host {
 
   private static Process executeCommand(String command) throws IOException {
     Process pr = executeCommandProcess(command);
-
     int ev = waitForExitValue(pr);
     if (ev != 0) {
       String stdout = capture(pr.getInputStream());
@@ -83,10 +82,10 @@ public class Host {
     String[] finalCommand;
     if (System.getProperty("os.name").toLowerCase().contains("windows")) {
       finalCommand = new String[4];
-      finalCommand[0] = "C:\\winnt\\system32\\cmd.exe";
+      finalCommand[0] = "C:\\Windows\\system32\\cmd.exe";
       finalCommand[1] = "/y";
       finalCommand[2] = "/c";
-      finalCommand[3] = command;
+      finalCommand[3] = command.replaceAll("\"", "\"\"\"").replaceAll("'", "\"");
     } else {
       finalCommand = new String[3];
       finalCommand[0] = "/bin/sh";
