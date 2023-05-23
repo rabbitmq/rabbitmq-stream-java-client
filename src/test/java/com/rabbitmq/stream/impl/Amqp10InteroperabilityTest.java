@@ -58,9 +58,10 @@ import org.assertj.core.api.ObjectAssert;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-// @ExtendWith(StreamTestInfrastructureExtension.class)
-// @DisabledIfAmqp10NotEnabled
+@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@TestUtils.DisabledIfAmqp10NotEnabled
 public class Amqp10InteroperabilityTest {
 
   String stream;
@@ -87,26 +88,6 @@ public class Amqp10InteroperabilityTest {
   @AfterEach
   void tearDown() {
     connection.close();
-  }
-
-  @Test
-  void publish() throws Exception {
-    //    Producer p = session.createProducer("/exchange/queue/dummy", QoS.AT_LEAST_ONCE);
-    Producer p = session.createProducer("/amq/queue/dummy", QoS.AT_LEAST_ONCE);
-    //    Producer p = session.createProducer("/queue/dummy", QoS.AT_LEAST_ONCE);
-    // /amq/queue/dummy => parsed {amqqueue,"dummy"}
-    // /queue/dummy => parsed {queue,"dummy"}
-    // dummy => {queue,"dummy"}
-    AMQPMessage message = new AMQPMessage();
-
-    //    Properties properties = new Properties();
-    //    properties.setSubject(new AMQPString("bar"));
-    //    message.setProperties(properties);
-
-    message.addData(new Data("hello".getBytes(StandardCharsets.UTF_8)));
-
-    p.send(message);
-    p.close();
   }
 
   @Test
