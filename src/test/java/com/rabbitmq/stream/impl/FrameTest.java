@@ -17,11 +17,11 @@ import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Properties;
 import io.netty.buffer.ByteBuf;
@@ -153,7 +153,7 @@ public class FrameTest {
                 .thenReturn(Mockito.mock(ChannelFuture.class));
 
             client.publishInternal(
-                anyShort(),
+                Constants.VERSION_1,
                 channel,
                 b(1),
                 test.sizes.stream()

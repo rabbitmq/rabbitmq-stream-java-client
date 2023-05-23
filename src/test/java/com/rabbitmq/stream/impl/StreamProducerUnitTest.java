@@ -95,10 +95,10 @@ public class StreamProducerUnitTest {
                 client.publishInternal(
                     Constants.VERSION_1,
                     channel,
-                    invocation.getArgument(0),
                     invocation.getArgument(1),
                     invocation.getArgument(2),
-                    invocation.getArgument(3)));
+                    invocation.getArgument(3),
+                    invocation.getArgument(4)));
 
     when(client.publishInternal(
             anyShort(),
