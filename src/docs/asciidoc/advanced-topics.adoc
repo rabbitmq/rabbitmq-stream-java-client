@@ -72,6 +72,18 @@ include::{test-examples}/FilteringUsage.java[tag=consumer-match-unfiltered]
 
 In the example above, the filtering logic has been adapted to let pass `california` messages _and_ messages without a state set as well.
 
+===== Considerations on Filtering
+
+As stated previously, the server can send messages that do not match the filter value(s) set by consumers.
+This is why application developers must be very careful with the filtering logic they define to avoid processing unwanted messages.
+
+What are good candidates for filter values?
+Unique identifiers are _not_: if you know a given message property will be unique in a stream, do not use it as a filter value.
+A defined set of values shared across the messages is a good candidate: geographical locations (e.g. countries, states), document types in a stream that stores document information (e.g. payslip, invoice, order), categories of products (e.g. book, luggage, toy).
+
+Cardinality of filter values can be from a few to a few thousands.
+Extreme cardinality (a couple or dozens of thousands) can make filtering less efficient.
+
 ==== Using Native `epoll`
 
 The stream Java client uses the https://netty.io/[Netty] network framework and its Java NIO transport implementation by default.
