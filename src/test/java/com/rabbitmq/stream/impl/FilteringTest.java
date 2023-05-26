@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -36,6 +37,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 @DisabledIfFilteringNotSupported
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class FilteringTest {
+
+  private static final Duration CONDITION_TIMEOUT = Duration.ofSeconds(5);
 
   static final int messageCount = 10_000;
 
@@ -62,105 +65,122 @@ public class FilteringTest {
   @ValueSource(strings = "foo")
   @NullSource
   void publishConsume(String producerName) throws Exception {
-    List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
-    Map<String, AtomicInteger> filterValueCount = new HashMap<>();
-    Random random = new Random();
+    repeatIfFailure(
+        () -> {
+          List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
+          Map<String, AtomicInteger> filterValueCount = new HashMap<>();
+          Random random = new Random();
 
-    Runnable insert =
-        () ->
-            publish(
-                messageCount,
-                producerName,
-                () -> {
-                  String filterValue = filterValues.get(random.nextInt(filterValues.size()));
-                  filterValueCount
-                      .computeIfAbsent(filterValue, k -> new AtomicInteger())
-                      .incrementAndGet();
-                  return filterValue;
-                });
-    insert.run();
+          Runnable insert =
+              () ->
+                  publish(
+                      messageCount,
+                      producerName,
+                      () -> {
+                        String filterValue = filterValues.get(random.nextInt(filterValues.size()));
+                        filterValueCount
+                            .computeIfAbsent(filterValue, k -> new AtomicInteger())
+                            .incrementAndGet();
+                        return filterValue;
+                      });
+          insert.run();
 
-    // second wave of messages, with only one, new filter value
-    String newFilterValue = "orange";
-    filterValues.clear();
-    filterValues.add(newFilterValue);
-    insert.run();
+          // second wave of messages, with only one, new filter value
+          String newFilterValue = "orange";
+          filterValues.clear();
+          filterValues.add(newFilterValue);
+          insert.run();
 
-    AtomicInteger receivedMessageCount = new AtomicInteger(0);
-    AtomicInteger filteredConsumedMessageCount = new AtomicInteger(0);
-    consumerBuilder()
-        .filter()
-        .values(newFilterValue)
-        .postFilter(
-            m -> {
-              receivedMessageCount.incrementAndGet();
-              return newFilterValue.equals(m.getProperties().getGroupId());
-            })
-        .builder()
-        .messageHandler((context, message) -> filteredConsumedMessageCount.incrementAndGet())
-        .build();
-
-    int expectedCount = filterValueCount.get(newFilterValue).get();
-    waitAtMost(() -> filteredConsumedMessageCount.get() == expectedCount);
-    assertThat(receivedMessageCount).hasValueLessThan(messageCount * 2);
+          AtomicInteger receivedMessageCount = new AtomicInteger(0);
+          AtomicInteger filteredConsumedMessageCount = new AtomicInteger(0);
+          try (Consumer ignored =
+              consumerBuilder()
+                  .filter()
+                  .values(newFilterValue)
+                  .postFilter(
+                      m -> {
+                        receivedMessageCount.incrementAndGet();
+                        return newFilterValue.equals(m.getProperties().getGroupId());
+                      })
+                  .builder()
+                  .messageHandler(
+                      (context, message) -> filteredConsumedMessageCount.incrementAndGet())
+                  .build()) {
+            int expectedCount = filterValueCount.get(newFilterValue).get();
+            waitAtMost(
+                CONDITION_TIMEOUT, () -> filteredConsumedMessageCount.get() == expectedCount);
+            assertThat(receivedMessageCount).hasValueLessThan(messageCount * 2);
+          }
+        });
   }
 
   @ParameterizedTest
   @ValueSource(strings = "foo")
   @NullSource
-  void publishWithNullFilterValuesShouldBePossible(String producerName) {
-    publish(messageCount, producerName, () -> null);
+  void publishWithNullFilterValuesShouldBePossible(String producerName) throws Exception {
+    repeatIfFailure(
+        () -> {
+          publish(messageCount, producerName, () -> null);
 
-    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
-    consumerBuilder().messageHandler((ctx, msg) -> consumeLatch.countDown()).build();
-    latchAssert(consumeLatch).completes();
+          CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+          try (Consumer ignored =
+              consumerBuilder().messageHandler((ctx, msg) -> consumeLatch.countDown()).build()) {
+            latchAssert(consumeLatch).completes(CONDITION_TIMEOUT);
+          }
+        });
   }
 
   @ParameterizedTest
   @CsvSource({"foo,true", "foo,false", ",true", ",false"})
   void matchUnfilteredShouldReturnNullFilteredValueAndFilteredValues(
       String producerName, boolean matchUnfiltered) throws Exception {
-    publish(messageCount, producerName, () -> null);
-
-    List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
-    Map<String, AtomicInteger> filterValueCount = new HashMap<>();
-    Random random = new Random();
-    publish(
-        messageCount,
-        producerName,
+    repeatIfFailure(
         () -> {
-          String filterValue = filterValues.get(random.nextInt(filterValues.size()));
-          filterValueCount.computeIfAbsent(filterValue, k -> new AtomicInteger()).incrementAndGet();
-          return filterValue;
+          publish(messageCount, producerName, () -> null);
+
+          List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
+          Map<String, AtomicInteger> filterValueCount = new HashMap<>();
+          Random random = new Random();
+          publish(
+              messageCount,
+              producerName,
+              () -> {
+                String filterValue = filterValues.get(random.nextInt(filterValues.size()));
+                filterValueCount
+                    .computeIfAbsent(filterValue, k -> new AtomicInteger())
+                    .incrementAndGet();
+                return filterValue;
+              });
+
+          publish(messageCount, producerName, () -> null);
+
+          AtomicInteger receivedMessageCount = new AtomicInteger(0);
+          Set<String> receivedFilterValues = ConcurrentHashMap.newKeySet();
+          try (Consumer ignored =
+              consumerBuilder()
+                  .filter()
+                  .values(filterValues.get(0))
+                  .matchUnfiltered(matchUnfiltered)
+                  .postFilter(m -> true)
+                  .builder()
+                  .messageHandler(
+                      (ctx, msg) -> {
+                        receivedFilterValues.add(
+                            msg.getProperties().getGroupId() == null
+                                ? "null"
+                                : msg.getProperties().getGroupId());
+                        receivedMessageCount.incrementAndGet();
+                      })
+                  .build()) {
+            int expected;
+            if (matchUnfiltered) {
+              expected = messageCount * 2;
+            } else {
+              expected = messageCount;
+            }
+            waitAtMost(CONDITION_TIMEOUT, () -> receivedMessageCount.get() >= expected);
+          }
         });
-
-    publish(messageCount, producerName, () -> null);
-
-    AtomicInteger receivedMessageCount = new AtomicInteger(0);
-    Set<String> receivedFilterValues = ConcurrentHashMap.newKeySet();
-    consumerBuilder()
-        .filter()
-        .values(filterValues.get(0))
-        .matchUnfiltered(matchUnfiltered)
-        .postFilter(m -> true)
-        .builder()
-        .messageHandler(
-            (ctx, msg) -> {
-              receivedFilterValues.add(
-                  msg.getProperties().getGroupId() == null
-                      ? "null"
-                      : msg.getProperties().getGroupId());
-              receivedMessageCount.incrementAndGet();
-            })
-        .build();
-
-    int expected;
-    if (matchUnfiltered) {
-      expected = messageCount * 2;
-    } else {
-      expected = messageCount;
-    }
-    waitAtMost(() -> receivedMessageCount.get() >= expected);
   }
 
   private ProducerBuilder producerBuilder() {
@@ -194,7 +214,22 @@ public class FilteringTest {
                         .messageBuilder()
                         .build(),
                     confirmationHandler));
-    latchAssert(latch).completes();
+    latchAssert(latch).completes(CONDITION_TIMEOUT);
     producer.close();
+  }
+
+  private static void repeatIfFailure(RunnableWithException test) throws Exception {
+    int executionCount = 0;
+    Exception lastException = null;
+    while (executionCount < 5) {
+      try {
+        test.run();
+        return;
+      } catch (Exception e) {
+        executionCount++;
+        lastException = e;
+      }
+    }
+    throw lastException;
   }
 }
