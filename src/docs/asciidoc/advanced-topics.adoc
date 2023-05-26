@@ -2,6 +2,76 @@
 
 === Advanced Topics
 
+==== Filtering
+
+RabbitMQ Stream provides a server-side filtering feature that avoids reading all the messages of a stream and filtering only on the client side.
+This helps to save network bandwidth when a consuming application needs only a subset of messages, e.g. the messages from a given geographical region.
+
+The filtering feature works as follows:
+
+* each message is published with an associated _filter value_
+* a consumer that wants to enable filtering must:
+** define one or several filter values
+** define some client-side filtering logic
+
+Why does the consumer need to define some client-side filtering logic?
+Because the server-side filtering is probabilistic: messages that do not match the filter value(s) can still be sent to the consumer.
+The server uses a https://en.wikipedia.org/wiki/Bloom_filter[bloom filter], _a space-efficient probabilistic data structure_, where false positives are possible.
+Despite this, the filtering saves some bandwidth, which is its primary goal.
+
+===== Filtering on the Publishing Side
+
+Filtering on the publishing side consists in defining some logic to extract the filter value from a message.
+The following snippet shows how to extract the filter value from an application property:
+
+.Declaring a producer with logic to extract a filter value from each message
+[source,java,indent=0]
+--------
+include::{test-examples}/FilteringUsage.java[tag=producer-simple]
+--------
+<1> Get filter value from `state` application property
+
+Note the filter value can be null: the message is then published in a regular way.
+It is called in this context an _unfiltered_ message.
+
+===== Filtering on the Consuming Side
+
+A consumer needs to set up one or several filter values and some filtering logic to enable filtering.
+The filtering logic must be consistent with the filter values.
+In the next snippet, the consumer wants to process only messages from the state of California.
+It sets a filter value to `california` and a predicate that accepts a message only if the `state` application properties is `california`:
+
+.Declaring a consumer with a filter value and filtering logic
+[source,java,indent=0]
+--------
+include::{test-examples}/FilteringUsage.java[tag=consumer-simple]
+--------
+<1> Set filter value
+<2> Set filtering logic
+
+The filter logic is a `Predicate<Message>`.
+It must return `true` if a message is accepted, following the same semantics as `java.util.stream.Stream#filter(Predicate)`.
+
+As stated above, not all messages must have an associated filter value.
+Many applications may not need some filtering, so they can publish messages the regular way.
+And a stream can contain messages with and without an associated filter value.
+
+By default, messages without a filter value (a.k.a _unfiltered_ messages) are not sent to a consumer that enabled filtering.
+
+But what if a consumer wants to process messages with a filter value and messages without any filter value as well?
+It must use the `matchUnfiltered()` method in its declaration and also make sure to keep the filtering logic consistent:
+
+.Declaring a consumer with a filter value and filtering logic
+[source,java,indent=0]
+--------
+include::{test-examples}/FilteringUsage.java[tag=consumer-match-unfiltered]
+--------
+<1> Request messages from California
+<2> Request messages without a filter value as well
+<3> Let both types of messages pass
+
+In the example above, the filtering logic has been adapted to let pass `california` messages _and_ messages without a state set as well.
+
 ==== Using Native `epoll`
 
 The stream Java client uses the https://netty.io/[Netty] network framework and its Java NIO transport implementation by default.

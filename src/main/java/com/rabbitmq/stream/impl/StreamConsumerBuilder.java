@@ -379,6 +379,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
     @Override
     public FilterConfiguration values(String... filterValues) {
+      if (filterValues == null || filterValues.length == 0) {
+        throw new IllegalArgumentException("At least one filter value must be specified");
+      }
       this.filterValues = Arrays.asList(filterValues);
       return this;
     }

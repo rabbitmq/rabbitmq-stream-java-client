@@ -132,6 +132,12 @@ public interface ProducerBuilder {
    */
   ProducerBuilder enqueueTimeout(Duration timeout);
 
+  /**
+   * Logic to extract a filter value from a message.
+   *
+   * @param filterValueExtractor
+   * @return
+   */
   ProducerBuilder filter(Function<Message, String> filterValueExtractor);
 
   /**

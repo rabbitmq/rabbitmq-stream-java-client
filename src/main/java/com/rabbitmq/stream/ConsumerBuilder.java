@@ -152,6 +152,11 @@ public interface ConsumerBuilder {
    */
   ConsumerBuilder noTrackingStrategy();
 
+  /**
+   * Configure the filtering.
+   *
+   * @return the filtering configuration
+   */
   FilterConfiguration filter();
 
   /**
@@ -246,16 +251,53 @@ public interface ConsumerBuilder {
     ConsumerBuilder builder();
   }
 
+  /** Filter configuration. */
   interface FilterConfiguration {
 
+    /**
+     * Set the filter values.
+     *
+     * @param filterValues
+     * @return this filter configuration instance
+     */
     FilterConfiguration values(String... filterValues);
 
+    /**
+     * Client-side filtering logic.
+     *
+     * <p>It must be consistent with the requested filter {@link #values( String...)} and the {@link
+     * #matchUnfiltered()} flag.
+     *
+     * @param filter a predicate that returns <code>true</code> if a message should go to the {@link
+     *     MessageHandler}
+     * @return this filter configuration instance
+     */
     FilterConfiguration filter(Predicate<Message> filter);
 
+    /**
+     * Whether messages without a filter value should be sent as well.
+     *
+     * <p>Default is false.
+     *
+     * @return this filter configuration instance
+     */
     FilterConfiguration matchUnfiltered();
 
+    /**
+     * Whether messages without a filter value should be sent as well.
+     *
+     * <p>Default is false.
+     *
+     * @param matchUnfiltered
+     * @return this filter configuration instance
+     */
     FilterConfiguration matchUnfiltered(boolean matchUnfiltered);
 
+    /**
+     * Go back to the builder.
+     *
+     * @return the consumer builder
+     */
     ConsumerBuilder builder();
   }
 }
