@@ -25,7 +25,7 @@ public class FilteringUsage {
     // tag::producer-simple[]
     Producer producer = environment.producerBuilder()
       .stream("invoices")
-      .filter(msg ->
+      .filterValue(msg ->
         msg.getApplicationProperties().get("state").toString())  // <1>
       .build();
     // end::producer-simple[]
@@ -39,7 +39,7 @@ public class FilteringUsage {
       .stream("invoices")
       .filter()
         .values(filterValue)  // <1>
-        .filter(msg ->
+        .postFilter(msg ->
           filterValue.equals(msg.getApplicationProperties().get("state")))  // <2>
       .builder()
       .messageHandler((ctx, msg) -> { })
@@ -56,7 +56,7 @@ public class FilteringUsage {
       .filter()
         .values(filterValue)  // <1>
         .matchUnfiltered()  // <2>
-        .filter(msg ->
+        .postFilter(msg ->
             filterValue.equals(msg.getApplicationProperties().get("state"))
             || !msg.getApplicationProperties().containsKey("state")  // <3>
         )

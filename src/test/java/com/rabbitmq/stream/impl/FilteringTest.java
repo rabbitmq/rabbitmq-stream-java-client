@@ -91,7 +91,7 @@ public class FilteringTest {
     consumerBuilder()
         .filter()
         .values(newFilterValue)
-        .filter(
+        .postFilter(
             m -> {
               receivedMessageCount.incrementAndGet();
               return newFilterValue.equals(m.getProperties().getGroupId());
@@ -142,7 +142,7 @@ public class FilteringTest {
         .filter()
         .values(filterValues.get(0))
         .matchUnfiltered(matchUnfiltered)
-        .filter(m -> true)
+        .postFilter(m -> true)
         .builder()
         .messageHandler(
             (ctx, msg) -> {
@@ -176,7 +176,10 @@ public class FilteringTest {
   private void publish(
       int messageCount, String producerName, Supplier<String> filterValueSupplier) {
     Producer producer =
-        producerBuilder().name(producerName).filter(m -> m.getProperties().getGroupId()).build();
+        producerBuilder()
+            .name(producerName)
+            .filterValue(m -> m.getProperties().getGroupId())
+            .build();
     CountDownLatch latch = new CountDownLatch(messageCount);
     ConfirmationHandler confirmationHandler = ctx -> latch.countDown();
     IntStream.range(0, messageCount)

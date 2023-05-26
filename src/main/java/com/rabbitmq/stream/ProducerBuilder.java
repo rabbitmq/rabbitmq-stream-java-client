@@ -136,9 +136,9 @@ public interface ProducerBuilder {
    * Logic to extract a filter value from a message.
    *
    * @param filterValueExtractor
-   * @return
+   * @return this builder instance
    */
-  ProducerBuilder filter(Function<Message, String> filterValueExtractor);
+  ProducerBuilder filterValue(Function<Message, String> filterValueExtractor);
 
   /**
    * Create the {@link Producer} instance.

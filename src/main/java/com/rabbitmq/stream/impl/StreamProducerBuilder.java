@@ -131,7 +131,7 @@ class StreamProducerBuilder implements ProducerBuilder {
   }
 
   @Override
-  public ProducerBuilder filter(Function<Message, String> filterValueExtractor) {
+  public ProducerBuilder filterValue(Function<Message, String> filterValueExtractor) {
     this.filterValueExtractor = filterValueExtractor;
     return this;
   }

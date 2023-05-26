@@ -263,7 +263,7 @@ public interface ConsumerBuilder {
     FilterConfiguration values(String... filterValues);
 
     /**
-     * Client-side filtering logic.
+     * Client-side filtering logic, occurring after the server-side filtering.
      *
      * <p>It must be consistent with the requested filter {@link #values( String...)} and the {@link
      * #matchUnfiltered()} flag.
@@ -272,7 +272,7 @@ public interface ConsumerBuilder {
      *     MessageHandler}
      * @return this filter configuration instance
      */
-    FilterConfiguration filter(Predicate<Message> filter);
+    FilterConfiguration postFilter(Predicate<Message> filter);
 
     /**
      * Whether messages without a filter value should be sent as well.

@@ -387,7 +387,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     }
 
     @Override
-    public FilterConfiguration filter(Predicate<Message> filter) {
+    public FilterConfiguration postFilter(Predicate<Message> filter) {
       this.filter = filter;
       return this;
     }
