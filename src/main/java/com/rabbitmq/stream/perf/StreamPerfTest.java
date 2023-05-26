@@ -122,6 +122,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
   @CommandLine.Mixin
   private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
+
   // for testing
   private final AddressResolver addressResolver;
   private final PrintWriter err, out;
@@ -476,6 +477,7 @@ public class StreamPerfTest implements Callable<Integer> {
   private List<Monitoring> monitorings;
   private volatile Environment environment;
   private volatile EventLoopGroup eventLoopGroup;
+
   // constructor for completion script generation
   public StreamPerfTest() {
     this(null, null, null, null);

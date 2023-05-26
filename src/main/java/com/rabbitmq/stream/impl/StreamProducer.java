@@ -94,6 +94,9 @@ class StreamProducer implements Producer {
       Duration enqueueTimeout,
       Function<Message, String> filterValueExtractor,
       StreamEnvironment environment) {
+    if (filterValueExtractor != null && !environment.filteringSupported()) {
+      throw new IllegalArgumentException("Filtering is not supported by the broker");
+    }
     this.id = ID_SEQUENCE.getAndIncrement();
     this.environment = environment;
     this.name = name;
@@ -606,8 +609,12 @@ class StreamProducer implements Producer {
     public int write(ByteBuf bb, Object entity, long publishingId) {
       AccumulatedEntity accumulatedEntity = (AccumulatedEntity) entity;
       String filterValue = accumulatedEntity.filterValue();
-      bb.writeShort(filterValue.length());
-      bb.writeBytes(filterValue.getBytes(StandardCharsets.UTF_8));
+      if (filterValue == null) {
+        bb.writeShort(-1);
+      } else {
+        bb.writeShort(filterValue.length());
+        bb.writeBytes(filterValue.getBytes(StandardCharsets.UTF_8));
+      }
       Codec.EncodedMessage messageToPublish =
           (Codec.EncodedMessage) accumulatedEntity.encodedEntity();
       bb.writeInt(messageToPublish.getSize());
@@ -619,7 +626,12 @@ class StreamProducer implements Producer {
     public int fragmentLength(Object entity) {
       AccumulatedEntity accumulatedEntity = (AccumulatedEntity) entity;
       Codec.EncodedMessage message = (Codec.EncodedMessage) accumulatedEntity.encodedEntity();
-      return 8 + 2 + accumulatedEntity.filterValue().length() + 4 + message.getSize();
+      String filterValue = accumulatedEntity.filterValue();
+      if (filterValue == null) {
+        return 8 + 2 + 4 + message.getSize();
+      } else {
+        return 8 + 2 + accumulatedEntity.filterValue().length() + 4 + message.getSize();
+      }
     }
   }
 }

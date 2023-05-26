@@ -76,7 +76,9 @@ class StreamConsumer implements Consumer {
       ConsumerUpdateListener consumerUpdateListener,
       int initialCredits,
       int additionalCredits) {
-
+    if (Utils.filteringEnabled(subscriptionProperties) && !environment.filteringSupported()) {
+      throw new IllegalArgumentException("Filtering is not supported by the broker");
+    }
     this.id = ID_SEQUENCE.getAndIncrement();
     Runnable trackingClosingCallback;
     try {

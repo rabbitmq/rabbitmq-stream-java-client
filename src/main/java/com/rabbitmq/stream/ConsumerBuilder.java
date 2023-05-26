@@ -252,6 +252,10 @@ public interface ConsumerBuilder {
 
     FilterConfiguration filter(Predicate<Message> filter);
 
+    FilterConfiguration matchUnfiltered();
+
+    FilterConfiguration matchUnfiltered(boolean matchUnfiltered);
+
     ConsumerBuilder builder();
   }
 }

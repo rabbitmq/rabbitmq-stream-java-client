@@ -13,6 +13,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_FILTER_PREFIX;
+import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED;
+
 import com.rabbitmq.stream.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -21,6 +24,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 class StreamConsumerBuilder implements ConsumerBuilder {
@@ -87,7 +91,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
   @Override
   public ConsumerBuilder singleActiveConsumer() {
-    this.subscriptionProperties.put("single-active-consumer", "true");
+    this.subscriptionProperties.put(Utils.SUBSCRIPTION_PROPERTY_SAC, "true");
     return this;
   }
 
@@ -195,8 +199,14 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       handler = this.messageHandler;
     } else {
       this.filterConfiguration.validate();
+      AtomicInteger i = new AtomicInteger(0);
+      this.filterConfiguration.filterValues.forEach(
+          v ->
+              this.subscriptionProperties.put(
+                  SUBSCRIPTION_PROPERTY_FILTER_PREFIX + i.getAndIncrement(), v));
       this.subscriptionProperties.put(
-          "filters", String.join(",", this.filterConfiguration.filterValues));
+          SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED,
+          this.filterConfiguration.matchUnfiltered ? "true" : "false");
       final Predicate<Message> filter = this.filterConfiguration.filter;
       final MessageHandler delegate = this.messageHandler;
       handler =
@@ -226,7 +236,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       if (Utils.isSac(this.subscriptionProperties)) {
-        this.subscriptionProperties.put("super-stream", this.superStream);
+        this.subscriptionProperties.put(Utils.SUBSCRIPTION_PROPERTY_SUPER_STREAM, this.superStream);
       }
       consumer =
           new SuperStreamConsumer(this, this.superStream, this.environment, trackingConfiguration);
@@ -361,6 +371,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     private final StreamConsumerBuilder builder;
     private List<String> filterValues;
     private Predicate<Message> filter;
+    private boolean matchUnfiltered = false;
 
     private DefaultFilterConfiguration(StreamConsumerBuilder builder) {
       this.builder = builder;
@@ -368,7 +379,6 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
     @Override
     public FilterConfiguration values(String... filterValues) {
-      // FIXME: check for ',' in values
       this.filterValues = Arrays.asList(filterValues);
       return this;
     }
@@ -376,6 +386,18 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     @Override
     public FilterConfiguration filter(Predicate<Message> filter) {
       this.filter = filter;
+      return this;
+    }
+
+    @Override
+    public FilterConfiguration matchUnfiltered() {
+      this.matchUnfiltered = true;
+      return this;
+    }
+
+    @Override
+    public FilterConfiguration matchUnfiltered(boolean matchUnfiltered) {
+      this.matchUnfiltered = matchUnfiltered;
       return this;
     }
 

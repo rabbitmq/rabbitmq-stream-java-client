@@ -1093,7 +1093,7 @@ public class ClientTest {
         stream,
         OffsetSpecification.first(),
         1,
-        Collections.singletonMap("filters", newFilterValue));
+        Collections.singletonMap("filter.1", newFilterValue));
 
     int expectedCount = filterValueCount.get(newFilterValue).get();
     waitAtMost(() -> filteredConsumedMessageCount.get() == expectedCount);
