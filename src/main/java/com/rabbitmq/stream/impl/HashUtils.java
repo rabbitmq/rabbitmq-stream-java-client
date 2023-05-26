@@ -26,6 +26,8 @@ final class HashUtils {
   // https://github.com/apache/commons-codec/blob/rel/commons-codec-1.15/src/main/java/org/apache/commons/codec/digest/MurmurHash3.java
   static class Murmur3 implements ToIntFunction<String> {
 
+    private static final int DEFAULT_SEED = 104729;
+
     private static final int C1_32 = 0xcc9e2d51;
     private static final int C2_32 = 0x1b873593;
     private static final int R1_32 = 15;
@@ -57,12 +59,21 @@ final class HashUtils {
       return hash;
     }
 
+    private final int seed;
+
+    Murmur3() {
+      this(DEFAULT_SEED);
+    }
+
+    Murmur3(int seed) {
+      this.seed = seed;
+    }
+
     @Override
     public int applyAsInt(String value) {
       byte[] data = value.getBytes(StandardCharsets.UTF_8);
       final int offset = 0;
       final int length = data.length;
-      final int seed = 104729;
       int hash = seed;
       final int nblocks = length >> 2;
 
