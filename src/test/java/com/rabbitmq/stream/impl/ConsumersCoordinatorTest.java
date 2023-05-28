@@ -22,12 +22,7 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyByte;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -54,6 +49,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -62,10 +58,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.*;
 
 public class ConsumersCoordinatorTest {
 
@@ -1655,6 +1648,122 @@ public class ConsumersCoordinatorTest {
     } finally {
       executorService.shutdownNow();
     }
+  }
+
+  @ParameterizedTest
+  @MethodSource("disruptionArguments")
+  @SuppressWarnings("unchecked")
+  void shouldCallConsumerFlowControlHandlers(Consumer<ConsumersCoordinatorTest> configurator)
+          throws Exception {
+
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+            .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+            .thenReturn(metadata(null, replicas()))
+            .thenReturn(metadata(null, Collections.emptyList()))
+            .thenReturn(metadata(null, replicas()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+
+    String consumerName = "consumer-name";
+    long lastStoredOffset = 5;
+    long lastReceivedOffset = 10;
+    when(client.queryOffset(consumerName, "stream"))
+            .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, 0L))
+            .thenReturn(new QueryOffsetResponse(Constants.RESPONSE_CODE_OK, lastStoredOffset));
+
+    ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
+            ArgumentCaptor.forClass(OffsetSpecification.class);
+    ArgumentCaptor<Map<String, String>> subscriptionPropertiesArgumentCaptor =
+            ArgumentCaptor.forClass(Map.class);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            offsetSpecificationArgumentCaptor.capture(),
+            anyInt(),
+            subscriptionPropertiesArgumentCaptor.capture()))
+            .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    ConsumerFlowControlStrategy mockedConsumerFlowControlStrategy = Mockito.mock(ConsumerFlowControlStrategy.class);
+
+    int numberOfInitialCreditsOnSubscribe = 7;
+
+    when(mockedConsumerFlowControlStrategy.handleSubscribe(anyByte(), anyString(), any(), anyMap())).thenReturn(numberOfInitialCreditsOnSubscribe);
+
+    ConsumerFlowControlStrategyBuilder<ConsumerFlowControlStrategy> mockedConsumerFlowControlStrategyBuilder = Mockito.mock(ConsumerFlowControlStrategyBuilder.class);
+    when(mockedConsumerFlowControlStrategyBuilder.build(any())).thenReturn(mockedConsumerFlowControlStrategy);
+
+    Runnable closingRunnable =
+            coordinator.subscribe(
+                    consumer,
+                    "stream",
+                    null,
+                    consumerName,
+                    NO_OP_SUBSCRIPTION_LISTENER,
+                    NO_OP_TRACKING_CLOSING_CALLBACK,
+                    (offset, message) -> {},
+                    mockedConsumerFlowControlStrategyBuilder,
+                    Collections.emptyMap(),
+                    initialCredits);
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+            .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), eq(numberOfInitialCreditsOnSubscribe), anyMap());
+    verify(mockedConsumerFlowControlStrategy, times(1))
+            .handleSubscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyMap());
+    assertThat(offsetSpecificationArgumentCaptor.getAllValues())
+            .element(0)
+            .isEqualTo(OffsetSpecification.next());
+    assertThat(subscriptionPropertiesArgumentCaptor.getAllValues())
+            .element(0)
+            .isEqualTo(Collections.singletonMap("name", "consumer-name"));
+
+    Message message = new WrapperMessageBuilder().build();
+
+    messageListener.handle(
+            subscriptionIdCaptor.getValue(),
+            lastReceivedOffset,
+            0,
+            0,
+            message);
+
+    verify(mockedConsumerFlowControlStrategy).handleMessage(
+            subscriptionIdCaptor.getValue(),
+            lastReceivedOffset,
+            0,
+            0,
+            message
+    );
+
+    configurator.accept(this);
+
+    Thread.sleep(retryDelay.toMillis() * 5);
+
+    verify(client, times(2))
+            .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    verify(mockedConsumerFlowControlStrategy, times(2))
+            .handleSubscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyMap());
+
+    assertThat(offsetSpecificationArgumentCaptor.getAllValues())
+            .element(1)
+            .isEqualTo(OffsetSpecification.offset(lastStoredOffset + 1))
+            .isNotEqualTo(OffsetSpecification.offset(lastReceivedOffset));
+    assertThat(subscriptionPropertiesArgumentCaptor.getAllValues())
+            .element(1)
+            .isEqualTo(Collections.singletonMap("name", "consumer-name"));
+    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+            .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    closingRunnable.run();
+
+    verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+    verify(mockedConsumerFlowControlStrategy, times(1))
+            .handleUnsubscribe(subscriptionIdCaptor.getValue());
   }
 
   Client.Broker leader() {
