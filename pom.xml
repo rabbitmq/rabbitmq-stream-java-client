@@ -58,7 +58,7 @@
     <micrometer.version>1.11.0</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.7.3</picocli.version>
-    <guava.version>31.1-jre</guava.version>
+    <guava.version>32.0.0-jre</guava.version>
     <commons-compress.version>1.23.0</commons-compress.version>
     <zstd-jni.version>1.5.5-3</zstd-jni.version>
     <lz4-java.version>1.8.0</lz4-java.version>
