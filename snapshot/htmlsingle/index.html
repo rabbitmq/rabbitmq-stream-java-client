@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.11.0-SNAPSHOT</span>
-<br><span id="revremark">(018cfb8)</span>
+<br><span id="revremark">(621b8df)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -925,7 +925,7 @@ same host).</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq -p 5552:5552 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.11</code></pre>
+    rabbitmq:3.12</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -937,7 +937,7 @@ ports for other protocols:</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.11-management</code></pre>
+    rabbitmq:3.12-management</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -964,7 +964,7 @@ this is perfect for experimenting locally.</p>
 <div class="listingblock">
 <div class="title">Running RabbitMQ Stream with the host network driver</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq --network host rabbitmq:3.11</code></pre>
+<pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq --network host rabbitmq:3.12</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -5203,7 +5203,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.11.0-SNAPSHOT<br>
-Last updated 2023-06-05 06:53:41 UTC
+Last updated 2023-06-05 09:53:51 UTC
 </div>
 </div>
 </body>
