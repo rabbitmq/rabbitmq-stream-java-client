@@ -901,13 +901,15 @@ public class StreamConsumerTest {
   @Test
   void creationShouldFailWithDetailsWhenUnknownHost() {
     Address localhost = localhost();
+    // first connection is locator
+    AtomicInteger connectionCount = new AtomicInteger(0);
     EnvironmentBuilder builder =
         environmentBuilder()
             .host(localhost.host())
             .port(localhost.port())
             .addressResolver(
                 n ->
-                    n.equals(localhost)
+                    connectionCount.getAndIncrement() == 0
                         ? n
                         : new Address(UUID.randomUUID().toString(), Client.DEFAULT_PORT));
     try (Environment env = builder.build()) {
