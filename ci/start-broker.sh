@@ -18,7 +18,7 @@ mkdir -p rabbitmq-configuration/tls
 cp -R "${PWD}"/tls-gen/basic/result/* rabbitmq-configuration/tls
 chmod o+r rabbitmq-configuration/tls/*
 
-echo "[rabbitmq_stream,rabbitmq_mqtt,rabbitmq_stomp,rabbitmq_amqp1_0]." >> rabbitmq-configuration/enabled_plugins
+echo "[rabbitmq_stream,rabbitmq_mqtt,rabbitmq_stomp,rabbitmq_amqp1_0,rabbitmq_auth_mechanism_ssl]." >> rabbitmq-configuration/enabled_plugins
 
 echo "loopback_users = none
 
@@ -29,6 +29,10 @@ ssl_options.certfile   = /etc/rabbitmq/tls/server_$(hostname)_certificate.pem
 ssl_options.keyfile    = /etc/rabbitmq/tls/server_$(hostname)_key.pem
 ssl_options.verify     = verify_peer
 ssl_options.fail_if_no_peer_cert = false
+ssl_options.depth = 1
+
+auth_mechanisms.1 = PLAIN
+auth_mechanisms.2 = EXTERNAL
 
 stream.listeners.ssl.1 = 5551" >> rabbitmq-configuration/rabbitmq.conf
 

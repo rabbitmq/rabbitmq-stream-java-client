@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.Utils.TRUST_EVERYTHING_TRUST_MANAGER;
+import static java.lang.String.format;
 import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -28,7 +29,9 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfAuthMechanismSslNotEnabled;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
+import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
 import io.netty.channel.Channel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -48,6 +51,7 @@ import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
@@ -57,6 +61,7 @@ import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLParameters;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -250,6 +255,33 @@ public class TlsTest {
             .build();
 
     cf.get(new ClientParameters().sslContext(context));
+  }
+
+  @Test
+  @DisabledIfAuthMechanismSslNotEnabled
+  @Disabled
+  void verifiedConnectionWithCorrectClientPrivateKeyAndSaslExternal() throws Exception {
+    X509Certificate clientCertificate = clientCertificate();
+    SslContext context =
+        SslContextBuilder.forClient()
+            .trustManager(caCertificate())
+            .keyManager(clientKey(), clientCertificate)
+            .build();
+
+    String username = clientCertificate.getSubjectX500Principal().getName();
+    Host.rabbitmqctl(format("delete_user %s", username));
+    Host.rabbitmqctl(format("add_user %s foo", username));
+    try {
+      Host.rabbitmqctl(format("set_permissions %s '.*' '.*' '.*'", username));
+
+      cf.get(
+          new ClientParameters()
+              .username(UUID.randomUUID().toString())
+              .sslContext(context)
+              .saslConfiguration(DefaultSaslConfiguration.EXTERNAL));
+    } finally {
+      Host.rabbitmqctl(format("delete_user %s", username));
+    }
   }
 
   @Test

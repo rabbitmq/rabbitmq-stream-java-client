@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -64,6 +65,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.assertj.core.api.AssertDelegateTarget;
@@ -336,7 +338,7 @@ public final class TestUtils {
 
   private static String streamName(Class<?> testClass, Method testMethod) {
     String uuid = UUID.randomUUID().toString();
-    return String.format(
+    return format(
         "%s_%s%s",
         testClass.getSimpleName(), testMethod.getName(), uuid.substring(uuid.length() / 2));
   }
@@ -479,6 +481,12 @@ public final class TestUtils {
   @Documented
   @ExtendWith(DisabledIfAmqp10NotEnabledCondition.class)
   @interface DisabledIfAmqp10NotEnabled {}
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
+  @ExtendWith(DisabledIfAuthMechanismSslNotEnabledCondition.class)
+  @interface DisabledIfAuthMechanismSslNotEnabled {}
 
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
@@ -707,75 +715,72 @@ public final class TestUtils {
     }
   }
 
-  static class DisabledIfMqttNotEnabledCondition implements ExecutionCondition {
+  abstract static class DisabledIfPluginNotEnabledCondition implements ExecutionCondition {
+
+    private final String pluginLabel;
+    private final Predicate<String> condition;
+
+    DisabledIfPluginNotEnabledCondition(String pluginLabel, Predicate<String> condition) {
+      this.pluginLabel = pluginLabel;
+      this.condition = condition;
+    }
 
     @Override
     public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
       if (Host.rabbitmqctlCommand() == null) {
         return ConditionEvaluationResult.disabled(
-            "rabbitmqctl.bin system property not set, cannot check if MQTT plugin is enabled");
+            format(
+                "rabbitmqctl.bin system property not set, cannot check if %s plugin is enabled",
+                pluginLabel));
       } else {
         try {
           Process process = Host.rabbitmqctl("status");
           String output = capture(process.getInputStream());
-          if (output.contains("rabbitmq_mqtt") && output.contains("protocol: mqtt")) {
-            return ConditionEvaluationResult.enabled("MQTT plugin enabled");
+          if (condition.test(output)) {
+            return ConditionEvaluationResult.enabled(format("%s plugin enabled", pluginLabel));
           } else {
-            return ConditionEvaluationResult.disabled("MQTT plugin disabled");
+            return ConditionEvaluationResult.disabled(format("%s plugin disabled", pluginLabel));
           }
         } catch (Exception e) {
           return ConditionEvaluationResult.disabled(
-              "Error while trying to detect MQTT plugin: " + e.getMessage());
+              format("Error while trying to detect %s plugin: " + e.getMessage(), pluginLabel));
         }
       }
     }
   }
 
-  static class DisabledIfStompNotEnabledCondition implements ExecutionCondition {
+  static class DisabledIfMqttNotEnabledCondition extends DisabledIfPluginNotEnabledCondition {
 
-    @Override
-    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
-      if (Host.rabbitmqctlCommand() == null) {
-        return ConditionEvaluationResult.disabled(
-            "rabbitmqctl.bin system property not set, cannot check if STOMP plugin is enabled");
-      } else {
-        try {
-          Process process = Host.rabbitmqctl("status");
-          String output = capture(process.getInputStream());
-          if (output.contains("rabbitmq_stomp") && output.contains("protocol: stomp")) {
-            return ConditionEvaluationResult.enabled("STOMP plugin enabled");
-          } else {
-            return ConditionEvaluationResult.disabled("STOMP plugin disabled");
-          }
-        } catch (Exception e) {
-          return ConditionEvaluationResult.disabled(
-              "Error while trying to detect STOMP plugin: " + e.getMessage());
-        }
-      }
+    DisabledIfMqttNotEnabledCondition() {
+      super(
+          "MQTT", output -> output.contains("rabbitmq_mqtt") && output.contains("protocol: mqtt"));
     }
   }
 
-  static class DisabledIfAmqp10NotEnabledCondition implements ExecutionCondition {
+  static class DisabledIfStompNotEnabledCondition extends DisabledIfPluginNotEnabledCondition {
 
-    @Override
-    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
-      if (Host.rabbitmqctlCommand() == null) {
-        return ConditionEvaluationResult.disabled(
-            "rabbitmqctl.bin system property not set, cannot check if STOMP plugin is enabled");
-      } else {
-        try {
-          Process process = Host.rabbitmqctl("status");
-          String output = capture(process.getInputStream());
-          if (output.contains("rabbitmq_amqp1_0") && output.contains("AMQP 1.0")) {
-            return ConditionEvaluationResult.enabled("STOMP plugin enabled");
-          } else {
-            return ConditionEvaluationResult.disabled("STOMP plugin disabled");
-          }
-        } catch (Exception e) {
-          return ConditionEvaluationResult.disabled(
-              "Error while trying to detect STOMP plugin: " + e.getMessage());
-        }
-      }
+    DisabledIfStompNotEnabledCondition() {
+      super(
+          "STOMP",
+          output -> output.contains("rabbitmq_stomp") && output.contains("protocol: stomp"));
+    }
+  }
+
+  static class DisabledIfAuthMechanismSslNotEnabledCondition
+      extends DisabledIfPluginNotEnabledCondition {
+
+    DisabledIfAuthMechanismSslNotEnabledCondition() {
+      super(
+          "X509 authentication mechanism",
+          output -> output.contains("rabbitmq_auth_mechanism_ssl"));
+    }
+  }
+
+  static class DisabledIfAmqp10NotEnabledCondition extends DisabledIfPluginNotEnabledCondition {
+
+    DisabledIfAmqp10NotEnabledCondition() {
+      super(
+          "AMQP 1.0", output -> output.contains("rabbitmq_amqp1_0") && output.contains("AMQP 1.0"));
     }
   }
 
