@@ -265,7 +265,7 @@ public class TlsTest {
             .build();
 
     String username = clientCertificate.getSubjectX500Principal().getName();
-    Host.rabbitmqctl(format("delete_user %s", username));
+    Host.rabbitmqctlIgnoreError(format("delete_user %s", username));
     Host.rabbitmqctl(format("add_user %s foo", username));
     try {
       Host.rabbitmqctl(format("set_permissions %s '.*' '.*' '.*'", username));
@@ -292,7 +292,7 @@ public class TlsTest {
             .build();
 
     String username = clientCertificate.getSubjectX500Principal().getName();
-    Host.rabbitmqctl(format("delete_user %s", username));
+    Host.rabbitmqctlIgnoreError(format("delete_user %s", username));
     assertThatThrownBy(
             () ->
                 cf.get(
