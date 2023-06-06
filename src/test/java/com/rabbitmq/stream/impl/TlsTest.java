@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_13_0;
+import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.Utils.TRUST_EVERYTHING_TRUST_MANAGER;
@@ -21,14 +23,9 @@ import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.stream.Address;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.Host;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfAuthMechanismSslNotEnabled;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
@@ -61,7 +58,6 @@ import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLParameters;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -259,8 +255,8 @@ public class TlsTest {
 
   @Test
   @DisabledIfAuthMechanismSslNotEnabled
-  @Disabled
-  void verifiedConnectionWithCorrectClientPrivateKeyAndSaslExternal() throws Exception {
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
+  void saslExternalShouldSucceedWithUserForClientCertificate() throws Exception {
     X509Certificate clientCertificate = clientCertificate();
     SslContext context =
         SslContextBuilder.forClient()
@@ -282,6 +278,30 @@ public class TlsTest {
     } finally {
       Host.rabbitmqctl(format("delete_user %s", username));
     }
+  }
+
+  @Test
+  @DisabledIfAuthMechanismSslNotEnabled
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
+  void saslExternalShouldFailIfNoUserForClientCertificate() throws Exception {
+    X509Certificate clientCertificate = clientCertificate();
+    SslContext context =
+        SslContextBuilder.forClient()
+            .trustManager(caCertificate())
+            .keyManager(clientKey(), clientCertificate)
+            .build();
+
+    String username = clientCertificate.getSubjectX500Principal().getName();
+    Host.rabbitmqctl(format("delete_user %s", username));
+    assertThatThrownBy(
+            () ->
+                cf.get(
+                    new ClientParameters()
+                        .username(UUID.randomUUID().toString())
+                        .sslContext(context)
+                        .saslConfiguration(DefaultSaslConfiguration.EXTERNAL)))
+        .isInstanceOf(StreamException.class)
+        .has(responseCode(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE));
   }
 
   @Test
