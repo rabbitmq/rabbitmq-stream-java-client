@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  RABBITMQ_IMAGE: 'pivotalrabbitmq/rabbitmq:stream-chunk-filtering-otp-max-bazel'
+  RABBITMQ_IMAGE: 'pivotalrabbitmq/rabbitmq:super-stream-exchange-type-otp-max-bazel'
 
 jobs:
   build:
