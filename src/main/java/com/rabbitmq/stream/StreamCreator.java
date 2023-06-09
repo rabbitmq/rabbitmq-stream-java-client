@@ -14,6 +14,7 @@
 package com.rabbitmq.stream;
 
 import java.time.Duration;
+import java.util.function.Function;
 
 /** API to configure and create a stream. */
 public interface StreamCreator {
@@ -62,6 +63,16 @@ public interface StreamCreator {
    * @return this creator instance
    */
   StreamCreator leaderLocator(LeaderLocator leaderLocator);
+
+  /**
+   * Set the size of the stream chunk filters.
+   *
+   * @param size
+   * @return this creator instance
+   * @see ProducerBuilder#filterValue( Function)
+   * @see ConsumerBuilder#filter()
+   */
+  StreamCreator filterSize(int size);
 
   /**
    * Create the stream.

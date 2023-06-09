@@ -2582,6 +2582,14 @@ public class Client implements AutoCloseable {
       return this;
     }
 
+    public StreamParametersBuilder filterSize(int size) {
+      if (size < 16 || size > 255) {
+        throw new IllegalArgumentException("Stream filter size must be between 16 and 255");
+      }
+      this.parameters.put("stream-filter-size-bytes", String.valueOf(size));
+      return this;
+    }
+
     public StreamParametersBuilder put(String key, String value) {
       parameters.put(key, value);
       return this;

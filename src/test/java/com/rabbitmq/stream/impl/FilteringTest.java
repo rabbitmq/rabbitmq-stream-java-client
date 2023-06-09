@@ -15,6 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
@@ -28,6 +29,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -181,6 +184,17 @@ public class FilteringTest {
             waitAtMost(CONDITION_TIMEOUT, () -> receivedMessageCount.get() >= expected);
           }
         });
+  }
+
+  @Test
+  void setFilterSizeOnCreation(TestInfo info) {
+    String s = streamName(info);
+    this.environment.streamCreator().stream(s).filterSize(128).create();
+    this.environment.deleteStream(s);
+    assertThatThrownBy(() -> this.environment.streamCreator().filterSize(15))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> this.environment.streamCreator().filterSize(256))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   private ProducerBuilder producerBuilder() {
