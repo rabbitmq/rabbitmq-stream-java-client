@@ -32,6 +32,8 @@ interface MessageAccumulator {
 
     long publishindId();
 
+    String filterValue();
+
     Object encodedEntity();
 
     StreamProducer.ConfirmationCallback confirmationCallback();

@@ -855,6 +855,7 @@ public class Client implements AutoCloseable {
       encodedMessages.add(encodedMessage);
     }
     return publishInternal(
+        VERSION_1,
         this.channel,
         publisherId,
         encodedMessages,
@@ -881,6 +882,7 @@ public class Client implements AutoCloseable {
       encodedMessages.add(wrapper);
     }
     return publishInternal(
+        VERSION_1,
         this.channel,
         publisherId,
         encodedMessages,
@@ -911,6 +913,7 @@ public class Client implements AutoCloseable {
       encodedMessageBatches.add(encodedMessageBatch);
     }
     return publishInternal(
+        VERSION_1,
         this.channel,
         publisherId,
         encodedMessageBatches,
@@ -947,6 +950,7 @@ public class Client implements AutoCloseable {
       encodedMessageBatches.add(wrapper);
     }
     return publishInternal(
+        VERSION_1,
         this.channel,
         publisherId,
         encodedMessageBatches,
@@ -977,15 +981,17 @@ public class Client implements AutoCloseable {
   }
 
   List<Long> publishInternal(
+      short version,
       byte publisherId,
       List<Object> encodedEntities,
       OutboundEntityWriteCallback callback,
       ToLongFunction<Object> publishSequenceFunction) {
     return this.publishInternal(
-        this.channel, publisherId, encodedEntities, callback, publishSequenceFunction);
+        version, this.channel, publisherId, encodedEntities, callback, publishSequenceFunction);
   }
 
   List<Long> publishInternal(
+      short version,
       Channel ch,
       byte publisherId,
       List<Object> encodedEntities,
@@ -1002,6 +1008,7 @@ public class Client implements AutoCloseable {
         // the current message/batch does not fit, we're sending the batch
         int frameLength = length - callback.fragmentLength(encodedEntity);
         sendEntityBatch(
+            version,
             ch,
             frameLength,
             publisherId,
@@ -1017,6 +1024,7 @@ public class Client implements AutoCloseable {
       currentIndex++;
     }
     sendEntityBatch(
+        version,
         ch,
         length,
         publisherId,
@@ -1031,6 +1039,7 @@ public class Client implements AutoCloseable {
   }
 
   private void sendEntityBatch(
+      short version,
       Channel ch,
       int frameLength,
       byte publisherId,
@@ -1044,7 +1053,7 @@ public class Client implements AutoCloseable {
     ByteBuf out = allocateNoCheck(ch.alloc(), frameLength + 4);
     out.writeInt(frameLength);
     out.writeShort(encodeRequestCode(COMMAND_PUBLISH));
-    out.writeShort(VERSION_1);
+    out.writeShort(version);
     out.writeByte(publisherId);
     int messageCount = 0;
     out.writeInt(toExcluded - fromIncluded);

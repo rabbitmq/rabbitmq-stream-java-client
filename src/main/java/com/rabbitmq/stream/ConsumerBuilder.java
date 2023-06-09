@@ -14,6 +14,7 @@
 package com.rabbitmq.stream;
 
 import java.time.Duration;
+import java.util.function.Predicate;
 
 /** API to configure and create a {@link Consumer}. */
 public interface ConsumerBuilder {
@@ -151,6 +152,8 @@ public interface ConsumerBuilder {
    */
   ConsumerBuilder noTrackingStrategy();
 
+  FilterConfiguration filter();
+
   /**
    * Configure flow of messages.
    *
@@ -240,6 +243,15 @@ public interface ConsumerBuilder {
      *
      * @return the consumer builder
      */
+    ConsumerBuilder builder();
+  }
+
+  interface FilterConfiguration {
+
+    FilterConfiguration values(String... filterValues);
+
+    FilterConfiguration filter(Predicate<Message> filter);
+
     ConsumerBuilder builder();
   }
 }

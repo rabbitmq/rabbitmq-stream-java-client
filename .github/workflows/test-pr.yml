@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+env:
+  RABBITMQ_IMAGE: 'pivotalrabbitmq/rabbitmq:stream-chunk-filtering-otp-max-bazel'
+
 jobs:
   build:
     runs-on: ubuntu-22.04

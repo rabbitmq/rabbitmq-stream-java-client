@@ -132,6 +132,8 @@ public interface ProducerBuilder {
    */
   ProducerBuilder enqueueTimeout(Duration timeout);
 
+  ProducerBuilder filter(Function<Message, String> filterValueExtractor);
+
   /**
    * Create the {@link Producer} instance.
    *

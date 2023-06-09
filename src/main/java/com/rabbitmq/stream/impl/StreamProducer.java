@@ -13,9 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
-import static com.rabbitmq.stream.Constants.CODE_PRODUCER_CLOSED;
-import static com.rabbitmq.stream.Constants.CODE_PRODUCER_NOT_AVAILABLE;
+import static com.rabbitmq.stream.Constants.*;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
@@ -31,6 +29,7 @@ import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.MessageAccumulator.AccumulatedEntity;
 import io.netty.buffer.ByteBuf;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -48,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.ToLongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,6 +80,7 @@ class StreamProducer implements Producer {
   private volatile byte publisherId;
   private volatile Status status;
   private volatile ScheduledFuture<?> confirmTimeoutFuture;
+  private final short publishVersion;
 
   StreamProducer(
       String name,
@@ -91,6 +92,7 @@ class StreamProducer implements Producer {
       int maxUnconfirmedMessages,
       Duration confirmTimeout,
       Duration enqueueTimeout,
+      Function<Message, String> filterValueExtractor,
       StreamEnvironment environment) {
     this.id = ID_SEQUENCE.getAndIncrement();
     this.environment = environment;
@@ -116,8 +118,13 @@ class StreamProducer implements Producer {
               environment.codec(),
               client.maxFrameSize(),
               accumulatorPublishSequenceFunction,
+              filterValueExtractor,
               this.environment.clock());
-      delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
+      if (filterValueExtractor == null) {
+        delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
+      } else {
+        delegateWriteCallback = OUTBOUND_MSG_FILTER_VALUE_WRITE_CALLBACK;
+      }
     } else {
       this.accumulator =
           new SubEntryMessageAccumulator(
@@ -138,22 +145,44 @@ class StreamProducer implements Producer {
     this.unconfirmedMessagesSemaphore = new Semaphore(maxUnconfirmedMessages, true);
     this.unconfirmedMessages = new ConcurrentHashMap<>(this.maxUnconfirmedMessages, 0.75f, 2);
 
-    this.writeCallback =
-        new Client.OutboundEntityWriteCallback() {
-          @Override
-          public int write(ByteBuf bb, Object entity, long publishingId) {
-            MessageAccumulator.AccumulatedEntity accumulatedEntity =
-                (MessageAccumulator.AccumulatedEntity) entity;
-            unconfirmedMessages.put(publishingId, accumulatedEntity);
-            return delegateWriteCallback.write(bb, accumulatedEntity.encodedEntity(), publishingId);
-          }
+    if (filterValueExtractor == null) {
+      this.publishVersion = VERSION_1;
+      this.writeCallback =
+          new Client.OutboundEntityWriteCallback() {
+            @Override
+            public int write(ByteBuf bb, Object entity, long publishingId) {
+              MessageAccumulator.AccumulatedEntity accumulatedEntity =
+                  (MessageAccumulator.AccumulatedEntity) entity;
+              unconfirmedMessages.put(publishingId, accumulatedEntity);
+              return delegateWriteCallback.write(
+                  bb, accumulatedEntity.encodedEntity(), publishingId);
+            }
 
-          @Override
-          public int fragmentLength(Object entity) {
-            return delegateWriteCallback.fragmentLength(
-                ((MessageAccumulator.AccumulatedEntity) entity).encodedEntity());
-          }
-        };
+            @Override
+            public int fragmentLength(Object entity) {
+              return delegateWriteCallback.fragmentLength(
+                  ((MessageAccumulator.AccumulatedEntity) entity).encodedEntity());
+            }
+          };
+    } else {
+      this.publishVersion = VERSION_2;
+      this.writeCallback =
+          new Client.OutboundEntityWriteCallback() {
+            @Override
+            public int write(ByteBuf bb, Object entity, long publishingId) {
+              MessageAccumulator.AccumulatedEntity accumulatedEntity =
+                  (MessageAccumulator.AccumulatedEntity) entity;
+              unconfirmedMessages.put(publishingId, accumulatedEntity);
+              return delegateWriteCallback.write(bb, accumulatedEntity, publishingId);
+            }
+
+            @Override
+            public int fragmentLength(Object entity) {
+              return delegateWriteCallback.fragmentLength(entity);
+            }
+          };
+    }
+
     if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
       AtomicReference<Runnable> taskReference = new AtomicReference<>();
       Runnable task =
@@ -445,7 +474,11 @@ class StreamProducer implements Producer {
         batchCount++;
       }
       client.publishInternal(
-          this.publisherId, messages, this.writeCallback, this.publishSequenceFunction);
+          this.publishVersion,
+          this.publisherId,
+          messages,
+          this.writeCallback,
+          this.publishSequenceFunction);
     }
   }
 
@@ -480,7 +513,11 @@ class StreamProducer implements Producer {
             batchCount++;
           }
           client.publishInternal(
-              this.publisherId, messages, this.writeCallback, this.publishSequenceFunction);
+              this.publishVersion,
+              this.publisherId,
+              messages,
+              this.writeCallback,
+              this.publishSequenceFunction);
         }
       }
       publishBatch(false);
@@ -556,6 +593,33 @@ class StreamProducer implements Producer {
   private void checkNotClosed() {
     if (this.closed.get()) {
       throw new IllegalStateException("This producer instance has been closed");
+    }
+  }
+
+  private static final Client.OutboundEntityWriteCallback OUTBOUND_MSG_FILTER_VALUE_WRITE_CALLBACK =
+      new OutboundMessageFilterValueWriterCallback();
+
+  private static final class OutboundMessageFilterValueWriterCallback
+      implements Client.OutboundEntityWriteCallback {
+
+    @Override
+    public int write(ByteBuf bb, Object entity, long publishingId) {
+      AccumulatedEntity accumulatedEntity = (AccumulatedEntity) entity;
+      String filterValue = accumulatedEntity.filterValue();
+      bb.writeShort(filterValue.length());
+      bb.writeBytes(filterValue.getBytes(StandardCharsets.UTF_8));
+      Codec.EncodedMessage messageToPublish =
+          (Codec.EncodedMessage) accumulatedEntity.encodedEntity();
+      bb.writeInt(messageToPublish.getSize());
+      bb.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
+      return 1;
+    }
+
+    @Override
+    public int fragmentLength(Object entity) {
+      AccumulatedEntity accumulatedEntity = (AccumulatedEntity) entity;
+      Codec.EncodedMessage message = (Codec.EncodedMessage) accumulatedEntity.encodedEntity();
+      return 8 + 2 + accumulatedEntity.filterValue().length() + 4 + message.getSize();
     }
   }
 }

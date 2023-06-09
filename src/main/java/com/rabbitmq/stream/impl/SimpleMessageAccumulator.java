@@ -21,9 +21,12 @@ import com.rabbitmq.stream.StreamException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.ToLongFunction;
 
 class SimpleMessageAccumulator implements MessageAccumulator {
+
+  private static final Function<Message, String> NULL_FILTER_VALUE_EXTRACTOR = m -> null;
 
   protected final BlockingQueue<AccumulatedEntity> messages;
   protected final Clock clock;
@@ -31,18 +34,22 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   private final Codec codec;
   private final int maxFrameSize;
   private final ToLongFunction<Message> publishSequenceFunction;
+  private final Function<Message, String> filterValueExtractor;
 
   SimpleMessageAccumulator(
       int capacity,
       Codec codec,
       int maxFrameSize,
       ToLongFunction<Message> publishSequenceFunction,
+      Function<Message, String> filterValueExtractor,
       Clock clock) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
     this.codec = codec;
     this.maxFrameSize = maxFrameSize;
     this.publishSequenceFunction = publishSequenceFunction;
+    this.filterValueExtractor =
+        filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
     this.clock = clock;
   }
 
@@ -56,6 +63,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
               new SimpleAccumulatedEntity(
                   clock.time(),
                   publishingId,
+                  this.filterValueExtractor.apply(message),
                   encodedMessage,
                   new SimpleConfirmationCallback(message, confirmationHandler)),
               60,
@@ -88,23 +96,31 @@ class SimpleMessageAccumulator implements MessageAccumulator {
 
     private final long time;
     private final long publishingId;
+    private final String filterValue;
     private final Codec.EncodedMessage encodedMessage;
     private final StreamProducer.ConfirmationCallback confirmationCallback;
 
     private SimpleAccumulatedEntity(
         long time,
         long publishingId,
+        String filterValue,
         Codec.EncodedMessage encodedMessage,
         StreamProducer.ConfirmationCallback confirmationCallback) {
       this.time = time;
       this.publishingId = publishingId;
       this.encodedMessage = encodedMessage;
+      this.filterValue = filterValue;
       this.confirmationCallback = confirmationCallback;
     }
 
     @Override
     public long publishindId() {
       return publishingId;
+    }
+
+    @Override
+    public String filterValue() {
+      return filterValue;
     }
 
     @Override

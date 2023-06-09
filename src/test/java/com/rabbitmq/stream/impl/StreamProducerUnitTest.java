@@ -16,12 +16,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyByte;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
@@ -90,6 +85,7 @@ public class StreamProducerUnitTest {
                 });
     when(client.maxFrameSize()).thenReturn(Integer.MAX_VALUE);
     when(client.publishInternal(
+            anyShort(),
             anyByte(),
             anyList(),
             any(OutboundEntityWriteCallback.class),
@@ -97,6 +93,7 @@ public class StreamProducerUnitTest {
         .thenAnswer(
             invocation ->
                 client.publishInternal(
+                    Constants.VERSION_1,
                     channel,
                     invocation.getArgument(0),
                     invocation.getArgument(1),
@@ -104,6 +101,7 @@ public class StreamProducerUnitTest {
                     invocation.getArgument(3)));
 
     when(client.publishInternal(
+            anyShort(),
             any(Channel.class),
             anyByte(),
             anyList(),
@@ -176,6 +174,7 @@ public class StreamProducerUnitTest {
             messageCount * 10,
             confirmTimeout,
             Duration.ofSeconds(10),
+            null,
             env);
 
     IntStream.range(0, messageCount)
@@ -217,6 +216,7 @@ public class StreamProducerUnitTest {
             2,
             Duration.ofMinutes(1),
             enqueueTimeout,
+            null,
             env);
 
     AtomicBoolean confirmCalled = new AtomicBoolean(false);
@@ -255,6 +255,7 @@ public class StreamProducerUnitTest {
             2,
             Duration.ofMinutes(1),
             enqueueTimeout,
+            null,
             env);
 
     AtomicBoolean confirmCalled = new AtomicBoolean(false);
