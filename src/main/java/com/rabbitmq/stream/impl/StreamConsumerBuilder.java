@@ -14,6 +14,9 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilderFactory;
+import com.rabbitmq.stream.impl.flow.LegacyConsumerFlowControlStrategyBuilderFactory;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -39,7 +42,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private ConsumerUpdateListener consumerUpdateListener;
   private int initialCredits = 1;
   private int additionalCredits = 1;
-  private ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder = LegacyFlowControlStrategyBuilderFactory.INSTANCE.builder(this);
+  private ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder = LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(this);
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -148,7 +151,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     if (initial <= 0 || onChunkDelivery <= 0) {
       throw new IllegalArgumentException("Credits must be positive");
     }
-    this.consumerFlowControlStrategyBuilder = LegacyFlowControlStrategyBuilderFactory.INSTANCE
+    this.consumerFlowControlStrategyBuilder = LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE
             .builder(this)
             .initialCredits(initial)
             .additionalCredits(additionalCredits);

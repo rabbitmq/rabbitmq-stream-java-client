@@ -13,85 +13,25 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
-import static com.rabbitmq.stream.Constants.COMMAND_CONSUMER_UPDATE;
-import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
-import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
-import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
-import static com.rabbitmq.stream.Constants.COMMAND_DELETE_PUBLISHER;
-import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
-import static com.rabbitmq.stream.Constants.COMMAND_EXCHANGE_COMMAND_VERSIONS;
-import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
-import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
-import static com.rabbitmq.stream.Constants.COMMAND_OPEN;
-import static com.rabbitmq.stream.Constants.COMMAND_PARTITIONS;
-import static com.rabbitmq.stream.Constants.COMMAND_PEER_PROPERTIES;
-import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH;
-import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
-import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
-import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
-import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
-import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
-import static com.rabbitmq.stream.Constants.COMMAND_STORE_OFFSET;
-import static com.rabbitmq.stream.Constants.COMMAND_STREAM_STATS;
-import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
-import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
-import static com.rabbitmq.stream.Constants.VERSION_1;
-import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
-import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
-import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
-import static com.rabbitmq.stream.impl.Utils.formatConstant;
-import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
-import static java.lang.String.format;
-import static java.lang.String.join;
-import static java.util.concurrent.TimeUnit.SECONDS;
-
-import com.rabbitmq.stream.AuthenticationFailureException;
-import com.rabbitmq.stream.ByteCapacity;
-import com.rabbitmq.stream.ChunkChecksum;
-import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.Codec.EncodedMessage;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.MessageBuilder;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
-import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
+import com.rabbitmq.stream.flow.CreditAsker;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
-import com.rabbitmq.stream.impl.Utils.NamedThreadFactory;
+import com.rabbitmq.stream.impl.Utils.*;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
-import com.rabbitmq.stream.sasl.CredentialsProvider;
-import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
-import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;
-import com.rabbitmq.stream.sasl.SaslConfiguration;
-import com.rabbitmq.stream.sasl.SaslMechanism;
-import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
+import com.rabbitmq.stream.sasl.*;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufOutputStream;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelOutboundHandlerAdapter;
-import io.netty.channel.ChannelPromise;
-import io.netty.channel.ConnectTimeoutException;
-import io.netty.channel.EventLoopGroup;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -103,6 +43,12 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.SSLParameters;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
@@ -111,34 +57,20 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.ToLongFunction;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLHandshakeException;
-import javax.net.ssl.SSLParameters;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import static com.rabbitmq.stream.Constants.*;
+import static com.rabbitmq.stream.impl.Utils.*;
+import static java.lang.String.format;
+import static java.lang.String.join;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * This is low-level client API to communicate with the broker.
@@ -151,7 +83,7 @@ import org.slf4j.LoggerFactory;
  * <p>People wanting very fine control over their interaction with the broker can use {@link Client}
  * but at their own risk.
  */
-public class Client implements AutoCloseable {
+public class Client implements CreditAsker, AutoCloseable {
 
   public static final int DEFAULT_PORT = 5552;
   public static final int DEFAULT_TLS_PORT = 5551;
@@ -1072,6 +1004,7 @@ public class Client implements AutoCloseable {
     return this.codec.messageBuilder();
   }
 
+  @Override
   public void credit(byte subscriptionId, int credit) {
     if (credit < 0 || credit > Short.MAX_VALUE) {
       throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);

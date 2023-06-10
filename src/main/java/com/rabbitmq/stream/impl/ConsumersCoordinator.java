@@ -13,40 +13,19 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
-import static com.rabbitmq.stream.impl.Utils.formatConstant;
-import static com.rabbitmq.stream.impl.Utils.isSac;
-import static com.rabbitmq.stream.impl.Utils.jsonField;
-import static com.rabbitmq.stream.impl.Utils.namedFunction;
-import static com.rabbitmq.stream.impl.Utils.namedRunnable;
-import static com.rabbitmq.stream.impl.Utils.quote;
-
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
-import com.rabbitmq.stream.impl.Client.Broker;
-import com.rabbitmq.stream.impl.Client.ChunkListener;
-import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
-import com.rabbitmq.stream.impl.Client.CreditNotification;
-import com.rabbitmq.stream.impl.Client.MessageListener;
-import com.rabbitmq.stream.impl.Client.MetadataListener;
-import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
-import com.rabbitmq.stream.impl.Client.ShutdownListener;
-import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
-import com.rabbitmq.stream.impl.Utils.ClientFactory;
-import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import com.rabbitmq.stream.impl.Client.*;
+import com.rabbitmq.stream.impl.Utils.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.NavigableSet;
-import java.util.Objects;
-import java.util.Random;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -57,8 +36,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import static com.rabbitmq.stream.impl.Utils.*;
 
 class ConsumersCoordinator {
 
@@ -564,8 +543,6 @@ class ConsumersCoordinator {
       AtomicReference<Client> clientReference = new AtomicReference<>();
       ConsumerFlowControlStrategy localConsumerFlowControlStrategy = consumerFlowControlStrategyBuilder.build(clientReference::get);
       this.consumerFlowControlStrategy = localConsumerFlowControlStrategy;
-      ChunkListener chunkListener = (ignoredClient, subscriptionId, offset, messageCount, dataSize) ->
-              localConsumerFlowControlStrategy.handleChunk(subscriptionId, offset, messageCount, dataSize);
       CreditNotification creditNotification =
           (subscriptionId, responseCode) -> {
             SubscriptionTracker subscriptionTracker =
@@ -731,7 +708,7 @@ class ConsumersCoordinator {
           ClientFactoryContext.fromParameters(
                   clientParameters
                       .clientProperty("connection_name", connectionName)
-                      .chunkListener(chunkListener)
+                      .chunkListener(localConsumerFlowControlStrategy)
                       .creditNotification(creditNotification)
                       .messageListener(messageListener)
                       .shutdownListener(shutdownListener)
@@ -956,7 +933,7 @@ class ConsumersCoordinator {
 
         checkNotClosed();
         byte subId = subscriptionId;
-        int initialCredits = this.consumerFlowControlStrategy.handleSubscribe(
+        int initialCredits = this.consumerFlowControlStrategy.handleSubscribeReturningInitialCredits(
                 subId,
                 subscriptionTracker.stream,
                 subscriptionContext.offsetSpecification(),

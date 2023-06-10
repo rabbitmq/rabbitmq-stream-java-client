@@ -13,6 +13,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilderFactory;
+
 import java.time.Duration;
 
 /** API to configure and create a {@link Consumer}. */

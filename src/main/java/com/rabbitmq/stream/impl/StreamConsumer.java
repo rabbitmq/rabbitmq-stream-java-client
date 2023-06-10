@@ -13,17 +13,16 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
-import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
-import static com.rabbitmq.stream.impl.Utils.offsetBefore;
-import static java.time.Duration.ofMillis;
-
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
@@ -37,8 +36,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
+import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
+import static com.rabbitmq.stream.impl.Utils.offsetBefore;
+import static java.time.Duration.ofMillis;
 
 class StreamConsumer implements Consumer {
 

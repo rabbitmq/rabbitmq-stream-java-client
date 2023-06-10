@@ -1,4 +1,6 @@
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.flow;
+
+import com.rabbitmq.stream.ConsumerBuilder;
 
 /**
  * A strategy for regulating consumer flow when consuming from a RabbitMQ Stream.

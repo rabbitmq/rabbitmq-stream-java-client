@@ -1,6 +1,6 @@
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.flow;
 
-import com.rabbitmq.stream.impl.Client;
+import com.rabbitmq.stream.ConsumerBuilder;
 
 import java.util.function.Supplier;
 
@@ -13,9 +13,8 @@ public interface ConsumerFlowControlStrategyBuilder<T extends ConsumerFlowContro
     /**
      * Builds the actual FlowControlStrategy instance, for the Client with which it interoperates
      *
-     * @param clientSupplier {@link Supplier <Client>} for retrieving the {@link Client}.
-     *                       Is not a {@link Client} instance because the {@link Client} may be lazily initialized.
-     * @return the FlowControlStrategy
+     * @param creditAskerSupplier {@link Supplier<CreditAsker>} for retrieving the instance (which may be lazily initialized).
+     * @return {@link T} the built {@link ConsumerFlowControlStrategy}
      */
-    T build(Supplier<Client> clientSupplier);
+    T build(Supplier<CreditAsker> creditAskerSupplier);
 }

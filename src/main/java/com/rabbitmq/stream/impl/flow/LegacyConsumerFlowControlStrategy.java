@@ -1,6 +1,8 @@
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl.flow;
 
-import com.rabbitmq.stream.impl.Client;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.flow.AbstractConsumerFlowControlStrategy;
+import com.rabbitmq.stream.flow.CreditAsker;
 
 import java.util.Map;
 import java.util.function.Supplier;
@@ -9,27 +11,19 @@ import java.util.function.Supplier;
  * The flow control strategy that was always applied before the flow control strategy mechanism existed in the codebase.
  * Requests a set amount of credits after each chunk arrives.
  */
-public class LegacyFlowControlStrategy extends AbstractFlowControlStrategy {
+public class LegacyConsumerFlowControlStrategy extends AbstractConsumerFlowControlStrategy {
 
     private final int initialCredits;
     private final int additionalCredits;
 
-    public LegacyFlowControlStrategy(Supplier<Client> clientSupplier) {
-        this(clientSupplier, 1);
-    }
-
-    public LegacyFlowControlStrategy(Supplier<Client> clientSupplier, int initialCredits) {
-        this(clientSupplier, initialCredits, 1);
-    }
-
-    public LegacyFlowControlStrategy(Supplier<Client> clientSupplier, int initialCredits, int additionalCredits) {
-        super(clientSupplier);
+    public LegacyConsumerFlowControlStrategy(Supplier<CreditAsker> creditAskerSupplier, int initialCredits, int additionalCredits) {
+        super(creditAskerSupplier);
         this.initialCredits = initialCredits;
         this.additionalCredits = additionalCredits;
     }
 
     @Override
-    public int handleSubscribe(
+    public int handleSubscribeReturningInitialCredits(
             byte subscriptionId,
             String stream,
             OffsetSpecification offsetSpecification,

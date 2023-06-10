@@ -1,6 +1,9 @@
-package com.rabbitmq.stream;
+package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.impl.Client;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.OffsetSpecification;
+
+import java.util.Map;
 
 /**
  * Exposes callbacks to handle events from a particular {@link Client},
@@ -86,6 +89,31 @@ public interface ClientDataHandler extends
     }
 
     default void handleMetadata(String stream, short code) {
+        // No-op by default
+    }
+
+    /**
+     * Callback for handling a new stream subscription.
+     *
+     * @param subscriptionId The subscriptionId as specified by the Stream Protocol
+     * @param stream The name of the stream being subscribed to
+     * @param offsetSpecification The offset specification for this new subscription
+     * @param subscriptionProperties The subscription properties for this new subscription
+     */
+    default void handleSubscribe(
+            byte subscriptionId,
+            String stream,
+            OffsetSpecification offsetSpecification,
+            Map<String, String> subscriptionProperties
+    ) {
+        // No-op by default
+    }
+
+    /**
+     * Callback for handling a stream unsubscription.
+     * @param subscriptionId The subscriptionId as specified by the Stream Protocol
+     */
+    default void handleUnsubscribe(byte subscriptionId) {
         // No-op by default
     }
 
