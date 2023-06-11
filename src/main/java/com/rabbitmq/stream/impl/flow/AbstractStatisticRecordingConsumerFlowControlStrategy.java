@@ -104,7 +104,7 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
         });
         int finalCreditsToAsk = outerCreditsToAsk.get();
         if(askForCredits && finalCreditsToAsk > 0) {
-            mandatoryClient().credit(subscriptionId, finalCreditsToAsk);
+            mandatoryCreditAsker().credit(subscriptionId, finalCreditsToAsk);
         }
         return finalCreditsToAsk;
     }

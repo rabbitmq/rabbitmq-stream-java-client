@@ -1,5 +1,6 @@
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.stream.CallbackStreamDataHandler;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -17,7 +18,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class ConsumerStatisticRecorder implements ClientDataHandler {
+public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerStatisticRecorder.class);
 

@@ -34,7 +34,7 @@ public class LegacyConsumerFlowControlStrategy extends AbstractConsumerFlowContr
 
     @Override
     public void handleChunk(byte subscriptionId, long offset, long messageCount, long dataSize) {
-        mandatoryClient().credit(subscriptionId, this.additionalCredits);
+        mandatoryCreditAsker().credit(subscriptionId, this.additionalCredits);
     }
 
 }

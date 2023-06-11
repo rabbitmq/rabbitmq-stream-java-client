@@ -1,13 +1,11 @@
 package com.rabbitmq.stream.flow;
 
-import com.rabbitmq.stream.impl.Client;
-
 import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
  * Abstract class for Consumer Flow Control Strategies which keeps a cached lazily-initialized
- * {@link Client} ready for retrieval by its inheritors.
+ * {@link CreditAsker} ready for retrieval by its inheritors.
  */
 public abstract class AbstractConsumerFlowControlStrategy implements ConsumerFlowControlStrategy {
 
@@ -19,7 +17,7 @@ public abstract class AbstractConsumerFlowControlStrategy implements ConsumerFlo
         this.creditAskerSupplier = Objects.requireNonNull(creditAskerSupplier, "creditAskerSupplier");
     }
 
-    protected CreditAsker mandatoryClient() {
+    protected CreditAsker mandatoryCreditAsker() {
         CreditAsker localSupplied = this.creditAsker;
         if(localSupplied != null) {
             return localSupplied;

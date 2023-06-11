@@ -20,7 +20,6 @@ import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
 import com.rabbitmq.stream.impl.Client.*;
-import com.rabbitmq.stream.impl.Utils.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -542,6 +541,9 @@ class ConsumersCoordinator {
       this.trackerCount = 0;
       AtomicReference<Client> clientReference = new AtomicReference<>();
       ConsumerFlowControlStrategy localConsumerFlowControlStrategy = consumerFlowControlStrategyBuilder.build(clientReference::get);
+      ClientCallbackStreamDataHandlerAdapter clientListenerAdaptedConsumerFlowControlStrategy = new ClientCallbackStreamDataHandlerAdapter(
+              localConsumerFlowControlStrategy
+      );
       this.consumerFlowControlStrategy = localConsumerFlowControlStrategy;
       CreditNotification creditNotification =
           (subscriptionId, responseCode) -> {
@@ -629,7 +631,7 @@ class ConsumersCoordinator {
                           "Consumers re-assignment after disconnection from %s",
                           name));
             }
-            localConsumerFlowControlStrategy.handleShutdown(shutdownContext);
+            clientListenerAdaptedConsumerFlowControlStrategy.handleShutdown(shutdownContext);
           };
       MetadataListener metadataListener =
           (stream, code) -> {
@@ -708,7 +710,7 @@ class ConsumersCoordinator {
           ClientFactoryContext.fromParameters(
                   clientParameters
                       .clientProperty("connection_name", connectionName)
-                      .chunkListener(localConsumerFlowControlStrategy)
+                      .chunkListener(clientListenerAdaptedConsumerFlowControlStrategy)
                       .creditNotification(creditNotification)
                       .messageListener(messageListener)
                       .shutdownListener(shutdownListener)

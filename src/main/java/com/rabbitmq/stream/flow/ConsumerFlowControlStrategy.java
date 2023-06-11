@@ -1,7 +1,7 @@
 package com.rabbitmq.stream.flow;
 
+import com.rabbitmq.stream.CallbackStreamDataHandler;
 import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.impl.ClientDataHandler;
 
 import java.util.Map;
 
@@ -10,14 +10,13 @@ import java.util.Map;
  * Implementations may freely implement reactions to the various client callbacks.
  * When defined by each implementation, it may internally call {@link CreditAsker#credit} to ask for credits.
  */
-// TODO: Decouple from ClientDataHandler. Maybe create an adapter pattern for handling this, or something.
-public interface ConsumerFlowControlStrategy extends ClientDataHandler {
+public interface ConsumerFlowControlStrategy extends CallbackStreamDataHandler {
 
     /**
      * Callback for handling a new stream subscription.
      * Called right before the subscription is sent to the actual client.
      * <p>
-     * Either this variant or {@link ClientDataHandler#handleSubscribe(byte, String, OffsetSpecification, Map)} should be called, NOT both.
+     * Either this variant or {@link CallbackStreamDataHandler#handleSubscribe(byte, String, OffsetSpecification, Map)} should be called, NOT both.
      * </p>
      *
      * @param subscriptionId The subscriptionId as specified by the Stream Protocol
