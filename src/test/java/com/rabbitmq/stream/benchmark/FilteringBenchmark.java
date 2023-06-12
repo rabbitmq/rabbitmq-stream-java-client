@@ -19,12 +19,14 @@ import com.codahale.metrics.MetricRegistry;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.metrics.DropwizardMetricsCollector;
+import com.rabbitmq.stream.metrics.MetricsCollector;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 
@@ -33,12 +35,12 @@ public class FilteringBenchmark {
   static final String stream = "filtering";
 
   public static void main(String[] args) throws Exception {
-    int filterValueCount = 100;
-    int filterValueSubsetCount = 40;
+    int filterValueCount = 200;
+    int filterValueSubsetCount = 80;
     int rate = 100_000;
-    int filterSize = 255;
-    int batchSize = 1;
-    int maxUnconfirmedMessages = 1;
+    int filterSize = 64;
+    int batchSize = 100;
+    int maxUnconfirmedMessages = 10_000;
 
     Duration publishingDuration = Duration.ofSeconds(10);
     Duration publishingCycle = Duration.ofSeconds(1);
@@ -108,10 +110,9 @@ public class FilteringBenchmark {
       List<String> values = filterValues.subList(0, 10);
       for (String filterValue : values) {
         Duration timeout = Duration.ofSeconds(30);
-        long start = System.nanoTime();
         System.out.printf("For filter value %s%n", filterValue);
         MetricRegistry registry = new MetricRegistry();
-        DropwizardMetricsCollector collector = new DropwizardMetricsCollector(registry);
+        MetricsCollector collector = new DropwizardMetricsCollector(registry);
         AtomicLong unfilteredTargetMessageCount = new AtomicLong(0);
         Duration unfilteredDuration;
         try (Environment e = Environment.builder().metricsCollector(collector).build()) {
@@ -141,22 +142,55 @@ public class FilteringBenchmark {
         long unfilteredMessageCount =
             registry.getMeters().get("rabbitmq.stream.consumed").getCount();
 
+        AtomicInteger chunkFilteredMessages = new AtomicInteger(0);
+        AtomicInteger chunkMessageCount = new AtomicInteger(0);
+        AtomicInteger chunkWithNoMessagesCount = new AtomicInteger(0);
+        AtomicBoolean firstChunk = new AtomicBoolean(true);
+        AtomicLong droppedMessages = new AtomicLong(0);
         registry = new MetricRegistry();
         collector = new DropwizardMetricsCollector(registry);
+        collector =
+            new DelegatingMetricsCollector(collector) {
+
+              @Override
+              public void chunk(int entriesCount) {
+                if (firstChunk.get()) {
+                  firstChunk.set(false);
+                } else {
+                  if (chunkMessageCount.get() == chunkFilteredMessages.get()) {
+                    chunkWithNoMessagesCount.incrementAndGet();
+                  }
+                  chunkFilteredMessages.set(0);
+                  chunkMessageCount.set(entriesCount);
+                }
+                super.chunk(entriesCount);
+              }
+            };
         AtomicLong filteredTargetMessageCount = new AtomicLong(0);
         Duration filteredDuration;
         try (Environment e = Environment.builder().metricsCollector(collector).build()) {
           AtomicBoolean hasReceivedSomething = new AtomicBoolean(false);
           AtomicLong lastReceived = new AtomicLong(0);
           long s = System.nanoTime();
+          AtomicLong chunkId = new AtomicLong(-1);
           e.consumerBuilder().stream(stream)
               .offset(OffsetSpecification.first())
               .filter()
               .values(filterValue)
-              .postFilter(msg -> filterValue.equals(msg.getProperties().getTo()))
+              .postFilter(
+                  msg -> {
+                    boolean shouldPass = filterValue.equals(msg.getProperties().getTo());
+                    if (!shouldPass) {
+                      droppedMessages.getAndIncrement();
+                      chunkFilteredMessages.getAndIncrement();
+                    }
+                    return shouldPass;
+                  })
               .builder()
               .messageHandler(
                   (ctx, msg) -> {
+                    if (chunkId.get() == -1 || chunkId.get() != ctx.committedChunkId()) {}
+
                     hasReceivedSomething.set(true);
                     lastReceived.set(System.nanoTime());
                     filteredTargetMessageCount.getAndIncrement();
@@ -183,10 +217,70 @@ public class FilteringBenchmark {
             unfilteredMessageCount,
             filteredMessageCount,
             (unfilteredMessageCount - filteredMessageCount) * 100 / unfilteredMessageCount);
+        System.out.printf(
+            "chunk without matching messages %d / %d, dropped messages %d / %d%n",
+            chunkWithNoMessagesCount.get(),
+            filteredChunkCount,
+            droppedMessages.getAndIncrement(),
+            filteredMessageCount);
       }
 
     } finally {
       scheduledExecutorService.shutdownNow();
+    }
+  }
+
+  private static class DelegatingMetricsCollector implements MetricsCollector {
+
+    private final MetricsCollector delegate;
+
+    private DelegatingMetricsCollector(MetricsCollector delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public void openConnection() {
+      this.delegate.openConnection();
+    }
+
+    @Override
+    public void closeConnection() {
+      this.delegate.closeConnection();
+    }
+
+    @Override
+    public void publish(int count) {
+      this.delegate.publish(count);
+    }
+
+    @Override
+    public void publishConfirm(int count) {
+      this.delegate.publishConfirm(count);
+    }
+
+    @Override
+    public void publishError(int count) {
+      this.delegate.publishError(count);
+    }
+
+    @Override
+    public void chunk(int entriesCount) {
+      this.delegate.chunk(entriesCount);
+    }
+
+    @Override
+    public void consume(long count) {
+      this.delegate.consume(count);
+    }
+
+    @Override
+    public void writtenBytes(int writtenBytes) {
+      this.delegate.writtenBytes(writtenBytes);
+    }
+
+    @Override
+    public void readBytes(int readBytes) {
+      this.delegate.readBytes(readBytes);
     }
   }
 }
