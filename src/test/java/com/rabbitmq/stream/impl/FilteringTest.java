@@ -234,16 +234,20 @@ public class FilteringTest {
 
   private static void repeatIfFailure(RunnableWithException test) throws Exception {
     int executionCount = 0;
-    Exception lastException = null;
+    Throwable lastException = null;
     while (executionCount < 5) {
       try {
         test.run();
         return;
-      } catch (Exception e) {
+      } catch (Exception | AssertionError e) {
         executionCount++;
         lastException = e;
       }
     }
-    throw lastException;
+    if (lastException instanceof Error) {
+      throw new RuntimeException(lastException);
+    } else {
+      throw (Exception) lastException;
+    }
   }
 }
