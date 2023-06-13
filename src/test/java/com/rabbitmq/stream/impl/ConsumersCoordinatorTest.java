@@ -1721,7 +1721,7 @@ public class ConsumersCoordinatorTest {
     verify(client, times(1))
             .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), eq(numberOfInitialCreditsOnSubscribe), anyMap());
     verify(mockedConsumerFlowControlStrategy, times(1))
-            .handleSubscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyMap());
+            .handleSubscribeReturningInitialCredits(anyByte(), anyString(), any(OffsetSpecification.class), anyMap());
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
             .element(0)
             .isEqualTo(OffsetSpecification.next());
@@ -1754,7 +1754,7 @@ public class ConsumersCoordinatorTest {
             .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     verify(mockedConsumerFlowControlStrategy, times(2))
-            .handleSubscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyMap());
+            .handleSubscribeReturningInitialCredits(anyByte(), anyString(), any(OffsetSpecification.class), anyMap());
 
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
             .element(1)
