@@ -13,18 +13,41 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
+import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
+import com.rabbitmq.stream.impl.Client.Broker;
+import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
-import com.rabbitmq.stream.impl.Client.*;
+import com.rabbitmq.stream.impl.Client.CreditNotification;
+import com.rabbitmq.stream.impl.Client.MessageListener;
+import com.rabbitmq.stream.impl.Client.MetadataListener;
+import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
+import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableSet;
+import java.util.Objects;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -92,8 +115,7 @@ class ConsumersCoordinator {
       Runnable trackingClosingCallback,
       MessageHandler messageHandler,
       ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder,
-      Map<String, String> subscriptionProperties,
-      int initialCredits) {
+      Map<String, String> subscriptionProperties) {
     List<Client.Broker> candidates = findBrokersForStream(stream);
     Client.Broker newNode = pickBroker(candidates);
     if (newNode == null) {
@@ -113,8 +135,7 @@ class ConsumersCoordinator {
             trackingClosingCallback,
             messageHandler,
             consumerFlowControlStrategyBuilder,
-            subscriptionProperties,
-            initialCredits);
+            subscriptionProperties);
 
     try {
       addToManager(newNode, subscriptionTracker, offsetSpecification, true);
@@ -374,7 +395,6 @@ class ConsumersCoordinator {
     private volatile ClientSubscriptionsManager manager;
     private volatile AtomicReference<SubscriptionState> state =
         new AtomicReference<>(SubscriptionState.OPENING);
-    private final int initialCredits;
 
     private SubscriptionTracker(
         long id,
@@ -386,8 +406,7 @@ class ConsumersCoordinator {
         Runnable trackingClosingCallback,
         MessageHandler messageHandler,
         ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder,
-        Map<String, String> subscriptionProperties,
-        int initialCredits) {
+        Map<String, String> subscriptionProperties) {
       this.id = id;
       this.consumer = consumer;
       this.stream = stream;
@@ -397,7 +416,6 @@ class ConsumersCoordinator {
       this.trackingClosingCallback = trackingClosingCallback;
       this.messageHandler = messageHandler;
       this.consumerFlowControlStrategyBuilder = consumerFlowControlStrategyBuilder;
-      this.initialCredits = initialCredits;
       if (this.offsetTrackingReference == null) {
         this.subscriptionProperties = subscriptionProperties;
       } else {

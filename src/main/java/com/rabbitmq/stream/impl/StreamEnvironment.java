@@ -13,8 +13,21 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.AddressResolver;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.NoOffsetException;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.ProducerBuilder;
+import com.rabbitmq.stream.StreamCreator;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamStats;
+import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
@@ -23,7 +36,6 @@ import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
-import com.rabbitmq.stream.impl.Utils.*;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -41,11 +53,20 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.*;
+import java.util.function.Function;
+import java.util.function.LongConsumer;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.rabbitmq.stream.impl.Utils.*;
@@ -636,8 +657,7 @@ class StreamEnvironment implements Environment {
       Runnable trackingClosingCallback,
       MessageHandler messageHandler,
       ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder,
-      Map<String, String> subscriptionProperties,
-      int initialCredits) {
+      Map<String, String> subscriptionProperties) {
     return this.consumersCoordinator.subscribe(
         consumer,
         stream,
@@ -647,8 +667,8 @@ class StreamEnvironment implements Environment {
         trackingClosingCallback,
         messageHandler,
         consumerFlowControlStrategyBuilder,
-        subscriptionProperties,
-        initialCredits);
+        subscriptionProperties
+    );
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {

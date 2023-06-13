@@ -13,7 +13,13 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
@@ -28,11 +34,24 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.mockito.*;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 
 import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -180,8 +199,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(2)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -222,8 +241,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -253,8 +272,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -275,8 +294,8 @@ public class ConsumersCoordinatorTest {
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
                     LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                    Collections.emptyMap(),
-                    initialCredits))
+                    Collections.emptyMap()
+                ))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -295,8 +314,8 @@ public class ConsumersCoordinatorTest {
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
                     LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                    Collections.emptyMap(),
-                    initialCredits))
+                    Collections.emptyMap()
+                ))
         .isInstanceOf(StreamDoesNotExistException.class);
   }
 
@@ -325,8 +344,8 @@ public class ConsumersCoordinatorTest {
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
                     LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                    Collections.emptyMap(),
-                    initialCredits))
+                    Collections.emptyMap()
+                ))
         .isInstanceOf(StreamException.class)
         .hasMessage(exceptionMessage);
     assertThat(MonitoringTestUtils.extract(coordinator).isEmpty()).isTrue();
@@ -347,8 +366,8 @@ public class ConsumersCoordinatorTest {
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
                     LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                    Collections.emptyMap(),
-                    initialCredits))
+                    Collections.emptyMap()
+                ))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -366,8 +385,8 @@ public class ConsumersCoordinatorTest {
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
                     LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                    Collections.emptyMap(),
-                    initialCredits))
+                    Collections.emptyMap()
+                ))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -408,8 +427,8 @@ public class ConsumersCoordinatorTest {
             () -> trackingClosingCallbackCalls.incrementAndGet(),
             (offset, message) -> messageHandlerCalls.incrementAndGet(),
             LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-            Collections.emptyMap(),
-            initialCredits);
+            Collections.emptyMap()
+        );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -459,8 +478,8 @@ public class ConsumersCoordinatorTest {
               (offset, message) ->
                   messageHandlerCalls.compute(subId, (k, v) -> (v == null) ? 1 : ++v),
               LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-              Collections.emptyMap(),
-              initialCredits);
+              Collections.emptyMap()
+          );
       closingRunnables.add(closingRunnable);
     }
 
@@ -535,8 +554,8 @@ public class ConsumersCoordinatorTest {
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> messageHandlerCalls.incrementAndGet(),
             LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-            Collections.emptyMap(),
-            initialCredits);
+            Collections.emptyMap()
+        );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -555,8 +574,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
 
     verify(client, times(1 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -636,8 +655,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> messageHandlerCalls.incrementAndGet(),
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -692,8 +711,8 @@ public class ConsumersCoordinatorTest {
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> messageHandlerCalls.incrementAndGet(),
             LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-            Collections.emptyMap(),
-            initialCredits);
+            Collections.emptyMap()
+        );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -707,8 +726,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
 
     verify(client, times(1 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -796,8 +815,8 @@ public class ConsumersCoordinatorTest {
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> messageHandlerCalls.incrementAndGet(),
             LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-            Collections.emptyMap(),
-            initialCredits);
+            Collections.emptyMap()
+        );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -862,8 +881,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> messageHandlerCalls.incrementAndGet(),
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -916,8 +935,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> messageHandlerCalls.incrementAndGet(),
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -971,8 +990,8 @@ public class ConsumersCoordinatorTest {
                         NO_OP_TRACKING_CLOSING_CALLBACK,
                         (offset, message) -> {},
                         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                        Collections.emptyMap(),
-                        initialCredits))
+                        Collections.emptyMap()
+                    ))
             .collect(Collectors.toList());
 
     verify(clientFactory, times(2)).client(any());
@@ -1033,8 +1052,8 @@ public class ConsumersCoordinatorTest {
                   NO_OP_TRACKING_CLOSING_CALLBACK,
                   (offset, message) -> {},
                   LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                  Collections.emptyMap(),
-                  initialCredits);
+                  Collections.emptyMap()
+              );
             });
     // the extra is allocated on another client from the same pool
     verify(clientFactory, times(2)).client(any());
@@ -1059,8 +1078,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
 
     verify(clientFactory, times(2 + 1)).client(any());
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
@@ -1100,8 +1119,8 @@ public class ConsumersCoordinatorTest {
                   NO_OP_TRACKING_CLOSING_CALLBACK,
                   (offset, message) -> {},
                   LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                  Collections.emptyMap(),
-                  initialCredits);
+                  Collections.emptyMap()
+              );
             });
     // the extra is allocated on another client from the same pool
     verify(clientFactory, times(2)).client(any());
@@ -1132,8 +1151,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
 
     // no more client creation
     verify(clientFactory, times(2)).client(any());
@@ -1183,8 +1202,8 @@ public class ConsumersCoordinatorTest {
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> {},
             LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-            Collections.emptyMap(),
-            initialCredits);
+            Collections.emptyMap()
+        );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1256,8 +1275,8 @@ public class ConsumersCoordinatorTest {
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> {},
             LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-            Collections.emptyMap(),
-            initialCredits);
+            Collections.emptyMap()
+        );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1331,8 +1350,8 @@ public class ConsumersCoordinatorTest {
             NO_OP_TRACKING_CLOSING_CALLBACK,
             (offset, message) -> {},
             LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-            Collections.emptyMap(),
-            initialCredits);
+            Collections.emptyMap()
+        );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1418,8 +1437,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1433,8 +1452,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1 + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1499,8 +1518,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1565,8 +1584,8 @@ public class ConsumersCoordinatorTest {
         NO_OP_TRACKING_CLOSING_CALLBACK,
         (offset, message) -> {},
         LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-        Collections.emptyMap(),
-        initialCredits);
+        Collections.emptyMap()
+    );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
@@ -1608,8 +1627,8 @@ public class ConsumersCoordinatorTest {
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
                     LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(null),
-                    Collections.emptyMap(),
-                    initialCredits);
+                    Collections.emptyMap()
+                );
 
             closingRunnable.run();
           };
@@ -1696,8 +1715,8 @@ public class ConsumersCoordinatorTest {
                     NO_OP_TRACKING_CLOSING_CALLBACK,
                     (offset, message) -> {},
                     mockedConsumerFlowControlStrategyBuilder,
-                    Collections.emptyMap(),
-                    initialCredits);
+                    Collections.emptyMap()
+            );
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1))
             .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), eq(numberOfInitialCreditsOnSubscribe), anyMap());

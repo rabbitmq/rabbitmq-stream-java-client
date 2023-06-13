@@ -13,7 +13,13 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilderFactory;
 import com.rabbitmq.stream.impl.flow.LegacyConsumerFlowControlStrategyBuilderFactory;
@@ -38,10 +44,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private boolean noTrackingStrategy = false;
   private boolean lazyInit = false;
   private SubscriptionListener subscriptionListener = subscriptionContext -> {};
-  private Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
+  private final Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
   private ConsumerUpdateListener consumerUpdateListener;
-  private int initialCredits = 1;
-  private int additionalCredits = 1;
   private ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder = LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(this);
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
@@ -143,7 +147,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
    * @param initial Credits to ask for with each new subscription
    * @param onChunkDelivery Credits to ask for after a chunk is delivered
    * @return this {@link StreamConsumerBuilder}
-   * @deprecated Prefer using {@link ConsumerBuilder#flowControlStrategy(ConsumerFlowControlStrategyBuilderFactory)}
+   * @deprecated Prefer using {@link ConsumerBuilder#flowControlStrategy}
    *             to define flow control strategies instead.
    */
   @Deprecated
@@ -154,7 +158,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     this.consumerFlowControlStrategyBuilder = LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE
             .builder(this)
             .initialCredits(initial)
-            .additionalCredits(additionalCredits);
+            .additionalCredits(onChunkDelivery);
     return this;
   }
 
@@ -221,9 +225,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.lazyInit,
               this.subscriptionListener,
               this.subscriptionProperties,
-              this.consumerUpdateListener,
-              this.initialCredits,
-              this.additionalCredits);
+              this.consumerUpdateListener
+          );
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       if (Utils.isSac(this.subscriptionProperties)) {

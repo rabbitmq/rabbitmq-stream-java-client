@@ -13,8 +13,15 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
+import com.rabbitmq.stream.NoOffsetException;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
@@ -76,9 +83,7 @@ class StreamConsumer implements Consumer {
       boolean lazyInit,
       SubscriptionListener subscriptionListener,
       Map<String, String> subscriptionProperties,
-      ConsumerUpdateListener consumerUpdateListener,
-      int initialCredits,
-      int additionalCredits) {
+      ConsumerUpdateListener consumerUpdateListener) {
 
     this.id = ID_SEQUENCE.getAndIncrement();
     Runnable trackingClosingCallback;
@@ -252,8 +257,8 @@ class StreamConsumer implements Consumer {
                     trackingClosingCallback,
                     closedAwareMessageHandler,
                     consumerFlowControlStrategyBuilder,
-                    Collections.unmodifiableMap(subscriptionProperties),
-                    initialCredits);
+                    Collections.unmodifiableMap(subscriptionProperties)
+                );
 
             this.status = Status.RUNNING;
           };
