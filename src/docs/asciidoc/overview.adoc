@@ -56,7 +56,7 @@ is also supported on the publisher side.
 == Stream Client Overview
 
 The RabbitMQ Stream Java Client implements the
-https://github.com/rabbitmq/rabbitmq-server/blob/v3.10.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc[RabbitMQ Stream protocol]
+https://github.com/rabbitmq/rabbitmq-server/blob/v{broker-version}.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc[RabbitMQ Stream protocol]
 and avoids dealing with low-level concerns by providing high-level functionalities
 to build fast, efficient, and robust client applications.
 
