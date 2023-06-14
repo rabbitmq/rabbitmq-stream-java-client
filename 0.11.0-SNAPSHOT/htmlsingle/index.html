@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.11.0-SNAPSHOT</span>
-<br><span id="revremark">(e9a9036)</span>
+<br><span id="revremark">(ef0fd49)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -790,7 +790,7 @@ is also supported on the publisher side.</p>
 <div class="sectionbody">
 <div class="paragraph">
 <p>The RabbitMQ Stream Java Client implements the
-<a href="https://github.com/rabbitmq/rabbitmq-server/blob/v3.10.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
+<a href="https://github.com/rabbitmq/rabbitmq-server/blob/v3.12.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
 and avoids dealing with low-level concerns by providing high-level functionalities
 to build fast, efficient, and robust client applications.</p>
 </div>
@@ -4320,12 +4320,12 @@ this is perfect for experimenting locally.</p>
 <div class="listingblock">
 <div class="title">Running the broker and performance tool with the host network driver</div>
 <div class="content">
-<pre># run the broker
-docker run -it --rm --name rabbitmq --network host rabbitmq:3.10
+<pre class="CodeRay highlight"><code data-lang="shell"># run the broker
+docker run -it --rm --name rabbitmq --network host rabbitmq:3.12
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
-docker run -it --rm --network host pivotalrabbitmq/stream-perf-test</pre>
+docker run -it --rm --network host pivotalrabbitmq/stream-perf-test</code></pre>
 </div>
 </div>
 <div class="admonitionblock note">
@@ -4355,15 +4355,15 @@ can be done by defining a network and running the containers in this network.</p
 <div class="listingblock">
 <div class="title">Running the broker and performance tool with the bridge network driver</div>
 <div class="content">
-<pre># create a network
+<pre class="CodeRay highlight"><code data-lang="shell"># create a network
 docker network create stream-perf-test
 # run the broker
-docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:3.10
+docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:3.12
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
 docker run -it --rm --network stream-perf-test pivotalrabbitmq/stream-perf-test \
-    --uris rabbitmq-stream://rabbitmq:5552</pre>
+    --uris rabbitmq-stream://rabbitmq:5552</code></pre>
 </div>
 </div>
 </div>
@@ -5203,7 +5203,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.11.0-SNAPSHOT<br>
-Last updated 2023-06-12 19:07:01 UTC
+Last updated 2023-06-14 07:34:10 UTC
 </div>
 </div>
 </body>
