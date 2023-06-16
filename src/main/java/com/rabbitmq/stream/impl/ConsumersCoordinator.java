@@ -565,6 +565,7 @@ class ConsumersCoordinator {
       this.consumerFlowControlStrategy = localConsumerFlowControlStrategy;
       CreditNotification creditNotification =
           (subscriptionId, responseCode) -> {
+            localConsumerFlowControlStrategy.handleCreditNotification(subscriptionId, responseCode);
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             String stream = subscriptionTracker == null ? "?" : subscriptionTracker.stream;
@@ -573,11 +574,11 @@ class ConsumersCoordinator {
                 subscriptionId & 0xFF,
                 stream,
                 Utils.formatConstant(responseCode));
-            localConsumerFlowControlStrategy.handleCreditNotification(subscriptionId, responseCode);
           };
 
       MessageListener messageListener =
           (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+            localConsumerFlowControlStrategy.handleMessage(subscriptionId, offset, chunkTimestamp, committedOffset, message);
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             if (subscriptionTracker != null) {
@@ -595,7 +596,6 @@ class ConsumersCoordinator {
                   this.id,
                   this.name);
             }
-            localConsumerFlowControlStrategy.handleMessage(subscriptionId, offset, chunkTimestamp, committedOffset, message);
           };
       ShutdownListener shutdownListener =
           shutdownContext -> {
@@ -656,6 +656,7 @@ class ConsumersCoordinator {
             LOGGER.debug(
                 "Received metadata notification for '{}', stream is likely to have become unavailable",
                 stream);
+            localConsumerFlowControlStrategy.handleMetadata(stream, code);
             Set<SubscriptionTracker> affectedSubscriptions;
             synchronized (this) {
               Set<SubscriptionTracker> subscriptions = streamToStreamSubscriptions.remove(stream);
@@ -701,10 +702,10 @@ class ConsumersCoordinator {
                           "Consumers re-assignment after metadata update on stream '%s'",
                           stream));
             }
-            localConsumerFlowControlStrategy.handleMetadata(stream, code);
           };
       ConsumerUpdateListener consumerUpdateListener =
           (client, subscriptionId, active) -> {
+            localConsumerFlowControlStrategy.handleConsumerUpdate(subscriptionId, active);
             OffsetSpecification result = null;
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
@@ -720,7 +721,6 @@ class ConsumersCoordinator {
               LOGGER.debug(
                   "Could not find stream subscription {} for consumer update", subscriptionId);
             }
-            localConsumerFlowControlStrategy.handleConsumerUpdate(subscriptionId, active);
             return result;
           };
       String connectionName = connectionNamingStrategy.apply(ClientConnectionType.CONSUMER);

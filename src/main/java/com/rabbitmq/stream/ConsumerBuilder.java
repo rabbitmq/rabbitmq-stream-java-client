@@ -66,7 +66,7 @@ public interface ConsumerBuilder {
    * Factory for the flow control strategy to be used when consuming messages.
    * @param consumerFlowControlStrategyBuilderFactory the factory
    * @return a fluent configurable builder for the flow control strategy
-   * @param <T>
+   * @param <T> The type of the builder for the provided factory
    */
   <T extends ConsumerFlowControlStrategyBuilder<?>> T flowControlStrategy(ConsumerFlowControlStrategyBuilderFactory<?, T> consumerFlowControlStrategyBuilderFactory);
 

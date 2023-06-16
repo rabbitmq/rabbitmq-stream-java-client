@@ -42,7 +42,6 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
             OffsetSpecification offsetSpecification,
             Map<String, String> subscriptionProperties
     ) {
-        super.handleSubscribe(subscriptionId, stream, offsetSpecification, subscriptionProperties);
         this.consumerStatisticRecorder.handleSubscribe(
                 subscriptionId,
                 stream,

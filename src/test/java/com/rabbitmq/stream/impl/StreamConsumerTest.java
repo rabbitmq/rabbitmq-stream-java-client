@@ -13,25 +13,37 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.b;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
-import static com.rabbitmq.stream.impl.TestUtils.waitMs;
-import static java.lang.String.format;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.NoOffsetException;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.flow.MessageHandlingAware;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
-import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
-import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
-import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
+import com.rabbitmq.stream.impl.TestUtils.*;
+import com.rabbitmq.stream.impl.flow.MaximumInflightChunksPerSubscriptionConsumerFlowControlStrategyBuilderFactory;
 import io.netty.channel.EventLoopGroup;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -48,14 +60,11 @@ import java.util.function.IntConsumer;
 import java.util.function.UnaryOperator;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
+
+import static com.rabbitmq.stream.impl.TestUtils.*;
+import static java.lang.String.format;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamConsumerTest {
@@ -196,6 +205,76 @@ public class StreamConsumerTest {
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     assertThat(chunkTimestamp.get()).isNotZero();
+
+    consumer.close();
+  }
+
+  @Test
+  void consumeWithAsyncConsumerFlowControl() throws Exception {
+    int messageCount = 100_000;
+    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    Client client =
+            cf.get(
+                    new Client.ClientParameters()
+                            .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
+
+    client.declarePublisher(b(1), null, stream);
+    IntStream.range(0, messageCount)
+            .forEach(
+                    i ->
+                            client.publish(
+                                    b(1),
+                                    Collections.singletonList(
+                                            client.messageBuilder().addData("".getBytes()).build())));
+
+    assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+    CountDownLatch firstConsumeLatch = new CountDownLatch(1);
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+
+    AtomicLong chunkTimestamp = new AtomicLong();
+
+    ConsumerBuilder consumerBuilder = environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first());
+
+    MaximumInflightChunksPerSubscriptionConsumerFlowControlStrategyBuilderFactory.Builder flowControlStrategyBuilder = consumerBuilder
+                    .flowControlStrategy(MaximumInflightChunksPerSubscriptionConsumerFlowControlStrategyBuilderFactory.INSTANCE)
+                    .maximumInflightChunksPerSubscription(1);
+    MessageHandlingAware messageHandlingListener = flowControlStrategyBuilder.messageHandlingListener();
+
+    List<MessageHandler.Context> messageContexts = new ArrayList<>();
+
+    AtomicBoolean shouldInstaConsume = new AtomicBoolean(false);
+    AtomicBoolean unhandledOnInstaConsume = new AtomicBoolean(false);
+
+    consumerBuilder = flowControlStrategyBuilder
+                    .builder()
+                    .messageHandler(
+                            (context, message) -> {
+                              if(shouldInstaConsume.get()) {
+                                if(!messageHandlingListener.markHandled(context)) {
+                                  unhandledOnInstaConsume.set(true);
+                                }
+                              } else {
+                                messageContexts.add(context);
+                              }
+                              firstConsumeLatch.countDown();
+                              chunkTimestamp.set(context.timestamp());
+                              consumeLatch.countDown();
+                            });
+    Consumer consumer = consumerBuilder.build();
+
+    assertThat(firstConsumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isFalse();
+    assertThat(chunkTimestamp.get()).isNotZero();
+
+    shouldInstaConsume.set(true);
+    boolean allMarkedHandled = messageContexts.parallelStream().allMatch(messageHandlingListener::markHandled);
+    assertThat(allMarkedHandled).isTrue();
+
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+    assertThat(unhandledOnInstaConsume.get()).isFalse();
 
     consumer.close();
   }

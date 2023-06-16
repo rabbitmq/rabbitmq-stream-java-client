@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
 
@@ -101,9 +102,9 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
                     );
                     return null;
                 }
-                NavigableMap<Long, ChunkStatistics> subHeadMap = v.unprocessedChunksByOffset.headMap(offset, true);
-                Map.Entry<Long, ChunkStatistics> lastEntry = subHeadMap.pollLastEntry();
-                if(lastEntry == null) {
+                NavigableMap<Long, ChunkStatistics> subHeadMapByOffset = v.unprocessedChunksByOffset.headMap(offset, true);
+                Map.Entry<Long, ChunkStatistics> lastOffsetToChunkEntry = subHeadMapByOffset.lastEntry();
+                if(lastOffsetToChunkEntry == null) {
                     LOGGER.warn(
                         "handleMessage called but chunk was not found! subscriptionId={} offset={}",
                         subscriptionId,
@@ -111,8 +112,8 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
                     );
                     return v;
                 }
-                ChunkStatistics statistics = lastEntry.getValue();
-                statistics.unprocessedMessagesByOffset.put(offset, message);
+                ChunkStatistics chunkStatistics = lastOffsetToChunkEntry.getValue();
+                chunkStatistics.unprocessedMessagesByOffset.put(offset, message);
                 return v;
             }
         );
@@ -165,7 +166,8 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
             return false;
         }
         // Remove chunk from list of unprocessed chunks if all its messages have been processed
-        if (aggregatedMessageStatistics.chunkStatistics.unprocessedMessagesByOffset.isEmpty()) {
+        aggregatedMessageStatistics.chunkStatistics.processedMessages.incrementAndGet();
+        if (aggregatedMessageStatistics.chunkStatistics.isDone()) {
             aggregatedMessageStatistics.chunkHeadMap.remove(aggregatedMessageStatistics.messageEntry.getKey(), aggregatedMessageStatistics.chunkStatistics);
         }
         return true;
@@ -299,6 +301,7 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
     public static class ChunkStatistics {
 
         private final long offset;
+        private AtomicLong processedMessages = new AtomicLong();
         private final long messageCount;
         private final long dataSize;
         private final Map<Long, Message> unprocessedMessagesByOffset;
@@ -330,6 +333,9 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
             return Collections.unmodifiableMap(unprocessedMessagesByOffset);
         }
 
+        public boolean isDone() {
+            return processedMessages.get() == messageCount && unprocessedMessagesByOffset.isEmpty();
+        }
     }
 
     public Map<String, Set<Byte>> getStreamNameToSubscriptionIdMap() {
