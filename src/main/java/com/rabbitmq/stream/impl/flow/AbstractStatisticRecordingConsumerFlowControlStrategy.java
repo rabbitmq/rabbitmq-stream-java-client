@@ -4,10 +4,12 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.flow.AbstractConsumerFlowControlStrategy;
+import com.rabbitmq.stream.flow.AsyncConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.CreditAsker;
-import com.rabbitmq.stream.flow.MessageHandlingAware;
 import com.rabbitmq.stream.impl.ConsumerStatisticRecorder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,7 +22,9 @@ import java.util.function.Supplier;
  */
 public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
         extends AbstractConsumerFlowControlStrategy
-        implements MessageHandlingAware {
+        implements AsyncConsumerFlowControlStrategy {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AbstractStatisticRecordingConsumerFlowControlStrategy.class);
 
     protected final ConsumerStatisticRecorder consumerStatisticRecorder = new ConsumerStatisticRecorder();
 
@@ -40,13 +44,15 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
             byte subscriptionId,
             String stream,
             OffsetSpecification offsetSpecification,
-            Map<String, String> subscriptionProperties
+            Map<String, String> subscriptionProperties,
+            boolean isInitialSubscription
     ) {
         this.consumerStatisticRecorder.handleSubscribe(
                 subscriptionId,
                 stream,
                 offsetSpecification,
-                subscriptionProperties
+                subscriptionProperties,
+                isInitialSubscription
         );
     }
 
@@ -96,6 +102,10 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
         ConsumerStatisticRecorder.SubscriptionStatistics subscriptionStatistics = this.consumerStatisticRecorder
                 .getSubscriptionStatisticsMap()
                 .get(subscriptionId);
+        if(subscriptionStatistics == null) {
+            LOGGER.warn("Lost subscription {}, returning no credits. askForCredits={}", subscriptionId, askForCredits);
+            return 0;
+        }
         subscriptionStatistics.getPendingChunks().updateAndGet(credits -> {
             int creditsToAsk = askedToAsk.applyAsInt(credits);
             outerCreditsToAsk.set(creditsToAsk);
@@ -103,8 +113,10 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
         });
         int finalCreditsToAsk = outerCreditsToAsk.get();
         if(askForCredits && finalCreditsToAsk > 0) {
+            LOGGER.debug("Asking for {} credits for subscriptionId {}", finalCreditsToAsk, subscriptionId);
             mandatoryCreditAsker().credit(subscriptionId, finalCreditsToAsk);
         }
+        LOGGER.debug("Returning {} credits for subscriptionId {} with askForCredits={}", finalCreditsToAsk, subscriptionId, askForCredits);
         return finalCreditsToAsk;
     }
 
@@ -113,10 +125,12 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
         ConsumerStatisticRecorder.AggregatedMessageStatistics messageStatistics = this.consumerStatisticRecorder
                 .retrieveStatistics(messageContext);
         if(messageStatistics == null) {
+            LOGGER.warn("Message statistics not found for offset {} on stream '{}'", messageContext.offset(), messageContext.stream());
             return false;
         }
         boolean markedAsHandled = this.consumerStatisticRecorder.markHandled(messageStatistics);
         if(!markedAsHandled) {
+            LOGGER.warn("Message not marked as handled for offset {} on stream '{}'", messageContext.offset(), messageContext.stream());
             return false;
         }
         afterMarkHandledStateChanged(messageContext, messageStatistics);

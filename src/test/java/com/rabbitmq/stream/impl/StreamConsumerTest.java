@@ -26,11 +26,11 @@ import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
-import com.rabbitmq.stream.flow.MessageHandlingAware;
+import com.rabbitmq.stream.flow.MessageHandlingListener;
+import com.rabbitmq.stream.flow.MessageHandlingListenerConsumerBuilderAccessor;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
-import com.rabbitmq.stream.impl.TestUtils.*;
-import com.rabbitmq.stream.impl.flow.MaximumInflightChunksPerSubscriptionConsumerFlowControlStrategyBuilderFactory;
+import com.rabbitmq.stream.impl.flow.MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy;
 import io.netty.channel.EventLoopGroup;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterEach;
@@ -77,7 +77,7 @@ public class StreamConsumerTest {
   TestUtils.ClientFactory cf;
   Environment environment;
 
-  static Stream<java.util.function.Consumer<Object>> consumerShouldKeepConsumingAfterDisruption() {
+  static Stream<java.util.function.Consumer<Object>> consumerDisruptionTasks() {
     return Stream.of(
         TestUtils.namedTask(
             o -> {
@@ -237,10 +237,79 @@ public class StreamConsumerTest {
     ConsumerBuilder consumerBuilder = environment.consumerBuilder().stream(stream)
             .offset(OffsetSpecification.first());
 
-    MaximumInflightChunksPerSubscriptionConsumerFlowControlStrategyBuilderFactory.Builder flowControlStrategyBuilder = consumerBuilder
-                    .flowControlStrategy(MaximumInflightChunksPerSubscriptionConsumerFlowControlStrategyBuilderFactory.INSTANCE)
-                    .maximumInflightChunksPerSubscription(1);
-    MessageHandlingAware messageHandlingListener = flowControlStrategyBuilder.messageHandlingListener();
+    MessageHandlingListenerConsumerBuilderAccessor messageHandlingListenerConsumerBuilderAccessor = consumerBuilder
+            .asynchronousControlFlow(5);
+    MessageHandlingListener messageHandlingListener = messageHandlingListenerConsumerBuilderAccessor.messageHandlingListener();
+
+    List<MessageHandler.Context> messageContexts = new ArrayList<>();
+
+    AtomicBoolean shouldInstaConsume = new AtomicBoolean(false);
+    AtomicBoolean unhandledOnInstaConsume = new AtomicBoolean(false);
+
+    consumerBuilder = messageHandlingListenerConsumerBuilderAccessor
+            .builder()
+            .messageHandler(
+                    (context, message) -> {
+                      if(shouldInstaConsume.get()) {
+                        if(!messageHandlingListener.markHandled(context)) {
+                          unhandledOnInstaConsume.set(true);
+                        }
+                      } else {
+                        messageContexts.add(context);
+                      }
+                      firstConsumeLatch.countDown();
+                      chunkTimestamp.set(context.timestamp());
+                      consumeLatch.countDown();
+                    });
+    Consumer consumer = consumerBuilder.build();
+
+    assertThat(firstConsumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isFalse();
+    assertThat(chunkTimestamp.get()).isNotZero();
+
+    shouldInstaConsume.set(true);
+    boolean allMarkedHandled = messageContexts.parallelStream().allMatch(messageHandlingListener::markHandled);
+    assertThat(allMarkedHandled).isTrue();
+
+    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+    assertThat(unhandledOnInstaConsume.get()).isFalse();
+
+    consumer.close();
+  }
+
+  @Test
+  void consumeWithCustomAsyncConsumerFlowControl() throws Exception {
+    int messageCount = 100_000;
+    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    Client client =
+            cf.get(
+                    new Client.ClientParameters()
+                            .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown()));
+
+    client.declarePublisher(b(1), null, stream);
+    IntStream.range(0, messageCount)
+            .forEach(
+                    i ->
+                            client.publish(
+                                    b(1),
+                                    Collections.singletonList(
+                                            client.messageBuilder().addData("".getBytes()).build())));
+
+    assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+    CountDownLatch firstConsumeLatch = new CountDownLatch(1);
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+
+    AtomicLong chunkTimestamp = new AtomicLong();
+
+    ConsumerBuilder consumerBuilder = environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first());
+
+    MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy.Builder flowControlStrategyBuilder = consumerBuilder
+                    .customFlowControlStrategy(MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy::builder)
+                    .maximumInflightChunksPerSubscription(5);
+    MessageHandlingListener messageHandlingListener = flowControlStrategyBuilder.messageHandlingListener();
 
     List<MessageHandler.Context> messageContexts = new ArrayList<>();
 
@@ -550,7 +619,7 @@ public class StreamConsumerTest {
   }
 
   @ParameterizedTest
-  @MethodSource
+  @MethodSource("consumerDisruptionTasks")
   @TestUtils.DisabledIfRabbitMqCtlNotSet
   void consumerShouldKeepConsumingAfterDisruption(
       java.util.function.Consumer<Object> disruption, TestInfo info) throws Exception {
@@ -615,6 +684,113 @@ public class StreamConsumerTest {
       latchAssert(consumeLatchSecondWave).completes(recoveryInitialDelay.plusSeconds(2));
       assertThat(receivedMessageCount.get())
           .isBetween(messageCount * 2, messageCount * 2 + 1); // there can be a duplicate
+      assertThat(consumer.isOpen()).isTrue();
+
+    } finally {
+      if (consumer != null) {
+        consumer.close();
+      }
+      environment.deleteStream(s);
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("consumerDisruptionTasks")
+  @TestUtils.DisabledIfRabbitMqCtlNotSet
+  void consumerWithAsyncFlowControlShouldKeepConsumingAfterDisruption(
+          java.util.function.Consumer<Object> disruption, TestInfo info) throws Exception {
+    String s = streamName(info);
+    environment.streamCreator().stream(s).create();
+    StreamConsumer consumer = null;
+    try {
+      int messageCount = 10_000;
+      CountDownLatch publishLatch = new CountDownLatch(messageCount);
+      Producer producer = environment.producerBuilder().stream(s).build();
+      IntStream.range(0, messageCount)
+              .forEach(
+                      i ->
+                              producer.send(
+                                      producer.messageBuilder().addData("".getBytes()).build(),
+                                      confirmationStatus -> publishLatch.countDown()));
+
+      assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+      producer.close();
+
+      AtomicInteger receivedMessageCount = new AtomicInteger(0);
+      CountDownLatch firstConsumeLatch = new CountDownLatch(1);
+      CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+      CountDownLatch consumeLatchSecondWave = new CountDownLatch(messageCount * 2);
+
+      ConsumerBuilder consumerBuilder = environment.consumerBuilder().stream(s);
+
+      MessageHandlingListenerConsumerBuilderAccessor messageHandlingListenerConsumerBuilderAccessor = consumerBuilder
+              .asynchronousControlFlow(5);
+      MessageHandlingListener messageHandlingListener = messageHandlingListenerConsumerBuilderAccessor.messageHandlingListener();
+      consumerBuilder = messageHandlingListenerConsumerBuilderAccessor.builder();
+
+      List<MessageHandler.Context> messageContexts = new ArrayList<>();
+
+      AtomicBoolean shouldInstaConsume = new AtomicBoolean(false);
+      AtomicBoolean unhandledOnInstaConsume = new AtomicBoolean(false);
+
+      consumer =
+              (StreamConsumer)
+                      consumerBuilder
+                              .offset(OffsetSpecification.first())
+                              .messageHandler(
+                                      (context, message) -> {
+                                        if(shouldInstaConsume.get()) {
+                                          if(!messageHandlingListener.markHandled(context)) {
+                                            unhandledOnInstaConsume.set(true);
+                                          }
+                                        } else {
+                                          messageContexts.add(context);
+                                        }
+                                        receivedMessageCount.incrementAndGet();
+                                        firstConsumeLatch.countDown();
+                                        consumeLatch.countDown();
+                                        consumeLatchSecondWave.countDown();
+                                      })
+                              .build();
+
+      assertThat(firstConsumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+      assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isFalse();
+
+      assertThat(consumer.isOpen()).isTrue();
+
+      shouldInstaConsume.set(true);
+      boolean allMarkedHandled = messageContexts.parallelStream().allMatch(messageHandlingListener::markHandled);
+      assertThat(allMarkedHandled).isTrue();
+
+      assertThat(consumeLatch.await(20, TimeUnit.SECONDS)).isTrue();
+
+      assertThat(unhandledOnInstaConsume.get()).isFalse();
+
+      disruption.accept(s);
+
+      Client client = cf.get();
+      TestUtils.waitAtMost(
+              recoveryInitialDelay.plusSeconds(2),
+              () -> {
+                Client.StreamMetadata metadata = client.metadata(s).get(s);
+                return metadata.getLeader() != null || !metadata.getReplicas().isEmpty();
+              });
+
+      CountDownLatch publishLatchSecondWave = new CountDownLatch(messageCount);
+      Producer producerSecondWave = environment.producerBuilder().stream(s).build();
+      IntStream.range(0, messageCount)
+              .forEach(
+                      i ->
+                              producerSecondWave.send(
+                                      producerSecondWave.messageBuilder().addData("".getBytes()).build(),
+                                      confirmationStatus -> publishLatchSecondWave.countDown()));
+
+      assertThat(publishLatchSecondWave.await(20, TimeUnit.SECONDS)).isTrue();
+      producerSecondWave.close();
+
+      latchAssert(consumeLatchSecondWave).completes(recoveryInitialDelay.plusSeconds(30));
+      assertThat(receivedMessageCount.get())
+              .isBetween(messageCount * 2, messageCount * 2 + 1); // there can be a duplicate
       assertThat(consumer.isOpen()).isTrue();
 
     } finally {

@@ -110,8 +110,20 @@ public class ClientCallbackStreamDataHandlerAdapter implements
     }
 
     @Override
-    public void handleSubscribe(byte subscriptionId, String stream, OffsetSpecification offsetSpecification, Map<String, String> subscriptionProperties) {
-        this.callbackStreamDataHandler.handleSubscribe(subscriptionId, stream, offsetSpecification, subscriptionProperties);
+    public void handleSubscribe(
+            byte subscriptionId,
+            String stream,
+            OffsetSpecification offsetSpecification,
+            Map<String, String> subscriptionProperties,
+            boolean isInitialSubscription
+    ) {
+        this.callbackStreamDataHandler.handleSubscribe(
+                subscriptionId,
+                stream,
+                offsetSpecification,
+                subscriptionProperties,
+                isInitialSubscription
+        );
     }
 
     @Override

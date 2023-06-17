@@ -37,18 +37,21 @@ public interface CallbackStreamDataHandler {
     }
 
     /**
-     * Callback for handling a new stream subscription.
+     * Callback for handling a stream subscription.
      *
      * @param subscriptionId The subscriptionId as specified by the Stream Protocol
      * @param stream The name of the stream being subscribed to
      * @param offsetSpecification The offset specification for this new subscription
      * @param subscriptionProperties The subscription properties for this new subscription
+     * @param isInitialSubscription Whether this subscription is an initial subscription
+     *                              or a recovery for an existing subscription
      */
     default void handleSubscribe(
             byte subscriptionId,
             String stream,
             OffsetSpecification offsetSpecification,
-            Map<String, String> subscriptionProperties
+            Map<String, String> subscriptionProperties,
+            boolean isInitialSubscription
     ) {
         // No-op by default
     }

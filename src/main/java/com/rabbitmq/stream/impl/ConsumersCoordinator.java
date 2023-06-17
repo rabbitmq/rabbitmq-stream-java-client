@@ -952,18 +952,19 @@ class ConsumersCoordinator {
             subscriptionContext.offsetSpecification());
 
         checkNotClosed();
-        byte subId = subscriptionId;
         int initialCredits = this.consumerFlowControlStrategy.handleSubscribeReturningInitialCredits(
-                subId,
-                subscriptionTracker.stream,
-                subscriptionContext.offsetSpecification(),
-                subscriptionTracker.subscriptionProperties
+            subscriptionId,
+            subscriptionTracker.stream,
+            subscriptionContext.offsetSpecification(),
+            subscriptionTracker.subscriptionProperties,
+            isInitialSubscription
         );
+        final byte finalSubscriptionId = subscriptionId;
         Client.Response subscribeResponse =
             Utils.callAndMaybeRetry(
                 () ->
                     client.subscribe(
-                        subId,
+                        finalSubscriptionId,
                         subscriptionTracker.stream,
                         subscriptionContext.offsetSpecification(),
                         initialCredits,

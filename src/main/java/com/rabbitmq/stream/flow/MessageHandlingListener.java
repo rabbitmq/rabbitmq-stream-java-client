@@ -2,7 +2,7 @@ package com.rabbitmq.stream.flow;
 
 import com.rabbitmq.stream.MessageHandler;
 
-public interface MessageHandlingAware {
+public interface MessageHandlingListener {
 
     /**
      * Marks a message as handled

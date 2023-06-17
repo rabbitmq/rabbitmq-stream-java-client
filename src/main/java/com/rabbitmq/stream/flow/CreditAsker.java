@@ -1,5 +1,6 @@
 package com.rabbitmq.stream.flow;
 
+@FunctionalInterface
 public interface CreditAsker {
 
     /**

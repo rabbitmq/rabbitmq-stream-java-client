@@ -4,12 +4,14 @@ import com.rabbitmq.stream.CallbackStreamDataHandler;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.flow.MessageHandlingListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
@@ -19,7 +21,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
+public class ConsumerStatisticRecorder implements CallbackStreamDataHandler, MessageHandlingListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerStatisticRecorder.class);
 
@@ -31,7 +33,8 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
             byte subscriptionId,
             String stream,
             OffsetSpecification offsetSpecification,
-            Map<String, String> subscriptionProperties
+            Map<String, String> subscriptionProperties,
+            boolean isInitialSubscription
     ) {
         this.streamNameToSubscriptionIdMap.compute(
             stream,
@@ -40,12 +43,13 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
                     v = Collections.newSetFromMap(new ConcurrentHashMap<>());
                 }
                 boolean isNewElement = v.add(subscriptionId);
-                if(!isNewElement) {
+                if(isInitialSubscription && !isNewElement) {
                     LOGGER.warn(
-                        "handleSubscribed called for stream that already had same associated subscription! " +
-                                "subscriptionId={}, stream={}",
+                        "handleSubscribe called for stream that already had same associated subscription! " +
+                                "subscriptionId={} stream={} offsetSpecification={}",
                         subscriptionId,
-                        stream
+                        stream,
+                        offsetSpecification
                     );
                 }
                 return v;
@@ -54,15 +58,58 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
         this.subscriptionStatisticsMap.compute(
             subscriptionId,
             (k, v) -> {
-                if(v != null) {
+                if(v != null && isInitialSubscription) {
                     LOGGER.warn(
-                        "handleSubscribed called for subscription that already exists! subscriptionId={}",
-                        subscriptionId
+                        "handleSubscribe called for subscription that already exists! " +
+                                "subscriptionId={} stream={} offsetSpecification={}",
+                        subscriptionId,
+                        stream,
+                        offsetSpecification
                     );
                 }
-                return new SubscriptionStatistics(subscriptionId, stream, subscriptionProperties);
+                // Only overwrite if is a de-facto initial subscription
+                if(v == null) {
+                    return new SubscriptionStatistics(
+                            subscriptionId,
+                            stream,
+                            offsetSpecification,
+                            subscriptionProperties
+                    );
+                }
+                v.offsetSpecification = offsetSpecification;
+                v.pendingChunks.set(0);
+                v.subscriptionProperties = subscriptionProperties;
+                cleanupOldTrackingData(v);
+                return v;
             }
         );
+    }
+
+    private static void cleanupOldTrackingData(SubscriptionStatistics subscriptionStatistics) {
+        if (!subscriptionStatistics.offsetSpecification.isOffset()) {
+            LOGGER.debug("Can't cleanup old tracking data: offsetSpecification is not an offset! {}", subscriptionStatistics.offsetSpecification);
+            return;
+        }
+        // Mark messages before the initial offset as handled
+        long newSubscriptionInitialOffset = subscriptionStatistics.offsetSpecification.getOffset();
+        NavigableMap<Long, ChunkStatistics> chunksHeadMap = subscriptionStatistics.unprocessedChunksByOffset.headMap(newSubscriptionInitialOffset, false);
+        Iterator<Map.Entry<Long, ChunkStatistics>> chunksHeadMapEntryIterator = chunksHeadMap.entrySet().iterator();
+        while(chunksHeadMapEntryIterator.hasNext()) {
+            Map.Entry<Long, ChunkStatistics> chunksHeadMapEntry = chunksHeadMapEntryIterator.next();
+            ChunkStatistics chunkStatistics = chunksHeadMapEntry.getValue();
+            Iterator<Map.Entry<Long, Message>> chunkMessagesIterator = chunkStatistics.unprocessedMessagesByOffset.entrySet().iterator();
+            while(chunkMessagesIterator.hasNext()) {
+                Map.Entry<Long, Message> chunkMessageEntry = chunkMessagesIterator.next();
+                long messageOffset = chunkMessageEntry.getKey();
+                if(messageOffset < newSubscriptionInitialOffset) {
+                    chunkMessagesIterator.remove();
+                    chunkStatistics.processedMessages.incrementAndGet();
+                }
+            }
+            if(chunkStatistics.isDone()) {
+                chunksHeadMapEntryIterator.remove();
+            }
+        }
     }
 
     @Override
@@ -72,8 +119,9 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
             (k, v) -> {
                 if(v == null) {
                     LOGGER.warn(
-                        "handleChunk called for subscription that does not exist! subscriptionId={}",
-                        subscriptionId
+                        "handleChunk called for subscription that does not exist! subscriptionId={} offset={}",
+                        subscriptionId,
+                        offset
                     );
                     return null;
                 }
@@ -97,8 +145,9 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
             (k, v) -> {
                 if(v == null) {
                     LOGGER.warn(
-                        "handleMessage called for subscription that does not exist! subscriptionId={}",
-                        subscriptionId
+                        "handleMessage called for subscription that does not exist! subscriptionId={} offset={}",
+                        subscriptionId,
+                        offset
                     );
                     return null;
                 }
@@ -121,13 +170,32 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
 
     @Override
     public void handleUnsubscribe(byte subscriptionId) {
-        Object removed = this.subscriptionStatisticsMap.remove(subscriptionId);
-        if(removed == null) {
+        ConsumerStatisticRecorder.SubscriptionStatistics subscriptionStatistics = this.subscriptionStatisticsMap.remove(subscriptionId);
+        if(subscriptionStatistics == null) {
             LOGGER.warn(
                 "handleUnsubscribe called for subscriptionId that does not exist! subscriptionId={}",
                 subscriptionId
             );
+            return;
         }
+        this.streamNameToSubscriptionIdMap.compute(subscriptionStatistics.stream, (k, v) -> {
+            if(v == null) {
+                LOGGER.warn(
+                    "handleUnsubscribe called and stream name '{}' did not contain subscriptions!",
+                    subscriptionStatistics.stream
+                );
+                return null;
+            }
+            boolean removed = v.remove(subscriptionId);
+            if(!removed) {
+                LOGGER.warn(
+                    "handleUnsubscribe called and stream name '{}' did not contain subscriptionId {}!",
+                    subscriptionStatistics.stream,
+                    subscriptionId
+                );
+            }
+            return v.isEmpty() ? null : v;
+        });
     }
 
     /**
@@ -137,6 +205,7 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
      * @return Whether the message was marked as handled (returning {@code true})
      *         or was not found (either because it was already marked as handled, or wasn't tracked)
      */
+    @Override
     public boolean markHandled(MessageHandler.Context messageContext) {
         AggregatedMessageStatistics entry = retrieveStatistics(messageContext);
         if (entry == null) {
@@ -158,6 +227,14 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
                 || aggregatedMessageStatistics.messageEntry == null
                 || aggregatedMessageStatistics.chunkHeadMap == null) {
             return false;
+        }
+        if(aggregatedMessageStatistics.subscriptionStatistics.offsetSpecification.isOffset()) {
+            long initialOffset = aggregatedMessageStatistics.subscriptionStatistics.offsetSpecification.getOffset();
+            // Old tracked message, should already be handled, probably a late acknowledgment of a defunct connection.
+            if(aggregatedMessageStatistics.offset < initialOffset) {
+                LOGGER.debug("Old message registered as consumed. Message Offset: {}, Start Offset: {}", aggregatedMessageStatistics.offset, initialOffset);
+                return true;
+            }
         }
         Message removedMessage = aggregatedMessageStatistics.chunkStatistics
                 .unprocessedMessagesByOffset
@@ -257,21 +334,29 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
         private final byte subscriptionId;
         private final String stream;
         private final AtomicInteger pendingChunks = new AtomicInteger(0);
-        private final Map<String, String> subscriptionProperties;
+        private OffsetSpecification offsetSpecification;
+        private Map<String, String> subscriptionProperties;
         private final NavigableMap<Long, ChunkStatistics> unprocessedChunksByOffset;
 
-        public SubscriptionStatistics(byte subscriptionId, String stream, Map<String, String> subscriptionProperties) {
-            this(subscriptionId, stream, subscriptionProperties, new ConcurrentSkipListMap<>());
+        public SubscriptionStatistics(
+                byte subscriptionId,
+                String stream,
+                OffsetSpecification offsetSpecification,
+                Map<String, String> subscriptionProperties
+        ) {
+            this(subscriptionId, stream, offsetSpecification, subscriptionProperties, new ConcurrentSkipListMap<>());
         }
 
         public SubscriptionStatistics(
                 byte subscriptionId,
                 String stream,
+                OffsetSpecification offsetSpecification,
                 Map<String, String> subscriptionProperties,
                 NavigableMap<Long, ChunkStatistics> unprocessedChunksByOffset
         ) {
             this.subscriptionId = subscriptionId;
             this.stream = stream;
+            this.offsetSpecification = offsetSpecification;
             this.subscriptionProperties = subscriptionProperties;
             this.unprocessedChunksByOffset = unprocessedChunksByOffset;
         }
@@ -286,6 +371,10 @@ public class ConsumerStatisticRecorder implements CallbackStreamDataHandler {
 
         public AtomicInteger getPendingChunks() {
             return pendingChunks;
+        }
+
+        public OffsetSpecification getOffsetSpecification() {
+            return offsetSpecification;
         }
 
         public Map<String, String> getSubscriptionProperties() {

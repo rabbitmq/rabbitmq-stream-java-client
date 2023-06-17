@@ -13,32 +13,41 @@ import java.util.Map;
 public interface ConsumerFlowControlStrategy extends CallbackStreamDataHandler {
 
     /**
-     * Callback for handling a new stream subscription.
-     * Called right before the subscription is sent to the actual client.
+     * Callback for handling a stream subscription.
+     * Called right before the subscription is sent to the broker.
      * <p>
-     * Either this variant or {@link CallbackStreamDataHandler#handleSubscribe(byte, String, OffsetSpecification, Map)} should be called, NOT both.
+     * Either this variant or {@link CallbackStreamDataHandler#handleSubscribe} should be called, NOT both.
      * </p>
      *
      * @param subscriptionId The subscriptionId as specified by the Stream Protocol
      * @param stream The name of the stream being subscribed to
      * @param offsetSpecification The offset specification for this new subscription
      * @param subscriptionProperties The subscription properties for this new subscription
+     * @param isInitialSubscription Whether this subscription is an initial subscription
+     *                              or a recovery for an existing subscription
      * @return The initial credits that should be granted to this new subscription
      */
     int handleSubscribeReturningInitialCredits(
             byte subscriptionId,
             String stream,
             OffsetSpecification offsetSpecification,
-            Map<String, String> subscriptionProperties
+            Map<String, String> subscriptionProperties,
+            boolean isInitialSubscription
     );
 
     @Override
-    default void handleSubscribe(byte subscriptionId, String stream, OffsetSpecification offsetSpecification, Map<String, String> subscriptionProperties) {
+    default void handleSubscribe(
+            byte subscriptionId,
+            String stream,
+            OffsetSpecification offsetSpecification,
+            Map<String, String> subscriptionProperties,
+            boolean isInitialSubscription) {
         handleSubscribeReturningInitialCredits(
                 subscriptionId,
                 stream,
                 offsetSpecification,
-                subscriptionProperties
+                subscriptionProperties,
+                isInitialSubscription
         );
     }
 

@@ -13,8 +13,11 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilderFactory;
+import com.rabbitmq.stream.flow.MessageHandlingListener;
+import com.rabbitmq.stream.flow.MessageHandlingListenerConsumerBuilderAccessor;
 
 import java.time.Duration;
 
@@ -63,12 +66,34 @@ public interface ConsumerBuilder {
   ConsumerBuilder messageHandler(MessageHandler messageHandler);
 
   /**
+   * Configure credit parameters for synchronous flow control.
+   *
+   * @param initial Credits to ask for with each new subscription
+   * @param onChunkDelivery Credits to ask for after a chunk is delivered
+   * @return this {@link ConsumerBuilder}
+   */
+  ConsumerBuilder synchronousControlFlow(int initial, int onChunkDelivery);
+
+  /**
+   * Configure credit parameters for asynchronous flow control.
+   *
+   * @param concurrencyLevel Maximum chunks to have in-processing at a given moment
+   * @return A {@link MessageHandlingListenerConsumerBuilderAccessor} for obtaining the {@link MessageHandlingListener}
+   *         and navigating fluently back to this {@link ConsumerBuilder}
+   */
+  MessageHandlingListenerConsumerBuilderAccessor asynchronousControlFlow(int concurrencyLevel);
+
+  /**
    * Factory for the flow control strategy to be used when consuming messages.
+   * When there is no need to use a custom strategy, which is the majority of cases,
+   * prefer using {@link ConsumerBuilder#synchronousControlFlow} or {@link ConsumerBuilder#asynchronousControlFlow} instead.
+   *
    * @param consumerFlowControlStrategyBuilderFactory the factory
    * @return a fluent configurable builder for the flow control strategy
    * @param <T> The type of the builder for the provided factory
    */
-  <T extends ConsumerFlowControlStrategyBuilder<?>> T flowControlStrategy(ConsumerFlowControlStrategyBuilderFactory<?, T> consumerFlowControlStrategyBuilderFactory);
+  <T extends ConsumerFlowControlStrategyBuilder<S>, S extends ConsumerFlowControlStrategy>
+  T customFlowControlStrategy(ConsumerFlowControlStrategyBuilderFactory<S, T> consumerFlowControlStrategyBuilderFactory);
 
   /**
    * The logical name of the {@link Consumer}.

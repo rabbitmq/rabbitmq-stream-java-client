@@ -7,6 +7,7 @@ import com.rabbitmq.stream.ConsumerBuilder;
  * @param <T> the type of {@link ConsumerFlowControlStrategy} to be built
  * @param <C> the type of fluent builder exposed by this factory. Must subclass {@link ConsumerFlowControlStrategyBuilder}
  */
+@FunctionalInterface
 public interface ConsumerFlowControlStrategyBuilderFactory<T extends ConsumerFlowControlStrategy, C extends ConsumerFlowControlStrategyBuilder<T>> {
     /**
      * Accessor for configuration builder with settings specific to each implementing strategy

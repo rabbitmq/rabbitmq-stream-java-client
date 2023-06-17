@@ -20,9 +20,12 @@ import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.SubscriptionListener;
+import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilderFactory;
-import com.rabbitmq.stream.impl.flow.LegacyConsumerFlowControlStrategyBuilderFactory;
+import com.rabbitmq.stream.flow.MessageHandlingListenerConsumerBuilderAccessor;
+import com.rabbitmq.stream.impl.flow.MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy;
+import com.rabbitmq.stream.impl.flow.SynchronousConsumerFlowControlStrategy;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -46,7 +49,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private SubscriptionListener subscriptionListener = subscriptionContext -> {};
   private final Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
   private ConsumerUpdateListener consumerUpdateListener;
-  private ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder = LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE.builder(this);
+  private ConsumerFlowControlStrategyBuilder<?> consumerFlowControlStrategyBuilder = SynchronousConsumerFlowControlStrategy.builder(this);
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -77,7 +80,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
-  public <T extends ConsumerFlowControlStrategyBuilder<?>> T flowControlStrategy(ConsumerFlowControlStrategyBuilderFactory<?, T> consumerFlowControlStrategyBuilderFactory) {
+  public
+  <T extends ConsumerFlowControlStrategyBuilder<S>, S extends ConsumerFlowControlStrategy>
+  T customFlowControlStrategy(ConsumerFlowControlStrategyBuilderFactory<S, T> consumerFlowControlStrategyBuilderFactory) {
     T localConsumerFlowControlStrategyBuilder = consumerFlowControlStrategyBuilderFactory.builder(this);
     this.consumerFlowControlStrategyBuilder = localConsumerFlowControlStrategyBuilder;
     return localConsumerFlowControlStrategyBuilder;
@@ -143,23 +148,35 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   /**
+   * Configure credit parameters for flow control.
+   * Implies usage of a traditional {@link SynchronousConsumerFlowControlStrategy}.
    *
    * @param initial Credits to ask for with each new subscription
    * @param onChunkDelivery Credits to ask for after a chunk is delivered
    * @return this {@link StreamConsumerBuilder}
-   * @deprecated Prefer using {@link ConsumerBuilder#flowControlStrategy}
-   *             to define flow control strategies instead.
    */
-  @Deprecated
-  public StreamConsumerBuilder credits(int initial, int onChunkDelivery) {
+  @Override
+  public StreamConsumerBuilder synchronousControlFlow(int initial, int onChunkDelivery) {
     if (initial <= 0 || onChunkDelivery <= 0) {
       throw new IllegalArgumentException("Credits must be positive");
     }
-    this.consumerFlowControlStrategyBuilder = LegacyConsumerFlowControlStrategyBuilderFactory.INSTANCE
+    this.consumerFlowControlStrategyBuilder = SynchronousConsumerFlowControlStrategy
             .builder(this)
             .initialCredits(initial)
             .additionalCredits(onChunkDelivery);
     return this;
+  }
+
+  @Override
+  public MessageHandlingListenerConsumerBuilderAccessor asynchronousControlFlow(int concurrencyLevel) {
+    if (concurrencyLevel <= 0) {
+      throw new IllegalArgumentException("ConcurrencyLevel must be positive");
+    }
+    MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy.Builder localBuilder = MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy
+            .builder(this)
+            .maximumInflightChunksPerSubscription(concurrencyLevel);
+    this.consumerFlowControlStrategyBuilder = localBuilder;
+    return localBuilder;
   }
 
   StreamConsumerBuilder lazyInit(boolean lazyInit) {
