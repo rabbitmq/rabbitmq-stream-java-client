@@ -368,6 +368,27 @@ public class UtilsTest {
         .isEqualTo("-x 1 -y 2");
   }
 
+  @ParameterizedTest
+  @CsvSource({"0,100000", "100,10", "1000,100", "50,5", "10,10", "11,1", "5,10"})
+  void filteringPublishingCycle(int rate, int expected) {
+    assertThat(Utils.filteringPublishingCycle(rate)).isEqualTo(expected);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"3,1", "2,1", "4,1", "7,4", "10,7", "15,10"})
+  void filteringSubSetSize(int setSize, int expected) {
+    assertThat(Utils.filteringSubSetSize(setSize)).isEqualTo(expected);
+  }
+
+  @Test
+  void filterValueSetConverter() throws Exception {
+    CommandLine.ITypeConverter<List<String>> converter = new Utils.FilterValueSetConverter();
+    assertThat(converter.convert("one")).containsExactly("one");
+    assertThat(converter.convert("one,two,three")).containsExactly("one", "two", "three");
+    assertThat(converter.convert("1..10")).hasSize(10).contains("1", "2", "10");
+    assertThat(converter.convert("5..10")).hasSize(6).contains("5", "6", "10");
+  }
+
   @Command(name = "test-command")
   static class TestCommand {
 

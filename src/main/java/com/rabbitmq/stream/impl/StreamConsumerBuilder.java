@@ -146,7 +146,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
   @Override
   public FilterConfiguration filter() {
-    this.filterConfiguration = new DefaultFilterConfiguration(this);
+    if (this.filterConfiguration == null) {
+      this.filterConfiguration = new DefaultFilterConfiguration(this);
+    }
     return this.filterConfiguration;
   }
 

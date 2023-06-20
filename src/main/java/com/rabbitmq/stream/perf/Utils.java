@@ -473,6 +473,33 @@ class Utils {
     }
   }
 
+  static class FilterValueSetConverter implements ITypeConverter<List<String>> {
+
+    @Override
+    public List<String> convert(String value) {
+      if (value == null || value.trim().isEmpty()) {
+        return Collections.emptyList();
+      }
+      if (value.contains("..")) {
+        String[] range = value.split("\\.\\.");
+        String errorMessage = "'" + value + "' is not valid, valid example values: 1..10, 1..20";
+        if (range.length != 2) {
+          throw new CommandLine.TypeConversionException(errorMessage);
+        }
+        int start, end;
+        try {
+          start = Integer.parseInt(range[0]);
+          end = Integer.parseInt(range[1]) + 1;
+          return IntStream.range(start, end).mapToObj(String::valueOf).collect(Collectors.toList());
+        } catch (NumberFormatException e) {
+          throw new CommandLine.TypeConversionException(errorMessage);
+        }
+      } else {
+        return Arrays.stream(value.split(",")).collect(Collectors.toList());
+      }
+    }
+  }
+
   static class SniServerNamesConverter implements ITypeConverter<List<SNIServerName>> {
 
     @Override
@@ -857,6 +884,26 @@ class Utils {
       throw new RuntimeException(e);
     } catch (IllegalAccessException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  static int filteringPublishingCycle(int rate) {
+    if (rate == 0) {
+      return 100_000;
+    } else if (rate <= 10) {
+      return 10;
+    } else {
+      return rate / 10;
+    }
+  }
+
+  static int filteringSubSetSize(int setSize) {
+    if (setSize <= 3) {
+      return 1;
+    } else if (setSize > 10) {
+      return (int) (setSize * 0.70);
+    } else {
+      return setSize - 3;
     }
   }
 }

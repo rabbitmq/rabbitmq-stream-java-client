@@ -511,6 +511,17 @@ public class StreamPerfTestTest {
     assertThat(streamExists(s)).isTrue();
   }
 
+  @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_13_0)
+  void shouldNotFailWhenFilteringIsActivated() throws Exception {
+    Future<?> run = run(builder().filterValueSet("1..15").filterValues("4"));
+    waitUntilStreamExists(s);
+    waitOneSecond();
+    run.cancel(true);
+    waitRunEnds();
+    assertThat(consoleOutput()).containsIgnoringCase("summary:");
+  }
+
   private static <T> Consumer<T> wrap(CallableConsumer<T> action) {
     return t -> {
       try {
@@ -725,6 +736,16 @@ public class StreamPerfTestTest {
 
     ArgumentsBuilder nativeEpoll() {
       arguments.put("native-epoll", "");
+      return this;
+    }
+
+    ArgumentsBuilder filterValueSet(String... values) {
+      arguments.put("filter-value-set", String.join(",", values));
+      return this;
+    }
+
+    ArgumentsBuilder filterValues(String... values) {
+      arguments.put("filter-values", String.join(",", values));
       return this;
     }
 
