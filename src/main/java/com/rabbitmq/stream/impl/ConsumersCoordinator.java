@@ -543,7 +543,7 @@ class ConsumersCoordinator {
     // trackers and tracker count must be kept in sync
     private volatile List<SubscriptionTracker> subscriptionTrackers =
         new ArrayList<>(maxConsumersByConnection);
-    private volatile int trackerCount = 0;
+    private volatile int trackerCount;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private ClientSubscriptionsManager(
@@ -556,7 +556,6 @@ class ConsumersCoordinator {
       this.name = keyForClientSubscription(node);
       LOGGER.debug("creating subscription manager on {}", name);
       IntStream.range(0, maxConsumersByConnection).forEach(i -> subscriptionTrackers.add(null));
-      this.trackerCount = 0;
       AtomicReference<Client> clientReference = new AtomicReference<>();
       ConsumerFlowControlStrategy localConsumerFlowControlStrategy = consumerFlowControlStrategyBuilder.build(clientReference::get);
       ClientCallbackStreamDataHandlerAdapter clientListenerAdaptedConsumerFlowControlStrategy = new ClientCallbackStreamDataHandlerAdapter(
