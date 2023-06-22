@@ -14,13 +14,19 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.*;
+import static java.util.Collections.singletonMap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rabbitmq.client.*;
+import com.rabbitmq.client.AMQP.BasicProperties.Builder;
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Consumer;
 import io.netty.channel.EventLoopGroup;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -197,6 +203,74 @@ public class FilteringTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  @Test
+  void publishConsumeAmqp() throws Exception {
+    int messageCount = 1000;
+    repeatIfFailure(
+        () -> {
+          List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
+          Map<String, AtomicInteger> filterValueCount = new HashMap<>();
+          Random random = new Random();
+
+          try (Connection c = new ConnectionFactory().newConnection()) {
+            Callable<Void> insert =
+                () -> {
+                  publishAmqp(
+                      c,
+                      messageCount,
+                      () -> {
+                        String filterValue = filterValues.get(random.nextInt(filterValues.size()));
+                        filterValueCount
+                            .computeIfAbsent(filterValue, k -> new AtomicInteger())
+                            .incrementAndGet();
+                        return filterValue;
+                      });
+                  return null;
+                };
+            insert.call();
+
+            // second wave of messages, with only one, new filter value
+            String newFilterValue = "orange";
+            filterValues.clear();
+            filterValues.add(newFilterValue);
+            insert.call();
+
+            AtomicInteger receivedMessageCount = new AtomicInteger(0);
+            AtomicInteger filteredConsumedMessageCount = new AtomicInteger(0);
+            Channel ch = c.createChannel();
+            ch.basicQos(10);
+            Map<String, Object> arguments = new HashMap<>();
+            arguments.put("x-stream-filter", newFilterValue);
+            arguments.put("x-stream-offset", 0);
+            ch.basicConsume(
+                stream,
+                false,
+                arguments,
+                new DefaultConsumer(ch) {
+                  @Override
+                  public void handleDelivery(
+                      String consumerTag,
+                      Envelope envelope,
+                      AMQP.BasicProperties properties,
+                      byte[] body)
+                      throws IOException {
+                    receivedMessageCount.incrementAndGet();
+                    String filterValue =
+                        properties.getHeaders().get("x-stream-filter-value").toString();
+                    if (newFilterValue.equals(filterValue)) {
+                      filteredConsumedMessageCount.incrementAndGet();
+                    }
+                    ch.basicAck(envelope.getDeliveryTag(), false);
+                  }
+                });
+            int expectedCount = filterValueCount.get(newFilterValue).get();
+            waitAtMost(
+                CONDITION_TIMEOUT, () -> filteredConsumedMessageCount.get() == expectedCount);
+            assertThat(receivedMessageCount).hasValueLessThan(messageCount * 2);
+          }
+        });
+  }
+
   private ProducerBuilder producerBuilder() {
     return this.environment.producerBuilder().stream(stream);
   }
@@ -230,6 +304,23 @@ public class FilteringTest {
                     confirmationHandler));
     latchAssert(latch).completes(CONDITION_TIMEOUT);
     producer.close();
+  }
+
+  private void publishAmqp(Connection c, int messageCount, Supplier<String> filterValueSupplier)
+      throws Exception {
+    try (Channel ch = c.createChannel()) {
+      ch.confirmSelect();
+      for (int i = 0; i < messageCount; i++) {
+        ch.basicPublish(
+            "",
+            stream,
+            new Builder()
+                .headers(singletonMap("x-stream-filter-value", filterValueSupplier.get()))
+                .build(),
+            null);
+      }
+      ch.waitForConfirmsOrDie();
+    }
   }
 
   private static void repeatIfFailure(RunnableWithException test) throws Exception {
