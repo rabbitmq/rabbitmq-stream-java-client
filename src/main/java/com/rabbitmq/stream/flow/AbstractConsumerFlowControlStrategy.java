@@ -10,24 +10,35 @@ import java.util.function.Supplier;
 public abstract class AbstractConsumerFlowControlStrategy implements ConsumerFlowControlStrategy {
 
     private final Supplier<CreditAsker> creditAskerSupplier;
-    private volatile CreditAsker creditAsker;
-
+    private volatile CreditAsker lastRetrievedCreditAsker;
 
     protected AbstractConsumerFlowControlStrategy(Supplier<CreditAsker> creditAskerSupplier) {
         this.creditAskerSupplier = Objects.requireNonNull(creditAskerSupplier, "creditAskerSupplier");
     }
 
     protected CreditAsker mandatoryCreditAsker() {
-        CreditAsker localSupplied = this.creditAsker;
-        if(localSupplied != null) {
-            return localSupplied;
-        }
-        localSupplied = creditAskerSupplier.get();
+        CreditAsker localSupplied = creditAskerSupplier.get();
         if(localSupplied == null) {
-            throw new IllegalStateException("Requested client, but client is not yet available! Supplier: " + this.creditAskerSupplier);
+            throw new IllegalStateException("Requested CreditAsker but it's not yet available! Supplier: " + this.creditAskerSupplier);
         }
-        this.creditAsker = localSupplied;
+        this.lastRetrievedCreditAsker = localSupplied;
         return localSupplied;
+    }
+
+    public CreditAsker getLastRetrievedCreditAsker() {
+        return lastRetrievedCreditAsker;
+    }
+
+    public Supplier<CreditAsker> getCreditAskerSupplier() {
+        return creditAskerSupplier;
+    }
+
+    @Override
+    public String toString() {
+        return "AbstractConsumerFlowControlStrategy{" +
+                "creditAskerSupplier=" + creditAskerSupplier +
+                ", lastRetrievedCreditAsker=" + lastRetrievedCreditAsker +
+                '}';
     }
 
 }

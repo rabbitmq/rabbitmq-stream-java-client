@@ -13,14 +13,16 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.answer;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.*;
-
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -29,12 +31,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.stream.IntStream;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+
+import static com.rabbitmq.stream.impl.TestUtils.answer;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
 public class OffsetTrackingCoordinatorTest {
 
@@ -334,6 +335,11 @@ public class OffsetTrackingCoordinatorTest {
 
   Context context(long offset, Runnable action) {
     return new Context() {
+      @Override
+      public boolean markHandled(Context messageContext) {
+        return true;
+      }
+
       @Override
       public long offset() {
         return offset;

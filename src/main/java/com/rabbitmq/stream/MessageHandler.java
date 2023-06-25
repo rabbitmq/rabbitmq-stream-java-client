@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import com.rabbitmq.stream.flow.MessageHandlingListener;
+
 /**
  * Callback API for inbound messages.
  *
@@ -30,7 +32,7 @@ public interface MessageHandler {
   void handle(Context context, Message message);
 
   /** Information about the message. */
-  interface Context {
+  interface Context extends MessageHandlingListener {
 
     /**
      * The offset of the message in the stream.

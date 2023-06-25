@@ -13,20 +13,21 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.Utils.namedFunction;
-
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import static com.rabbitmq.stream.impl.Utils.namedFunction;
 
 class SuperStreamConsumer implements Consumer {
 
@@ -127,6 +128,11 @@ class SuperStreamConsumer implements Consumer {
       Context ctx =
           new Context() {
             @Override
+            public boolean markHandled(Context messageContext) {
+              return context.markHandled(messageContext);
+            }
+
+            @Override
             public long offset() {
               return context.offset();
             }
@@ -145,7 +151,7 @@ class SuperStreamConsumer implements Consumer {
             public void storeOffset() {
               for (ConsumerState state : consumerStates) {
                 if (ManualOffsetTrackingMessageHandler.this.consumerState == state) {
-                  maybeStoreOffset(state, () -> context.storeOffset());
+                  maybeStoreOffset(state, context::storeOffset);
                 } else if (state.offset != 0) {
                   maybeStoreOffset(state, () -> state.consumer.store(state.offset));
                 }
@@ -153,9 +159,7 @@ class SuperStreamConsumer implements Consumer {
             }
 
             private void maybeStoreOffset(ConsumerState state, Runnable storeAction) {
-              if (state.consumer.isSac() && !state.consumer.sacActive()) {
-                // do nothing
-              } else {
+              if (!state.consumer.isSac() || state.consumer.sacActive()) {
                 storeAction.run();
               }
             }

@@ -2,6 +2,7 @@ package com.rabbitmq.stream.flow;
 
 import com.rabbitmq.stream.MessageHandler;
 
+@FunctionalInterface
 public interface MessageHandlingListener {
 
     /**

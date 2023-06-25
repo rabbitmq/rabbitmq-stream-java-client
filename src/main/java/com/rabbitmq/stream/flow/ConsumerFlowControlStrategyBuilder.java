@@ -6,6 +6,8 @@ import java.util.function.Supplier;
 
 /**
  * Fluent builder for a {@link ConsumerFlowControlStrategyBuilderFactory}.
+ * One instance of this is set per {@link com.rabbitmq.stream.Consumer}.
+ * A {@link com.rabbitmq.stream.Consumer} may have multiple subscriptions, and thus multiple instances built by this.
  *
  * @param <T> the type of {@link ConsumerFlowControlStrategy} to be built
  */

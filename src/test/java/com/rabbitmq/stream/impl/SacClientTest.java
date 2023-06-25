@@ -13,19 +13,6 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_11_14;
-import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
-import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
-import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
-import static com.rabbitmq.stream.impl.TestUtils.b;
-import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
-import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
-import static java.util.stream.Collectors.toList;
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Constants;
@@ -36,9 +23,11 @@ import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
 import com.rabbitmq.stream.impl.Client.CreditNotification;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.Response;
-import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
-import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
-import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
+import com.rabbitmq.stream.impl.TestUtils.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.extension.ExtendWith;
+
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -53,9 +42,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.extension.ExtendWith;
+
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_11_14;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.*;
+import static com.rabbitmq.stream.impl.TestUtils.*;
+import static java.util.stream.Collectors.toList;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith({
   TestUtils.StreamTestInfrastructureExtension.class,
@@ -522,7 +514,7 @@ public class SacClientTest {
       // we keep track of credit errors
       // with the amount of initial credit and the rebalancing,
       // the first subscriber is likely to have in-flight credit commands
-      // when it becomes inactive. The server should then sends some credit
+      // when it becomes inactive. The server should then send some credit
       // notifications to tell the client it's not supposed to ask for credits
       // for this subscription.
       CreditNotification creditNotification =
@@ -572,7 +564,7 @@ public class SacClientTest {
 
       waitAtMost(
           () ->
-              creditNotificationResponseCode.get() == Constants.RESPONSE_CODE_PRECONDITION_FAILED);
+              creditNotificationResponseCode.get() == Constants.RESPONSE_CODE_PRECONDITION_FAILED, () -> "Code was actually: " + creditNotificationResponseCode.get());
 
       Response response = client1.unsubscribe(b(0));
       assertThat(response).is(ok());

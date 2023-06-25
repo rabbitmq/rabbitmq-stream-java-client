@@ -9,6 +9,8 @@ import java.util.Map;
  * A built and configured flow control strategy for consumers.
  * Implementations may freely implement reactions to the various client callbacks.
  * When defined by each implementation, it may internally call {@link CreditAsker#credit} to ask for credits.
+ * One instance of this is expected to be built for each separate subscription.
+ * A {@link com.rabbitmq.stream.Consumer} may have multiple subscriptions, and thus multiple instances of this.
  */
 public interface ConsumerFlowControlStrategy extends CallbackStreamDataHandler {
 

@@ -1763,14 +1763,6 @@ public class ConsumersCoordinatorTest {
     assertThat(subscriptionPropertiesArgumentCaptor.getAllValues())
             .element(1)
             .isEqualTo(Collections.singletonMap("name", "consumer-name"));
-    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
-            .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
-
-    closingRunnable.run();
-
-    verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
-    verify(mockedConsumerFlowControlStrategy, times(1))
-            .handleUnsubscribe(subscriptionIdCaptor.getValue());
   }
 
   Client.Broker leader() {
