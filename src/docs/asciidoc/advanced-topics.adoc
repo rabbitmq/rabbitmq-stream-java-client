@@ -16,7 +16,7 @@ The filtering feature works as follows:
 
 Why does the consumer need to define some client-side filtering logic?
 Because the server-side filtering is probabilistic: messages that do not match the filter value(s) can still be sent to the consumer.
-The server uses a https://en.wikipedia.org/wiki/Bloom_filter[bloom filter], _a space-efficient probabilistic data structure_, where false positives are possible.
+The server uses a https://en.wikipedia.org/wiki/Bloom_filter[Bloom filter], _a space-efficient probabilistic data structure_, where false positives are possible.
 Despite this, the filtering saves some bandwidth, which is its primary goal.
 
 ===== Filtering on the Publishing Side
