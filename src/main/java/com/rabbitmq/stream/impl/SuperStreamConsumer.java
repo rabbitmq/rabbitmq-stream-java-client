@@ -128,8 +128,8 @@ class SuperStreamConsumer implements Consumer {
       Context ctx =
           new Context() {
             @Override
-            public boolean markHandled(Context messageContext) {
-              return context.markHandled(messageContext);
+            public boolean markHandled() {
+              return context.markHandled();
             }
 
             @Override

@@ -336,7 +336,7 @@ public class OffsetTrackingCoordinatorTest {
   Context context(long offset, Runnable action) {
     return new Context() {
       @Override
-      public boolean markHandled(Context messageContext) {
+      public boolean markHandled() {
         return true;
       }
 

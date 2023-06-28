@@ -529,8 +529,8 @@ class ConsumersCoordinator {
     }
 
     @Override
-    public boolean markHandled(Context messageContext) {
-      return this.handledCallback.markHandled(messageContext);
+    public boolean markHandled() {
+      return this.handledCallback.markHandled(this);
     }
 
   }

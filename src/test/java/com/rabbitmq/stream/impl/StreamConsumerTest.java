@@ -251,7 +251,7 @@ public class StreamConsumerTest {
             .messageHandler(
                     (context, message) -> {
                       if(shouldInstaConsume.get()) {
-                        if(!messageHandlingListener.markHandled(context)) {
+                        if(!context.markHandled()) {
                           unhandledOnInstaConsume.set(true);
                         }
                       } else {

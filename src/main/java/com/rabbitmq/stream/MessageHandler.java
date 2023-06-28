@@ -13,8 +13,6 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
-import com.rabbitmq.stream.flow.MessageHandlingListener;
-
 /**
  * Callback API for inbound messages.
  *
@@ -32,7 +30,7 @@ public interface MessageHandler {
   void handle(Context context, Message message);
 
   /** Information about the message. */
-  interface Context extends MessageHandlingListener {
+  interface Context {
 
     /**
      * The offset of the message in the stream.
@@ -86,5 +84,13 @@ public interface MessageHandler {
      * @see Consumer#store(long)
      */
     Consumer consumer();
+
+    /**
+     * Marks this message as handled
+     *
+     * @return Whether the message was marked as handled (returning {@code true})
+     *         or was not found (either because it was already marked as handled, or wasn't tracked)
+     */
+    boolean markHandled();
   }
 }
