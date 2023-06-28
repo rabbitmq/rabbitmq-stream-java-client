@@ -6,15 +6,11 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.flow.CreditAsker;
 import com.rabbitmq.stream.flow.MessageHandlingListener;
-import com.rabbitmq.stream.flow.MessageHandlingListenerConsumerBuilderAccessor;
 import com.rabbitmq.stream.impl.ConsumerStatisticRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
 
@@ -91,13 +87,11 @@ public class MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy extend
         return new Builder(consumerBuilder);
     }
 
-    public static class Builder implements ConsumerFlowControlStrategyBuilder<MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy>, MessageHandlingListenerConsumerBuilderAccessor {
+    public static class Builder implements ConsumerFlowControlStrategyBuilder<MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy>, ConsumerBuilder.ConsumerBuilderAccessor {
 
         private final ConsumerBuilder consumerBuilder;
 
         private int maximumInflightChunksPerSubscription = 1;
-
-        private final Set<MessageHandlingListener> instances = Collections.newSetFromMap(new WeakHashMap<>());
 
         public Builder(ConsumerBuilder consumerBuilder) {
             this.consumerBuilder = consumerBuilder;
@@ -105,12 +99,10 @@ public class MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy extend
 
         @Override
         public MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy build(Supplier<CreditAsker> creditAskerSupplier) {
-            MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy built = new MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy(
+            return new MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy(
                     creditAskerSupplier,
                     this.maximumInflightChunksPerSubscription
             );
-            instances.add(built);
-            return built;
         }
 
         @Override
@@ -123,18 +115,6 @@ public class MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy extend
             return this;
         }
 
-        @Override
-        public MessageHandlingListener messageHandlingListener() {
-            return this::messageHandlingMulticaster;
-        }
-
-        private boolean messageHandlingMulticaster(MessageHandler.Context context) {
-            boolean changed = false;
-            for(MessageHandlingListener instance : instances) {
-                changed = changed || instance.markHandled(context);
-            }
-            return changed;
-        }
     }
 
 }

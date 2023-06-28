@@ -23,7 +23,6 @@ import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilderFactory;
-import com.rabbitmq.stream.flow.MessageHandlingListenerConsumerBuilderAccessor;
 import com.rabbitmq.stream.impl.flow.MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy;
 import com.rabbitmq.stream.impl.flow.SynchronousConsumerFlowControlStrategy;
 
@@ -151,32 +150,31 @@ class StreamConsumerBuilder implements ConsumerBuilder {
    * Configure credit parameters for flow control.
    * Implies usage of a traditional {@link SynchronousConsumerFlowControlStrategy}.
    *
-   * @param initial Credits to ask for with each new subscription
-   * @param onChunkDelivery Credits to ask for after a chunk is delivered
+   * @param initialPrefetchLevel Credits to ask for with each new subscription
+   * @param prefetchLevelAfterDelivery Credits to ask for after a chunk is delivered
    * @return this {@link StreamConsumerBuilder}
    */
   @Override
-  public StreamConsumerBuilder synchronousControlFlow(int initial, int onChunkDelivery) {
-    if (initial <= 0 || onChunkDelivery <= 0) {
+  public StreamConsumerBuilder synchronousControlFlow(int initialPrefetchLevel, int prefetchLevelAfterDelivery) {
+    if (initialPrefetchLevel <= 0 || prefetchLevelAfterDelivery <= 0) {
       throw new IllegalArgumentException("Credits must be positive");
     }
     this.consumerFlowControlStrategyBuilder = SynchronousConsumerFlowControlStrategy
             .builder(this)
-            .initialCredits(initial)
-            .additionalCredits(onChunkDelivery);
+            .initialCredits(initialPrefetchLevel)
+            .additionalCredits(prefetchLevelAfterDelivery);
     return this;
   }
 
   @Override
-  public MessageHandlingListenerConsumerBuilderAccessor asynchronousControlFlow(int concurrencyLevel) {
-    if (concurrencyLevel <= 0) {
+  public ConsumerBuilder asynchronousControlFlow(int prefetchLevel) {
+    if (prefetchLevel <= 0) {
       throw new IllegalArgumentException("ConcurrencyLevel must be positive");
     }
-    MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy.Builder localBuilder = MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy
+    this.consumerFlowControlStrategyBuilder = MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy
             .builder(this)
-            .maximumInflightChunksPerSubscription(concurrencyLevel);
-    this.consumerFlowControlStrategyBuilder = localBuilder;
-    return localBuilder;
+            .maximumInflightChunksPerSubscription(prefetchLevel);
+    return this;
   }
 
   StreamConsumerBuilder lazyInit(boolean lazyInit) {

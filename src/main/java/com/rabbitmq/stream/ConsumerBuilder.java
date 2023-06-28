@@ -16,8 +16,6 @@ package com.rabbitmq.stream;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilderFactory;
-import com.rabbitmq.stream.flow.MessageHandlingListener;
-import com.rabbitmq.stream.flow.MessageHandlingListenerConsumerBuilderAccessor;
 
 import java.time.Duration;
 
@@ -66,22 +64,41 @@ public interface ConsumerBuilder {
   ConsumerBuilder messageHandler(MessageHandler messageHandler);
 
   /**
-   * Configure credit parameters for synchronous flow control.
+   * Configure prefetching parameters for synchronous flow control.
    *
-   * @param initial Credits to ask for with each new subscription
-   * @param onChunkDelivery Credits to ask for after a chunk is delivered
+   * <p>
+   * Treat the parameters as an abstract scale at the {@link Consumer} level.
+   * </p>
+   *
+   * @param initialPrefetchLevel The initial level of message pre-fetching.
+   *                             This may me implemented as the credits to initially
+   *                             ask for with each new subscription,
+   *                             but do not depend strongly on this aspect.
+   * @param prefetchLevelAfterDelivery The level of message pre-fetching after the initial batch.
+   *                                   This may be implemented as the credits to ask for after a chunk
+   *                                   is delivered on each subscription,
+   *                                   but do not depend strongly on this aspect.
+   *                                   <b>
+   *                                       The recommended value is <code>1</code>.
+   *                                       Higher values may cause excessive over-fetching.
+   *                                   </b>
    * @return this {@link ConsumerBuilder}
    */
-  ConsumerBuilder synchronousControlFlow(int initial, int onChunkDelivery);
+  ConsumerBuilder synchronousControlFlow(int initialPrefetchLevel, int prefetchLevelAfterDelivery);
 
   /**
-   * Configure credit parameters for asynchronous flow control.
+   * Configure prefetching parameters for asynchronous flow control.
    *
-   * @param concurrencyLevel Maximum chunks to have in-processing at a given moment
-   * @return A {@link MessageHandlingListenerConsumerBuilderAccessor} for obtaining the {@link MessageHandlingListener}
-   *         and navigating fluently back to this {@link ConsumerBuilder}
+   * <p>
+   * Treat the parameters as an abstract scale at the {@link Consumer} level.
+   * </p>
+   *
+   * @param prefetchLevel The desired level of message pre-fetching.
+   *                      This may be implemented as the maximum chunks to have in processing or pending arrival
+   *                      per subscription at a given moment, but do not depend strongly on this aspect.
+   * @return this {@link ConsumerBuilder}
    */
-  MessageHandlingListenerConsumerBuilderAccessor asynchronousControlFlow(int concurrencyLevel);
+  ConsumerBuilder asynchronousControlFlow(int prefetchLevel);
 
   /**
    * Factory for the flow control strategy to be used when consuming messages.

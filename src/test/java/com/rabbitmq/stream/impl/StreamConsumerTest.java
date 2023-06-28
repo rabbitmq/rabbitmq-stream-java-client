@@ -26,8 +26,6 @@ import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamDoesNotExistException;
-import com.rabbitmq.stream.flow.MessageHandlingListener;
-import com.rabbitmq.stream.flow.MessageHandlingListenerConsumerBuilderAccessor;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
 import com.rabbitmq.stream.impl.flow.MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy;
@@ -235,19 +233,15 @@ public class StreamConsumerTest {
     AtomicLong chunkTimestamp = new AtomicLong();
 
     ConsumerBuilder consumerBuilder = environment.consumerBuilder().stream(stream)
-            .offset(OffsetSpecification.first());
-
-    MessageHandlingListenerConsumerBuilderAccessor messageHandlingListenerConsumerBuilderAccessor = consumerBuilder
+            .offset(OffsetSpecification.first())
             .asynchronousControlFlow(5);
-    MessageHandlingListener messageHandlingListener = messageHandlingListenerConsumerBuilderAccessor.messageHandlingListener();
 
     List<MessageHandler.Context> messageContexts = new ArrayList<>();
 
     AtomicBoolean shouldInstaConsume = new AtomicBoolean(false);
     AtomicBoolean unhandledOnInstaConsume = new AtomicBoolean(false);
 
-    consumerBuilder = messageHandlingListenerConsumerBuilderAccessor
-            .builder()
+    consumerBuilder = consumerBuilder
             .messageHandler(
                     (context, message) -> {
                       if(shouldInstaConsume.get()) {
@@ -268,7 +262,7 @@ public class StreamConsumerTest {
     assertThat(chunkTimestamp.get()).isNotZero();
 
     shouldInstaConsume.set(true);
-    boolean allMarkedHandled = messageContexts.parallelStream().allMatch(messageHandlingListener::markHandled);
+    boolean allMarkedHandled = messageContexts.parallelStream().allMatch(MessageHandler.Context::markHandled);
     assertThat(allMarkedHandled).isTrue();
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
@@ -309,7 +303,6 @@ public class StreamConsumerTest {
     MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy.Builder flowControlStrategyBuilder = consumerBuilder
                     .customFlowControlStrategy(MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy::builder)
                     .maximumInflightChunksPerSubscription(5);
-    MessageHandlingListener messageHandlingListener = flowControlStrategyBuilder.messageHandlingListener();
 
     List<MessageHandler.Context> messageContexts = new ArrayList<>();
 
@@ -321,7 +314,7 @@ public class StreamConsumerTest {
                     .messageHandler(
                             (context, message) -> {
                               if(shouldInstaConsume.get()) {
-                                if(!messageHandlingListener.markHandled(context)) {
+                                if(!context.markHandled()) {
                                   unhandledOnInstaConsume.set(true);
                                 }
                               } else {
@@ -338,7 +331,7 @@ public class StreamConsumerTest {
     assertThat(chunkTimestamp.get()).isNotZero();
 
     shouldInstaConsume.set(true);
-    boolean allMarkedHandled = messageContexts.parallelStream().allMatch(messageHandlingListener::markHandled);
+    boolean allMarkedHandled = messageContexts.parallelStream().allMatch(MessageHandler.Context::markHandled);
     assertThat(allMarkedHandled).isTrue();
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
@@ -721,12 +714,9 @@ public class StreamConsumerTest {
       CountDownLatch consumeLatch = new CountDownLatch(messageCount);
       CountDownLatch consumeLatchSecondWave = new CountDownLatch(messageCount * 2);
 
-      ConsumerBuilder consumerBuilder = environment.consumerBuilder().stream(s);
-
-      MessageHandlingListenerConsumerBuilderAccessor messageHandlingListenerConsumerBuilderAccessor = consumerBuilder
+      ConsumerBuilder consumerBuilder = environment.consumerBuilder()
+              .stream(s)
               .asynchronousControlFlow(5);
-      MessageHandlingListener messageHandlingListener = messageHandlingListenerConsumerBuilderAccessor.messageHandlingListener();
-      consumerBuilder = messageHandlingListenerConsumerBuilderAccessor.builder();
 
       List<MessageHandler.Context> messageContexts = new ArrayList<>();
 
@@ -740,7 +730,7 @@ public class StreamConsumerTest {
                               .messageHandler(
                                       (context, message) -> {
                                         if(shouldInstaConsume.get()) {
-                                          if(!messageHandlingListener.markHandled(context)) {
+                                          if(!context.markHandled()) {
                                             unhandledOnInstaConsume.set(true);
                                           }
                                         } else {
@@ -759,7 +749,7 @@ public class StreamConsumerTest {
       assertThat(consumer.isOpen()).isTrue();
 
       shouldInstaConsume.set(true);
-      boolean allMarkedHandled = messageContexts.parallelStream().allMatch(messageHandlingListener::markHandled);
+      boolean allMarkedHandled = messageContexts.parallelStream().allMatch(MessageHandler.Context::markHandled);
       assertThat(allMarkedHandled).isTrue();
 
       assertThat(consumeLatch.await(20, TimeUnit.SECONDS)).isTrue();
