@@ -398,10 +398,7 @@ public class Client implements AutoCloseable {
           tuneState.getHeartbeat());
       this.connectionProperties = open(parameters.virtualHost);
       Set<FrameHandlerInfo> supportedCommands = maybeExchangeCommandVersions();
-      if (supportedCommands.stream()
-          .filter(i -> i.getKey() == COMMAND_STREAM_STATS)
-          .findAny()
-          .isPresent()) {
+      if (supportedCommands.stream().anyMatch(i -> i.getKey() == COMMAND_STREAM_STATS)) {
         this.exchangeCommandVersionsCheck = () -> {};
       } else {
         this.exchangeCommandVersionsCheck =

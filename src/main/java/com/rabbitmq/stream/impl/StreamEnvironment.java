@@ -102,37 +102,6 @@ class StreamEnvironment implements Environment {
       DefaultTlsConfiguration tlsConfiguration,
       ByteBufAllocator byteBufAllocator,
       boolean lazyInit,
-      Function<ClientConnectionType, String> connectionNamingStrategy) {
-    this(
-        scheduledExecutorService,
-        clientParametersPrototype,
-        uris,
-        recoveryBackOffDelayPolicy,
-        topologyBackOffDelayPolicy,
-        addressResolver,
-        maxProducersByConnection,
-        maxTrackingConsumersByConnection,
-        maxConsumersByConnection,
-        tlsConfiguration,
-        byteBufAllocator,
-        lazyInit,
-        connectionNamingStrategy,
-        cp -> new Client(cp));
-  }
-
-  StreamEnvironment(
-      ScheduledExecutorService scheduledExecutorService,
-      Client.ClientParameters clientParametersPrototype,
-      List<URI> uris,
-      BackOffDelayPolicy recoveryBackOffDelayPolicy,
-      BackOffDelayPolicy topologyBackOffDelayPolicy,
-      AddressResolver addressResolver,
-      int maxProducersByConnection,
-      int maxTrackingConsumersByConnection,
-      int maxConsumersByConnection,
-      DefaultTlsConfiguration tlsConfiguration,
-      ByteBufAllocator byteBufAllocator,
-      boolean lazyInit,
       Function<ClientConnectionType, String> connectionNamingStrategy,
       Function<Client.ClientParameters, Client> clientFactory) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
@@ -513,22 +482,31 @@ class StreamEnvironment implements Environment {
   public boolean streamExists(String stream) {
     checkNotClosed();
     this.maybeInitializeLocator();
-    StreamStatsResponse response =
+    short responseCode =
         locatorOperation(
             Utils.namedFunction(
-                client -> client.streamStats(stream), "Query stream stats on stream '%s'", stream));
-    if (response.isOk()) {
+                client -> {
+                  try {
+                    return client.streamStats(stream).getResponseCode();
+                  } catch (UnsupportedOperationException e) {
+                    Map<String, Client.StreamMetadata> metadata = client.metadata(stream);
+                    return metadata.get(stream).getResponseCode();
+                  }
+                },
+                "Stream exists for stream '%s'",
+                stream));
+    if (responseCode == Constants.RESPONSE_CODE_OK) {
       return true;
-    } else if (response.getResponseCode() == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
+    } else if (responseCode == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
       return false;
     } else {
       throw convertCodeToException(
-          response.getResponseCode(),
+          responseCode,
           stream,
           () ->
               format(
                   "Unexpected result when checking if stream '%s' exists: %s.",
-                  stream, formatConstant(response.getResponseCode())));
+                  stream, formatConstant(responseCode)));
     }
   }
 

@@ -72,7 +72,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -599,9 +601,52 @@ public class StreamEnvironmentTest {
   @ValueSource(booleans = {true, false})
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void streamExists(boolean lazyInit) {
-    try (Environment env = environmentBuilder.lazyInitialization(lazyInit).build()) {
+    AtomicBoolean metadataCalled = new AtomicBoolean(false);
+    Function<Client.ClientParameters, Client> clientFactory =
+        cp ->
+            new Client(cp) {
+              @Override
+              public Map<String, StreamMetadata> metadata(String... streams) {
+                metadataCalled.set(true);
+                return super.metadata(streams);
+              }
+            };
+    try (Environment env =
+        ((StreamEnvironmentBuilder) environmentBuilder.lazyInitialization(lazyInit))
+            .clientFactory(clientFactory)
+            .build()) {
       assertThat(env.streamExists(stream)).isTrue();
       assertThat(env.streamExists(UUID.randomUUID().toString())).isFalse();
+      assertThat(metadataCalled).isFalse();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  void streamExistsMetadataDataFallback(boolean lazyInit) {
+    AtomicInteger metadataCallCount = new AtomicInteger(0);
+    Function<Client.ClientParameters, Client> clientFactory =
+        cp ->
+            new Client(cp) {
+              @Override
+              StreamStatsResponse streamStats(String stream) {
+                throw new UnsupportedOperationException();
+              }
+
+              @Override
+              public Map<String, StreamMetadata> metadata(String... streams) {
+                metadataCallCount.incrementAndGet();
+                return super.metadata(streams);
+              }
+            };
+    try (Environment env =
+        ((StreamEnvironmentBuilder) environmentBuilder.lazyInitialization(lazyInit))
+            .clientFactory(clientFactory)
+            .build()) {
+      assertThat(env.streamExists(stream)).isTrue();
+      assertThat(env.streamExists(UUID.randomUUID().toString())).isFalse();
+      assertThat(metadataCallCount).hasValue(2);
     }
   }
 
