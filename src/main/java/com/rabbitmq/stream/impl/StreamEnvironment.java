@@ -480,6 +480,7 @@ class StreamEnvironment implements Environment {
   @Override
   public StreamStats queryStreamStats(String stream) {
     checkNotClosed();
+    this.maybeInitializeLocator();
     StreamStatsResponse response =
         locatorOperation(
             Utils.namedFunction(

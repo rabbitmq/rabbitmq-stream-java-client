@@ -552,10 +552,12 @@ public class StreamEnvironmentTest {
     }
   }
 
-  @Test
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void queryStreamStatsShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
-    try (Environment env = environmentBuilder.build()) {
+  void queryStreamStatsShouldReturnFirstOffsetAndCommittedOffset(boolean lazyInit)
+      throws Exception {
+    try (Environment env = environmentBuilder.lazyInitialization(lazyInit).build()) {
       StreamStats stats = env.queryStreamStats(stream);
       assertThatThrownBy(() -> stats.firstOffset()).isInstanceOf(NoOffsetException.class);
       assertThatThrownBy(() -> stats.committedChunkId()).isInstanceOf(NoOffsetException.class);
