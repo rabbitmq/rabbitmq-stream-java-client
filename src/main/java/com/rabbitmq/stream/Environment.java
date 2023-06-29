@@ -73,6 +73,16 @@ public interface Environment extends AutoCloseable {
   StreamStats queryStreamStats(String stream);
 
   /**
+   * Return whether a stream exists or not.
+   *
+   * @param stream
+   * @return true if stream exists, false if it does not exist
+   * @throws StreamException if response code is different from {@link Constants#RESPONSE_CODE_OK}
+   *     or {@link Constants#RESPONSE_CODE_STREAM_DOES_NOT_EXIST}
+   */
+  boolean streamExists(String stream);
+
+  /**
    * Create a {@link ProducerBuilder} to configure and create a {@link Producer}.
    *
    * @return the producer builder
