@@ -17,23 +17,11 @@ import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
 import static com.rabbitmq.stream.impl.Utils.exceptionMessage;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
+import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.rabbitmq.stream.Address;
-import com.rabbitmq.stream.AddressResolver;
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConsumerBuilder;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.NoOffsetException;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.ProducerBuilder;
-import com.rabbitmq.stream.StreamCreator;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.StreamStats;
-import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.ShutdownListener;
@@ -515,9 +503,32 @@ class StreamEnvironment implements Environment {
           response.getResponseCode(),
           stream,
           () ->
-              "Error while querying stream info: "
+              "Error while querying stream stats: "
                   + formatConstant(response.getResponseCode())
                   + ".");
+    }
+  }
+
+  @Override
+  public boolean streamExists(String stream) {
+    checkNotClosed();
+    this.maybeInitializeLocator();
+    StreamStatsResponse response =
+        locatorOperation(
+            Utils.namedFunction(
+                client -> client.streamStats(stream), "Query stream stats on stream '%s'", stream));
+    if (response.isOk()) {
+      return true;
+    } else if (response.getResponseCode() == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
+      return false;
+    } else {
+      throw convertCodeToException(
+          response.getResponseCode(),
+          stream,
+          () ->
+              format(
+                  "Unexpected result when checking if stream '%s' exists: %s.",
+                  stream, formatConstant(response.getResponseCode())));
     }
   }
 

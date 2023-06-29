@@ -559,8 +559,8 @@ public class StreamEnvironmentTest {
       throws Exception {
     try (Environment env = environmentBuilder.lazyInitialization(lazyInit).build()) {
       StreamStats stats = env.queryStreamStats(stream);
-      assertThatThrownBy(() -> stats.firstOffset()).isInstanceOf(NoOffsetException.class);
-      assertThatThrownBy(() -> stats.committedChunkId()).isInstanceOf(NoOffsetException.class);
+      assertThatThrownBy(stats::firstOffset).isInstanceOf(NoOffsetException.class);
+      assertThatThrownBy(stats::committedChunkId).isInstanceOf(NoOffsetException.class);
 
       int publishCount = 20_000;
       TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
@@ -595,6 +595,16 @@ public class StreamEnvironmentTest {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  void streamExists(boolean lazyInit) {
+    try (Environment env = environmentBuilder.lazyInitialization(lazyInit).build()) {
+      assertThat(env.streamExists(stream)).isTrue();
+      assertThat(env.streamExists(UUID.randomUUID().toString())).isFalse();
+    }
+  }
+
   @Test
   void methodsShouldThrowExceptionWhenEnvironmentIsClosed() {
     Environment env = environmentBuilder.build();
@@ -605,7 +615,8 @@ public class StreamEnvironmentTest {
           () -> env.producerBuilder(),
           () -> env.consumerBuilder(),
           () -> env.deleteStream("does not matter"),
-          () -> env.queryStreamStats("does not matter")
+          () -> env.queryStreamStats("does not matter"),
+          () -> env.streamExists("does not matter")
         };
     Arrays.stream(calls)
         .forEach(call -> assertThatThrownBy(call).isInstanceOf(IllegalStateException.class));
