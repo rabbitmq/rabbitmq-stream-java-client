@@ -152,6 +152,13 @@ public interface ConsumerBuilder {
   ConsumerBuilder noTrackingStrategy();
 
   /**
+   * Configure flow of messages.
+   *
+   * @return the flow configuration
+   */
+  FlowConfiguration flow();
+
+  /**
    * Create the configured {@link Consumer}
    *
    * @return the configured consumer
@@ -201,6 +208,27 @@ public interface ConsumerBuilder {
      * @return the auto-tracking strategy
      */
     AutoTrackingStrategy flushInterval(Duration flushInterval);
+
+    /**
+     * Go back to the builder.
+     *
+     * @return the consumer builder
+     */
+    ConsumerBuilder builder();
+  }
+
+  /** Message flow configuration. */
+  interface FlowConfiguration {
+
+    /**
+     * The number of initial credits for the subscription.
+     *
+     * <p>Default is 1.
+     *
+     * @param initialCredits the number of initial credits
+     * @return this configuration instance
+     */
+    FlowConfiguration initialCredits(int initialCredits);
 
     /**
      * Go back to the builder.

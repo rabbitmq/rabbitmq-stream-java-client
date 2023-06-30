@@ -46,7 +46,6 @@ import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
-import com.rabbitmq.stream.perf.Utils.CreditSettings;
 import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
 import com.rabbitmq.stream.perf.Utils.PerformanceMicrometerMetricsCollector;
 import io.micrometer.core.instrument.Counter;
@@ -416,13 +415,6 @@ public class StreamPerfTest implements Callable<Integer> {
   private boolean metricsCommandLineArguments;
 
   @CommandLine.Option(
-      names = {"--credits", "-cr"},
-      description = "initial and additional credits for subscriptions",
-      defaultValue = "1:1",
-      converter = Utils.CreditsTypeConverter.class)
-  private CreditSettings credits;
-
-  @CommandLine.Option(
       names = {"--requested-max-frame-size", "-rmfs"},
       description = "maximum frame size to request",
       defaultValue = "1048576",
@@ -471,6 +463,13 @@ public class StreamPerfTest implements Callable<Integer> {
         required = false)
     private String instanceSyncNamespace;
   }
+
+  @CommandLine.Option(
+      names = {"--initial-credits", "-ic"},
+      description = "initial credits for subscription",
+      defaultValue = "1",
+      converter = Utils.NotNegativeIntegerTypeConverter.class)
+  private int initialCredits;
 
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
@@ -994,7 +993,12 @@ public class StreamPerfTest implements Callable<Integer> {
                         AtomicLong messageCount = new AtomicLong(0);
                         String stream = stream(streams, i);
                         ConsumerBuilder consumerBuilder =
-                            environment.consumerBuilder().offset(this.offset);
+                            environment
+                                .consumerBuilder()
+                                .offset(this.offset)
+                                .flow()
+                                .initialCredits(this.initialCredits)
+                                .builder();
 
                         if (this.superStreams) {
                           consumerBuilder.superStream(stream);

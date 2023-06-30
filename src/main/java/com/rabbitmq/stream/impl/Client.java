@@ -1113,7 +1113,7 @@ public class Client implements AutoCloseable {
    * @param subscriptionId identifier to correlate inbound messages to this subscription
    * @param stream the stream to consume from
    * @param offsetSpecification the specification of the offset to consume from
-   * @param credit the initial number of credits
+   * @param initialCredits the initial number of credits
    * @param properties some optional properties to describe the subscription
    * @return the subscription confirmation
    */
@@ -1121,9 +1121,9 @@ public class Client implements AutoCloseable {
       byte subscriptionId,
       String stream,
       OffsetSpecification offsetSpecification,
-      int credit,
+      int initialCredits,
       Map<String, String> properties) {
-    if (credit < 0 || credit > Short.MAX_VALUE) {
+    if (initialCredits < 0 || initialCredits > Short.MAX_VALUE) {
       throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
     }
     int length = 2 + 2 + 4 + 1 + 2 + stream.length() + 2 + 2; // misses the offset
@@ -1152,7 +1152,7 @@ public class Client implements AutoCloseable {
       if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
         bb.writeLong(offsetSpecification.getOffset());
       }
-      bb.writeShort(credit);
+      bb.writeShort(initialCredits);
       if (properties != null && !properties.isEmpty()) {
         bb.writeInt(properties.size());
         for (Map.Entry<String, String> entry : properties.entrySet()) {
