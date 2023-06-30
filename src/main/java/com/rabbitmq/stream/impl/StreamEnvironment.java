@@ -216,8 +216,10 @@ class StreamEnvironment implements Environment {
               lastException = e;
             }
           }
-          if (this.locators.stream().allMatch(l -> l.isNotSet())) {
-            throw lastException;
+          if (this.locators.stream().allMatch(Locator::isNotSet)) {
+            throw lastException == null
+                ? new StreamException("Not locator available")
+                : lastException;
           } else {
             this.locators.forEach(
                 l -> {
