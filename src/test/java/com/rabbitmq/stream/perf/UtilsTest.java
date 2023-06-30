@@ -24,8 +24,6 @@ import static org.junit.jupiter.params.provider.Arguments.of;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.perf.Utils.CompressionTypeConverter;
-import com.rabbitmq.stream.perf.Utils.CreditSettings;
-import com.rabbitmq.stream.perf.Utils.CreditsTypeConverter;
 import com.rabbitmq.stream.perf.Utils.MetricsTagsTypeConverter;
 import com.rabbitmq.stream.perf.Utils.NameStrategyConverter;
 import com.rabbitmq.stream.perf.Utils.PatternNameStrategy;
@@ -368,21 +366,6 @@ public class UtilsTest {
                         + "-x 1 -y 2")
                     .split(" ")))
         .isEqualTo("-x 1 -y 2");
-  }
-
-  @ParameterizedTest
-  @CsvSource({"10:1,10,1", "20:10,20,10", "20,20,1", "20-10,20,10"})
-  void creditsConverterOk(String input, int expectedInitial, int expectedAdditional) {
-    CreditSettings credits = new CreditsTypeConverter().convert(input);
-    assertThat(credits.initial()).isEqualTo(expectedInitial);
-    assertThat(credits.additional()).isEqualTo(expectedAdditional);
-  }
-
-  @ParameterizedTest
-  @ValueSource(strings = {"foo", "-20:10", "20:-1"})
-  void creditsConverterKo(String input) {
-    assertThatThrownBy(() -> new CreditsTypeConverter().convert(input))
-        .isInstanceOf(TypeConversionException.class);
   }
 
   @Command(name = "test-command")

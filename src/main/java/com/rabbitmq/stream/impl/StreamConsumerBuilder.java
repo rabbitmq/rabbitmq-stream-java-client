@@ -40,10 +40,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private boolean noTrackingStrategy = false;
   private boolean lazyInit = false;
   private SubscriptionListener subscriptionListener = subscriptionContext -> {};
-  private Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
+  private final Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
   private ConsumerUpdateListener consumerUpdateListener;
-  private int initialCredits = 1;
-  private int additionalCredits = 1;
+  private final DefaultFlowConfiguration flowConfiguration = new DefaultFlowConfiguration(this);
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -132,13 +131,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     return this;
   }
 
-  public ConsumerBuilder credits(int initial, int onChunkDelivery) {
-    if (initial <= 0 || onChunkDelivery <= 0) {
-      throw new IllegalArgumentException("Credits must be positive");
-    }
-    this.initialCredits = initial;
-    this.additionalCredits = onChunkDelivery;
-    return this;
+  @Override
+  public FlowConfiguration flow() {
+    return this.flowConfiguration;
   }
 
   StreamConsumerBuilder lazyInit(boolean lazyInit) {
@@ -204,8 +199,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.subscriptionListener,
               this.subscriptionProperties,
               this.consumerUpdateListener,
-              this.initialCredits,
-              this.additionalCredits);
+              this.flowConfiguration.initialCredits,
+              this.flowConfiguration.additionalCredits);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       if (Utils.isSac(this.subscriptionProperties)) {
@@ -340,6 +335,32 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       }
     }
     return duplicate;
+  }
+
+  private static class DefaultFlowConfiguration implements FlowConfiguration {
+
+    private final ConsumerBuilder consumerBuilder;
+
+    private DefaultFlowConfiguration(ConsumerBuilder consumerBuilder) {
+      this.consumerBuilder = consumerBuilder;
+    }
+
+    private int initialCredits = 1;
+    private final int additionalCredits = 1;
+
+    @Override
+    public FlowConfiguration initialCredits(int initialCredits) {
+      if (initialCredits <= 0) {
+        throw new IllegalArgumentException("Credits must be positive");
+      }
+      this.initialCredits = initialCredits;
+      return this;
+    }
+
+    @Override
+    public ConsumerBuilder builder() {
+      return this.consumerBuilder;
+    }
   }
 
   // to help testing
