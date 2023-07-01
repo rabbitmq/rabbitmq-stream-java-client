@@ -20,14 +20,15 @@ import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.MessageHandler;
+import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
+import static com.rabbitmq.stream.impl.Utils.exceptionMessage;
+import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.namedRunnable;
+import static java.lang.String.format;
+import static java.util.concurrent.TimeUnit.SECONDS;
+
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.NoOffsetException;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.ProducerBuilder;
-import com.rabbitmq.stream.StreamCreator;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.StreamStats;
-import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
@@ -98,37 +99,6 @@ class StreamEnvironment implements Environment {
   private final Runnable locatorInitializationSequence;
   private final List<Locator> locators = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory;
-
-  StreamEnvironment(
-      ScheduledExecutorService scheduledExecutorService,
-      Client.ClientParameters clientParametersPrototype,
-      List<URI> uris,
-      BackOffDelayPolicy recoveryBackOffDelayPolicy,
-      BackOffDelayPolicy topologyBackOffDelayPolicy,
-      AddressResolver addressResolver,
-      int maxProducersByConnection,
-      int maxTrackingConsumersByConnection,
-      int maxConsumersByConnection,
-      DefaultTlsConfiguration tlsConfiguration,
-      ByteBufAllocator byteBufAllocator,
-      boolean lazyInit,
-      Function<ClientConnectionType, String> connectionNamingStrategy) {
-    this(
-        scheduledExecutorService,
-        clientParametersPrototype,
-        uris,
-        recoveryBackOffDelayPolicy,
-        topologyBackOffDelayPolicy,
-        addressResolver,
-        maxProducersByConnection,
-        maxTrackingConsumersByConnection,
-        maxConsumersByConnection,
-        tlsConfiguration,
-        byteBufAllocator,
-        lazyInit,
-        connectionNamingStrategy,
-        cp -> new Client(cp));
-  }
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -257,8 +227,10 @@ class StreamEnvironment implements Environment {
               lastException = e;
             }
           }
-          if (this.locators.stream().allMatch(l -> l.isNotSet())) {
-            throw lastException;
+          if (this.locators.stream().allMatch(Locator::isNotSet)) {
+            throw lastException == null
+                ? new StreamException("Not locator available")
+                : lastException;
           } else {
             this.locators.forEach(
                 l -> {
@@ -478,6 +450,7 @@ class StreamEnvironment implements Environment {
   @Override
   public StreamStats queryStreamStats(String stream) {
     checkNotClosed();
+    this.maybeInitializeLocator();
     StreamStatsResponse response =
         locatorOperation(
             Utils.namedFunction(
@@ -512,9 +485,41 @@ class StreamEnvironment implements Environment {
           response.getResponseCode(),
           stream,
           () ->
-              "Error while querying stream info: "
+              "Error while querying stream stats: "
                   + formatConstant(response.getResponseCode())
                   + ".");
+    }
+  }
+
+  @Override
+  public boolean streamExists(String stream) {
+    checkNotClosed();
+    this.maybeInitializeLocator();
+    short responseCode =
+        locatorOperation(
+            Utils.namedFunction(
+                client -> {
+                  try {
+                    return client.streamStats(stream).getResponseCode();
+                  } catch (UnsupportedOperationException e) {
+                    Map<String, Client.StreamMetadata> metadata = client.metadata(stream);
+                    return metadata.get(stream).getResponseCode();
+                  }
+                },
+                "Stream exists for stream '%s'",
+                stream));
+    if (responseCode == Constants.RESPONSE_CODE_OK) {
+      return true;
+    } else if (responseCode == Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST) {
+      return false;
+    } else {
+      throw convertCodeToException(
+          responseCode,
+          stream,
+          () ->
+              format(
+                  "Unexpected result when checking if stream '%s' exists: %s.",
+                  stream, formatConstant(responseCode)));
     }
   }
 

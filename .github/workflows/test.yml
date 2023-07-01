@@ -1,4 +1,4 @@
-name: Test against RabbitMQ 3.11 stable
+name: Test against RabbitMQ 3.12 stable
 
 on:
   push:
@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 env:
-  RABBITMQ_IMAGE: 'rabbitmq:3.11'
   CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
 jobs:

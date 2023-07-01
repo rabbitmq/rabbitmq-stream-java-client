@@ -57,7 +57,7 @@ public interface Environment extends AutoCloseable {
   /**
    * Delete a stream
    *
-   * @param stream
+   * @param stream the stream to delete
    */
   void deleteStream(String stream);
 
@@ -66,11 +66,21 @@ public interface Environment extends AutoCloseable {
    *
    * <p>Requires RabbitMQ 3.11 or more.
    *
-   * @param stream
+   * @param stream the stream to get statistics from
    * @return statistics on the stream
    * @throws UnsupportedOperationException if the broker does not support this command
    */
   StreamStats queryStreamStats(String stream);
+
+  /**
+   * Return whether a stream exists or not.
+   *
+   * @param stream the stream to check the existence
+   * @return true if stream exists, false if it does not exist
+   * @throws StreamException if response code is different from {@link Constants#RESPONSE_CODE_OK}
+   *     or {@link Constants#RESPONSE_CODE_STREAM_DOES_NOT_EXIST}
+   */
+  boolean streamExists(String stream);
 
   /**
    * Create a {@link ProducerBuilder} to configure and create a {@link Producer}.

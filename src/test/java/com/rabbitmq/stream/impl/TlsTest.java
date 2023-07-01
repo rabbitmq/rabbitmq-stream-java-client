@@ -13,22 +13,22 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_13_0;
+import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.Utils.TRUST_EVERYTHING_TRUST_MANAGER;
+import static java.lang.String.format;
 import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.stream.Address;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.Host;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfAuthMechanismSslNotEnabled;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
+import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
 import io.netty.channel.Channel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -48,6 +48,7 @@ import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
@@ -250,6 +251,57 @@ public class TlsTest {
             .build();
 
     cf.get(new ClientParameters().sslContext(context));
+  }
+
+  @Test
+  @DisabledIfAuthMechanismSslNotEnabled
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
+  void saslExternalShouldSucceedWithUserForClientCertificate() throws Exception {
+    X509Certificate clientCertificate = clientCertificate();
+    SslContext context =
+        SslContextBuilder.forClient()
+            .trustManager(caCertificate())
+            .keyManager(clientKey(), clientCertificate)
+            .build();
+
+    String username = clientCertificate.getSubjectX500Principal().getName();
+    Host.rabbitmqctlIgnoreError(format("delete_user %s", username));
+    Host.rabbitmqctl(format("add_user %s foo", username));
+    try {
+      Host.rabbitmqctl(format("set_permissions %s '.*' '.*' '.*'", username));
+
+      cf.get(
+          new ClientParameters()
+              .username(UUID.randomUUID().toString())
+              .sslContext(context)
+              .saslConfiguration(DefaultSaslConfiguration.EXTERNAL));
+    } finally {
+      Host.rabbitmqctl(format("delete_user %s", username));
+    }
+  }
+
+  @Test
+  @DisabledIfAuthMechanismSslNotEnabled
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
+  void saslExternalShouldFailIfNoUserForClientCertificate() throws Exception {
+    X509Certificate clientCertificate = clientCertificate();
+    SslContext context =
+        SslContextBuilder.forClient()
+            .trustManager(caCertificate())
+            .keyManager(clientKey(), clientCertificate)
+            .build();
+
+    String username = clientCertificate.getSubjectX500Principal().getName();
+    Host.rabbitmqctlIgnoreError(format("delete_user %s", username));
+    assertThatThrownBy(
+            () ->
+                cf.get(
+                    new ClientParameters()
+                        .username(UUID.randomUUID().toString())
+                        .sslContext(context)
+                        .saslConfiguration(DefaultSaslConfiguration.EXTERNAL)))
+        .isInstanceOf(StreamException.class)
+        .has(responseCode(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE));
   }
 
   @Test

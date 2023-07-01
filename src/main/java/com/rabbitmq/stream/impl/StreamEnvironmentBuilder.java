@@ -68,7 +68,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private int maxConsumersByConnection = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
   private CompressionCodecFactory compressionCodecFactory;
   private boolean lazyInit = false;
-  private Function<ClientConnectionType, String> connectionNamingStrategy;
+  private Function<Client.ClientParameters, Client> clientFactory = Client::new;
 
   public StreamEnvironmentBuilder() {}
 
@@ -302,6 +302,11 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this.netty;
   }
 
+  StreamEnvironmentBuilder clientFactory(Function<Client.ClientParameters, Client> clientFactory) {
+    this.clientFactory = clientFactory;
+    return this;
+  }
+
   @Override
   public Environment build() {
     if (this.compressionCodecFactory == null) {
@@ -310,7 +315,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       this.clientParameters.compressionCodecFactory(this.compressionCodecFactory);
     }
     this.id = this.id == null ? "rabbitmq-stream" : this.id;
-    this.connectionNamingStrategy = Utils.defaultConnectionNamingStrategy(this.id + "-");
+    Function<ClientConnectionType, String> connectionNamingStrategy =
+        Utils.defaultConnectionNamingStrategy(this.id + "-");
     this.clientParameters.eventLoopGroup(this.netty.eventLoopGroup);
     this.clientParameters.byteBufAllocator(this.netty.byteBufAllocator);
     this.clientParameters.channelCustomizer(this.netty.channelCustomizer);
@@ -328,7 +334,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         tls,
         netty.byteBufAllocator,
         lazyInit,
-        connectionNamingStrategy);
+        connectionNamingStrategy,
+        this.clientFactory);
   }
 
   static final class DefaultTlsConfiguration implements TlsConfiguration {

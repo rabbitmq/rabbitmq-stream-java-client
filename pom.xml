@@ -4,7 +4,7 @@
 
   <groupId>com.rabbitmq</groupId>
   <artifactId>stream-client</artifactId>
-  <version>0.10.0-SNAPSHOT</version>
+  <version>0.11.0-SNAPSHOT</version>
 
   <name>RabbitMQ Stream Java Client</name>
   <description>The RabbitMQ Stream Java client library allows Java applications to interface with
@@ -49,53 +49,53 @@
   <properties>
     <spotless.check.skip>true</spotless.check.skip>
     <slf4j.version>1.7.36</slf4j.version>
-    <logback.version>1.2.11</logback.version>
+    <logback.version>1.2.12</logback.version>
     <slf4j.perftool.version>2.0.7</slf4j.perftool.version>
-    <logback.perftool.version>1.3.6</logback.perftool.version>
-    <netty.version>4.1.92.Final</netty.version>
+    <logback.perftool.version>1.3.8</logback.perftool.version>
+    <netty.version>4.1.94.Final</netty.version>
     <proton-j.version>0.34.1</proton-j.version>
-    <metrics.version>4.2.18</metrics.version>
-    <micrometer.version>1.11.0</micrometer.version>
+    <metrics.version>4.2.19</metrics.version>
+    <micrometer.version>1.11.1</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
-    <picocli.version>4.7.3</picocli.version>
-    <guava.version>31.1-jre</guava.version>
+    <picocli.version>4.7.4</picocli.version>
+    <guava.version>32.1.1-jre</guava.version>
     <commons-compress.version>1.23.0</commons-compress.version>
-    <zstd-jni.version>1.5.5-2</zstd-jni.version>
+    <zstd-jni.version>1.5.5-4</zstd-jni.version>
     <lz4-java.version>1.8.0</lz4-java.version>
-    <snappy-java.version>1.1.9.1</snappy-java.version>
-    <jgroups.version>5.2.14.Final</jgroups.version>
+    <snappy-java.version>1.1.10.1</snappy-java.version>
+    <jgroups.version>5.2.16.Final</jgroups.version>
     <jgroups-kubernetes.version>2.0.1.Final</jgroups-kubernetes.version>
     <junit.jupiter.version>5.9.3</junit.jupiter.version>
     <assertj.version>3.24.2</assertj.version>
-    <mockito.version>5.3.1</mockito.version>
-    <amqp-client.version>5.17.0</amqp-client.version>
+    <mockito.version>5.4.0</mockito.version>
+    <amqp-client.version>5.18.0</amqp-client.version>
     <commons-lang3.version>3.12.0</commons-lang3.version>
-    <commons-codec.version>1.15</commons-codec.version>
+    <commons-codec.version>1.16.0</commons-codec.version>
     <gson.version>2.10.1</gson.version>
     <vavr.version>0.10.4</vavr.version>
     <paho.version>1.2.5</paho.version>
     <maven.compiler.plugin.version>3.11.0</maven.compiler.plugin.version>
-    <maven-surefire-plugin.version>3.1.0</maven-surefire-plugin.version>
+    <maven-surefire-plugin.version>3.1.2</maven-surefire-plugin.version>
     <spring-boot-maven-plugin.version>2.7.6</spring-boot-maven-plugin.version>
     <checksum.maven.plugin.version>1.11</checksum.maven.plugin.version>
     <maven.gpg.plugin.version>3.1.0</maven.gpg.plugin.version>
-    <buildnumber.plugin.version>3.1.0</buildnumber.plugin.version>
+    <buildnumber.plugin.version>3.2.0</buildnumber.plugin.version>
     <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
-    <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
+    <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
     <maven-javadoc-plugin.version>3.5.0</maven-javadoc-plugin.version>
     <maven.jar.plugin.version>3.3.0</maven.jar.plugin.version>
     <build-helper-maven-plugin.version>3.4.0</build-helper-maven-plugin.version>
-    <asciidoctor.maven.plugin.version>2.2.3</asciidoctor.maven.plugin.version>
-    <asciidoctorj.version>2.5.8</asciidoctorj.version>
+    <asciidoctor.maven.plugin.version>2.2.4</asciidoctor.maven.plugin.version>
+    <asciidoctorj.version>2.5.10</asciidoctorj.version>
     <asciidoctorj.pdf.version>2.3.7</asciidoctorj.pdf.version>
-    <asciidoctorj.diagram.version>2.2.8</asciidoctorj.diagram.version>
+    <asciidoctorj.diagram.version>2.2.9</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jmh.version>1.36</jmh.version>
-    <spotless.version>2.36.0</spotless.version>
+    <spotless.version>2.37.0</spotless.version>
     <google-java-format.version>1.15.0</google-java-format.version>
     <jacoco.version>0.8.10</jacoco.version>
     <!-- for documentation -->
-    <broker.version>3.11</broker.version>
+    <broker.version>3.12</broker.version>
     <!-- to sign artifacts when releasing -->
     <gpg.keyname>6026DFCA</gpg.keyname>
     <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>

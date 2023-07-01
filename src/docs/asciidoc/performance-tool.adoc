@@ -46,9 +46,10 @@ The containers use the https://docs.docker.com/network/host/[host network],
 this is perfect for experimenting locally.
 
 .Running the broker and performance tool with the host network driver
+[source,shell,subs="attributes,specialcharacters"]
 ----
 # run the broker
-docker run -it --rm --name rabbitmq --network host rabbitmq:3.10
+docker run -it --rm --name rabbitmq --network host rabbitmq:{broker-version}
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool
@@ -69,11 +70,12 @@ the https://docs.docker.com/network/bridge/[bridge network driver], this
 can be done by defining a network and running the containers in this network.
 
 .Running the broker and performance tool with the bridge network driver
+[source,shell,subs="attributes,specialcharacters"]
 ----
 # create a network
 docker network create stream-perf-test
 # run the broker
-docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:3.10
+docker run -it --rm --network stream-perf-test --name rabbitmq rabbitmq:{broker-version}
 # open another terminal and enable the stream plugin
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 # run the performance tool

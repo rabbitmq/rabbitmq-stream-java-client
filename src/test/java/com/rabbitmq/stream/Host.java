@@ -42,9 +42,13 @@ public class Host {
   }
 
   private static Process executeCommand(String command) throws IOException {
+    return executeCommand(command, false);
+  }
+
+  private static Process executeCommand(String command, boolean ignoreError) throws IOException {
     Process pr = executeCommandProcess(command);
     int ev = waitForExitValue(pr);
-    if (ev != 0) {
+    if (ev != 0 && !ignoreError) {
       String stdout = capture(pr.getInputStream());
       String stderr = capture(pr.getErrorStream());
       throw new IOException(
@@ -97,6 +101,10 @@ public class Host {
 
   public static Process rabbitmqctl(String command) throws IOException {
     return executeCommand(rabbitmqctlCommand() + " " + command);
+  }
+
+  public static Process rabbitmqctlIgnoreError(String command) throws IOException {
+    return executeCommand(rabbitmqctlCommand() + " " + command, true);
   }
 
   public static Process killConnection(String connectionName) {

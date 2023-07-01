@@ -72,7 +72,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -551,13 +553,15 @@ public class StreamEnvironmentTest {
     }
   }
 
-  @Test
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void queryStreamStatsShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
-    try (Environment env = environmentBuilder.build()) {
+  void queryStreamStatsShouldReturnFirstOffsetAndCommittedOffset(boolean lazyInit)
+      throws Exception {
+    try (Environment env = environmentBuilder.lazyInitialization(lazyInit).build()) {
       StreamStats stats = env.queryStreamStats(stream);
-      assertThatThrownBy(() -> stats.firstOffset()).isInstanceOf(NoOffsetException.class);
-      assertThatThrownBy(() -> stats.committedChunkId()).isInstanceOf(NoOffsetException.class);
+      assertThatThrownBy(stats::firstOffset).isInstanceOf(NoOffsetException.class);
+      assertThatThrownBy(stats::committedChunkId).isInstanceOf(NoOffsetException.class);
 
       int publishCount = 20_000;
       TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
@@ -592,6 +596,59 @@ public class StreamEnvironmentTest {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  void streamExists(boolean lazyInit) {
+    AtomicBoolean metadataCalled = new AtomicBoolean(false);
+    Function<Client.ClientParameters, Client> clientFactory =
+        cp ->
+            new Client(cp) {
+              @Override
+              public Map<String, StreamMetadata> metadata(String... streams) {
+                metadataCalled.set(true);
+                return super.metadata(streams);
+              }
+            };
+    try (Environment env =
+        ((StreamEnvironmentBuilder) environmentBuilder.lazyInitialization(lazyInit))
+            .clientFactory(clientFactory)
+            .build()) {
+      assertThat(env.streamExists(stream)).isTrue();
+      assertThat(env.streamExists(UUID.randomUUID().toString())).isFalse();
+      assertThat(metadataCalled).isFalse();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  void streamExistsMetadataDataFallback(boolean lazyInit) {
+    AtomicInteger metadataCallCount = new AtomicInteger(0);
+    Function<Client.ClientParameters, Client> clientFactory =
+        cp ->
+            new Client(cp) {
+              @Override
+              StreamStatsResponse streamStats(String stream) {
+                throw new UnsupportedOperationException();
+              }
+
+              @Override
+              public Map<String, StreamMetadata> metadata(String... streams) {
+                metadataCallCount.incrementAndGet();
+                return super.metadata(streams);
+              }
+            };
+    try (Environment env =
+        ((StreamEnvironmentBuilder) environmentBuilder.lazyInitialization(lazyInit))
+            .clientFactory(clientFactory)
+            .build()) {
+      assertThat(env.streamExists(stream)).isTrue();
+      assertThat(env.streamExists(UUID.randomUUID().toString())).isFalse();
+      assertThat(metadataCallCount).hasValue(2);
+    }
+  }
+
   @Test
   void methodsShouldThrowExceptionWhenEnvironmentIsClosed() {
     Environment env = environmentBuilder.build();
@@ -602,7 +659,8 @@ public class StreamEnvironmentTest {
           () -> env.producerBuilder(),
           () -> env.consumerBuilder(),
           () -> env.deleteStream("does not matter"),
-          () -> env.queryStreamStats("does not matter")
+          () -> env.queryStreamStats("does not matter"),
+          () -> env.streamExists("does not matter")
         };
     Arrays.stream(calls)
         .forEach(call -> assertThatThrownBy(call).isInstanceOf(IllegalStateException.class));

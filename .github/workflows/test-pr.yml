@@ -1,12 +1,9 @@
-name: Test against RabbitMQ 3.11 stable (PR)
+name: Test against RabbitMQ 3.12 stable (PR)
 
 on:
   pull_request:
     branches:
       - main
-
-env:
-  RABBITMQ_IMAGE: 'rabbitmq:3.11'
 
 jobs:
   build:

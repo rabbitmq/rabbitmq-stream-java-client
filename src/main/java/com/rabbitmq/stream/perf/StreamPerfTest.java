@@ -13,12 +13,6 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
-import static com.rabbitmq.stream.perf.Utils.ENVIRONMENT_VARIABLE_LOOKUP;
-import static com.rabbitmq.stream.perf.Utils.ENVIRONMENT_VARIABLE_PREFIX;
-import static com.rabbitmq.stream.perf.Utils.OPTION_TO_ENVIRONMENT_VARIABLE;
-import static java.lang.String.format;
-import static java.time.Duration.ofMillis;
-
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -46,9 +40,7 @@ import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.perf.ShutdownService.CloseCallback;
-import com.rabbitmq.stream.perf.Utils.CreditSettings;
-import com.rabbitmq.stream.perf.Utils.NamedThreadFactory;
-import com.rabbitmq.stream.perf.Utils.PerformanceMicrometerMetricsCollector;
+import com.rabbitmq.stream.perf.Utils.*;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Tag;
@@ -65,6 +57,16 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.internal.PlatformDependent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import picocli.CommandLine;
+import picocli.CommandLine.ArgGroup;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.ParameterException;
+import picocli.CommandLine.Spec;
+
+import javax.net.ssl.SNIServerName;
+import javax.net.ssl.SSLParameters;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
@@ -94,15 +96,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import javax.net.ssl.SNIServerName;
-import javax.net.ssl.SSLParameters;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import picocli.CommandLine;
-import picocli.CommandLine.ArgGroup;
-import picocli.CommandLine.Model.CommandSpec;
-import picocli.CommandLine.ParameterException;
-import picocli.CommandLine.Spec;
+
+import static com.rabbitmq.stream.perf.Utils.*;
+import static java.lang.String.format;
+import static java.time.Duration.ofMillis;
 
 @CommandLine.Command(
     name = "stream-perf-test",
@@ -416,13 +413,6 @@ public class StreamPerfTest implements Callable<Integer> {
   private boolean metricsCommandLineArguments;
 
   @CommandLine.Option(
-      names = {"--credits", "-cr"},
-      description = "initial and additional credits for subscriptions",
-      defaultValue = "1:1",
-      converter = Utils.CreditsTypeConverter.class)
-  private CreditSettings credits;
-
-  @CommandLine.Option(
       names = {"--requested-max-frame-size", "-rmfs"},
       description = "maximum frame size to request",
       defaultValue = "1048576",
@@ -471,6 +461,13 @@ public class StreamPerfTest implements Callable<Integer> {
         required = false)
     private String instanceSyncNamespace;
   }
+
+  @CommandLine.Option(
+      names = {"--initial-credits", "-ic"},
+      description = "initial credits for subscription",
+      defaultValue = "1",
+      converter = Utils.NotNegativeIntegerTypeConverter.class)
+  private int initialCredits;
 
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
@@ -994,7 +991,10 @@ public class StreamPerfTest implements Callable<Integer> {
                         AtomicLong messageCount = new AtomicLong(0);
                         String stream = stream(streams, i);
                         ConsumerBuilder consumerBuilder =
-                            environment.consumerBuilder().offset(this.offset);
+                            environment
+                                .consumerBuilder()
+                                .offset(this.offset)
+                                .synchronousControlFlow(this.initialCredits, 1);
 
                         if (this.superStreams) {
                           consumerBuilder.superStream(stream);
