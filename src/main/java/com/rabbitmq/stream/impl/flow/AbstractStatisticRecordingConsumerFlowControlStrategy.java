@@ -11,10 +11,8 @@ import com.rabbitmq.stream.impl.ConsumerStatisticRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntUnaryOperator;
-import java.util.function.Supplier;
 
 /**
  * Abstract class that calls an instance of {@link ConsumerStatisticRecorder} and exposes it to child implementations
@@ -26,10 +24,11 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractStatisticRecordingConsumerFlowControlStrategy.class);
 
-    protected final ConsumerStatisticRecorder consumerStatisticRecorder = new ConsumerStatisticRecorder();
+    protected final ConsumerStatisticRecorder consumerStatisticRecorder;
 
-    protected AbstractStatisticRecordingConsumerFlowControlStrategy(Supplier<CreditAsker> creditAskerSupplier) {
-        super(creditAskerSupplier);
+    protected AbstractStatisticRecordingConsumerFlowControlStrategy(String identifier, CreditAsker creditAsker) {
+        super(identifier, creditAsker);
+        this.consumerStatisticRecorder = new ConsumerStatisticRecorder(identifier);
     }
 
     /**
@@ -41,26 +40,19 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
      */
     @Override
     public void handleSubscribe(
-            byte subscriptionId,
-            String stream,
             OffsetSpecification offsetSpecification,
-            Map<String, String> subscriptionProperties,
             boolean isInitialSubscription
     ) {
         this.consumerStatisticRecorder.handleSubscribe(
-                subscriptionId,
-                stream,
                 offsetSpecification,
-                subscriptionProperties,
                 isInitialSubscription
         );
     }
 
     @Override
-    public void handleChunk(byte subscriptionId, long offset, long messageCount, long dataSize) {
-        super.handleChunk(subscriptionId, offset, messageCount, dataSize);
+    public void handleChunk(long offset, long messageCount, long dataSize) {
+        super.handleChunk(offset, messageCount, dataSize);
         this.consumerStatisticRecorder.handleChunk(
-            subscriptionId,
             offset,
             messageCount,
             dataSize
@@ -69,15 +61,13 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
 
     @Override
     public void handleMessage(
-            byte subscriptionId,
             long offset,
             long chunkTimestamp,
             long committedChunkId,
             Message message
     ) {
-        super.handleMessage(subscriptionId, offset, chunkTimestamp, committedChunkId, message);
+        super.handleMessage(offset, chunkTimestamp, committedChunkId, message);
         this.consumerStatisticRecorder.handleMessage(
-                subscriptionId,
                 offset,
                 chunkTimestamp,
                 committedChunkId,
@@ -86,24 +76,23 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
     }
 
     @Override
-    public void handleCreditNotification(byte subscriptionId, short responseCode) {
-        super.handleCreditNotification(subscriptionId, responseCode);
-        this.consumerStatisticRecorder.handleCreditNotification(subscriptionId, responseCode);
+    public void handleCreditNotification(short responseCode) {
+        super.handleCreditNotification(responseCode);
+        this.consumerStatisticRecorder.handleCreditNotification(responseCode);
     }
 
     @Override
-    public void handleUnsubscribe(byte subscriptionId) {
-        super.handleUnsubscribe(subscriptionId);
-        this.consumerStatisticRecorder.handleUnsubscribe(subscriptionId);
+    public void handleUnsubscribe() {
+        super.handleUnsubscribe();
+        this.consumerStatisticRecorder.handleUnsubscribe();
     }
 
-    protected int registerCredits(byte subscriptionId, IntUnaryOperator askedToAsk, boolean askForCredits) {
+    protected int registerCredits(IntUnaryOperator askedToAsk, boolean askForCredits) {
         AtomicInteger outerCreditsToAsk = new AtomicInteger();
         ConsumerStatisticRecorder.SubscriptionStatistics subscriptionStatistics = this.consumerStatisticRecorder
-                .getSubscriptionStatisticsMap()
-                .get(subscriptionId);
+                .getSubscriptionStatistics();
         if(subscriptionStatistics == null) {
-            LOGGER.warn("Lost subscription {}, returning no credits. askForCredits={}", subscriptionId, askForCredits);
+            LOGGER.warn("Lost subscription, returning no credits. askForCredits={}", askForCredits);
             return 0;
         }
         subscriptionStatistics.getPendingChunks().updateAndGet(credits -> {
@@ -113,10 +102,10 @@ public abstract class AbstractStatisticRecordingConsumerFlowControlStrategy
         });
         int finalCreditsToAsk = outerCreditsToAsk.get();
         if(askForCredits && finalCreditsToAsk > 0) {
-            LOGGER.debug("Asking for {} credits for subscriptionId {}", finalCreditsToAsk, subscriptionId);
-            mandatoryCreditAsker().credit(subscriptionId, finalCreditsToAsk);
+            LOGGER.debug("Asking for {} credits", finalCreditsToAsk);
+            getCreditAsker().credit(finalCreditsToAsk);
         }
-        LOGGER.debug("Returning {} credits for subscriptionId {} with askForCredits={}", finalCreditsToAsk, subscriptionId, askForCredits);
+        LOGGER.debug("Returning {} credits with askForCredits={}", finalCreditsToAsk, askForCredits);
         return finalCreditsToAsk;
     }
 

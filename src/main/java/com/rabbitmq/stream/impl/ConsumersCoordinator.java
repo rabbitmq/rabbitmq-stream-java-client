@@ -418,7 +418,10 @@ class ConsumersCoordinator {
       this.trackingClosingCallback = trackingClosingCallback;
       this.messageHandler = messageHandler;
       this.clientReference = new AtomicReference<>();
-      this.consumerFlowControlStrategy = consumerFlowControlStrategyBuilder.build(this.clientReference::get);
+      this.consumerFlowControlStrategy = consumerFlowControlStrategyBuilder.build(
+              String.format("[stream=%s, subscriptionId=%s]", stream, String.valueOf(subscriptionIdInClient)),
+              credits -> this.clientReference.get().credit(this.subscriptionIdInClient, credits)
+      );
       if (this.offsetTrackingReference == null) {
         this.subscriptionProperties = subscriptionProperties;
       } else {
@@ -585,7 +588,6 @@ class ConsumersCoordinator {
               subscriptionTracker.offset = offset;
               subscriptionTracker.hasReceivedSomething = true;
               subscriptionTracker.consumerFlowControlStrategy.handleMessage(
-                      subscriptionId,
                       offset,
                       chunkTimestamp,
                       committedOffset,
@@ -740,7 +742,7 @@ class ConsumersCoordinator {
           LOGGER.warn("Could not find stream subscription {} for chunk listener", subscriptionId);
           return;
         }
-        subscriptionTracker.consumerFlowControlStrategy.handleChunk(subscriptionId, offset, messageCount, dataSize);
+        subscriptionTracker.consumerFlowControlStrategy.handleChunk(offset, messageCount, dataSize);
       };
       String connectionName = connectionNamingStrategy.apply(ClientConnectionType.CONSUMER);
       ClientFactoryContext clientFactoryContext =
@@ -970,10 +972,7 @@ class ConsumersCoordinator {
 
         checkNotClosed();
         int initialCredits = subscriptionTracker.consumerFlowControlStrategy.handleSubscribeReturningInitialCredits(
-            subscriptionId,
-            subscriptionTracker.stream,
             subscriptionContext.offsetSpecification(),
-            subscriptionTracker.subscriptionProperties,
             isInitialSubscription
         );
         final byte finalSubscriptionId = subscriptionId;

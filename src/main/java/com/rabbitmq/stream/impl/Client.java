@@ -13,25 +13,47 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.AuthenticationFailureException;
+import com.rabbitmq.stream.ByteCapacity;
+import com.rabbitmq.stream.ChunkChecksum;
+import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
-import com.rabbitmq.stream.flow.CreditAsker;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
-import com.rabbitmq.stream.impl.Utils.*;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
-import com.rabbitmq.stream.sasl.*;
+import com.rabbitmq.stream.sasl.CredentialsProvider;
+import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
+import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;
+import com.rabbitmq.stream.sasl.SaslConfiguration;
+import com.rabbitmq.stream.sasl.SaslMechanism;
+import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufOutputStream;
-import io.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
+import io.netty.channel.ConnectTimeoutException;
+import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -57,8 +79,23 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -83,7 +120,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * <p>People wanting very fine control over their interaction with the broker can use {@link Client}
  * but at their own risk.
  */
-public class Client implements CreditAsker, AutoCloseable {
+public class Client implements AutoCloseable {
 
   public static final int DEFAULT_PORT = 5552;
   public static final int DEFAULT_TLS_PORT = 5551;
@@ -1004,7 +1041,6 @@ public class Client implements CreditAsker, AutoCloseable {
     return this.codec.messageBuilder();
   }
 
-  @Override
   public void credit(byte subscriptionId, int credit) {
     if (credit < 0 || credit > Short.MAX_VALUE) {
       throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);

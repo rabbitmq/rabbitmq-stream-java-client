@@ -6,9 +6,6 @@ import com.rabbitmq.stream.flow.AbstractConsumerFlowControlStrategy;
 import com.rabbitmq.stream.flow.ConsumerFlowControlStrategyBuilder;
 import com.rabbitmq.stream.flow.CreditAsker;
 
-import java.util.Map;
-import java.util.function.Supplier;
-
 /**
  * The default flow control strategy.
  * Requests a set amount of credits after each chunk arrives.
@@ -20,26 +17,27 @@ public class SynchronousConsumerFlowControlStrategy extends AbstractConsumerFlow
     private final int initialCredits;
     private final int additionalCredits;
 
-    public SynchronousConsumerFlowControlStrategy(Supplier<CreditAsker> creditAskerSupplier, int initialCredits, int additionalCredits) {
-        super(creditAskerSupplier);
+    public SynchronousConsumerFlowControlStrategy(
+            String identifier,
+            CreditAsker creditAsker,
+            int initialCredits,
+            int additionalCredits) {
+        super(identifier, creditAsker);
         this.initialCredits = initialCredits;
         this.additionalCredits = additionalCredits;
     }
 
     @Override
     public int handleSubscribeReturningInitialCredits(
-            byte subscriptionId,
-            String stream,
             OffsetSpecification offsetSpecification,
-            Map<String, String> subscriptionProperties,
             boolean isInitialSubscription
     ) {
         return this.initialCredits;
     }
 
     @Override
-    public void handleChunk(byte subscriptionId, long offset, long messageCount, long dataSize) {
-        mandatoryCreditAsker().credit(subscriptionId, this.additionalCredits);
+    public void handleChunk(long offset, long messageCount, long dataSize) {
+        getCreditAsker().credit(this.additionalCredits);
     }
 
     public static SynchronousConsumerFlowControlStrategy.Builder builder(ConsumerBuilder consumerBuilder) {
@@ -59,8 +57,13 @@ public class SynchronousConsumerFlowControlStrategy extends AbstractConsumerFlow
         }
 
         @Override
-        public SynchronousConsumerFlowControlStrategy build(Supplier<CreditAsker> creditAskerSupplier) {
-            return new SynchronousConsumerFlowControlStrategy(creditAskerSupplier, this.initialCredits, this.additionalCredits);
+        public SynchronousConsumerFlowControlStrategy build(String identifier, CreditAsker creditAsker) {
+            return new SynchronousConsumerFlowControlStrategy(
+                    identifier,
+                    creditAsker,
+                    this.initialCredits,
+                    this.additionalCredits
+            );
         }
 
         @Override

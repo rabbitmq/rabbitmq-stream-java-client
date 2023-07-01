@@ -5,10 +5,9 @@ public interface CreditAsker {
 
     /**
      * Asks for credits for a given subscription.
-     * @param subscriptionId the subscription ID
-     * @param credit how many credits to ask for
-     * @throws IllegalArgumentException if credits are below 0 or above {@link Short#MAX_VALUE}
+     * @param credits How many credits to ask for
+     * @throws IllegalArgumentException If credits are below 0 or above {@link Short#MAX_VALUE}
      */
-    void credit(byte subscriptionId, int credit);
+    void credit(int credits);
 
 }

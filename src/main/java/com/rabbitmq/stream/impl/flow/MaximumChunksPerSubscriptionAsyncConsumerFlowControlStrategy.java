@@ -10,9 +10,7 @@ import com.rabbitmq.stream.impl.ConsumerStatisticRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
 import java.util.function.IntUnaryOperator;
-import java.util.function.Supplier;
 
 /**
  * A flow control strategy that enforces a maximum amount of Inflight chunks per registered subscription.
@@ -25,10 +23,11 @@ public class MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy extend
     private final int maximumSimultaneousChunksPerSubscription;
 
     public MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy(
-            Supplier<CreditAsker> creditAskerSupplier,
+            String identifier,
+            CreditAsker creditAsker,
             int maximumSimultaneousChunksPerSubscription
     ) {
-        super(creditAskerSupplier);
+        super(identifier, creditAsker);
         if(maximumSimultaneousChunksPerSubscription <= 0) {
             throw new IllegalArgumentException(
                 "maximumSimultaneousChunksPerSubscription must be greater than 0. Was: " + maximumSimultaneousChunksPerSubscription
@@ -39,43 +38,35 @@ public class MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy extend
 
     @Override
     public int handleSubscribeReturningInitialCredits(
-            byte subscriptionId,
-            String stream,
             OffsetSpecification offsetSpecification,
-            Map<String, String> subscriptionProperties,
             boolean isInitialSubscription) {
         this.handleSubscribe(
-            subscriptionId,
-            stream,
             offsetSpecification,
-            subscriptionProperties,
             isInitialSubscription
         );
-        return registerCredits(subscriptionId, getCreditAsker(subscriptionId), false);
+        return registerCredits(getCreditRegistererFunction(), false);
     }
 
     @Override
     protected void afterMarkHandledStateChanged(
             MessageHandler.Context messageContext,
             ConsumerStatisticRecorder.AggregatedMessageStatistics messageStatistics) {
-        byte subscriptionId = messageStatistics.getSubscriptionStatistics().getSubscriptionId();
-        registerCredits(subscriptionId, getCreditAsker(subscriptionId), true);
+        registerCredits(getCreditRegistererFunction(), true);
     }
 
-    private IntUnaryOperator getCreditAsker(byte subscriptionId) {
+    private IntUnaryOperator getCreditRegistererFunction() {
         return pendingChunks -> {
-            int inProcessingChunks = extractInProcessingChunks(subscriptionId);
+            int inProcessingChunks = extractInProcessingChunks();
             return Math.max(0, this.maximumSimultaneousChunksPerSubscription - (pendingChunks + inProcessingChunks));
         };
     }
 
-    private int extractInProcessingChunks(byte subscriptionId) {
+    private int extractInProcessingChunks() {
         int inProcessingChunks;
         ConsumerStatisticRecorder.SubscriptionStatistics subscriptionStats = this.consumerStatisticRecorder
-                .getSubscriptionStatisticsMap()
-                .get(subscriptionId);
+                .getSubscriptionStatistics();
         if(subscriptionStats == null) {
-            LOGGER.warn("Subscription data not found while calculating credits to ask! subscriptionId: {}", subscriptionId);
+            LOGGER.warn("Subscription data not found while calculating credits to ask! Identifier: {}", this.getIdentifier());
             inProcessingChunks = 0;
         } else {
             inProcessingChunks = subscriptionStats.getUnprocessedChunksByOffset().size();
@@ -98,9 +89,10 @@ public class MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy extend
         }
 
         @Override
-        public MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy build(Supplier<CreditAsker> creditAskerSupplier) {
+        public MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy build(String identifier, CreditAsker creditAsker) {
             return new MaximumChunksPerSubscriptionAsyncConsumerFlowControlStrategy(
-                    creditAskerSupplier,
+                    identifier,
+                    creditAsker,
                     this.maximumInflightChunksPerSubscription
             );
         }

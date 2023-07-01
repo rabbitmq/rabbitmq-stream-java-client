@@ -1699,11 +1699,11 @@ public class ConsumersCoordinatorTest {
 
     int numberOfInitialCreditsOnSubscribe = 7;
 
-    when(mockedConsumerFlowControlStrategy.handleSubscribeReturningInitialCredits(anyByte(), anyString(), any(), anyMap(), anyBoolean()))
+    when(mockedConsumerFlowControlStrategy.handleSubscribeReturningInitialCredits(any(), anyBoolean()))
             .thenReturn(numberOfInitialCreditsOnSubscribe);
 
     ConsumerFlowControlStrategyBuilder<ConsumerFlowControlStrategy> mockedConsumerFlowControlStrategyBuilder = Mockito.mock(ConsumerFlowControlStrategyBuilder.class);
-    when(mockedConsumerFlowControlStrategyBuilder.build(any())).thenReturn(mockedConsumerFlowControlStrategy);
+    when(mockedConsumerFlowControlStrategyBuilder.build(any(), any())).thenReturn(mockedConsumerFlowControlStrategy);
 
     Runnable closingRunnable =
             coordinator.subscribe(
@@ -1721,7 +1721,7 @@ public class ConsumersCoordinatorTest {
     verify(client, times(1))
             .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), eq(numberOfInitialCreditsOnSubscribe), anyMap());
     verify(mockedConsumerFlowControlStrategy, times(1))
-            .handleSubscribeReturningInitialCredits(anyByte(), anyString(), any(OffsetSpecification.class), anyMap(), anyBoolean());
+            .handleSubscribeReturningInitialCredits(any(OffsetSpecification.class), anyBoolean());
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
             .element(0)
             .isEqualTo(OffsetSpecification.next());
@@ -1739,7 +1739,6 @@ public class ConsumersCoordinatorTest {
             message);
 
     verify(mockedConsumerFlowControlStrategy).handleMessage(
-            subscriptionIdCaptor.getValue(),
             lastReceivedOffset,
             0,
             0,
@@ -1754,7 +1753,7 @@ public class ConsumersCoordinatorTest {
             .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 
     verify(mockedConsumerFlowControlStrategy, times(2))
-            .handleSubscribeReturningInitialCredits(anyByte(), anyString(), any(OffsetSpecification.class), anyMap(), anyBoolean());
+            .handleSubscribeReturningInitialCredits(any(OffsetSpecification.class), anyBoolean());
 
     assertThat(offsetSpecificationArgumentCaptor.getAllValues())
             .element(1)

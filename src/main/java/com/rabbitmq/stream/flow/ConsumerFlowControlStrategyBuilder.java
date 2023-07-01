@@ -2,8 +2,6 @@ package com.rabbitmq.stream.flow;
 
 import com.rabbitmq.stream.ConsumerBuilder;
 
-import java.util.function.Supplier;
-
 /**
  * Fluent builder for a {@link ConsumerFlowControlStrategyBuilderFactory}.
  * One instance of this is set per {@link com.rabbitmq.stream.Consumer}.
@@ -15,8 +13,9 @@ public interface ConsumerFlowControlStrategyBuilder<T extends ConsumerFlowContro
     /**
      * Builds the actual FlowControlStrategy instance, for the Client with which it interoperates
      *
-     * @param creditAskerSupplier {@link Supplier<CreditAsker>} for retrieving the instance (which may be lazily initialized).
+     * @param identifier A {@link String} to uniquely identify the built instance and/or its subscription.
+     * @param creditAsker {@link CreditAsker} for asking for credits.
      * @return {@link T} the built {@link ConsumerFlowControlStrategy}
      */
-    T build(Supplier<CreditAsker> creditAskerSupplier);
+    T build(String identifier, CreditAsker creditAsker);
 }
