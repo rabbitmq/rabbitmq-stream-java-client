@@ -418,9 +418,18 @@ class ConsumersCoordinator {
       this.trackingClosingCallback = trackingClosingCallback;
       this.messageHandler = messageHandler;
       this.clientReference = new AtomicReference<>();
+      String identifier = String.format("[stream=%s, subscriptionId=%s]", stream, String.valueOf(subscriptionIdInClient));
       this.consumerFlowControlStrategy = consumerFlowControlStrategyBuilder.build(
-              String.format("[stream=%s, subscriptionId=%s]", stream, String.valueOf(subscriptionIdInClient)),
-              credits -> this.clientReference.get().credit(this.subscriptionIdInClient, credits)
+              identifier,
+              credits -> {
+                Client retrievedClient = this.clientReference.get();
+                if(retrievedClient == null) {
+                  LOGGER.error("Client is not initialized, cannot ask for credits! "
+                               + "Asked for {} credits. Identifier: {}", credits, identifier);
+                  return;
+                }
+                retrievedClient.credit(this.subscriptionIdInClient, credits);
+              }
       );
       if (this.offsetTrackingReference == null) {
         this.subscriptionProperties = subscriptionProperties;
