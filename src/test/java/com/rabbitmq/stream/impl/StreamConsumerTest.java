@@ -224,7 +224,6 @@ public class StreamConsumerTest {
                 messageContexts.add(context);
               }
             });
-    long start = System.nanoTime();
     Consumer consumer = consumerBuilder.build();
 
     waitAtMost(() -> receivedMessageCount.get() >= processingLimit);
