@@ -20,8 +20,8 @@ import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static com.rabbitmq.stream.impl.TestUtils.waitMs;
 import static java.lang.String.format;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static java.util.Collections.synchronizedList;
+import static org.assertj.core.api.Assertions.*;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
@@ -32,19 +32,14 @@ import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
 import java.net.UnknownHostException;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -196,6 +191,68 @@ public class StreamConsumerTest {
 
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     assertThat(chunkTimestamp.get()).isNotZero();
+
+    consumer.close();
+  }
+
+  @Test
+  void consumeWithAsyncConsumerFlowControl() throws Exception {
+    int messageCount = 100_000;
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+
+    ConsumerBuilder consumerBuilder =
+        environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
+            .flow()
+            .strategy(new ConsumerFlowStrategy.MessageCountConsumerFlowStrategy(1))
+            .builder();
+
+    List<MessageHandler.Context> messageContexts = synchronizedList(new ArrayList<>());
+
+    int processingLimit = messageCount / 2;
+    AtomicInteger receivedMessageCount = new AtomicInteger();
+    AtomicReference<IntFunction<Boolean>> processingCondition =
+        new AtomicReference<>(count -> count <= processingLimit);
+
+    consumerBuilder =
+        consumerBuilder.messageHandler(
+            (context, message) -> {
+              receivedMessageCount.incrementAndGet();
+              if (processingCondition.get().apply(receivedMessageCount.get())) {
+                context.processed();
+              } else {
+                messageContexts.add(context);
+              }
+            });
+    long start = System.nanoTime();
+    Consumer consumer = consumerBuilder.build();
+
+    waitAtMost(() -> receivedMessageCount.get() >= processingLimit);
+    int sameValueCount = 0;
+    Duration timeout = Duration.ofSeconds(10);
+    Duration waitTime = Duration.ofMillis(100);
+    long waitedTime = 0;
+    int lastValue = -1;
+    while (sameValueCount < 10) {
+      if (receivedMessageCount.get() == lastValue) {
+        sameValueCount++;
+      } else {
+        lastValue = receivedMessageCount.get();
+      }
+      Thread.sleep(waitTime.toMillis());
+      waitedTime += waitTime.toMillis();
+      if (waitedTime > timeout.toMillis()) {
+        fail("Consumption did not stop after %d seconds", timeout.getSeconds());
+      }
+    }
+
+    assertThat(receivedMessageCount)
+        .hasValueGreaterThanOrEqualTo(processingLimit)
+        .hasValueLessThan(messageCount);
+
+    processingCondition.set(ignored -> true);
+    messageContexts.forEach(MessageHandler.Context::processed);
+    waitAtMost(() -> receivedMessageCount.get() == messageCount);
 
     consumer.close();
   }

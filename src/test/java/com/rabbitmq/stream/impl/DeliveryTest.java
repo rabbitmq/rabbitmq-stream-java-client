@@ -136,9 +136,14 @@ public class DeliveryTest {
                   (client, subscriptionId, offset, messageCount, sizeOfData) -> {
                     assertThat(messageCount).isEqualTo(nbMessages);
                     chunkCountInCallback.incrementAndGet();
+                    return null;
                   },
-                  (subscriptionId, offset, chunkTimestamp, committedOffset, message) ->
-                      messageCountInCallback.incrementAndGet(),
+                  (subscriptionId,
+                      offset,
+                      chunkTimestamp,
+                      committedChunkId,
+                      chunkContext,
+                      message) -> messageCountInCallback.incrementAndGet(),
                   NO_OP_CODEC,
                   subscriptionOffsets,
                   ChunkChecksum.NO_OP,

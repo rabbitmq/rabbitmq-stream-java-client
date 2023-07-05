@@ -1650,7 +1650,8 @@ public class Client implements AutoCloseable {
      * @param messageCount the total number of messages in the chunk
      * @param dataSize the size in bytes of the data in the chunk
      */
-    void handle(Client client, byte subscriptionId, long offset, long messageCount, long dataSize);
+    Object handle(
+        Client client, byte subscriptionId, long offset, long messageCount, long dataSize);
   }
 
   public interface MessageListener {
@@ -1660,6 +1661,7 @@ public class Client implements AutoCloseable {
         long offset,
         long chunkTimestamp,
         long committedChunkId,
+        Object chunkContext,
         Message message);
   }
 
@@ -2202,9 +2204,9 @@ public class Client implements AutoCloseable {
     private PublishConfirmListener publishConfirmListener = NO_OP_PUBLISH_CONFIRM_LISTENER;
     private PublishErrorListener publishErrorListener = NO_OP_PUBLISH_ERROR_LISTENER;
     private ChunkListener chunkListener =
-        (client, correlationId, offset, messageCount, dataSize) -> {};
+        (client, correlationId, offset, messageCount, dataSize) -> null;
     private MessageListener messageListener =
-        (correlationId, offset, chunkTimestamp, committedOffset, message) -> {};
+        (correlationId, offset, chunkTimestamp, committedOffset, chunkContext, message) -> {};
     private MetadataListener metadataListener = (stream, code) -> {};
     private CreditNotification creditNotification =
         (subscriptionId, responseCode) ->

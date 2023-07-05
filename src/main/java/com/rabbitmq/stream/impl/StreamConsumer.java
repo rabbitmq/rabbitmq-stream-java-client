@@ -74,8 +74,7 @@ class StreamConsumer implements Consumer {
       SubscriptionListener subscriptionListener,
       Map<String, String> subscriptionProperties,
       ConsumerUpdateListener consumerUpdateListener,
-      int initialCredits,
-      int additionalCredits) {
+      ConsumerFlowStrategy flowStrategy) {
     if (Utils.filteringEnabled(subscriptionProperties) && !environment.filteringSupported()) {
       throw new IllegalArgumentException("Filtering is not supported by the broker");
     }
@@ -251,8 +250,7 @@ class StreamConsumer implements Consumer {
                     trackingClosingCallback,
                     closedAwareMessageHandler,
                     Collections.unmodifiableMap(subscriptionProperties),
-                    initialCredits,
-                    additionalCredits);
+                    flowStrategy);
 
             this.status = Status.RUNNING;
           };

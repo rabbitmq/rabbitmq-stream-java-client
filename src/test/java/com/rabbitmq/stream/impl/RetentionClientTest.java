@@ -220,11 +220,14 @@ public class RetentionClientTest {
         Client consumer =
             cf.get(
                 new Client.ClientParameters()
-                    .chunkListener(
-                        (client1, subscriptionId, offset, messageCount1, dataSize) ->
-                            client1.credit(subscriptionId, 1))
+                    .chunkListener(TestUtils.credit())
                     .messageListener(
-                        (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                        (subscriptionId,
+                            offset,
+                            chunkTimestamp,
+                            committedOffset,
+                            chunkContext,
+                            message) -> {
                           long messageId = message.getProperties().getMessageIdAsLong();
                           firstMessageId.compareAndSet(-1, messageId);
                           lastMessageId.set(messageId);

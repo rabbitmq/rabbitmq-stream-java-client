@@ -95,11 +95,14 @@ public class OffsetTest {
         cf.get(
             new Client.ClientParameters()
                 .sslContext(sslContext)
-                .chunkListener(
-                    (client1, subscriptionId, offset12, messageCount1, dataSize) ->
-                        client1.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset1, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset1,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       latch.countDown();
@@ -160,9 +163,15 @@ public class OffsetTest {
                       client1.credit(subscriptionId, 1);
                       chunkOffset.compareAndSet(-1, offset12);
                       chunkCount.incrementAndGet();
+                      return null;
                     })
                 .messageListener(
-                    (subscriptionId, offset1, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset1,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       if (offset1 == lastOffset) {
@@ -194,6 +203,7 @@ public class OffsetTest {
                     (client1, subscriptionId, offset12, messageCount1, dataSize) -> {
                       client1.credit(subscriptionId, 1);
                       chunkOffset.compareAndSet(-1, offset12);
+                      return null;
                     }));
     client.subscribe(b(1), stream, OffsetSpecification.last(), 10);
 
@@ -236,11 +246,14 @@ public class OffsetTest {
         cf.get(
             new Client.ClientParameters()
                 .sslContext(sslContext)
-                .chunkListener(
-                    (client1, subscriptionId, offset, messageCount1, dataSize) ->
-                        client1.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset1, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset1,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       if (offset1 == lastOffset) {
@@ -304,11 +317,14 @@ public class OffsetTest {
         cf.get(
             new Client.ClientParameters()
                 .sslContext(sslContext)
-                .chunkListener(
-                    (client1, subscriptionId, offset12, messageCount1, dataSize) ->
-                        client1.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset1, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset1,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       latch.countDown();
@@ -369,11 +385,14 @@ public class OffsetTest {
         cf.get(
             new Client.ClientParameters()
                 .sslContext(sslContext)
-                .chunkListener(
-                    (client1, subscriptionId, offset, messageCount1, dataSize) ->
-                        client1.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset1, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset1,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       first.compareAndSet(-1, offset1);
                       last.set(offset1);
                       consumed.add(new String(message.getBodyAsBinary(), StandardCharsets.UTF_8));
@@ -446,7 +465,12 @@ public class OffsetTest {
           new Client(
               new Client.ClientParameters()
                   .messageListener(
-                      (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                      (subscriptionId,
+                          offset,
+                          chunkTimestamp,
+                          committedChunkId,
+                          chunkContext,
+                          message) -> {
                         if (firstOffsets.get(subscriptionId) == null) {
                           firstOffsets.put(subscriptionId, offset);
                         }
@@ -454,9 +478,7 @@ public class OffsetTest {
                           latches.get(subscriptionId).countDown();
                         }
                       })
-                  .chunkListener(
-                      (client1, subscriptionId, offset, msgCount, dataSize) ->
-                          client1.credit(subscriptionId, 1))
+                  .chunkListener(TestUtils.credit())
                   .eventLoopGroup(eventLoopGroup));
       client.subscribe(b(1), stream, OffsetSpecification.offset(50), 10);
       client.subscribe(b(2), stream, OffsetSpecification.offset(100), 10);
@@ -503,11 +525,14 @@ public class OffsetTest {
         cf.get(
             new Client.ClientParameters()
                 .sslContext(sslContext)
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       consumed.add(new String(message.getBodyAsBinary(), StandardCharsets.UTF_8));
                       consumedLatch.countDown();
                     }));
@@ -556,10 +581,14 @@ public class OffsetTest {
         cf.get(
             new Client.ClientParameters()
                 .sslContext(sslContext)
-                .chunkListener(
-                    (client, subscriptionId, offset, msgCount, dataSize) -> client.credit(b(0), 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       lastConsumedMessage.set(new String(message.getBodyAsBinary()));
                       consumedMessagesLatch.countDown();
                     }));

@@ -362,6 +362,9 @@ public class OffsetTrackingCoordinatorTest {
       public com.rabbitmq.stream.Consumer consumer() {
         return consumer;
       }
+
+      @Override
+      public void processed() {}
     };
   }
 }

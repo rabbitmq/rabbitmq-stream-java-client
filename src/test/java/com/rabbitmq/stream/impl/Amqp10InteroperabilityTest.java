@@ -208,11 +208,14 @@ public class Amqp10InteroperabilityTest {
         cf.get(
             new ClientParameters()
                 .codec(codec)
-                .chunkListener(
-                    (client1, subscriptionId, offset, messageCount, dataSize) ->
-                        client1.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedChunkId, msg) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        msg) -> {
                       messageReference.set(msg);
                       latch.countDown();
                     }));

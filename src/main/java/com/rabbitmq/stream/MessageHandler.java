@@ -84,5 +84,7 @@ public interface MessageHandler {
      * @see Consumer#store(long)
      */
     Consumer consumer();
+
+    void processed();
   }
 }

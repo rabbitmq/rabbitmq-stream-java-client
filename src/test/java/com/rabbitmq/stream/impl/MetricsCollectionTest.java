@@ -96,12 +96,14 @@ public class MetricsCollectionTest {
         cf.get(
             new Client.ClientParameters()
                 .metricsCollector(metricsCollector)
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) ->
-                        consumeLatch.countDown()));
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> consumeLatch.countDown()));
 
     Client.Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
@@ -173,11 +175,14 @@ public class MetricsCollectionTest {
         cf.get(
             new Client.ClientParameters()
                 .metricsCollector(metricsCollector)
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       consumeLatch.countDown();
                     }));
 
@@ -220,15 +225,18 @@ public class MetricsCollectionTest {
           new Client(
               new ClientParameters()
                   .messageListener(
-                      (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                      (subscriptionId,
+                          offset,
+                          chunkTimestamp,
+                          committedChunkId,
+                          chunkContext,
+                          message) -> {
                         counts.get(subscriptionId).incrementAndGet();
                         if (message.getProperties().getMessageIdAsLong() == messageCount) {
                           latches.get(subscriptionId).countDown();
                         }
                       })
-                  .chunkListener(
-                      (client1, subscriptionId, offset, msgCount, dataSize) ->
-                          client1.credit(subscriptionId, 1))
+                  .chunkListener(TestUtils.credit())
                   .metricsCollector(metricsCollector)
                   .eventLoopGroup(eventLoopGroup));
       client.subscribe(b(1), stream, OffsetSpecification.offset(50), 10);

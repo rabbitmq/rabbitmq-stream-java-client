@@ -989,4 +989,11 @@ public final class TestUtils {
       return this.value;
     }
   }
+
+  static Client.ChunkListener credit() {
+    return (client, subscriptionId, offset, messageCount, dataSize) -> {
+      client.credit(subscriptionId, 1);
+      return null;
+    };
+  }
 }

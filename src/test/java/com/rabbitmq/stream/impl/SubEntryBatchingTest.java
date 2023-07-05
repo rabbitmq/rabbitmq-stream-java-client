@@ -106,11 +106,14 @@ public class SubEntryBatchingTest {
             cf.get(
                 new ClientParameters()
                     .compressionCodecFactory(compressionCodecFactory)
-                    .chunkListener(
-                        (client, subscriptionId, offset, messageCount1, dataSize) ->
-                            client.credit(subscriptionId, 1))
+                    .chunkListener(TestUtils.credit())
                     .messageListener(
-                        (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                        (subscriptionId,
+                            offset,
+                            chunkTimestamp,
+                            committedChunkId,
+                            chunkContext,
+                            message) -> {
                           consumedBodies.add(new String(message.getBodyAsBinary(), UTF8));
                           consumeLatch.countDown();
                         })
@@ -185,11 +188,14 @@ public class SubEntryBatchingTest {
               cf.get(
                   new ClientParameters()
                       .compressionCodecFactory(compressionCodecFactory)
-                      .chunkListener(
-                          (client, subscriptionId, offset, messageCount1, dataSize) ->
-                              client.credit(subscriptionId, 1))
+                      .chunkListener(TestUtils.credit())
                       .messageListener(
-                          (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                          (subscriptionId,
+                              offset,
+                              chunkTimestamp,
+                              committedChunkId,
+                              chunkContext,
+                              message) -> {
                             consumedBodies.add(new String(message.getBodyAsBinary(), UTF8));
                             consumeLatch.countDown();
                           }));

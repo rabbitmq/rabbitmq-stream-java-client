@@ -352,7 +352,8 @@ class ServerFrameHandler {
         long committedChunkId,
         Codec codec,
         MessageListener messageListener,
-        byte subscriptionId) {
+        byte subscriptionId,
+        Object chunkContext) {
       int entrySize = bb.readInt();
       read += 4;
       byte[] data = new byte[entrySize];
@@ -363,7 +364,8 @@ class ServerFrameHandler {
         messageFiltered.set(true);
       } else {
         Message message = codec.decode(data);
-        messageListener.handle(subscriptionId, offset, chunkTimestamp, committedChunkId, message);
+        messageListener.handle(
+            subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message);
       }
       return read;
     }
@@ -449,7 +451,8 @@ class ServerFrameHandler {
       message.readInt(); // 4 reserved bytes, unused here
       read += 4;
 
-      chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
+      Object chunkContext =
+          chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
 
       long offsetLimit = -1;
       if (!subscriptionOffsets.isEmpty()) {
@@ -500,8 +503,11 @@ class ServerFrameHandler {
                   committedOffset,
                   codec,
                   messageListener,
-                  subscriptionId);
+                  subscriptionId,
+                  chunkContext);
           if (messageFiltered.get()) {
+            // TODO add listener and pass chunk context in
+            // this will be used e.g. to mark messages as "processed"
             messageFiltered.set(false);
           } else {
             messagesRead++;
@@ -566,7 +572,8 @@ class ServerFrameHandler {
                     committedOffset,
                     codec,
                     messageListener,
-                    subscriptionId);
+                    subscriptionId,
+                    chunkContext);
             if (messageFiltered.get()) {
               messageFiltered.set(false);
             } else {

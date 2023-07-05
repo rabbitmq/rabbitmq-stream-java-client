@@ -245,6 +245,8 @@ public interface ConsumerBuilder {
      */
     FlowConfiguration initialCredits(int initialCredits);
 
+    FlowConfiguration strategy(ConsumerFlowStrategy strategy);
+
     /**
      * Go back to the builder.
      *
