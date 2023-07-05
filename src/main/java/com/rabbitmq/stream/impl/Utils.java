@@ -630,4 +630,21 @@ final class Utils {
     @Override
     public void execute(Runnable command) {}
   }
+
+  static class MutableBoolean {
+
+    private boolean value;
+
+    MutableBoolean(boolean initialValue) {
+      this.value = initialValue;
+    }
+
+    void set(boolean value) {
+      this.value = value;
+    }
+
+    boolean get() {
+      return this.value;
+    }
+  }
 }

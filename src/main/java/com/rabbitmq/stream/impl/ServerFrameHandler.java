@@ -68,6 +68,7 @@ import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
 import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
+import com.rabbitmq.stream.impl.Utils.MutableBoolean;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -85,7 +86,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -345,7 +345,7 @@ class ServerFrameHandler {
         ByteBuf bb,
         int read,
         boolean filter,
-        AtomicBoolean messageFiltered,
+        MutableBoolean messageFiltered,
         long offset,
         long offsetLimit,
         long chunkTimestamp,
@@ -465,7 +465,6 @@ class ServerFrameHandler {
       final boolean filter = offsetLimit != -1;
 
       try {
-        // TODO handle exception in exception handler
         chunkChecksum.checksum(message, dataLength, crc);
       } catch (ChunkChecksumValidationException e) {
         LOGGER.warn(
@@ -478,7 +477,7 @@ class ServerFrameHandler {
 
       metricsCollector.chunk(numEntries);
       long messagesRead = 0;
-      AtomicBoolean messageFiltered = new AtomicBoolean(false);
+      MutableBoolean messageFiltered = new MutableBoolean(false);
 
       while (numRecords != 0) {
         byte entryType = message.readByte();
@@ -539,7 +538,7 @@ class ServerFrameHandler {
             ByteBuf outBb = client.channel.alloc().heapBuffer(uncompressedDataSize);
             ByteBuf slice = message.slice(message.readerIndex(), dataSize);
             InputStream inputStream = compressionCodec.decompress(new ByteBufInputStream(slice));
-            byte[] inBuffer = new byte[uncompressedDataSize < 1024 ? uncompressedDataSize : 1024];
+            byte[] inBuffer = new byte[Math.min(uncompressedDataSize, 1024)];
             int n;
             try {
               while (-1 != (n = inputStream.read(inBuffer))) {
