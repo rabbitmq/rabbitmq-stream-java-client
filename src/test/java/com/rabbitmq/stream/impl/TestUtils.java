@@ -63,12 +63,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.function.Supplier;
+import java.util.function.*;
 import java.util.stream.IntStream;
 import org.assertj.core.api.AssertDelegateTarget;
+import org.assertj.core.api.Assertions;
 import org.assertj.core.api.Condition;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.TestInfo;
@@ -995,5 +993,30 @@ public final class TestUtils {
       client.credit(subscriptionId, 1);
       return null;
     };
+  }
+
+  static void waitUntilStable(LongSupplier value) {
+    int sameValueCount = 0;
+    Duration timeout = Duration.ofSeconds(10);
+    Duration waitTime = Duration.ofMillis(100);
+    long waitedTime = 0;
+    long lastValue = -1;
+    while (sameValueCount < 10) {
+      if (value.getAsLong() == lastValue) {
+        sameValueCount++;
+      } else {
+        lastValue = value.getAsLong();
+      }
+      try {
+        Thread.sleep(waitTime.toMillis());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException(e);
+      }
+      waitedTime += waitTime.toMillis();
+      if (waitedTime > timeout.toMillis()) {
+        Assertions.fail("Did not stabilize after %d seconds", timeout.getSeconds());
+      }
+    }
   }
 }

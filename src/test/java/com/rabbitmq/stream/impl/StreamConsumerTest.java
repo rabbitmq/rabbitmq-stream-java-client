@@ -13,12 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.b;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
-import static com.rabbitmq.stream.impl.TestUtils.waitMs;
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static java.lang.String.format;
 import static java.util.Collections.synchronizedList;
 import static org.assertj.core.api.Assertions.*;
@@ -227,23 +222,7 @@ public class StreamConsumerTest {
     Consumer consumer = consumerBuilder.build();
 
     waitAtMost(() -> receivedMessageCount.get() >= processingLimit);
-    int sameValueCount = 0;
-    Duration timeout = Duration.ofSeconds(10);
-    Duration waitTime = Duration.ofMillis(100);
-    long waitedTime = 0;
-    int lastValue = -1;
-    while (sameValueCount < 10) {
-      if (receivedMessageCount.get() == lastValue) {
-        sameValueCount++;
-      } else {
-        lastValue = receivedMessageCount.get();
-      }
-      Thread.sleep(waitTime.toMillis());
-      waitedTime += waitTime.toMillis();
-      if (waitedTime > timeout.toMillis()) {
-        fail("Consumption did not stop after %d seconds", timeout.getSeconds());
-      }
-    }
+    waitUntilStable(receivedMessageCount::get);
 
     assertThat(receivedMessageCount)
         .hasValueGreaterThanOrEqualTo(processingLimit)
