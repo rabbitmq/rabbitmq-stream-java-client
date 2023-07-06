@@ -155,6 +155,7 @@ public interface ConsumerBuilder {
    * Configure flow of messages.
    *
    * @return the flow configuration
+   * @since 0.11.0
    */
   FlowConfiguration flow();
 
@@ -217,7 +218,11 @@ public interface ConsumerBuilder {
     ConsumerBuilder builder();
   }
 
-  /** Message flow configuration. */
+  /**
+   * Message flow configuration.
+   *
+   * @since 0.11.0
+   */
   interface FlowConfiguration {
 
     /**
