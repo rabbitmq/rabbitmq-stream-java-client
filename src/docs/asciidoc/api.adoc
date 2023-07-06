@@ -842,6 +842,15 @@ Useful when <<single-active-consumer, single active consumer>> is enabled and an
 |A <<consumer-subscription-listener, callback>> before the subscription is created.
 Useful when using an external store for offset tracking.
 |`null`
+
+|`flow`
+|Configuration helper for flow control.
+|
+
+|`flow#initialCredits`
+|Number of credits when the subscription is created.
+Increase for higher throughput at the expense of memory usage.
+|1
 |===
 
 [NOTE]
