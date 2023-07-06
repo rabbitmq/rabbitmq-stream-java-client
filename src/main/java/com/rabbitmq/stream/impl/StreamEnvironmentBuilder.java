@@ -134,23 +134,9 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
-  @SuppressWarnings("deprecation")
-  @Override
-  public EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup) {
-    this.netty().eventLoopGroup(eventLoopGroup);
-    return this;
-  }
-
   @Override
   public EnvironmentBuilder id(String id) {
     this.id = id;
-    return this;
-  }
-
-  @SuppressWarnings("deprecation")
-  @Override
-  public EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator) {
-    this.netty().byteBufAllocator(byteBufAllocator);
     return this;
   }
 
@@ -192,13 +178,6 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
   public StreamEnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize) {
     this.clientParameters.requestedMaxFrameSize(requestedMaxFrameSize);
-    return this;
-  }
-
-  @SuppressWarnings("deprecation")
-  public StreamEnvironmentBuilder channelCustomizer(
-      com.rabbitmq.stream.ChannelCustomizer channelCustomizer) {
-    this.netty().channelCustomizer(ch -> channelCustomizer.customize(ch));
     return this;
   }
 

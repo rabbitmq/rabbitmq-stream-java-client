@@ -188,39 +188,6 @@ public interface EnvironmentBuilder {
   EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
 
   /**
-   * The Netty {@link EventLoopGroup} instance to use.
-   *
-   * <p>The environment uses its own instance by default. It is the developer's responsibility to
-   * close the {@link EventLoopGroup} they provide.
-   *
-   * @param eventLoopGroup
-   * @return this builder instance
-   * @deprecated use {@link NettyConfiguration#eventLoopGroup(EventLoopGroup)} from {@link #netty()}
-   *     instead
-   */
-  EnvironmentBuilder eventLoopGroup(EventLoopGroup eventLoopGroup);
-
-  /**
-   * Netty's {@link io.netty.buffer.ByteBuf} allocator.
-   *
-   * @param byteBufAllocator
-   * @return this builder instance
-   * @deprecated use {@link NettyConfiguration#byteBufAllocator(ByteBufAllocator)} from {@link
-   *     #netty()} instead
-   */
-  EnvironmentBuilder byteBufAllocator(ByteBufAllocator byteBufAllocator);
-
-  /**
-   * An extension point to customize Netty's {@link io.netty.channel.Channel}s used for connection.
-   *
-   * @param channelCustomizer
-   * @return this builder instance
-   * @deprecated use {@link NettyConfiguration#channelCustomizer(Consumer)} from {@link #netty()}
-   *     instead
-   */
-  EnvironmentBuilder channelCustomizer(ChannelCustomizer channelCustomizer);
-
-  /**
    * The checksum strategy used for chunk checksum.
    *
    * <p>The default is CRC32 based on JDK implementation.
