@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.12.0-SNAPSHOT</span>
-<br><span id="revremark">(d568d72)</span>
+<br><span id="revremark">(6df7fda)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2780,6 +2780,17 @@ Useful when <a href="#single-active-consumer">single active consumer</a> is enab
 <td class="tableblock halign-left valign-top"><p class="tableblock">A <a href="#consumer-subscription-listener">callback</a> before the subscription is created.
 Useful when using an external store for offset tracking.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>null</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>flow</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Configuration helper for flow control.</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>flow#initialCredits</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Number of credits when the subscription is created.
+Increase for higher throughput at the expense of memory usage.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 </tr>
 </tbody>
 </table>
@@ -5203,7 +5214,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.12.0-SNAPSHOT<br>
-Last updated 2023-07-06 14:47:53 UTC
+Last updated 2023-07-06 14:54:26 UTC
 </div>
 </div>
 </body>
