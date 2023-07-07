@@ -484,14 +484,14 @@ class ConsumersCoordinator {
     private final long timestamp;
     private final long committedOffset;
     private final StreamConsumer consumer;
-    private final LongConsumer processedCallback;
+    private final ConsumerFlowStrategy.MessageProcessedCallback processedCallback;
 
     private MessageHandlerContext(
         long offset,
         long timestamp,
         long committedOffset,
         StreamConsumer consumer,
-        LongConsumer processedCallback) {
+        ConsumerFlowStrategy.MessageProcessedCallback processedCallback) {
       this.offset = offset;
       this.timestamp = timestamp;
       this.committedOffset = committedOffset;
@@ -530,7 +530,7 @@ class ConsumersCoordinator {
 
     @Override
     public void processed() {
-      this.processedCallback.accept(this.offset);
+      this.processedCallback.processed(this);
     }
   }
 
@@ -567,7 +567,7 @@ class ConsumersCoordinator {
           (client, subscriptionId, offset, messageCount, dataSize) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
-            LongConsumer processCallback;
+            ConsumerFlowStrategy.MessageProcessedCallback processCallback;
             if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
               ConsumerFlowStrategy.Context chunkContext =
                   new ConsumerFlowStrategy.Context() {
@@ -616,7 +616,7 @@ class ConsumersCoordinator {
                       chunkTimestamp,
                       committedOffset,
                       subscriptionTracker.consumer,
-                      (LongConsumer) chunkContext),
+                      (ConsumerFlowStrategy.MessageProcessedCallback) chunkContext),
                   message);
             } else {
               LOGGER.debug(

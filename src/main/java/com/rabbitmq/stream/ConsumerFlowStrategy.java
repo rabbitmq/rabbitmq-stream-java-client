@@ -14,19 +14,24 @@
 package com.rabbitmq.stream;
 
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.LongConsumer;
 
 public interface ConsumerFlowStrategy {
 
   int initialCredits();
 
-  LongConsumer start(Context context);
+  MessageProcessedCallback start(Context context);
 
   interface Context {
 
     void credits(int credits);
 
     long messageCount();
+  }
+
+  @FunctionalInterface
+  interface MessageProcessedCallback {
+
+    void processed(MessageHandler.Context messageContext);
   }
 
   static ConsumerFlowStrategy creditOnChunkArrival() {
@@ -63,7 +68,7 @@ public interface ConsumerFlowStrategy {
     }
 
     @Override
-    public LongConsumer start(Context context) {
+    public MessageProcessedCallback start(Context context) {
       context.credits(1);
       return value -> {};
     }
@@ -85,7 +90,7 @@ public interface ConsumerFlowStrategy {
     }
 
     @Override
-    public LongConsumer start(Context context) {
+    public MessageProcessedCallback start(Context context) {
       long l = (long) (context.messageCount() * ratio);
       long limit = Math.max(1, l);
       AtomicLong processedMessages = new AtomicLong(0);

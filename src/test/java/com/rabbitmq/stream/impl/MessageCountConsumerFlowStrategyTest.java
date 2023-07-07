@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.ConsumerFlowStrategy;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.LongConsumer;
 import org.junit.jupiter.api.Test;
 
 public class MessageCountConsumerFlowStrategyTest {
@@ -30,27 +29,27 @@ public class MessageCountConsumerFlowStrategyTest {
   void shouldCreditOnceLimitIsReached() {
     ConsumerFlowStrategy strategy = build(0.5);
     long messageCount = 1000;
-    LongConsumer processedCallback = strategy.start(context(messageCount));
-    range(0, messageCount / 2 - 1).forEach(ignored -> processedCallback.accept(42));
+    ConsumerFlowStrategy.MessageProcessedCallback callback = strategy.start(context(messageCount));
+    range(0, messageCount / 2 - 1).forEach(ignored -> callback.processed(null));
     assertThat(requestedCredits).hasValue(0);
-    processedCallback.accept(42);
+    callback.processed(null);
     assertThat(requestedCredits).hasValue(1);
-    processedCallback.accept(42);
+    callback.processed(null);
     assertThat(requestedCredits).hasValue(1);
-    range(0, messageCount).forEach(ignored -> processedCallback.accept(42));
+    range(0, messageCount).forEach(ignored -> callback.processed(null));
     assertThat(requestedCredits).hasValue(1);
   }
 
   @Test
   void smallChunksAndSmallRatiosShouldCredit() {
     ConsumerFlowStrategy strategy = build(0.5);
-    LongConsumer processedCallback = strategy.start(context(1));
-    processedCallback.accept(42);
+    ConsumerFlowStrategy.MessageProcessedCallback callback = strategy.start(context(1));
+    callback.processed(null);
     assertThat(requestedCredits).hasValue(1);
 
     strategy = build(0.05);
-    processedCallback = strategy.start(context(15));
-    processedCallback.accept(42);
+    callback = strategy.start(context(15));
+    callback.processed(null);
     assertThat(requestedCredits).hasValue(1);
   }
 

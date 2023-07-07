@@ -71,8 +71,6 @@ public class ConsumersCoordinatorTest {
 
   private static final SubscriptionListener NO_OP_SUBSCRIPTION_LISTENER = subscriptionContext -> {};
   private static final Runnable NO_OP_TRACKING_CLOSING_CALLBACK = () -> {};
-  private int initialCredits = 10;
-  private int additionalCredits = 1;
 
   @Mock StreamEnvironment environment;
   @Mock StreamConsumer consumer;
