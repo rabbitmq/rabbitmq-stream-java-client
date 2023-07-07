@@ -425,14 +425,14 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       this.consumerBuilder = consumerBuilder;
     }
 
-    private ConsumerFlowStrategy strategy = new ConsumerFlowStrategy.DefaultConsumerFlowStrategy(1);
+    private ConsumerFlowStrategy strategy = ConsumerFlowStrategy.creditOnChunkArrival(1);
 
     @Override
     public FlowConfiguration initialCredits(int initialCredits) {
       if (initialCredits <= 0) {
         throw new IllegalArgumentException("Credits must be positive");
       }
-      this.strategy = new ConsumerFlowStrategy.DefaultConsumerFlowStrategy(initialCredits);
+      this.strategy = ConsumerFlowStrategy.creditOnChunkArrival(initialCredits);
       return this;
     }
 

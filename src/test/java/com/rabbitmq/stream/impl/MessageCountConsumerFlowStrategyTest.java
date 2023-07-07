@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.ConsumerFlowStrategy.creditOnProcessedMessageCount;
 import static java.util.stream.LongStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,8 +27,8 @@ public class MessageCountConsumerFlowStrategyTest {
   AtomicInteger requestedCredits = new AtomicInteger();
 
   @Test
-  void test() {
-    ConsumerFlowStrategy strategy = new ConsumerFlowStrategy.MessageCountConsumerFlowStrategy(1);
+  void shouldCreditOnceLimitIsReached() {
+    ConsumerFlowStrategy strategy = build(0.5);
     long messageCount = 1000;
     LongConsumer processedCallback = strategy.start(context(messageCount));
     range(0, messageCount / 2 - 1).forEach(ignored -> processedCallback.accept(42));
@@ -38,6 +39,23 @@ public class MessageCountConsumerFlowStrategyTest {
     assertThat(requestedCredits).hasValue(1);
     range(0, messageCount).forEach(ignored -> processedCallback.accept(42));
     assertThat(requestedCredits).hasValue(1);
+  }
+
+  @Test
+  void smallChunksAndSmallRatiosShouldCredit() {
+    ConsumerFlowStrategy strategy = build(0.5);
+    LongConsumer processedCallback = strategy.start(context(1));
+    processedCallback.accept(42);
+    assertThat(requestedCredits).hasValue(1);
+
+    strategy = build(0.05);
+    processedCallback = strategy.start(context(15));
+    processedCallback.accept(42);
+    assertThat(requestedCredits).hasValue(1);
+  }
+
+  ConsumerFlowStrategy build(double ratio) {
+    return creditOnProcessedMessageCount(1, ratio);
   }
 
   ConsumerFlowStrategy.Context context(long messageCount) {

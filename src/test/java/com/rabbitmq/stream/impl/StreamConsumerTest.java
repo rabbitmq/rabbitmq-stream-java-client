@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.ConsumerFlowStrategy.creditWhenHalfMessagesProcessed;
 import static com.rabbitmq.stream.impl.TestUtils.*;
 import static java.lang.String.format;
 import static java.util.Collections.synchronizedList;
@@ -199,7 +200,7 @@ public class StreamConsumerTest {
         environment.consumerBuilder().stream(stream)
             .offset(OffsetSpecification.first())
             .flow()
-            .strategy(new ConsumerFlowStrategy.MessageCountConsumerFlowStrategy(1))
+            .strategy(creditWhenHalfMessagesProcessed())
             .builder();
 
     List<MessageHandler.Context> messageContexts = synchronizedList(new ArrayList<>());

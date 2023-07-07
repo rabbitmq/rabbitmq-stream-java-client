@@ -29,11 +29,31 @@ public interface ConsumerFlowStrategy {
     long messageCount();
   }
 
-  class DefaultConsumerFlowStrategy implements ConsumerFlowStrategy {
+  static ConsumerFlowStrategy creditOnChunkArrival() {
+    return creditOnChunkArrival(1);
+  }
+
+  static ConsumerFlowStrategy creditOnChunkArrival(int initialCredits) {
+    return new CreditOnChunkArrivalConsumerFlowStrategy(initialCredits);
+  }
+
+  static ConsumerFlowStrategy creditWhenHalfMessagesProcessed() {
+    return creditOnProcessedMessageCount(1, 0.5);
+  }
+
+  static ConsumerFlowStrategy creditWhenHalfMessagesProcessed(int initialCredits) {
+    return creditOnProcessedMessageCount(initialCredits, 0.5);
+  }
+
+  static ConsumerFlowStrategy creditOnProcessedMessageCount(int initialCredits, double ratio) {
+    return new MessageCountConsumerFlowStrategy(initialCredits, ratio);
+  }
+
+  class CreditOnChunkArrivalConsumerFlowStrategy implements ConsumerFlowStrategy {
 
     private final int initialCredits;
 
-    public DefaultConsumerFlowStrategy(int initialCredits) {
+    private CreditOnChunkArrivalConsumerFlowStrategy(int initialCredits) {
       this.initialCredits = initialCredits;
     }
 
@@ -52,9 +72,11 @@ public interface ConsumerFlowStrategy {
   class MessageCountConsumerFlowStrategy implements ConsumerFlowStrategy {
 
     private final int initialCredits;
+    private final double ratio;
 
-    public MessageCountConsumerFlowStrategy(int initialCredits) {
+    private MessageCountConsumerFlowStrategy(int initialCredits, double ratio) {
       this.initialCredits = initialCredits;
+      this.ratio = ratio;
     }
 
     @Override
@@ -64,8 +86,9 @@ public interface ConsumerFlowStrategy {
 
     @Override
     public LongConsumer start(Context context) {
+      long l = (long) (context.messageCount() * ratio);
+      long limit = Math.max(1, l);
       AtomicLong processedMessages = new AtomicLong(0);
-      long limit = context.messageCount() == 1 ? 1 : context.messageCount() / 2;
       return messageOffset -> {
         if (processedMessages.incrementAndGet() == limit) {
           context.credits(1);

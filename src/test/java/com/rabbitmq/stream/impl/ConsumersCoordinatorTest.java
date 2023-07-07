@@ -1678,6 +1678,6 @@ public class ConsumersCoordinatorTest {
   }
 
   private static ConsumerFlowStrategy flowStrategy() {
-    return new ConsumerFlowStrategy.DefaultConsumerFlowStrategy(10);
+    return ConsumerFlowStrategy.creditOnChunkArrival(10);
   }
 }
