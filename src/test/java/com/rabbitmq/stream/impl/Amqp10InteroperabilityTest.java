@@ -14,7 +14,6 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.ClientFactory;
-import static com.rabbitmq.stream.impl.TestUtils.StreamTestInfrastructureExtension;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,12 +26,12 @@ import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
-import com.rabbitmq.stream.impl.TestUtils.DisabledIfAmqp10NotEnabled;
 import com.swiftmq.amqp.AMQPContext;
 import com.swiftmq.amqp.v100.client.Connection;
 import com.swiftmq.amqp.v100.client.Producer;
 import com.swiftmq.amqp.v100.client.QoS;
 import com.swiftmq.amqp.v100.client.Session;
+import com.swiftmq.amqp.v100.generated.messaging.delivery_state.*;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.AmqpSequence;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.AmqpValue;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.ApplicationProperties;
@@ -61,8 +60,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(StreamTestInfrastructureExtension.class)
-@DisabledIfAmqp10NotEnabled
+@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@TestUtils.DisabledIfAmqp10NotEnabled
 public class Amqp10InteroperabilityTest {
 
   String stream;

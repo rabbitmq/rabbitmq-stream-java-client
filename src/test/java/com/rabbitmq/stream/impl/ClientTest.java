@@ -13,8 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
-import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.*;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
@@ -43,6 +42,7 @@ import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import java.io.ByteArrayOutputStream;
@@ -52,14 +52,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
@@ -68,6 +61,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
+import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -977,5 +971,133 @@ public class ClientTest {
         assertThat(client.delete(s).isOk()).isTrue();
       }
     }
+  }
+
+  @Test
+  void publishConsumeWithFilterValueShouldSendSubSetOfStream() throws Exception {
+    int messageCount = 10_000;
+    AtomicReference<CountDownLatch> publishLatch =
+        new AtomicReference<>(new CountDownLatch(messageCount));
+    Client publisher =
+        cf.get(
+            new ClientParameters()
+                .publishConfirmListener(
+                    (publisherId, publishingId) -> publishLatch.get().countDown()));
+    AtomicLong sequence = new AtomicLong(0);
+    ToLongFunction<Object> sequenceFunction = msg -> sequence.getAndIncrement();
+    Response response = publisher.declarePublisher(b(0), null, stream);
+    assertThat(response).is(ok());
+
+    // firt wave of messages with several filter values
+    List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
+    Map<String, AtomicInteger> filterValueCount = new HashMap<>();
+    Random random = new Random();
+    class Entity {
+      private final Codec.EncodedMessage encodedMessage;
+      private final String filterValue;
+
+      Entity(Codec.EncodedMessage encodedMessage, String filterValue) {
+        this.encodedMessage = encodedMessage;
+        this.filterValue = filterValue;
+      }
+    }
+
+    Client.OutboundEntityWriteCallback writeCallback =
+        new Client.OutboundEntityWriteCallback() {
+          @Override
+          public int write(ByteBuf bb, Object obj, long publishingId) {
+            Entity msg = (Entity) obj;
+            bb.writeShort(msg.filterValue.length());
+            bb.writeBytes(msg.filterValue.getBytes(StandardCharsets.UTF_8));
+            Codec.EncodedMessage messageToPublish = msg.encodedMessage;
+            bb.writeInt(messageToPublish.getSize());
+            bb.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
+            return 1;
+          }
+
+          @Override
+          public int fragmentLength(Object obj) {
+            Entity msg = (Entity) obj;
+            return 8 + 2 + msg.filterValue.length() + 4 + msg.encodedMessage.getSize();
+          }
+        };
+    int batchSize = 100;
+    List<Object> messages = new ArrayList<>(batchSize);
+    Runnable write =
+        () ->
+            publisher.publishInternal(
+                Constants.VERSION_2, b(0), messages, writeCallback, sequenceFunction);
+    Runnable insert =
+        () -> {
+          byte[] data = "hello".getBytes(StandardCharsets.UTF_8);
+          int publishedMessageCount = 0;
+          while (publishedMessageCount < messageCount) {
+            String filterValue = filterValues.get(random.nextInt(filterValues.size()));
+            filterValueCount
+                .computeIfAbsent(filterValue, k -> new AtomicInteger())
+                .incrementAndGet();
+            Message message =
+                publisher
+                    .codec()
+                    .messageBuilder()
+                    .addData(data)
+                    .properties()
+                    .groupId(filterValue)
+                    .messageBuilder()
+                    .build();
+            Entity entity = new Entity(publisher.codec().encode(message), filterValue);
+            messages.add(entity);
+            publishedMessageCount++;
+
+            if (messages.size() == batchSize) {
+              write.run();
+              messages.clear();
+            }
+          }
+          if (!messages.isEmpty()) {
+            write.run();
+          }
+        };
+
+    insert.run();
+    assertThat(latchAssert(publishLatch)).completes();
+
+    // second wave of messages, with only one, new filter value
+    String newFilterValue = "orange";
+    filterValues.clear();
+    filterValues.add(newFilterValue);
+    publishLatch.set(new CountDownLatch(messageCount));
+    insert.run();
+    assertThat(latchAssert(publishLatch)).completes();
+
+    AtomicInteger consumedMessageCount = new AtomicInteger(0);
+    AtomicInteger filteredConsumedMessageCount = new AtomicInteger(0);
+    Client consumer =
+        cf.get(
+            new ClientParameters()
+                .chunkListener(
+                    (client, subscriptionId, offset, messageCount1, dataSize) ->
+                        client.credit(subscriptionId, 1))
+                .messageListener(
+                    (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
+                      consumedMessageCount.incrementAndGet();
+                      String filterValue = message.getProperties().getGroupId();
+                      if (newFilterValue.equals(filterValue)) {
+                        filteredConsumedMessageCount.incrementAndGet();
+                      }
+                    }));
+
+    // consume only messages with filter value from second wave
+    consumer.subscribe(
+        b(0),
+        stream,
+        OffsetSpecification.first(),
+        1,
+        Collections.singletonMap("filter.1", newFilterValue));
+
+    int expectedCount = filterValueCount.get(newFilterValue).get();
+    waitAtMost(() -> filteredConsumedMessageCount.get() == expectedCount);
+    // we should get messages only from the "second" part of the stream
+    assertThat(consumedMessageCount).hasValueLessThan(messageCount * 2);
   }
 }

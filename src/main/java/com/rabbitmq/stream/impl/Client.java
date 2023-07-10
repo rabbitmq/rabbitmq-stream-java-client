@@ -13,34 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
-import static com.rabbitmq.stream.Constants.COMMAND_CONSUMER_UPDATE;
-import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
-import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
-import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
-import static com.rabbitmq.stream.Constants.COMMAND_DELETE_PUBLISHER;
-import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
-import static com.rabbitmq.stream.Constants.COMMAND_EXCHANGE_COMMAND_VERSIONS;
-import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
-import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
-import static com.rabbitmq.stream.Constants.COMMAND_OPEN;
-import static com.rabbitmq.stream.Constants.COMMAND_PARTITIONS;
-import static com.rabbitmq.stream.Constants.COMMAND_PEER_PROPERTIES;
-import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH;
-import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
-import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
-import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
-import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
-import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
-import static com.rabbitmq.stream.Constants.COMMAND_STORE_OFFSET;
-import static com.rabbitmq.stream.Constants.COMMAND_STREAM_STATS;
-import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
-import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
-import static com.rabbitmq.stream.Constants.VERSION_1;
+import static com.rabbitmq.stream.Constants.*;
 import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
 import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
@@ -216,6 +189,7 @@ public class Client implements AutoCloseable {
   private final Duration rpcTimeout;
   private volatile ShutdownReason shutdownReason = null;
   private final Runnable exchangeCommandVersionsCheck;
+  private final boolean filteringSupported;
 
   public Client() {
     this(new ClientParameters());
@@ -398,15 +372,25 @@ public class Client implements AutoCloseable {
           tuneState.getHeartbeat());
       this.connectionProperties = open(parameters.virtualHost);
       Set<FrameHandlerInfo> supportedCommands = maybeExchangeCommandVersions();
-      if (supportedCommands.stream().anyMatch(i -> i.getKey() == COMMAND_STREAM_STATS)) {
-        this.exchangeCommandVersionsCheck = () -> {};
-      } else {
-        this.exchangeCommandVersionsCheck =
-            () -> {
-              throw new UnsupportedOperationException(
-                  "QueryStreamInfo is available only on RabbitMQ 3.11 or more.");
-            };
-      }
+      AtomicReference<Runnable> exchangeCommandVersionsCheckReference = new AtomicReference<>();
+      AtomicBoolean filteringSupportedReference = new AtomicBoolean(false);
+      supportedCommands.forEach(
+          c -> {
+            if (c.getKey() == COMMAND_STREAM_STATS) {
+              exchangeCommandVersionsCheckReference.set(() -> {});
+            }
+            if (c.getKey() == COMMAND_PUBLISH && c.getMaxVersion() >= VERSION_2) {
+              filteringSupportedReference.set(true);
+            }
+          });
+      this.exchangeCommandVersionsCheck =
+          exchangeCommandVersionsCheckReference.get() == null
+              ? () -> {
+                throw new UnsupportedOperationException(
+                    "QueryStreamInfo is available only on RabbitMQ 3.11 or more.");
+              }
+              : exchangeCommandVersionsCheckReference.get();
+      this.filteringSupported = filteringSupportedReference.get();
       started.set(true);
       this.metricsCollector.openConnection();
     } catch (RuntimeException e) {
@@ -855,6 +839,7 @@ public class Client implements AutoCloseable {
       encodedMessages.add(encodedMessage);
     }
     return publishInternal(
+        VERSION_1,
         this.channel,
         publisherId,
         encodedMessages,
@@ -881,6 +866,7 @@ public class Client implements AutoCloseable {
       encodedMessages.add(wrapper);
     }
     return publishInternal(
+        VERSION_1,
         this.channel,
         publisherId,
         encodedMessages,
@@ -911,6 +897,7 @@ public class Client implements AutoCloseable {
       encodedMessageBatches.add(encodedMessageBatch);
     }
     return publishInternal(
+        VERSION_1,
         this.channel,
         publisherId,
         encodedMessageBatches,
@@ -947,6 +934,7 @@ public class Client implements AutoCloseable {
       encodedMessageBatches.add(wrapper);
     }
     return publishInternal(
+        VERSION_1,
         this.channel,
         publisherId,
         encodedMessageBatches,
@@ -977,15 +965,17 @@ public class Client implements AutoCloseable {
   }
 
   List<Long> publishInternal(
+      short version,
       byte publisherId,
       List<Object> encodedEntities,
       OutboundEntityWriteCallback callback,
       ToLongFunction<Object> publishSequenceFunction) {
     return this.publishInternal(
-        this.channel, publisherId, encodedEntities, callback, publishSequenceFunction);
+        version, this.channel, publisherId, encodedEntities, callback, publishSequenceFunction);
   }
 
   List<Long> publishInternal(
+      short version,
       Channel ch,
       byte publisherId,
       List<Object> encodedEntities,
@@ -1002,6 +992,7 @@ public class Client implements AutoCloseable {
         // the current message/batch does not fit, we're sending the batch
         int frameLength = length - callback.fragmentLength(encodedEntity);
         sendEntityBatch(
+            version,
             ch,
             frameLength,
             publisherId,
@@ -1017,6 +1008,7 @@ public class Client implements AutoCloseable {
       currentIndex++;
     }
     sendEntityBatch(
+        version,
         ch,
         length,
         publisherId,
@@ -1031,6 +1023,7 @@ public class Client implements AutoCloseable {
   }
 
   private void sendEntityBatch(
+      short version,
       Channel ch,
       int frameLength,
       byte publisherId,
@@ -1044,7 +1037,7 @@ public class Client implements AutoCloseable {
     ByteBuf out = allocateNoCheck(ch.alloc(), frameLength + 4);
     out.writeInt(frameLength);
     out.writeShort(encodeRequestCode(COMMAND_PUBLISH));
-    out.writeShort(VERSION_1);
+    out.writeShort(version);
     out.writeByte(publisherId);
     int messageCount = 0;
     out.writeInt(toExcluded - fromIncluded);
@@ -1402,6 +1395,10 @@ public class Client implements AutoCloseable {
     }
   }
 
+  boolean filteringSupported() {
+    return this.filteringSupported;
+  }
+
   public List<String> route(String routingKey, String superStream) {
     if (routingKey == null || superStream == null) {
       throw new IllegalArgumentException("routing key and stream must not be null");
@@ -1603,11 +1600,7 @@ public class Client implements AutoCloseable {
     Set<FrameHandlerInfo> supported = new HashSet<>();
     try {
       if (Utils.is3_11_OrMore(brokerVersion())) {
-        for (FrameHandlerInfo info : exchangeCommandVersions()) {
-          if (info.getKey() == COMMAND_STREAM_STATS) {
-            supported.add(info);
-          }
-        }
+        supported.addAll(exchangeCommandVersions());
       }
     } catch (Exception e) {
       LOGGER.info("Error while exchanging command versions: {}", e.getMessage());
@@ -2586,6 +2579,14 @@ public class Client implements AutoCloseable {
 
     public StreamParametersBuilder leaderLocator(LeaderLocator leaderLocator) {
       this.parameters.put("queue-leader-locator", leaderLocator.value());
+      return this;
+    }
+
+    public StreamParametersBuilder filterSize(int size) {
+      if (size < 16 || size > 255) {
+        throw new IllegalArgumentException("Stream filter size must be between 16 and 255");
+      }
+      this.parameters.put("stream-filter-size-bytes", String.valueOf(size));
       return this;
     }
 

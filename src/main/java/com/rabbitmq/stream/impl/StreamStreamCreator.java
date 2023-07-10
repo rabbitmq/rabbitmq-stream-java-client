@@ -68,6 +68,12 @@ class StreamStreamCreator implements StreamCreator {
   }
 
   @Override
+  public StreamCreator filterSize(int size) {
+    streamParametersBuilder.filterSize(size);
+    return this;
+  }
+
+  @Override
   public void create() {
     if (stream == null) {
       throw new IllegalArgumentException("Stream cannot be null");

@@ -65,6 +65,11 @@ final class Utils {
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
   private static final Map<Short, String> CONSTANT_LABELS;
 
+  static final String SUBSCRIPTION_PROPERTY_SAC = "single-active-consumer";
+  static final String SUBSCRIPTION_PROPERTY_SUPER_STREAM = "super-stream";
+  static final String SUBSCRIPTION_PROPERTY_FILTER_PREFIX = "filter.";
+  static final String SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED = "match-unfiltered";
+
   static {
     Map<Short, String> labels = new HashMap<>();
     Arrays.stream(Constants.class.getDeclaredFields())
@@ -116,6 +121,15 @@ final class Utils {
       return false;
     } else {
       return "true".equals(properties.get("single-active-consumer"));
+    }
+  }
+
+  static boolean filteringEnabled(Map<String, String> properties) {
+    if (properties == null || properties.isEmpty()) {
+      return false;
+    } else {
+      return properties.keySet().stream()
+          .anyMatch(k -> k.startsWith(SUBSCRIPTION_PROPERTY_FILTER_PREFIX));
     }
   }
 

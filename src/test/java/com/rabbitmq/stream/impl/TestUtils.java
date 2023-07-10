@@ -461,6 +461,12 @@ public final class TestUtils {
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
+  @ExtendWith(DisabledIfFilteringNotSupportedCondition.class)
+  @interface DisabledIfFilteringNotSupported {}
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
   @ExtendWith(DisabledIfRabbitMqCtlNotSetCondition.class)
   @interface DisabledIfRabbitMqCtlNotSet {}
 
@@ -601,6 +607,7 @@ public final class TestUtils {
             new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
         Client.Response response = client.create(stream);
         assertThat(response.isOk()).isTrue();
+        store(context.getRoot()).put("filteringSupported", client.filteringSupported());
         client.close();
         store(context).put("testMethodStream", stream);
       } catch (NoSuchFieldException e) {
@@ -671,7 +678,7 @@ public final class TestUtils {
       }
 
       @Override
-      public void close() throws Throwable {
+      public void close() {
         this.executorService.shutdownNow();
       }
     }
@@ -699,6 +706,29 @@ public final class TestUtils {
     private void close() {
       for (Client c : clients) {
         c.close();
+      }
+    }
+  }
+
+  static class DisabledIfFilteringNotSupportedCondition implements ExecutionCondition {
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      Boolean filteringSupported =
+          StreamTestInfrastructureExtension.store(context).get("filteringSupported", Boolean.class);
+      if (filteringSupported == null) {
+        EventLoopGroup eventLoop = StreamTestInfrastructureExtension.eventLoopGroup(context);
+        try (Client client = new Client(new ClientParameters().eventLoopGroup(eventLoop))) {
+          filteringSupported = client.filteringSupported();
+          StreamTestInfrastructureExtension.store(context)
+              .put("filteringSupported", filteringSupported);
+        }
+      }
+
+      if (filteringSupported) {
+        return ConditionEvaluationResult.enabled("filtering is supported");
+      } else {
+        return ConditionEvaluationResult.disabled("filtering is not supported");
       }
     }
   }

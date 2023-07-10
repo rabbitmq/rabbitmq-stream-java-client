@@ -13,24 +13,27 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.ConsumerBuilder;
-import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.MessageHandler;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.SubscriptionListener;
+import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_FILTER_PREFIX;
+import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED;
+
+import com.rabbitmq.stream.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 
 class StreamConsumerBuilder implements ConsumerBuilder {
 
   private static final int NAME_MAX_SIZE = 256; // server-side limitation
+  private static final TrackingConfiguration DISABLED_TRACKING_CONFIGURATION =
+      new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
   private final StreamEnvironment environment;
-
+  private final Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
   private String stream, superStream;
   private OffsetSpecification offsetSpecification = null;
   private MessageHandler messageHandler;
@@ -40,9 +43,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private boolean noTrackingStrategy = false;
   private boolean lazyInit = false;
   private SubscriptionListener subscriptionListener = subscriptionContext -> {};
-  private final Map<String, String> subscriptionProperties = new ConcurrentHashMap<>();
-  private ConsumerUpdateListener consumerUpdateListener;
   private final DefaultFlowConfiguration flowConfiguration = new DefaultFlowConfiguration(this);
+  private ConsumerUpdateListener consumerUpdateListener;
+  private DefaultFilterConfiguration filterConfiguration;
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -88,7 +91,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
   @Override
   public ConsumerBuilder singleActiveConsumer() {
-    this.subscriptionProperties.put("single-active-consumer", "true");
+    this.subscriptionProperties.put(Utils.SUBSCRIPTION_PROPERTY_SAC, "true");
     return this;
   }
 
@@ -142,6 +145,14 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
+  public FilterConfiguration filter() {
+    if (this.filterConfiguration == null) {
+      this.filterConfiguration = new DefaultFilterConfiguration(this);
+    }
+    return this.filterConfiguration;
+  }
+
+  @Override
   public Consumer build() {
     if (this.stream == null && this.superStream == null) {
       throw new IllegalArgumentException("A stream must be specified");
@@ -185,13 +196,36 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       trackingConfiguration = DISABLED_TRACKING_CONFIGURATION;
     }
 
+    MessageHandler handler;
+    if (this.filterConfiguration == null) {
+      handler = this.messageHandler;
+    } else {
+      this.filterConfiguration.validate();
+      AtomicInteger i = new AtomicInteger(0);
+      this.filterConfiguration.filterValues.forEach(
+          v ->
+              this.subscriptionProperties.put(
+                  SUBSCRIPTION_PROPERTY_FILTER_PREFIX + i.getAndIncrement(), v));
+      this.subscriptionProperties.put(
+          SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED,
+          this.filterConfiguration.matchUnfiltered ? "true" : "false");
+      final Predicate<Message> filter = this.filterConfiguration.filter;
+      final MessageHandler delegate = this.messageHandler;
+      handler =
+          (context, message) -> {
+            if (filter.test(message)) {
+              delegate.handle(context, message);
+            }
+          };
+    }
+
     Consumer consumer;
     if (this.stream != null) {
       consumer =
           new StreamConsumer(
               this.stream,
               this.offsetSpecification,
-              this.messageHandler,
+              handler,
               this.name,
               this.environment,
               trackingConfiguration,
@@ -204,7 +238,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       if (Utils.isSac(this.subscriptionProperties)) {
-        this.subscriptionProperties.put("super-stream", this.superStream);
+        this.subscriptionProperties.put(Utils.SUBSCRIPTION_PROPERTY_SUPER_STREAM, this.superStream);
       }
       consumer =
           new SuperStreamConsumer(this, this.superStream, this.environment, trackingConfiguration);
@@ -212,8 +246,21 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     return consumer;
   }
 
-  private static final TrackingConfiguration DISABLED_TRACKING_CONFIGURATION =
-      new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
+  StreamConsumerBuilder duplicate() {
+    StreamConsumerBuilder duplicate = new StreamConsumerBuilder(this.environment);
+    for (Field field : StreamConsumerBuilder.class.getDeclaredFields()) {
+      if (Modifier.isStatic(field.getModifiers())) {
+        continue;
+      }
+      field.setAccessible(true);
+      try {
+        field.set(duplicate, field.get(this));
+      } catch (IllegalAccessException e) {
+        throw new StreamException("Error while duplicating stream producer builder", e);
+      }
+    }
+    return duplicate;
+  }
 
   static class TrackingConfiguration {
 
@@ -321,20 +368,54 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     }
   }
 
-  StreamConsumerBuilder duplicate() {
-    StreamConsumerBuilder duplicate = new StreamConsumerBuilder(this.environment);
-    for (Field field : StreamConsumerBuilder.class.getDeclaredFields()) {
-      if (Modifier.isStatic(field.getModifiers())) {
-        continue;
+  private static final class DefaultFilterConfiguration implements FilterConfiguration {
+
+    private final StreamConsumerBuilder builder;
+    private List<String> filterValues;
+    private Predicate<Message> filter;
+    private boolean matchUnfiltered = false;
+
+    private DefaultFilterConfiguration(StreamConsumerBuilder builder) {
+      this.builder = builder;
+    }
+
+    @Override
+    public FilterConfiguration values(String... filterValues) {
+      if (filterValues == null || filterValues.length == 0) {
+        throw new IllegalArgumentException("At least one filter value must be specified");
       }
-      field.setAccessible(true);
-      try {
-        field.set(duplicate, field.get(this));
-      } catch (IllegalAccessException e) {
-        throw new StreamException("Error while duplicating stream producer builder", e);
+      this.filterValues = Arrays.asList(filterValues);
+      return this;
+    }
+
+    @Override
+    public FilterConfiguration postFilter(Predicate<Message> filter) {
+      this.filter = filter;
+      return this;
+    }
+
+    @Override
+    public FilterConfiguration matchUnfiltered() {
+      this.matchUnfiltered = true;
+      return this;
+    }
+
+    @Override
+    public FilterConfiguration matchUnfiltered(boolean matchUnfiltered) {
+      this.matchUnfiltered = matchUnfiltered;
+      return this;
+    }
+
+    @Override
+    public ConsumerBuilder builder() {
+      return this.builder;
+    }
+
+    private void validate() {
+      if (this.filterValues == null || this.filter == null) {
+        throw new IllegalArgumentException("Both filter values and the filter logic must be set");
       }
     }
-    return duplicate;
   }
 
   private static class DefaultFlowConfiguration implements FlowConfiguration {

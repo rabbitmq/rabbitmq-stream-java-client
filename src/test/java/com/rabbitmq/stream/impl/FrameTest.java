@@ -21,6 +21,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Properties;
 import io.netty.buffer.ByteBuf;
@@ -152,6 +153,7 @@ public class FrameTest {
                 .thenReturn(Mockito.mock(ChannelFuture.class));
 
             client.publishInternal(
+                Constants.VERSION_1,
                 channel,
                 b(1),
                 test.sizes.stream()

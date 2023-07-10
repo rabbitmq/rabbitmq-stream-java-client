@@ -122,6 +122,7 @@ public class StreamPerfTest implements Callable<Integer> {
 
   @CommandLine.Mixin
   private final CommandLine.HelpCommand helpCommand = new CommandLine.HelpCommand();
+
   // for testing
   private final AddressResolver addressResolver;
   private final PrintWriter err, out;
@@ -430,6 +431,18 @@ public class StreamPerfTest implements Callable<Integer> {
   @ArgGroup(exclusive = false, multiplicity = "0..1")
   InstanceSyncOptions instanceSyncOptions;
 
+  @CommandLine.Option(
+      names = {"--filter-value-set", "-fvs"},
+      description = "filter value set for publishers, range (e.g. 1..15) are accepted",
+      converter = Utils.FilterValueSetConverter.class)
+  private List<String> filterValueSet;
+
+  @CommandLine.Option(
+      names = {"--filter-values", "-fv"},
+      description = "filter values for consumers",
+      split = ",")
+  private List<String> filterValues;
+
   static class InstanceSyncOptions {
 
     @CommandLine.Option(
@@ -476,6 +489,7 @@ public class StreamPerfTest implements Callable<Integer> {
   private List<Monitoring> monitorings;
   private volatile Environment environment;
   private volatile EventLoopGroup eventLoopGroup;
+
   // constructor for completion script generation
   public StreamPerfTest() {
     this(null, null, null, null);
@@ -586,7 +600,6 @@ public class StreamPerfTest implements Callable<Integer> {
     maybeDisplayVersion();
     maybeDisplayEnvironmentVariablesHelp();
     overridePropertiesWithEnvironmentVariables();
-
     Codec codec = createCodec(this.codecClass);
 
     ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
@@ -873,17 +886,41 @@ public class StreamPerfTest implements Callable<Integer> {
                           producerBuilder.name(producerName).confirmTimeout(Duration.ZERO);
                     }
 
-                    java.util.function.Consumer<MessageBuilder> messageBuilderConsumer;
+                    java.util.function.Consumer<MessageBuilder> messageBuilderConsumerTemp;
                     if (this.superStreams) {
                       producerBuilder
                           .superStream(stream)
                           .routing(msg -> msg.getProperties().getMessageIdAsString());
                       AtomicLong messageIdSequence = new AtomicLong(0);
-                      messageBuilderConsumer =
+                      messageBuilderConsumerTemp =
                           mg -> mg.properties().messageId(messageIdSequence.getAndIncrement());
                     } else {
-                      messageBuilderConsumer = mg -> {};
+                      messageBuilderConsumerTemp = mg -> {};
                       producerBuilder.stream(stream);
+                    }
+
+                    if (this.filterValueSet != null && this.filterValueSet.size() > 0) {
+                      producerBuilder =
+                          producerBuilder.filterValue(msg -> msg.getProperties().getTo());
+                      List<String> values = new ArrayList<>(this.filterValueSet);
+                      AtomicInteger count = new AtomicInteger();
+                      int subSetSize = Utils.filteringSubSetSize(values.size());
+                      int messageCountCycle = Utils.filteringPublishingCycle(this.rate);
+                      List<String> subSet = new ArrayList<>(subSetSize);
+                      java.util.function.Consumer<MessageBuilder> filteringMessageBuilderConsumer =
+                          b -> {
+                            if (Integer.remainderUnsigned(
+                                    count.getAndIncrement(), messageCountCycle)
+                                == 0) {
+                              Collections.shuffle(values);
+                              subSet.clear();
+                              subSet.addAll(values.subList(0, subSetSize));
+                            }
+                            b.properties()
+                                .to(subSet.get(Integer.remainderUnsigned(count.get(), subSetSize)));
+                          };
+                      messageBuilderConsumerTemp =
+                          messageBuilderConsumerTemp.andThen(filteringMessageBuilderConsumer);
                     }
 
                     Producer producer =
@@ -895,9 +932,9 @@ public class StreamPerfTest implements Callable<Integer> {
                             .maxUnconfirmedMessages(this.confirms)
                             .build();
 
-                    AtomicLong messageCount = new AtomicLong(0);
                     ConfirmationHandler confirmationHandler;
                     if (this.confirmLatency) {
+                      AtomicLong messageCount = new AtomicLong(0);
                       final PerformanceMetrics metrics = this.performanceMetrics;
                       final int divisor = Utils.downSamplingDivisor(this.rate);
                       confirmationHandler =
@@ -933,6 +970,8 @@ public class StreamPerfTest implements Callable<Integer> {
 
                     producers.add(producer);
 
+                    java.util.function.Consumer<MessageBuilder> messageBuilderConsumer =
+                        messageBuilderConsumerTemp;
                     return (Runnable)
                         () -> {
                           final int msgSize = this.messageSize;
@@ -1048,6 +1087,8 @@ public class StreamPerfTest implements Callable<Integer> {
                                   }
                                 });
 
+                        consumerBuilder = maybeConfigureForFiltering(consumerBuilder);
+
                         Consumer consumer = consumerBuilder.build();
                         return consumer;
                       })
@@ -1122,6 +1163,37 @@ public class StreamPerfTest implements Callable<Integer> {
     }
 
     return 0;
+  }
+
+  private ConsumerBuilder maybeConfigureForFiltering(ConsumerBuilder consumerBuilder) {
+    if (this.filterValues != null && this.filterValues.size() > 0) {
+      consumerBuilder =
+          consumerBuilder.filter().values(this.filterValues.toArray(new String[0])).builder();
+
+      if (this.filterValues.size() == 1) {
+        String filterValue = filterValues.get(0);
+        consumerBuilder =
+            consumerBuilder
+                .filter()
+                .postFilter(msg -> filterValue.equals(msg.getProperties().getTo()))
+                .builder();
+      } else {
+        consumerBuilder =
+            consumerBuilder
+                .filter()
+                .postFilter(
+                    msg -> {
+                      for (String filterValue : this.filterValues) {
+                        if (filterValue.equals(msg.getProperties().getTo())) {
+                          return true;
+                        }
+                      }
+                      return false;
+                    })
+                .builder();
+      }
+    }
+    return consumerBuilder;
   }
 
   private void createStream(Environment environment, String stream) {

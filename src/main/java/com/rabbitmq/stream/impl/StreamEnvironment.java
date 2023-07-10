@@ -736,6 +736,10 @@ class StreamEnvironment implements Environment {
     return result;
   }
 
+  boolean filteringSupported() {
+    return this.locatorOperation(Client::filteringSupported);
+  }
+
   Clock clock() {
     return this.clock;
   }

@@ -133,6 +133,16 @@ public interface ProducerBuilder {
   ProducerBuilder enqueueTimeout(Duration timeout);
 
   /**
+   * Logic to extract a filter value from a message.
+   *
+   * <p>RabbitMQ 3.13 or more is required.
+   *
+   * @param filterValueExtractor
+   * @return this builder instance
+   */
+  ProducerBuilder filterValue(Function<Message, String> filterValueExtractor);
+
+  /**
    * Create the {@link Producer} instance.
    *
    * @return the configured producer

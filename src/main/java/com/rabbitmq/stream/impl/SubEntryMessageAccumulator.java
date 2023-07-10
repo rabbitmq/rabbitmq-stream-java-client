@@ -40,7 +40,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       int maxFrameSize,
       ToLongFunction<Message> publishSequenceFunction,
       Clock clock) {
-    super(subEntrySize * batchSize, codec, maxFrameSize, publishSequenceFunction, clock);
+    super(subEntrySize * batchSize, codec, maxFrameSize, publishSequenceFunction, null, clock);
     this.subEntrySize = subEntrySize;
     this.compressionCodec = compressionCodec;
     this.compression = compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
@@ -109,6 +109,11 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     @Override
     public long publishindId() {
       return publishingId;
+    }
+
+    @Override
+    public String filterValue() {
+      return null;
     }
 
     @Override

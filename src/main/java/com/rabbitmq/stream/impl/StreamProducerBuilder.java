@@ -48,6 +48,8 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   private DefaultRoutingConfiguration routingConfiguration;
 
+  private Function<Message, String> filterValueExtractor;
+
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
   }
@@ -129,6 +131,12 @@ class StreamProducerBuilder implements ProducerBuilder {
   }
 
   @Override
+  public ProducerBuilder filterValue(Function<Message, String> filterValueExtractor) {
+    this.filterValueExtractor = filterValueExtractor;
+    return this;
+  }
+
+  @Override
   public RoutingConfiguration routing(Function<Message, String> routingKeyExtractor) {
     this.routingConfiguration = new DefaultRoutingConfiguration(this);
     this.routingConfiguration.routingKeyExtractor = routingKeyExtractor;
@@ -149,6 +157,9 @@ class StreamProducerBuilder implements ProducerBuilder {
     if (subEntrySize == 1 && compression != null) {
       throw new IllegalArgumentException(
           "Sub-entry batching must be enabled to enable compression");
+    }
+    if (subEntrySize > 1 && filterValueExtractor != null) {
+      throw new IllegalArgumentException("Filtering is not supported with sub-entry batching");
     }
     if (subEntrySize > 1 && compression == null) {
       compression = Compression.NONE;
@@ -183,6 +194,7 @@ class StreamProducerBuilder implements ProducerBuilder {
               maxUnconfirmedMessages,
               confirmTimeout,
               enqueueTimeout,
+              filterValueExtractor,
               environment);
       this.environment.addProducer((StreamProducer) producer);
     } else {
