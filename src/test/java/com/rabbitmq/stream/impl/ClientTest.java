@@ -42,6 +42,7 @@ import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfFilteringNotSupported;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -974,6 +975,7 @@ public class ClientTest {
   }
 
   @Test
+  @DisabledIfFilteringNotSupported
   void publishConsumeWithFilterValueShouldSendSubSetOfStream() throws Exception {
     int messageCount = 10_000;
     AtomicReference<CountDownLatch> publishLatch =
@@ -988,7 +990,7 @@ public class ClientTest {
     Response response = publisher.declarePublisher(b(0), null, stream);
     assertThat(response).is(ok());
 
-    // firt wave of messages with several filter values
+    // first wave of messages with several filter values
     List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
     Map<String, AtomicInteger> filterValueCount = new HashMap<>();
     Random random = new Random();
