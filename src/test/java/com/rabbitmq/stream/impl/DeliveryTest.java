@@ -130,6 +130,8 @@ public class DeliveryTest {
                 subscriptionOffsets.add(new Client.SubscriptionOffset(1, subscriptionOffset));
               }
 
+              AtomicLong filteredMessageCount = new AtomicLong();
+
               DeliverVersion1FrameHandler.handleDeliverVersion1(
                   bb,
                   null,
@@ -144,14 +146,19 @@ public class DeliveryTest {
                       committedChunkId,
                       chunkContext,
                       message) -> messageCountInCallback.incrementAndGet(),
+                  (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext) -> {
+                    filteredMessageCount.incrementAndGet();
+                  },
                   NO_OP_CODEC,
                   subscriptionOffsets,
                   ChunkChecksum.NO_OP,
                   NoOpMetricsCollector.SINGLETON);
 
+              long expectedMessageCount = nbMessages - (subscriptionOffset - chunkOffset);
+              long expectedFilteredMessageCount = nbMessages - expectedMessageCount;
               assertThat(chunkCountInCallback).hasValue(1);
-              assertThat(messageCountInCallback)
-                  .hasValue(nbMessages - (subscriptionOffset - chunkOffset));
+              assertThat(messageCountInCallback).hasValue(expectedMessageCount);
+              assertThat(filteredMessageCount).hasValue(expectedFilteredMessageCount);
               bb.release();
             });
   }

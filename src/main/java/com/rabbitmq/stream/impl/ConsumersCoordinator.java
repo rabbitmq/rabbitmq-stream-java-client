@@ -25,15 +25,8 @@ import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
-import com.rabbitmq.stream.impl.Client.Broker;
-import com.rabbitmq.stream.impl.Client.ChunkListener;
-import com.rabbitmq.stream.impl.Client.ClientParameters;
+import com.rabbitmq.stream.impl.Client.*;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
-import com.rabbitmq.stream.impl.Client.CreditNotification;
-import com.rabbitmq.stream.impl.Client.MessageListener;
-import com.rabbitmq.stream.impl.Client.MetadataListener;
-import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
-import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
@@ -604,7 +597,7 @@ class ConsumersCoordinator {
           };
 
       MessageListener messageListener =
-          (subscriptionId, offset, chunkTimestamp, committedOffset, chunkContext, message) -> {
+          (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             if (subscriptionTracker != null) {
@@ -614,13 +607,37 @@ class ConsumersCoordinator {
                   new MessageHandlerContext(
                       offset,
                       chunkTimestamp,
-                      committedOffset,
+                      committedChunkId,
                       subscriptionTracker.consumer,
                       (ConsumerFlowStrategy.MessageProcessedCallback) chunkContext),
                   message);
             } else {
               LOGGER.debug(
-                  "Could not find stream subscription {} in manager {}, node {}",
+                  "Could not find stream subscription {} in manager {}, node {} for message listener",
+                  subscriptionId,
+                  this.id,
+                  this.name);
+            }
+          };
+      MessageIgnoredListener messageIgnoredListener =
+          (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext) -> {
+            SubscriptionTracker subscriptionTracker =
+                subscriptionTrackers.get(subscriptionId & 0xFF);
+            if (subscriptionTracker != null) {
+              // message at the beginning of the first chunk is ignored
+              // we "simulate" the processing
+              MessageHandlerContext messageHandlerContext =
+                  new MessageHandlerContext(
+                      offset,
+                      chunkTimestamp,
+                      committedChunkId,
+                      subscriptionTracker.consumer,
+                      (ConsumerFlowStrategy.MessageProcessedCallback) chunkContext);
+              ((ConsumerFlowStrategy.MessageProcessedCallback) chunkContext)
+                  .processed(messageHandlerContext);
+            } else {
+              LOGGER.debug(
+                  "Could not find stream subscription {} in manager {}, node {} for message ignored listener",
                   subscriptionId,
                   this.id,
                   this.name);
@@ -757,6 +774,7 @@ class ConsumersCoordinator {
                       .chunkListener(chunkListener)
                       .creditNotification(creditNotification)
                       .messageListener(messageListener)
+                      .messageIgnoredListener(messageIgnoredListener)
                       .shutdownListener(shutdownListener)
                       .metadataListener(metadataListener)
                       .consumerUpdateListener(consumerUpdateListener))

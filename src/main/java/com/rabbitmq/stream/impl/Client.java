@@ -145,6 +145,7 @@ public class Client implements AutoCloseable {
   final PublishErrorListener publishErrorListener;
   final ChunkListener chunkListener;
   final MessageListener messageListener;
+  final MessageIgnoredListener messageIgnoredListener;
   final CreditNotification creditNotification;
   final ConsumerUpdateListener consumerUpdateListener;
   final MetadataListener metadataListener;
@@ -200,6 +201,7 @@ public class Client implements AutoCloseable {
     this.publishErrorListener = parameters.publishErrorListener;
     this.chunkListener = parameters.chunkListener;
     this.messageListener = parameters.messageListener;
+    this.messageIgnoredListener = parameters.messageIgnoredListener;
     this.creditNotification = parameters.creditNotification;
     this.codec = parameters.codec == null ? Codecs.DEFAULT : parameters.codec;
     this.saslConfiguration = parameters.saslConfiguration;
@@ -1649,6 +1651,7 @@ public class Client implements AutoCloseable {
      * @param offset the first offset in the chunk
      * @param messageCount the total number of messages in the chunk
      * @param dataSize the size in bytes of the data in the chunk
+     * @return a "chunk context" instance that'll be passed in to the {@link MessageListener}
      */
     Object handle(
         Client client, byte subscriptionId, long offset, long messageCount, long dataSize);
@@ -1663,6 +1666,16 @@ public class Client implements AutoCloseable {
         long committedChunkId,
         Object chunkContext,
         Message message);
+  }
+
+  public interface MessageIgnoredListener {
+
+    void ignored(
+        byte subscriptionId,
+        long offset,
+        long chunkTimestamp,
+        long committedChunkId,
+        Object chunkContext);
   }
 
   public interface CreditNotification {
@@ -2207,6 +2220,8 @@ public class Client implements AutoCloseable {
         (client, correlationId, offset, messageCount, dataSize) -> null;
     private MessageListener messageListener =
         (correlationId, offset, chunkTimestamp, committedOffset, chunkContext, message) -> {};
+    private MessageIgnoredListener messageIgnoredListener =
+        (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext) -> {};
     private MetadataListener metadataListener = (stream, code) -> {};
     private CreditNotification creditNotification =
         (subscriptionId, responseCode) ->
@@ -2260,6 +2275,11 @@ public class Client implements AutoCloseable {
 
     public ClientParameters messageListener(MessageListener messageListener) {
       this.messageListener = messageListener;
+      return this;
+    }
+
+    public ClientParameters messageIgnoredListener(MessageIgnoredListener messageIgnoredListener) {
+      this.messageIgnoredListener = messageIgnoredListener;
       return this;
     }
 

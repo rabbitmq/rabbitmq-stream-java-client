@@ -383,6 +383,9 @@
           <excludes>
             <exclude>**/*TestSuite.java</exclude>
           </excludes>
+          <systemProperties>
+            <rabbitmqctl.bin>DOCKER:rabbitmq</rabbitmqctl.bin>
+          </systemProperties>
         </configuration>
       </plugin>
 

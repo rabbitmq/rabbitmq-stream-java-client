@@ -53,6 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -84,6 +85,7 @@ public class ConsumersCoordinatorTest {
   ScheduledExecutorService scheduledExecutorService;
   volatile Client.MetadataListener metadataListener;
   volatile Client.MessageListener messageListener;
+  volatile Client.MessageIgnoredListener messageIgnoredListener;
   List<Client.MessageListener> messageListeners = new CopyOnWriteArrayList<>();
   volatile Client.ShutdownListener shutdownListener;
   List<Client.ShutdownListener> shutdownListeners =
@@ -126,6 +128,13 @@ public class ConsumersCoordinatorTest {
             ConsumersCoordinatorTest.this.messageListener = messageListener;
             ConsumersCoordinatorTest.this.messageListeners.add(messageListener);
             return super.messageListener(messageListener);
+          }
+
+          @Override
+          public Client.ClientParameters messageIgnoredListener(
+              Client.MessageIgnoredListener messageIgnoredListener) {
+            ConsumersCoordinatorTest.this.messageIgnoredListener = messageIgnoredListener;
+            return super.messageIgnoredListener(messageIgnoredListener);
           }
 
           @Override
@@ -500,6 +509,75 @@ public class ConsumersCoordinatorTest {
     messageToEachSubscription.run();
     assertThat(messageHandlerCalls).hasSize(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
     messageHandlerCalls.values().forEach(messageCount -> assertThat(messageCount).isEqualTo(1));
+  }
+
+  @Test
+  void ignoredMessageShouldTriggerMessageProcessing() {
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    AtomicInteger messageHandlerCalls = new AtomicInteger();
+    AtomicReference<MessageHandler.Context> messageHandlerContext = new AtomicReference<>();
+    AtomicInteger processedMessageCount = new AtomicInteger();
+    ConsumerFlowStrategy.MessageProcessedCallback flowStrategyCallback =
+        messageContext -> processedMessageCount.incrementAndGet();
+    ConsumerFlowStrategy flowStrategy =
+        new ConsumerFlowStrategy() {
+          @Override
+          public int initialCredits() {
+            return 1;
+          }
+
+          @Override
+          public MessageProcessedCallback start(Context context) {
+            return flowStrategyCallback;
+          }
+        };
+
+    AtomicInteger trackingClosingCallbackCalls = new AtomicInteger();
+    Runnable closingRunnable =
+        coordinator.subscribe(
+            consumer,
+            "stream",
+            OffsetSpecification.offset(2),
+            null,
+            NO_OP_SUBSCRIPTION_LISTENER,
+            trackingClosingCallbackCalls::incrementAndGet,
+            (context, message) -> {
+              messageHandlerContext.set(context);
+              messageHandlerCalls.incrementAndGet();
+              context.processed();
+            },
+            Collections.emptyMap(),
+            flowStrategy);
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    Byte subId = subscriptionIdCaptor.getValue();
+    messageIgnoredListener.ignored(subId, 0, 0, 0, flowStrategyCallback);
+    assertThat(processedMessageCount).hasValue(1);
+    messageIgnoredListener.ignored(subId, 1, 0, 0, flowStrategyCallback);
+    assertThat(processedMessageCount).hasValue(2);
+
+    assertThat(messageHandlerCalls.get()).isEqualTo(0);
+    messageListener.handle(
+        subId, 2, 0, 0, flowStrategyCallback, new WrapperMessageBuilder().build());
+    assertThat(messageHandlerCalls.get()).isEqualTo(1);
+    assertThat(processedMessageCount).hasValue(3);
+
+    when(client.unsubscribe(subId)).thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+    closingRunnable.run();
+    verify(client, times(1)).unsubscribe(subId);
+    assertThat(trackingClosingCallbackCalls).hasValue(1);
   }
 
   @Test
