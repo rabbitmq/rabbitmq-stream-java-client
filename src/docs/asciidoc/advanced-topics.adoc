@@ -4,6 +4,8 @@
 
 ==== Filtering
 
+WARNING: Filtering requires *RabbitMQ 3.13* or more.
+
 RabbitMQ Stream provides a server-side filtering feature that avoids reading all the messages of a stream and filtering only on the client side.
 This helps to save network bandwidth when a consuming application needs only a subset of messages, e.g. the messages from a given geographical region.
 

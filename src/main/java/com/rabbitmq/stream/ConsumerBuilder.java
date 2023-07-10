@@ -155,6 +155,8 @@ public interface ConsumerBuilder {
   /**
    * Configure the filtering.
    *
+   * <p>RabbitMQ 3.13 or more is required.
+   *
    * @return the filtering configuration
    */
   FilterConfiguration filter();
@@ -251,7 +253,11 @@ public interface ConsumerBuilder {
     ConsumerBuilder builder();
   }
 
-  /** Filter configuration. */
+  /**
+   * Filter configuration.
+   *
+   * <p>RabbitMQ 3.13 or more is required.
+   */
   interface FilterConfiguration {
 
     /**

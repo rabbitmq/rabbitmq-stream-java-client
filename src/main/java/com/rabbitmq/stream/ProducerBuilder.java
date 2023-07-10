@@ -135,6 +135,8 @@ public interface ProducerBuilder {
   /**
    * Logic to extract a filter value from a message.
    *
+   * <p>RabbitMQ 3.13 or more is required.
+   *
    * @param filterValueExtractor
    * @return this builder instance
    */
