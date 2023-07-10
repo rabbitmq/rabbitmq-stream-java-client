@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.12.0-SNAPSHOT</span>
-<br><span id="revremark">(6df7fda)</span>
+<br><span id="revremark">(af46916)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -635,6 +635,13 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </li>
 <li><a href="#advanced-topics">Advanced Topics</a>
 <ul class="sectlevel3">
+<li><a href="#filtering">Filtering</a>
+<ul class="sectlevel4">
+<li><a href="#filtering-on-the-publishing-side">Filtering on the Publishing Side</a></li>
+<li><a href="#filtering-on-the-consuming-side">Filtering on the Consuming Side</a></li>
+<li><a href="#considerations-on-filtering">Considerations on Filtering</a></li>
+</ul>
+</li>
 <li><a href="#using-native-epoll">Using Native <code>epoll</code></a></li>
 </ul>
 </li>
@@ -4155,6 +4162,188 @@ Make sure to store the last processed offset when the consumer becomes inactive 
 <div class="sect2">
 <h3 id="advanced-topics"><a class="anchor" href="#advanced-topics"></a>Advanced Topics</h3>
 <div class="sect3">
+<h4 id="filtering"><a class="anchor" href="#filtering"></a>Filtering</h4>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+Filtering requires <strong>RabbitMQ 3.13</strong> or more.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>RabbitMQ Stream provides a server-side filtering feature that avoids reading all the messages of a stream and filtering only on the client side.
+This helps to save network bandwidth when a consuming application needs only a subset of messages, e.g. the messages from a given geographical region.</p>
+</div>
+<div class="paragraph">
+<p>The filtering feature works as follows:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>each message is published with an associated <em>filter value</em></p>
+</li>
+<li>
+<p>a consumer that wants to enable filtering must:</p>
+<div class="ulist">
+<ul>
+<li>
+<p>define one or several filter values</p>
+</li>
+<li>
+<p>define some client-side filtering logic</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Why does the consumer need to define some client-side filtering logic?
+Because the server-side filtering is probabilistic: messages that do not match the filter value(s) can still be sent to the consumer.
+The server uses a <a href="https://en.wikipedia.org/wiki/Bloom_filter">Bloom filter</a>, <em>a space-efficient probabilistic data structure</em>, where false positives are possible.
+Despite this, the filtering saves some bandwidth, which is its primary goal.</p>
+</div>
+<div class="sect4">
+<h5 id="filtering-on-the-publishing-side"><a class="anchor" href="#filtering-on-the-publishing-side"></a>Filtering on the Publishing Side</h5>
+<div class="paragraph">
+<p>Filtering on the publishing side consists in defining some logic to extract the filter value from a message.
+The following snippet shows how to extract the filter value from an application property:</p>
+</div>
+<div class="listingblock">
+<div class="title">Declaring a producer with logic to extract a filter value from each message</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Producer producer = environment.producerBuilder()
+  .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+  .filterValue(msg -&gt;
+    msg.getApplicationProperties().get(<span class="string"><span class="delimiter">&quot;</span><span class="content">state</span><span class="delimiter">&quot;</span></span>).toString())  <i class="conum" data-value="1"></i><b>(1)</b>
+  .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Get filter value from <code>state</code> application property</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Note the filter value can be null: the message is then published in a regular way.
+It is called in this context an <em>unfiltered</em> message.</p>
+</div>
+</div>
+<div class="sect4">
+<h5 id="filtering-on-the-consuming-side"><a class="anchor" href="#filtering-on-the-consuming-side"></a>Filtering on the Consuming Side</h5>
+<div class="paragraph">
+<p>A consumer needs to set up one or several filter values and some filtering logic to enable filtering.
+The filtering logic must be consistent with the filter values.
+In the next snippet, the consumer wants to process only messages from the state of California.
+It sets a filter value to <code>california</code> and a predicate that accepts a message only if the <code>state</code> application properties is <code>california</code>:</p>
+</div>
+<div class="listingblock">
+<div class="title">Declaring a consumer with a filter value and filtering logic</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">String</span> filterValue = <span class="string"><span class="delimiter">&quot;</span><span class="content">california</span><span class="delimiter">&quot;</span></span>;
+Consumer consumer = environment.consumerBuilder()
+  .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+  .filter()
+    .values(filterValue)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .postFilter(msg -&gt;
+      filterValue.equals(msg.getApplicationProperties().get(<span class="string"><span class="delimiter">&quot;</span><span class="content">state</span><span class="delimiter">&quot;</span></span>)))  <i class="conum" data-value="2"></i><b>(2)</b>
+  .builder()
+  .messageHandler((ctx, msg) -&gt; { })
+  .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set filter value</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Set filtering logic</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The filter logic is a <code>Predicate&lt;Message&gt;</code>.
+It must return <code>true</code> if a message is accepted, following the same semantics as <code>java.util.stream.Stream#filter(Predicate)</code>.</p>
+</div>
+<div class="paragraph">
+<p>As stated above, not all messages must have an associated filter value.
+Many applications may not need some filtering, so they can publish messages the regular way.
+So a stream can contain messages with and without an associated filter value.</p>
+</div>
+<div class="paragraph">
+<p>By default, messages without a filter value (a.k.a <em>unfiltered</em> messages) are not sent to a consumer that enabled filtering.</p>
+</div>
+<div class="paragraph">
+<p>But what if a consumer wants to process messages with a filter value and messages without any filter value as well?
+It must use the <code>matchUnfiltered()</code> method in its declaration and also make sure to keep the filtering logic consistent:</p>
+</div>
+<div class="listingblock">
+<div class="title">Getting unfiltered messages as well when enabling filtering</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span class="predefined-type">String</span> filterValue = <span class="string"><span class="delimiter">&quot;</span><span class="content">california</span><span class="delimiter">&quot;</span></span>;
+Consumer consumer = environment.consumerBuilder()
+  .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+  .filter()
+    .values(filterValue)  <i class="conum" data-value="1"></i><b>(1)</b>
+    .matchUnfiltered()  <i class="conum" data-value="2"></i><b>(2)</b>
+    .postFilter(msg -&gt;
+        filterValue.equals(msg.getApplicationProperties().get(<span class="string"><span class="delimiter">&quot;</span><span class="content">state</span><span class="delimiter">&quot;</span></span>))
+        || !msg.getApplicationProperties().containsKey(<span class="string"><span class="delimiter">&quot;</span><span class="content">state</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="3"></i><b>(3)</b>
+    )
+  .builder()
+  .messageHandler((ctx, msg) -&gt; { })
+  .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Request messages from California</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Request messages without a filter value as well</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Let both types of messages pass</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>In the example above, the filtering logic has been adapted to let pass <code>california</code> messages <em>and</em> messages without a state set as well.</p>
+</div>
+</div>
+<div class="sect4">
+<h5 id="considerations-on-filtering"><a class="anchor" href="#considerations-on-filtering"></a>Considerations on Filtering</h5>
+<div class="paragraph">
+<p>As stated previously, the server can send messages that do not match the filter value(s) set by consumers.
+This is why application developers must be very careful with the filtering logic they define to avoid processing unwanted messages.</p>
+</div>
+<div class="paragraph">
+<p>What are good candidates for filter values?
+Unique identifiers are <em>not</em>: if you know a given message property will be unique in a stream, do not use it as a filter value.
+A defined set of values shared across the messages is a good candidate: geographical locations (e.g. countries, states), document types in a stream that stores document information (e.g. payslip, invoice, order), categories of products (e.g. book, luggage, toy).</p>
+</div>
+<div class="paragraph">
+<p>Cardinality of filter values can be from a few to a few thousands.
+Extreme cardinality (a couple or dozens of thousands) can make filtering less efficient.</p>
+</div>
+</div>
+</div>
+<div class="sect3">
 <h4 id="using-native-epoll"><a class="anchor" href="#using-native-epoll"></a>Using Native <code>epoll</code></h4>
 <div class="paragraph">
 <p>The stream Java client uses the <a href="https://netty.io/">Netty</a> network framework and its Java NIO transport implementation by default.
@@ -5214,7 +5403,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.12.0-SNAPSHOT<br>
-Last updated 2023-07-06 14:54:26 UTC
+Last updated 2023-07-10 14:34:30 UTC
 </div>
 </div>
 </body>
