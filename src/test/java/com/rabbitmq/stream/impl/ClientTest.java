@@ -1076,11 +1076,14 @@ public class ClientTest {
     Client consumer =
         cf.get(
             new ClientParameters()
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       consumedMessageCount.incrementAndGet();
                       String filterValue = message.getProperties().getGroupId();
                       if (newFilterValue.equals(filterValue)) {
