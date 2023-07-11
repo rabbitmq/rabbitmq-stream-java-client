@@ -207,9 +207,22 @@ public final class TestUtils {
         cf.get(new Client.ClientParameters().publishConfirmListener(publishConfirmListener));
 
     client.declarePublisher(b(1), null, stream);
-    for (int i = 1; i <= publishCount; i++) {
-      Message message = messageFactory.apply(client.messageBuilder());
-      client.publish(b(1), Collections.singletonList(message));
+    int batchSize = 100;
+    if (publishCount > batchSize) {
+      List<Message> messages = new ArrayList<>(batchSize);
+      for (int i = 1; i <= publishCount; i++) {
+        Message message = messageFactory.apply(client.messageBuilder());
+        messages.add(message);
+        if (i % batchSize == 0 || i == publishCount) {
+          client.publish(b(1), messages);
+          messages.clear();
+        }
+      }
+    } else {
+      for (int i = 1; i <= publishCount; i++) {
+        Message message = messageFactory.apply(client.messageBuilder());
+        client.publish(b(1), Collections.singletonList(message));
+      }
     }
 
     latchAssert(latchConfirm).completes(timeout);
