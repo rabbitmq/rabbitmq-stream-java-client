@@ -15,6 +15,8 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.ConsumerFlowStrategy.creditWhenHalfMessagesProcessed;
 import static com.rabbitmq.stream.impl.TestUtils.*;
+import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
+import static java.lang.Runtime.getRuntime;
 import static java.lang.String.format;
 import static java.util.Collections.synchronizedList;
 import static org.assertj.core.api.Assertions.*;
@@ -234,6 +236,35 @@ public class StreamConsumerTest {
     waitAtMost(() -> receivedMessageCount.get() == messageCount);
 
     consumer.close();
+  }
+
+  @Test
+  void asynchronousProcessingWithFlowControl() {
+    int messageCount = 100_000;
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+
+    ExecutorService executorService =
+        Executors.newFixedThreadPool(getRuntime().availableProcessors());
+    try {
+      CountDownLatch latch = new CountDownLatch(messageCount);
+      environment.consumerBuilder().stream(stream)
+          .offset(OffsetSpecification.first())
+          .flow()
+          .strategy(creditWhenHalfMessagesProcessed())
+          .builder()
+          .messageHandler(
+              (ctx, message) -> {
+                executorService.submit(
+                    () -> {
+                      latch.countDown();
+                      ctx.processed();
+                    });
+              })
+          .build();
+      assertThat(latch).is(completed());
+    } finally {
+      executorService.shutdownNow();
+    }
   }
 
   @Test
