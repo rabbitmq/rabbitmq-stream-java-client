@@ -166,6 +166,8 @@ public interface ConsumerBuilder {
    *
    * @return the flow configuration
    * @since 0.11.0
+   * @see ConsumerFlowStrategy#creditOnChunkArrival()
+   * @see MessageHandler.Context#processed()
    */
   FlowConfiguration flow();
 
@@ -231,7 +233,11 @@ public interface ConsumerBuilder {
   /**
    * Message flow configuration.
    *
+   * <p>The default configuration uses {@link ConsumerFlowStrategy#creditOnChunkArrival()}.
+   *
    * @since 0.11.0
+   * @see ConsumerFlowStrategy#creditOnChunkArrival()
+   * @see MessageHandler.Context#processed()
    */
   interface FlowConfiguration {
 
@@ -240,11 +246,27 @@ public interface ConsumerBuilder {
      *
      * <p>Default is 1.
      *
+     * <p>This calls uses {@link ConsumerFlowStrategy#creditOnChunkArrival(int)}.
+     *
      * @param initialCredits the number of initial credits
      * @return this configuration instance
+     * @see ConsumerFlowStrategy#creditOnChunkArrival(int)
      */
     FlowConfiguration initialCredits(int initialCredits);
 
+    /**
+     * Flow strategy to use
+     *
+     * @param strategy the strategy to use
+     * @return this configuration instance
+     * @since 0.12.0
+     * @see ConsumerFlowStrategy
+     * @see ConsumerFlowStrategy#creditOnChunkArrival()
+     * @see ConsumerFlowStrategy#creditOnChunkArrival(int)
+     * @see ConsumerFlowStrategy#creditWhenHalfMessagesProcessed()
+     * @see ConsumerFlowStrategy#creditWhenHalfMessagesProcessed(int)
+     * @see ConsumerFlowStrategy#creditOnProcessedMessageCount(int, double)
+     */
     FlowConfiguration strategy(ConsumerFlowStrategy strategy);
 
     /**

@@ -425,7 +425,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       this.consumerBuilder = consumerBuilder;
     }
 
-    private ConsumerFlowStrategy strategy = ConsumerFlowStrategy.creditOnChunkArrival(1);
+    private ConsumerFlowStrategy strategy = ConsumerFlowStrategy.creditOnChunkArrival();
 
     @Override
     public FlowConfiguration initialCredits(int initialCredits) {
