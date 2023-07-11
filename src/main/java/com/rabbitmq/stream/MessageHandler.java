@@ -100,6 +100,10 @@ public interface MessageHandler {
      * ConsumerFlowStrategy#creditWhenHalfMessagesProcessed(int)}, and {@link
      * ConsumerFlowStrategy#creditOnProcessedMessageCount(int, double)}, otherwise the broker may
      * stop sending messages to the consumer.
+     *
+     * <p>Applications should make sure to call <code>processed()</code> only once on each context,
+     * as this method does not have to be idempotent. What several calls on the same context does
+     * depends on the underlying {@link ConsumerFlowStrategy} implementation.
      */
     void processed();
   }
