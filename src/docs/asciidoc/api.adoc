@@ -851,6 +851,10 @@ Useful when using an external store for offset tracking.
 |Number of credits when the subscription is created.
 Increase for higher throughput at the expense of memory usage.
 |1
+
+|`flow#strategy`
+|The `ConsumerFlowStrategy` to use.
+|`ConsumerFlowStrategy#creditOnChunkArrival(1)`
 |===
 
 [NOTE]
@@ -1098,6 +1102,48 @@ Let's take the example of a named consumer with an offset tracking strategy that
 When a glitch happens and triggers the re-subscription, the server-side stored offset can be quite behind what the application actually processed.
 Using this server-side stored offset can lead to duplicates, whereas using the in-memory, application-specific offset tracking variable is more accurate.
 A custom `SubscriptionListener` lets the application developer uses what's best for the application if the computed value is not optimal.
+
+===== Flow Control
+
+This section covers how a consumer can tell the broker when to send more messages.
+
+By default, the broker keeps sending messages as long as messages are processed and the `MessageHandler#handle(Context, Message)` method returns.
+This strategy works fine if message processing is fast enough.
+If message processing takes longer, one can be tempted to process messages in parallel with an `ExecutorService`.
+This will make the `handle` method return immediately and the broker will keep sending messages, potentially overflowing the consumer.
+
+What we miss in the parallel processing case is a way to tell the library we are done processing a message and that we are ready at some point to handle more messages.
+This is the goal of the `MessageHandler.Context#processed()` method.
+
+This method is by default a no-op because the default flow control strategy keeps asking for more messages as soon as message processing is done.
+This method gets some real behavior to control the flow of messages when an appropriate `ConsumerFlowStrategy` is set `ConsumerBuilder#flow()`.
+The following code snippet shows how to set a handy consumer flow strategy:
+
+.Setting a consumer flow control strategy
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=flow-control]
+--------
+<1> Set the flow control strategy
+<2> Make sure to call `Context#processed()`
+
+In the example we set up the `creditWhenHalfMessagesProcessed` strategy which asks for more messages once half of the current messages have been marked as processed.
+The broker does not send messages one by one, it sends <<chunk-definition,chunks>> of messages.
+A chunk of messages can contain 1 to several thousands of messages.
+So with the strategy set above, once `processed()` has been called for half of the messages of the current chunk, the library will ask the broker for another one (it will provide a _credit_ for the subscription).
+By doing this, the next chunk should arrive by the time we are done with the other half of the current chunk.
+This way the consumer is neither overwhelmed nor idle.
+
+The `ConsumerFlowStrategy` interface provides some static helpers to configure the appropriate strategy.
+
+Additional notes on consumer flow control:
+
+* Make sure to **call the `processed()` method** once you set up a `ConsumerFlowStrategy`.
+The method is a no-op by default, but it is essential to call it with count-based strategies like `creditWhenHalfMessagesProcessed` or `creditOnProcessedMessageCount`.
+No calling it will stop the dispatching of messages.
+* Make sure to call `processed()` only once.
+Whether the method is idempotent depends on the flow strategy implementation.
+Apart from the default one, the implementations the library provides does not make `processed()` idempotent.
 
 [[single-active-consumer]]
 ===== Single Active Consumer

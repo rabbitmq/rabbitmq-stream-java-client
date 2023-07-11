@@ -154,6 +154,22 @@ public class ConsumerUsage {
       return 0L;
   }
 
+  void flowControl() {
+    Environment environment = Environment.builder().build();
+    // tag::flow-control[]
+    Consumer consumer = environment.consumerBuilder()
+        .stream("my-stream")
+        .flow()
+            .strategy(ConsumerFlowStrategy.creditWhenHalfMessagesProcessed())  // <1>
+        .builder()
+        .messageHandler((context, message) -> {
+          // message handling code (possibly asynchronous)...
+          context.processed();  // <2>
+        })
+        .build();
+    // end::flow-control[]
+  }
+
   void enablingSingleActiveConsumer() {
     Environment environment = Environment.builder().build();
     // tag::enabling-single-active-consumer[]
@@ -188,4 +204,5 @@ public class ConsumerUsage {
         .build();
     // end::sac-consumer-update-listener[]
   }
+
 }
