@@ -878,6 +878,32 @@
 
     </profile>
 
+    <profile>
+      <!-- this avoids a compiler warning on Java 9+ -->
+      <!-- the compiler setting is not available on Java 8 -->
+      <id>use-release-compiler-argument-on-java-9-or-more</id>
+      <activation>
+        <jdk>[9,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>${maven.compiler.plugin.version}</version>
+            <configuration>
+              <source>1.8</source>
+              <target>1.8</target>
+              <release>8</release>
+              <compilerArgs>
+                <arg>-Xlint:deprecation</arg>
+                <arg>-Xlint:unchecked</arg>
+              </compilerArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
   </profiles>
 
 </project>
