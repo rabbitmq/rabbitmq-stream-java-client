@@ -562,19 +562,9 @@ class ConsumersCoordinator {
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             ConsumerFlowStrategy.MessageProcessedCallback processCallback;
             if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
-              ConsumerFlowStrategy.Context chunkContext =
-                  new ConsumerFlowStrategy.Context() {
-                    @Override
-                    public void credits(int credits) {
-                      client.credit(subscriptionId, 1);
-                    }
-
-                    @Override
-                    public long messageCount() {
-                      return messageCount;
-                    }
-                  };
-              processCallback = subscriptionTracker.flowStrategy.start(chunkContext);
+              processCallback =
+                  subscriptionTracker.flowStrategy.start(
+                      new DefaultConsumerFlowStrategyContext(subscriptionId, client, messageCount));
             } else {
               LOGGER.debug(
                   "Could not find stream subscription {} or subscription closing, not providing credits",
@@ -1206,6 +1196,38 @@ class ConsumersCoordinator {
 
     public ClientClosedException() {
       super("Client already closed");
+    }
+  }
+
+  private static class DefaultConsumerFlowStrategyContext implements ConsumerFlowStrategy.Context {
+
+    private final byte subscriptionId;
+    private final Client client;
+    private final long messageCount;
+
+    private DefaultConsumerFlowStrategyContext(
+        byte subscriptionId, Client client, long messageCount) {
+      this.subscriptionId = subscriptionId;
+      this.client = client;
+      this.messageCount = messageCount;
+    }
+
+    @Override
+    public void credits(int credits) {
+      try {
+        client.credit(subscriptionId, credits);
+      } catch (Exception e) {
+        LOGGER.info(
+            "Error while providing {} credit(s) to subscription {}: {}",
+            credits,
+            subscriptionId,
+            e.getMessage());
+      }
+    }
+
+    @Override
+    public long messageCount() {
+      return messageCount;
     }
   }
 }

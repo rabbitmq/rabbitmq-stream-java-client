@@ -134,7 +134,7 @@ public class StreamConsumerTest {
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void committedOffsetShouldBeSet() throws Exception {
     int messageCount = 20_000;
-    TestUtils.publishAndWaitForConfirms(cf, messageCount, this.stream);
+    publishAndWaitForConfirms(cf, messageCount, this.stream);
 
     CountDownLatch consumeLatch = new CountDownLatch(messageCount);
     AtomicLong committedOffset = new AtomicLong();
@@ -196,7 +196,7 @@ public class StreamConsumerTest {
   @Test
   void consumeWithAsyncConsumerFlowControl() throws Exception {
     int messageCount = 100_000;
-    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+    publishAndWaitForConfirms(cf, messageCount, stream);
 
     ConsumerBuilder consumerBuilder =
         environment.consumerBuilder().stream(stream)
@@ -241,7 +241,7 @@ public class StreamConsumerTest {
   @Test
   void asynchronousProcessingWithFlowControl() {
     int messageCount = 100_000;
-    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+    publishAndWaitForConfirms(cf, messageCount, stream);
 
     ExecutorService executorService =
         Executors.newFixedThreadPool(getRuntime().availableProcessors());
@@ -253,13 +253,12 @@ public class StreamConsumerTest {
           .strategy(creditWhenHalfMessagesProcessed())
           .builder()
           .messageHandler(
-              (ctx, message) -> {
-                executorService.submit(
-                    () -> {
-                      latch.countDown();
-                      ctx.processed();
-                    });
-              })
+              (ctx, message) ->
+                  executorService.submit(
+                      () -> {
+                        latch.countDown();
+                        ctx.processed();
+                      }))
           .build();
       assertThat(latch).is(completed());
     } finally {

@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * ideal solution, it depends on the use cases and several parameters (processing time, network,
  * etc).
  *
+ * <p>This is an experimental API, subject to change.
+ *
  * @since 0.12.0
  * @see MessageHandler.Context#processed()
  * @see ConsumerBuilder#flow()
