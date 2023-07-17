@@ -62,7 +62,7 @@
     <commons-compress.version>1.23.0</commons-compress.version>
     <zstd-jni.version>1.5.5-4</zstd-jni.version>
     <lz4-java.version>1.8.0</lz4-java.version>
-    <snappy-java.version>1.1.10.1</snappy-java.version>
+    <snappy-java.version>1.1.10.2</snappy-java.version>
     <jgroups.version>5.2.16.Final</jgroups.version>
     <jgroups-kubernetes.version>2.0.1.Final</jgroups-kubernetes.version>
     <junit.jupiter.version>5.9.3</junit.jupiter.version>
