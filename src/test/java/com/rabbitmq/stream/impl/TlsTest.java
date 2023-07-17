@@ -163,10 +163,12 @@ public class TlsTest {
           if (consumedLatch.getCount() != 0) {
             client.credit(correlationId, 1);
           }
+          return null;
         };
 
     Client.MessageListener messageListener =
-        (corr, offset, chunkTimestamp, committedOffset, data) -> consumedLatch.countDown();
+        (corr, offset, chunkTimestamp, committedOffset, chunkContext, data) ->
+            consumedLatch.countDown();
 
     Client client =
         cf.get(

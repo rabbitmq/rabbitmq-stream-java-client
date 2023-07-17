@@ -43,11 +43,14 @@ public class ClientFlowControlTest {
     Client consumerClient =
         cf.get(
             new ClientParameters()
-                .chunkListener(
-                    (client, subscriptionId, offset, msgCount, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       try {
                         Thread.sleep(1000);
                       } catch (InterruptedException e) {

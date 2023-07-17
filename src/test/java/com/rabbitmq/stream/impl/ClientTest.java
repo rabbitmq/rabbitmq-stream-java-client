@@ -256,10 +256,8 @@ public class ClientTest {
 
     CountDownLatch latch = new CountDownLatch(publishCount);
     Set<Message> messages = ConcurrentHashMap.newKeySet(publishCount);
-    Client.ChunkListener chunkListener =
-        (client, correlationId, offset, messageCount, dataSize) -> client.credit(correlationId, 1);
     Client.MessageListener messageListener =
-        (correlationId, offset, chunkTimestamp, committedOffset, message) -> {
+        (correlationId, offset, chunkTimestamp, committedChunkId, chunkContext, message) -> {
           messages.add(message);
           latch.countDown();
         };
@@ -268,7 +266,7 @@ public class ClientTest {
             new Client.ClientParameters()
                 .codec(codec)
                 .messageListener(messageListener)
-                .chunkListener(chunkListener));
+                .chunkListener(TestUtils.credit()));
     consumer.subscribe(b(1), stream, OffsetSpecification.first(), credit);
     assertThat(await(latch, Duration.ofSeconds(10))).isTrue();
     assertThat(messages).hasSize(publishCount);
@@ -391,11 +389,14 @@ public class ClientTest {
         cf.get(
             new Client.ClientParameters()
                 .codec(codec)
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       messageBodies.add(new String(message.getBodyAsBinary()));
                       consumeLatch.countDown();
                     }));
@@ -444,11 +445,14 @@ public class ClientTest {
     Client consumer =
         cf.get(
             new Client.ClientParameters()
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       ByteBuffer bb = ByteBuffer.wrap(message.getBodyAsBinary());
                       sizes.add(message.getBodyAsBinary().length);
                       sequences.add(bb.getInt());
@@ -475,11 +479,12 @@ public class ClientTest {
         (client, corr, offset, messageCountInChunk, dataSize) -> {
           receivedCorrelationId.set(corr);
           client.credit(correlationId, 1);
+          return null;
         };
 
     AtomicLong chunkTimestamp = new AtomicLong();
     Client.MessageListener messageListener =
-        (corr, offset, chkTimestamp, committedOffset, message) -> {
+        (corr, offset, chkTimestamp, committedChunkId, chunkContext, message) -> {
           chunkTimestamp.set(chkTimestamp);
           latch.countDown();
         };
@@ -512,10 +517,12 @@ public class ClientTest {
           if (consumedLatch.getCount() != 0) {
             client.credit(correlationId, 1);
           }
+          return null;
         };
 
     Client.MessageListener messageListener =
-        (corr, offset, chunkTimestamp, committedOffset, data) -> consumedLatch.countDown();
+        (corr, offset, chunkTimestamp, committedOffset, chunkContext, data) ->
+            consumedLatch.countDown();
 
     Client client =
         cf.get(
@@ -654,12 +661,14 @@ public class ClientTest {
         cf.get(
             new Client.ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> publishedLatch.countDown())
-                .chunkListener(
-                    (client1, subscriptionId, offset, messageCount1, dataSize) ->
-                        client1.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) ->
-                        consumedLatch.countDown()));
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> consumedLatch.countDown()));
     ConnectionFactory connectionFactory = new ConnectionFactory();
     try (Connection amqpConnection = connectionFactory.newConnection()) {
       Channel c = amqpConnection.createChannel();
@@ -846,14 +855,9 @@ public class ClientTest {
 
     CountDownLatch latch = new CountDownLatch(publishCount);
 
-    Client.ChunkListener chunkListener =
-        (client, corr, offset, messageCountInChunk, dataSize) -> {
-          client.credit(correlationId, 1);
-        };
-
     AtomicLong committedOffset = new AtomicLong();
     Client.MessageListener messageListener =
-        (corr, offset, chkTimestamp, committedOfft, message) -> {
+        (corr, offset, chkTimestamp, committedOfft, chunkContext, message) -> {
           committedOffset.set(committedOfft);
           latch.countDown();
         };
@@ -861,7 +865,7 @@ public class ClientTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
-                .chunkListener(chunkListener)
+                .chunkListener(TestUtils.credit())
                 .messageListener(messageListener));
 
     client.exchangeCommandVersions();
@@ -882,21 +886,16 @@ public class ClientTest {
     int publishCount = 20_000;
     CountDownLatch latch = new CountDownLatch(publishCount);
 
-    Client.ChunkListener chunkListener =
-        (client, corr, offset, messageCountInChunk, dataSize) -> {
-          client.credit(corr, 1);
-        };
-
     AtomicLong committedOffset = new AtomicLong();
     Client.MessageListener messageListener =
-        (corr, offset, chkTimestamp, committedOfft, message) -> {
+        (corr, offset, chkTimestamp, committedOfft, chunkContext, message) -> {
           committedOffset.set(committedOfft);
           latch.countDown();
         };
     Client client =
         cf.get(
             new Client.ClientParameters()
-                .chunkListener(chunkListener)
+                .chunkListener(TestUtils.credit())
                 .messageListener(messageListener));
     StreamStatsResponse response = client.streamStats(stream);
     assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
@@ -1077,11 +1076,14 @@ public class ClientTest {
     Client consumer =
         cf.get(
             new ClientParameters()
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       consumedMessageCount.incrementAndGet();
                       String filterValue = message.getProperties().getGroupId();
                       if (newFilterValue.equals(filterValue)) {

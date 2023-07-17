@@ -60,12 +60,14 @@ public class PublisherTest {
         cf.get(
             new ClientParameters()
                 .publishConfirmListener((publisherId, publishingId) -> publishLatch.countDown())
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) ->
-                        consumerLatch.countDown()));
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> consumerLatch.countDown()));
 
     Response response = c.declarePublisher(b(1), publisherReference, stream);
     assertThat(response.isOk()).isTrue();
@@ -166,11 +168,14 @@ public class PublisherTest {
         cf.get(
             new ClientParameters()
                 .publishConfirmListener((pubId, publishingId) -> publishLatch.countDown())
-                .chunkListener(
-                    (client, subscriptionId, offset, messageCount1, dataSize) ->
-                        client.credit(subscriptionId, 1))
+                .chunkListener(TestUtils.credit())
                 .messageListener(
-                    (subscriptionId, offset, chunkTimestamp, committedOffset, message) -> {
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> {
                       consumeCount.incrementAndGet();
                       consumeLatch.countDown();
                     }));

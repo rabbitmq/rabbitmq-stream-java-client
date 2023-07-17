@@ -94,11 +94,14 @@ public class SacClientTest {
     String consumerName = "foo";
     ClientParameters clientParameters =
         new ClientParameters()
-            .chunkListener(
-                (client, subscriptionId, offset, msgCount, dataSize) ->
-                    client.credit(subscriptionId, 1))
+            .chunkListener(TestUtils.credit())
             .messageListener(
-                (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
+                (subscriptionId,
+                    offset,
+                    chunkTimestamp,
+                    committedChunkId,
+                    chunkContext,
+                    message) -> {
                   lastReceivedOffset.set(offset);
                   receivedMessages.get(subscriptionId).incrementAndGet();
                 })
@@ -271,11 +274,14 @@ public class SacClientTest {
                         consumerStates.put(subscriptionId, active);
                         return result;
                       })
-                  .chunkListener(
-                      (client12, subscriptionId, offset, messageCount1, dataSize) ->
-                          client12.credit(subscriptionId, 1))
+                  .chunkListener(TestUtils.credit())
                   .messageListener(
-                      (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
+                      (subscriptionId,
+                          offset,
+                          chunkTimestamp,
+                          committedChunkId,
+                          chunkContext,
+                          message) -> {
                         lastReceivedOffset.set(offset);
                         receivedMessages.get(subscriptionId).incrementAndGet();
                       }));
@@ -514,7 +520,7 @@ public class SacClientTest {
           };
       CountDownLatch receivedMessagesLatch = new CountDownLatch(100);
       MessageListener messageListener =
-          (subscriptionId, offset, chunkTimestamp, committedChunkId, message) -> {
+          (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message) -> {
             lastDispatchedOffset.set(offset);
             receivedMessagesLatch.countDown();
           };
@@ -529,9 +535,7 @@ public class SacClientTest {
           (subscriptionId, responseCode) -> creditNotificationResponseCode.set(responseCode);
       ClientParameters clientParameters =
           new ClientParameters()
-              .chunkListener(
-                  (client, subscriptionId, offset, messageCount, dataSize) ->
-                      client.credit(subscriptionId, 1))
+              .chunkListener(TestUtils.credit())
               .messageListener(messageListener)
               .creditNotification(creditNotification)
               .consumerUpdateListener(consumerUpdateListener);

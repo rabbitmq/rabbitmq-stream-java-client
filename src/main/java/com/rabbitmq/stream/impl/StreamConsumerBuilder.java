@@ -233,8 +233,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.subscriptionListener,
               this.subscriptionProperties,
               this.consumerUpdateListener,
-              this.flowConfiguration.initialCredits,
-              this.flowConfiguration.additionalCredits);
+              this.flowConfiguration.strategy);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       if (Utils.isSac(this.subscriptionProperties)) {
@@ -426,15 +425,20 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       this.consumerBuilder = consumerBuilder;
     }
 
-    private int initialCredits = 1;
-    private final int additionalCredits = 1;
+    private ConsumerFlowStrategy strategy = ConsumerFlowStrategy.creditOnChunkArrival();
 
     @Override
     public FlowConfiguration initialCredits(int initialCredits) {
       if (initialCredits <= 0) {
         throw new IllegalArgumentException("Credits must be positive");
       }
-      this.initialCredits = initialCredits;
+      this.strategy = ConsumerFlowStrategy.creditOnChunkArrival(initialCredits);
+      return this;
+    }
+
+    @Override
+    public FlowConfiguration strategy(ConsumerFlowStrategy strategy) {
+      this.strategy = strategy;
       return this;
     }
 

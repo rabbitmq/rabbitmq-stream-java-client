@@ -55,19 +55,8 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
-import com.rabbitmq.stream.impl.Client.Broker;
-import com.rabbitmq.stream.impl.Client.ChunkListener;
-import com.rabbitmq.stream.impl.Client.MessageListener;
-import com.rabbitmq.stream.impl.Client.OpenResponse;
-import com.rabbitmq.stream.impl.Client.OutstandingRequest;
-import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
-import com.rabbitmq.stream.impl.Client.QueryPublisherSequenceResponse;
-import com.rabbitmq.stream.impl.Client.Response;
-import com.rabbitmq.stream.impl.Client.SaslAuthenticateResponse;
+import com.rabbitmq.stream.impl.Client.*;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
-import com.rabbitmq.stream.impl.Client.StreamMetadata;
-import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
-import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
 import com.rabbitmq.stream.impl.Utils.MutableBoolean;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import io.netty.buffer.ByteBuf;
@@ -344,26 +333,28 @@ class ServerFrameHandler {
     static int handleMessage(
         ByteBuf bb,
         int read,
-        boolean filter,
-        MutableBoolean messageFiltered,
+        boolean ignore,
+        MutableBoolean messageIgnored,
         long offset,
         long offsetLimit,
         long chunkTimestamp,
         long committedChunkId,
         Codec codec,
         MessageListener messageListener,
-        byte subscriptionId) {
+        byte subscriptionId,
+        Object chunkContext) {
       int entrySize = bb.readInt();
       read += 4;
       byte[] data = new byte[entrySize];
       bb.readBytes(data);
       read += entrySize;
 
-      if (filter && Long.compareUnsigned(offset, offsetLimit) < 0) {
-        messageFiltered.set(true);
+      if (ignore && Long.compareUnsigned(offset, offsetLimit) < 0) {
+        messageIgnored.set(true);
       } else {
         Message message = codec.decode(data);
-        messageListener.handle(subscriptionId, offset, chunkTimestamp, committedChunkId, message);
+        messageListener.handle(
+            subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message);
       }
       return read;
     }
@@ -373,6 +364,7 @@ class ServerFrameHandler {
         Client client,
         ChunkListener chunkListener,
         MessageListener messageListener,
+        MessageIgnoredListener messageIgnoredListener,
         Codec codec,
         List<SubscriptionOffset> subscriptionOffsets,
         ChunkChecksum chunkChecksum,
@@ -382,6 +374,7 @@ class ServerFrameHandler {
           client,
           chunkListener,
           messageListener,
+          messageIgnoredListener,
           codec,
           subscriptionOffsets,
           chunkChecksum,
@@ -397,6 +390,7 @@ class ServerFrameHandler {
         Client client,
         ChunkListener chunkListener,
         MessageListener messageListener,
+        MessageIgnoredListener messageIgnoredListener,
         Codec codec,
         List<SubscriptionOffset> subscriptionOffsets,
         ChunkChecksum chunkChecksum,
@@ -449,7 +443,8 @@ class ServerFrameHandler {
       message.readInt(); // 4 reserved bytes, unused here
       read += 4;
 
-      chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
+      Object chunkContext =
+          chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
 
       long offsetLimit = -1;
       if (!subscriptionOffsets.isEmpty()) {
@@ -462,7 +457,7 @@ class ServerFrameHandler {
         }
       }
 
-      final boolean filter = offsetLimit != -1;
+      final boolean ignore = offsetLimit != -1;
 
       try {
         chunkChecksum.checksum(message, dataLength, crc);
@@ -477,7 +472,7 @@ class ServerFrameHandler {
 
       metricsCollector.chunk(numEntries);
       long messagesRead = 0;
-      MutableBoolean messageFiltered = new MutableBoolean(false);
+      MutableBoolean messageIgnored = new MutableBoolean(false);
 
       while (numRecords != 0) {
         byte entryType = message.readByte();
@@ -492,17 +487,20 @@ class ServerFrameHandler {
               handleMessage(
                   message,
                   read,
-                  filter,
-                  messageFiltered,
+                  ignore,
+                  messageIgnored,
                   offset,
                   offsetLimit,
                   chunkTimestamp,
                   committedOffset,
                   codec,
                   messageListener,
-                  subscriptionId);
-          if (messageFiltered.get()) {
-            messageFiltered.set(false);
+                  subscriptionId,
+                  chunkContext);
+          if (messageIgnored.get()) {
+            messageIgnoredListener.ignored(
+                subscriptionId, offset, chunkTimestamp, committedOffset, chunkContext);
+            messageIgnored.set(false);
           } else {
             messagesRead++;
           }
@@ -558,17 +556,20 @@ class ServerFrameHandler {
                 handleMessage(
                     bbToReadFrom,
                     read,
-                    filter,
-                    messageFiltered,
+                    ignore,
+                    messageIgnored,
                     offset,
                     offsetLimit,
                     chunkTimestamp,
                     committedOffset,
                     codec,
                     messageListener,
-                    subscriptionId);
-            if (messageFiltered.get()) {
-              messageFiltered.set(false);
+                    subscriptionId,
+                    chunkContext);
+            if (messageIgnored.get()) {
+              messageIgnoredListener.ignored(
+                  subscriptionId, offset, chunkTimestamp, committedOffset, chunkContext);
+              messageIgnored.set(false);
             } else {
               messagesRead++;
             }
@@ -594,6 +595,7 @@ class ServerFrameHandler {
           client,
           client.chunkListener,
           client.messageListener,
+          client.messageIgnoredListener,
           client.codec,
           client.subscriptionOffsets,
           client.chunkChecksum,
@@ -615,6 +617,7 @@ class ServerFrameHandler {
           client,
           client.chunkListener,
           client.messageListener,
+          client.messageIgnoredListener,
           client.codec,
           client.subscriptionOffsets,
           client.chunkChecksum,

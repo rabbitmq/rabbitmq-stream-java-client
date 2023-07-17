@@ -13,15 +13,13 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.b;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
-import static com.rabbitmq.stream.impl.TestUtils.waitMs;
+import static com.rabbitmq.stream.ConsumerFlowStrategy.creditWhenHalfMessagesProcessed;
+import static com.rabbitmq.stream.impl.TestUtils.*;
+import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
+import static java.lang.Runtime.getRuntime;
 import static java.lang.String.format;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static java.util.Collections.synchronizedList;
+import static org.assertj.core.api.Assertions.*;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
@@ -32,19 +30,14 @@ import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import io.netty.channel.EventLoopGroup;
 import java.net.UnknownHostException;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -141,7 +134,7 @@ public class StreamConsumerTest {
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
   void committedOffsetShouldBeSet() throws Exception {
     int messageCount = 20_000;
-    TestUtils.publishAndWaitForConfirms(cf, messageCount, this.stream);
+    publishAndWaitForConfirms(cf, messageCount, this.stream);
 
     CountDownLatch consumeLatch = new CountDownLatch(messageCount);
     AtomicLong committedOffset = new AtomicLong();
@@ -198,6 +191,79 @@ public class StreamConsumerTest {
     assertThat(chunkTimestamp.get()).isNotZero();
 
     consumer.close();
+  }
+
+  @Test
+  void consumeWithAsyncConsumerFlowControl() throws Exception {
+    int messageCount = 100_000;
+    publishAndWaitForConfirms(cf, messageCount, stream);
+
+    ConsumerBuilder consumerBuilder =
+        environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
+            .flow()
+            .strategy(creditWhenHalfMessagesProcessed())
+            .builder();
+
+    List<MessageHandler.Context> messageContexts = synchronizedList(new ArrayList<>());
+
+    int processingLimit = messageCount / 2;
+    AtomicInteger receivedMessageCount = new AtomicInteger();
+    AtomicReference<IntFunction<Boolean>> processingCondition =
+        new AtomicReference<>(count -> count <= processingLimit);
+
+    consumerBuilder =
+        consumerBuilder.messageHandler(
+            (context, message) -> {
+              receivedMessageCount.incrementAndGet();
+              if (processingCondition.get().apply(receivedMessageCount.get())) {
+                context.processed();
+              } else {
+                messageContexts.add(context);
+              }
+            });
+    Consumer consumer = consumerBuilder.build();
+
+    waitAtMost(() -> receivedMessageCount.get() >= processingLimit);
+    waitUntilStable(receivedMessageCount::get);
+
+    assertThat(receivedMessageCount)
+        .hasValueGreaterThanOrEqualTo(processingLimit)
+        .hasValueLessThan(messageCount);
+
+    processingCondition.set(ignored -> true);
+    messageContexts.forEach(MessageHandler.Context::processed);
+    waitAtMost(() -> receivedMessageCount.get() == messageCount);
+
+    consumer.close();
+  }
+
+  @Test
+  void asynchronousProcessingWithFlowControl() {
+    int messageCount = 100_000;
+    publishAndWaitForConfirms(cf, messageCount, stream);
+
+    ExecutorService executorService =
+        Executors.newFixedThreadPool(getRuntime().availableProcessors());
+    try {
+      CountDownLatch latch = new CountDownLatch(messageCount);
+      environment.consumerBuilder().stream(stream)
+          .offset(OffsetSpecification.first())
+          .flow()
+          .strategy(creditWhenHalfMessagesProcessed())
+          .builder()
+          .messageHandler(
+              (ctx, message) ->
+                  executorService.submit(
+                      () -> {
+                        latch.countDown();
+                        ctx.processed();
+                      }))
+          .build();
+      assertThat(latch).is(completed());
+    } finally {
+      executorService.shutdownNow();
+    }
   }
 
   @Test

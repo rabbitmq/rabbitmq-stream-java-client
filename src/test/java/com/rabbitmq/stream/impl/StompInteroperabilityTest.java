@@ -375,6 +375,7 @@ public class StompInteroperabilityTest {
                     (client1, subscriptionId, offset12, messageCount1, dataSize) -> {
                       client1.credit(subscriptionId, 1);
                       chunkOffset.compareAndSet(-1, offset12);
+                      return null;
                     }));
     streamClient.subscribe(b(1), stream, OffsetSpecification.last(), 10);
 

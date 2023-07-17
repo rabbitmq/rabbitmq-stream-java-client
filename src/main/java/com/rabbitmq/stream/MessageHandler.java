@@ -84,5 +84,27 @@ public interface MessageHandler {
      * @see Consumer#store(long)
      */
     Consumer consumer();
+
+    /**
+     * Mark the message as processed, potentially asking for more messages from the broker.
+     *
+     * <p>The exact behavior depends on the {@link ConsumerFlowStrategy} chosen when creating the
+     * consumer with {@link ConsumerBuilder#flow()}.
+     *
+     * <p>The call is a no-op for strategies like {@link
+     * ConsumerFlowStrategy#creditOnChunkArrival()} and {@link
+     * ConsumerFlowStrategy#creditOnChunkArrival(int)}.
+     *
+     * <p>Calling this method for each message is mandatory for strategies like {@link
+     * ConsumerFlowStrategy#creditWhenHalfMessagesProcessed()}, {@link
+     * ConsumerFlowStrategy#creditWhenHalfMessagesProcessed(int)}, and {@link
+     * ConsumerFlowStrategy#creditOnProcessedMessageCount(int, double)}, otherwise the broker may
+     * stop sending messages to the consumer.
+     *
+     * <p>Applications should make sure to call <code>processed()</code> only once on each context,
+     * as this method does not have to be idempotent. What several calls on the same context does
+     * depends on the underlying {@link ConsumerFlowStrategy} implementation.
+     */
+    void processed();
   }
 }

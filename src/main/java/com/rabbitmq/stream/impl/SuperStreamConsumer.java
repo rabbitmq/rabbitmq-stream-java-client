@@ -152,6 +152,11 @@ class SuperStreamConsumer implements Consumer {
               }
             }
 
+            @Override
+            public void processed() {
+              context.processed();
+            }
+
             private void maybeStoreOffset(ConsumerState state, Runnable storeAction) {
               if (state.consumer.isSac() && !state.consumer.sacActive()) {
                 // do nothing
