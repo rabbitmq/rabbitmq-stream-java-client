@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.12.0-SNAPSHOT</span>
-<br><span id="revremark">(5d00247)</span>
+<br><span id="revremark">(f4399f5)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -601,6 +601,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#consumer-subscription-listener">Subscription Listener</a></li>
 </ul>
 </li>
+<li><a href="#flow-control">Flow Control</a></li>
 <li><a href="#single-active-consumer">Single Active Consumer</a>
 <ul class="sectlevel5">
 <li><a href="#enabling-single-active-consumer">Enabling Single Active Consumer</a></li>
@@ -2799,6 +2800,11 @@ Useful when using an external store for offset tracking.</p></td>
 Increase for higher throughput at the expense of memory usage.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>flow#strategy</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The <code>ConsumerFlowStrategy</code> to use.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ConsumerFlowStrategy#creditOnChunkArrival(1)</code></p></td>
+</tr>
 </tbody>
 </table>
 <div class="admonitionblock note">
@@ -3286,6 +3292,82 @@ When a glitch happens and triggers the re-subscription, the server-side stored o
 Using this server-side stored offset can lead to duplicates, whereas using the in-memory, application-specific offset tracking variable is more accurate.
 A custom <code>SubscriptionListener</code> lets the application developer uses what&#8217;s best for the application if the computed value is not optimal.</p>
 </div>
+</div>
+</div>
+<div class="sect4">
+<h5 id="flow-control"><a class="anchor" href="#flow-control"></a>Flow Control</h5>
+<div class="paragraph">
+<p>This section covers how a consumer can tell the broker when to send more messages.</p>
+</div>
+<div class="paragraph">
+<p>By default, the broker keeps sending messages as long as messages are processed and the <code>MessageHandler#handle(Context, Message)</code> method returns.
+This strategy works fine if message processing is fast enough.
+If message processing takes longer, one can be tempted to process messages in parallel with an <code>ExecutorService</code>.
+This will make the <code>handle</code> method return immediately and the broker will keep sending messages, potentially overflowing the consumer.</p>
+</div>
+<div class="paragraph">
+<p>What we miss in the parallel processing case is a way to tell the library we are done processing a message and that we are ready at some point to handle more messages.
+This is the goal of the <code>MessageHandler.Context#processed()</code> method.</p>
+</div>
+<div class="paragraph">
+<p>This method is by default a no-op because the default flow control strategy keeps asking for more messages as soon as message processing is done.
+This method gets some real behavior to control the flow of messages when an appropriate <code>ConsumerFlowStrategy</code> is set <code>ConsumerBuilder#flow()</code>.
+The following code snippet shows how to set a handy consumer flow strategy:</p>
+</div>
+<div class="listingblock">
+<div class="title">Setting a consumer flow control strategy</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Consumer consumer = environment.consumerBuilder()
+    .stream(<span class="string"><span class="delimiter">&quot;</span><span class="content">my-stream</span><span class="delimiter">&quot;</span></span>)
+    .flow()
+        .strategy(ConsumerFlowStrategy.creditWhenHalfMessagesProcessed())  <i class="conum" data-value="1"></i><b>(1)</b>
+    .builder()
+    .messageHandler((context, message) -&gt; {
+      <span class="comment">// message handling code (possibly asynchronous)...</span>
+      context.processed();  <i class="conum" data-value="2"></i><b>(2)</b>
+    })
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Set the flow control strategy</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Make sure to call <code>Context#processed()</code></td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>In the example we set up the <code>creditWhenHalfMessagesProcessed</code> strategy which asks for more messages once half of the current messages have been marked as processed.
+The broker does not send messages one by one, it sends <a href="#chunk-definition">chunks</a> of messages.
+A chunk of messages can contain 1 to several thousands of messages.
+So with the strategy set above, once <code>processed()</code> has been called for half of the messages of the current chunk, the library will ask the broker for another one (it will provide a <em>credit</em> for the subscription).
+By doing this, the next chunk should arrive by the time we are done with the other half of the current chunk.
+This way the consumer is neither overwhelmed nor idle.</p>
+</div>
+<div class="paragraph">
+<p>The <code>ConsumerFlowStrategy</code> interface provides some static helpers to configure the appropriate strategy.</p>
+</div>
+<div class="paragraph">
+<p>Additional notes on consumer flow control:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Make sure to <strong>call the <code>processed()</code> method</strong> once you set up a <code>ConsumerFlowStrategy</code>.
+The method is a no-op by default, but it is essential to call it with count-based strategies like <code>creditWhenHalfMessagesProcessed</code> or <code>creditOnProcessedMessageCount</code>.
+No calling it will stop the dispatching of messages.</p>
+</li>
+<li>
+<p>Make sure to call <code>processed()</code> only once.
+Whether the method is idempotent depends on the flow strategy implementation.
+Apart from the default one, the implementations the library provides does not make <code>processed()</code> idempotent.</p>
+</li>
+</ul>
 </div>
 </div>
 <div class="sect4">
@@ -5403,7 +5485,7 @@ Use the <code>rabbitmq.streamperftest.loggers</code> system property with <code>
 <div id="footer">
 <div id="footer-text">
 Version 0.12.0-SNAPSHOT<br>
-Last updated 2023-07-17 06:45:49 UTC
+Last updated 2023-07-17 08:42:10 UTC
 </div>
 </div>
 </body>
