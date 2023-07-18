@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
 import static com.rabbitmq.stream.impl.Utils.exceptionMessage;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
@@ -242,10 +243,7 @@ class StreamEnvironment implements Environment {
             : clientParametersPrototype.codec();
     this.clockRefreshFuture =
         this.scheduledExecutorService.scheduleAtFixedRate(
-            Utils.namedRunnable(() -> this.clock.refresh(), "Background clock refresh"),
-            1,
-            1,
-            SECONDS);
+            namedRunnable(this.clock::refresh, "Background clock refresh"), 1, 1, SECONDS);
   }
 
   private ShutdownListener shutdownListener(
@@ -261,7 +259,7 @@ class StreamEnvironment implements Environment {
             try {
               Client.ClientParameters newLocatorParameters =
                   this.locatorParametersCopy().shutdownListener(shutdownListenerReference.get());
-              AsyncRetry.asyncRetry(
+              asyncRetry(
                       () -> {
                         LOGGER.debug("Locator reconnection...");
                         Address resolvedAddress = addressResolver.resolve(locator.address());
@@ -285,7 +283,7 @@ class StreamEnvironment implements Environment {
                   .scheduler(this.scheduledExecutorService)
                   .delayPolicy(recoveryBackOffDelayPolicy)
                   .build()
-                  .thenAccept(newClient -> locator.client(newClient))
+                  .thenAccept(locator::client)
                   .exceptionally(
                       ex -> {
                         LOGGER.debug("Locator recovery failed", ex);
@@ -309,7 +307,7 @@ class StreamEnvironment implements Environment {
     try {
       Client.ClientParameters newLocatorParameters =
           this.locatorParametersCopy().shutdownListener(shutdownListener);
-      AsyncRetry.asyncRetry(
+      asyncRetry(
               () -> {
                 LOGGER.debug("Locator reconnection...");
                 Address resolvedAddress = addressResolver.resolve(locator.address());
@@ -333,7 +331,7 @@ class StreamEnvironment implements Environment {
           .scheduler(this.scheduledExecutorService)
           .delayPolicy(recoveryBackOffDelayPolicy)
           .build()
-          .thenAccept(newClient -> locator.client(newClient))
+          .thenAccept(locator::client)
           .exceptionally(
               ex -> {
                 LOGGER.debug("Locator recovery failed", ex);
@@ -652,18 +650,16 @@ class StreamEnvironment implements Environment {
       MessageHandler messageHandler,
       Map<String, String> subscriptionProperties,
       ConsumerFlowStrategy flowStrategy) {
-    Runnable closingCallback =
-        this.consumersCoordinator.subscribe(
-            consumer,
-            stream,
-            offsetSpecification,
-            trackingReference,
-            subscriptionListener,
-            trackingClosingCallback,
-            messageHandler,
-            subscriptionProperties,
-            flowStrategy);
-    return closingCallback;
+    return this.consumersCoordinator.subscribe(
+        consumer,
+        stream,
+        offsetSpecification,
+        trackingReference,
+        subscriptionListener,
+        trackingClosingCallback,
+        messageHandler,
+        subscriptionProperties,
+        flowStrategy);
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {
@@ -674,12 +670,12 @@ class StreamEnvironment implements Environment {
     return this.locators.stream()
         .filter(Locator::isSet)
         .findAny()
-        .orElseThrow(() -> new LocatorNotAvailableException())
+        .orElseThrow(LocatorNotAvailableException::new)
         .client();
   }
 
   <T> T locatorOperation(Function<Client, T> operation) {
-    return locatorOperation(operation, () -> locator(), this.recoveryBackOffDelayPolicy);
+    return locatorOperation(operation, this::locator, this.recoveryBackOffDelayPolicy);
   }
 
   static <T> T locatorOperation(
@@ -801,7 +797,7 @@ class StreamEnvironment implements Environment {
             : offsetTrackingRegistration.trackingCallback(),
         offsetTrackingRegistration == null
             ? Utils.NO_OP_LONG_SUPPLIER
-            : () -> offsetTrackingRegistration.flush());
+            : offsetTrackingRegistration::flush);
   }
 
   @Override
@@ -900,7 +896,7 @@ class StreamEnvironment implements Environment {
     }
 
     private Client client() {
-      return this.client.orElseThrow(() -> new LocatorNotAvailableException());
+      return this.client.orElseThrow(LocatorNotAvailableException::new);
     }
 
     private Client nullableClient() {
