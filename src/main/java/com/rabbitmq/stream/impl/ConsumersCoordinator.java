@@ -886,7 +886,7 @@ class ConsumersCoordinator {
                   () -> findBrokersForStream(tracker.stream),
                   ex -> !(ex instanceof StreamDoesNotExistException),
                   environment.recoveryBackOffDelayPolicy(),
-                  "Candidate lookup to consume from '%s'",
+                  "Candidate lookup to consume from '%s' (subscription recovery)",
                   tracker.stream);
         } catch (Exception e) {
           LOGGER.warn("Error while re-assigning subscription from stream {}", tracker.stream, e);
