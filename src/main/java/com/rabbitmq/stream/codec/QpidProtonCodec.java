@@ -583,7 +583,7 @@ public class QpidProtonCodec implements Codec {
 
   // from
   // https://github.com/apache/activemq/blob/master/activemq-amqp/src/main/java/org/apache/activemq/transport/amqp/message/AmqpWritableBuffer.java
-  private class ByteArrayWritableBuffer implements WritableBuffer {
+  private static class ByteArrayWritableBuffer implements WritableBuffer {
 
     public static final int DEFAULT_CAPACITY = 4 * 1024;
 
