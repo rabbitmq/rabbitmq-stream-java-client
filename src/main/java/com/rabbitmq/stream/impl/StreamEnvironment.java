@@ -40,16 +40,12 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
@@ -167,8 +163,11 @@ class StreamEnvironment implements Environment {
     }
     ScheduledExecutorService executorService;
     if (scheduledExecutorService == null) {
-      executorService =
-          Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
+      int threads = Runtime.getRuntime().availableProcessors();
+      LOGGER.debug("Creating scheduled executor service with {} thread(s)", threads);
+      ThreadFactory threadFactory =
+          new Utils.NamedThreadFactory("rabbitmq-stream-environment-scheduler-");
+      executorService = Executors.newScheduledThreadPool(threads, threadFactory);
       this.privateScheduleExecutorService = true;
     } else {
       executorService = scheduledExecutorService;
@@ -255,7 +254,9 @@ class StreamEnvironment implements Environment {
         shutdownContext -> {
           if (shutdownContext.isShutdownUnexpected()) {
             locator.client(null);
-            LOGGER.debug("Unexpected locator disconnection, trying to reconnect");
+            LOGGER.debug(
+                "Unexpected locator disconnection for locator on '{}', trying to reconnect",
+                locator.label());
             try {
               Client.ClientParameters newLocatorParameters =
                   this.locatorParametersCopy().shutdownListener(shutdownListenerReference.get());
@@ -292,6 +293,8 @@ class StreamEnvironment implements Environment {
             } catch (Exception e) {
               LOGGER.debug("Error while scheduling locator reconnection", e);
             }
+          } else {
+            LOGGER.debug("Locator connection '{}' closing normally", locator.label());
           }
         };
     shutdownListenerReference.set(shutdownListener);
@@ -705,9 +708,14 @@ class StreamEnvironment implements Environment {
         executed = true;
         break;
       } catch (LocatorNotAvailableException e) {
+        Duration waitTime = backOffDelayPolicy.delay(attempt);
+        LOGGER.debug(
+            "No locator available for operation '{}', waiting for {} before retrying",
+            operation,
+            waitTime);
         attempt++;
         try {
-          Thread.sleep(backOffDelayPolicy.delay(attempt).toMillis());
+          Thread.sleep(waitTime.toMillis());
         } catch (InterruptedException ex) {
           lastException = ex;
           Thread.currentThread().interrupt();
@@ -876,14 +884,28 @@ class StreamEnvironment implements Environment {
 
     private final Address address;
     private volatile Optional<Client> client;
+    private volatile LocalDateTime lastChanged;
 
     private Locator(Address address) {
       this.address = address;
       this.client = Optional.empty();
+      lastChanged = LocalDateTime.now();
+      LOGGER.debug(
+          "Locator wrapper '{}' created with no connection at {}", this.label(), lastChanged);
     }
 
     Locator client(Client client) {
+      Client previous = this.nullableClient();
       this.client = Optional.ofNullable(client);
+      LocalDateTime now = LocalDateTime.now();
+      LOGGER.debug(
+          "Locator wrapper '{}' updated from {} to {}, last changed {}, {} ago",
+          this.label(),
+          previous,
+          client,
+          this.lastChanged,
+          Duration.between(this.lastChanged, now));
+      lastChanged = now;
       return this;
     }
 
@@ -905,6 +927,15 @@ class StreamEnvironment implements Environment {
 
     private Address address() {
       return this.address;
+    }
+
+    private String label() {
+      return address.host() + ":" + address.port();
+    }
+
+    @Override
+    public String toString() {
+      return "Locator{" + "address=" + address + ", client=" + client + '}';
     }
   }
 }

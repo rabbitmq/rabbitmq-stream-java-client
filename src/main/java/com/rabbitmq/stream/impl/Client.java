@@ -2716,4 +2716,9 @@ public class Client implements AutoCloseable {
   private <T> OutstandingRequest<T> outstandingRequest() {
     return new OutstandingRequest<>(this.rpcTimeout, this.host + ":" + this.port);
   }
+
+  @Override
+  public String toString() {
+    return "Client{connectionName='" + connectionName() + "'}";
+  }
 }
