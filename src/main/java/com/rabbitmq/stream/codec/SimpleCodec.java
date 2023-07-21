@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -35,6 +35,21 @@ public class SimpleCodec implements Codec {
   @Override
   public MessageBuilder messageBuilder() {
     return new SimpleMessageBuilder();
+  }
+
+  @Override
+  public MessageBuilder messageBuilder(String stream) {
+    return null;
+  }
+
+  @Override
+  public Codec messageBuilderListener(MessageBuilderListener listener) {
+    return null;
+  }
+
+  @Override
+  public Object listenerContext(Message message) {
+    return null;
   }
 
   private static class SimpleMessage implements Message {

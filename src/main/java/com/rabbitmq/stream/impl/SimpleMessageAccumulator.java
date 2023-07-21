@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,11 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.ConfirmationStatus;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -31,10 +27,11 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   protected final BlockingQueue<AccumulatedEntity> messages;
   protected final Clock clock;
   private final int capacity;
-  private final Codec codec;
+  protected final Codec codec;
   private final int maxFrameSize;
   private final ToLongFunction<Message> publishSequenceFunction;
   private final Function<Message, String> filterValueExtractor;
+  final ObservationCollector observationCollector;
 
   SimpleMessageAccumulator(
       int capacity,
@@ -42,7 +39,8 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       int maxFrameSize,
       ToLongFunction<Message> publishSequenceFunction,
       Function<Message, String> filterValueExtractor,
-      Clock clock) {
+      Clock clock,
+      ObservationCollector observationCollector) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
     this.codec = codec;
@@ -51,6 +49,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     this.filterValueExtractor =
         filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
     this.clock = clock;
+    this.observationCollector = observationCollector;
   }
 
   public boolean add(Message message, ConfirmationHandler confirmationHandler) {
@@ -79,7 +78,11 @@ class SimpleMessageAccumulator implements MessageAccumulator {
 
   @Override
   public AccumulatedEntity get() {
-    return this.messages.poll();
+    AccumulatedEntity entity = this.messages.poll();
+    if (entity != null) {
+      this.observationCollector.publish(this.codec, entity.confirmationCallback().message());
+    }
+    return entity;
   }
 
   @Override
@@ -154,6 +157,11 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     public int handle(boolean confirmed, short code) {
       confirmationHandler.handle(new ConfirmationStatus(message, confirmed, code));
       return 1;
+    }
+
+    @Override
+    public Message message() {
+      return this.message;
     }
   }
 }

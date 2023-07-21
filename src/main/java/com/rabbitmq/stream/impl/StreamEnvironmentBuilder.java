@@ -15,13 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
 
-import com.rabbitmq.stream.AddressResolver;
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.ChunkChecksum;
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.EnvironmentBuilder;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.metrics.MetricsCollector;
@@ -69,6 +63,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private CompressionCodecFactory compressionCodecFactory;
   private boolean lazyInit = false;
   private Function<Client.ClientParameters, Client> clientFactory = Client::new;
+  private ObservationCollector observationCollector = ObservationCollector.NO_OP;
 
   public StreamEnvironmentBuilder() {}
 
@@ -287,6 +282,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
+  public EnvironmentBuilder observationCollector(ObservationCollector observationCollector) {
+    this.observationCollector = observationCollector;
+    return this;
+  }
+
+  @Override
   public Environment build() {
     if (this.compressionCodecFactory == null) {
       this.clientParameters.compressionCodecFactory(CompressionCodecs.DEFAULT);
@@ -300,6 +301,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     this.clientParameters.byteBufAllocator(this.netty.byteBufAllocator);
     this.clientParameters.channelCustomizer(this.netty.channelCustomizer);
     this.clientParameters.bootstrapCustomizer(this.netty.bootstrapCustomizer);
+
+    Codec codec =
+        this.clientParameters.codec() == null ? Codecs.DEFAULT : this.clientParameters.codec();
+    codec = this.observationCollector.register(codec);
+    this.clientParameters.codec(codec);
+
     return new StreamEnvironment(
         scheduledExecutorService,
         clientParameters,
@@ -314,7 +321,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         netty.byteBufAllocator,
         lazyInit,
         connectionNamingStrategy,
-        this.clientFactory);
+        this.clientFactory,
+        this.observationCollector);
   }
 
   static final class DefaultTlsConfiguration implements TlsConfiguration {

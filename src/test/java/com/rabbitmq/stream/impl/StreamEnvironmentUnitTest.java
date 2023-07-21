@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.StreamEnvironment.LocatorNotAvailableException;
@@ -94,7 +95,8 @@ public class StreamEnvironmentUnitTest {
             ByteBufAllocator.DEFAULT,
             false,
             type -> "locator-connection",
-            cf);
+            cf,
+            ObservationCollector.NO_OP);
   }
 
   @AfterEach
@@ -157,7 +159,8 @@ public class StreamEnvironmentUnitTest {
             ByteBufAllocator.DEFAULT,
             false,
             type -> "locator-connection",
-            cf);
+            cf,
+            ObservationCollector.NO_OP);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }
 
@@ -183,7 +186,8 @@ public class StreamEnvironmentUnitTest {
             ByteBufAllocator.DEFAULT,
             lazyInit,
             type -> "locator-connection",
-            cf);
+            cf,
+            ObservationCollector.NO_OP);
     verify(cf, times(expectedConnectionCreation)).apply(any(Client.ClientParameters.class));
   }
 

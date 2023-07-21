@@ -66,7 +66,7 @@ class SuperStreamProducer implements Producer {
 
   @Override
   public MessageBuilder messageBuilder() {
-    return codec.messageBuilder();
+    return codec.messageBuilder(this.superStream);
   }
 
   @Override

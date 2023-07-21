@@ -219,6 +219,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
           };
     }
 
+    handler = this.environment.observationCollector().subscribe(handler);
+
     Consumer consumer;
     if (this.stream != null) {
       consumer =

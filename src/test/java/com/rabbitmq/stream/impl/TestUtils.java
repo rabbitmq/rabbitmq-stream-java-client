@@ -154,7 +154,7 @@ public final class TestUtils {
     return Duration.ofMillis(waitedTime);
   }
 
-  static Address localhost() {
+  public static Address localhost() {
     return new Address("localhost", Client.DEFAULT_PORT);
   }
 
@@ -555,9 +555,9 @@ public final class TestUtils {
     void run() throws Exception;
   }
 
-  static class CountDownLatchConditions {
+  public static class CountDownLatchConditions {
 
-    static Condition<CountDownLatch> completed() {
+    public static Condition<CountDownLatch> completed() {
       return completed(Duration.ofSeconds(10));
     }
 
@@ -601,19 +601,17 @@ public final class TestUtils {
 
     @Override
     public void beforeEach(ExtensionContext context) throws Exception {
-      try {
-        Field streamField =
-            context.getTestInstance().get().getClass().getDeclaredField("eventLoopGroup");
-        streamField.setAccessible(true);
-        streamField.set(context.getTestInstance().get(), eventLoopGroup(context));
-      } catch (NoSuchFieldException e) {
-
+      Field field = field(context.getTestInstance().get().getClass(), "eventLoopGroup");
+      if (field != null) {
+        field.setAccessible(true);
+        field.set(context.getTestInstance().get(), eventLoopGroup(context));
       }
-      try {
-        Field streamField = context.getTestInstance().get().getClass().getDeclaredField("stream");
-        streamField.setAccessible(true);
+
+      field = field(context.getTestInstance().get().getClass(), "stream");
+      if (field != null) {
+        field.setAccessible(true);
         String stream = streamName(context);
-        streamField.set(context.getTestInstance().get(), stream);
+        field.set(context.getTestInstance().get(), stream);
         Client client =
             new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
         Client.Response response = client.create(stream);
@@ -621,8 +619,6 @@ public final class TestUtils {
         store(context.getRoot()).put("filteringSupported", client.filteringSupported());
         client.close();
         store(context).put("testMethodStream", stream);
-      } catch (NoSuchFieldException e) {
-
       }
 
       for (Field declaredField : context.getTestInstance().get().getClass().getDeclaredFields()) {
@@ -678,6 +674,18 @@ public final class TestUtils {
               LOGGER.warn("Error while asynchronously closing Netty event loop group", e);
             }
           });
+    }
+
+    private static Field field(Class<?> cls, String name) {
+      Field field = null;
+      while (field == null && cls != null) {
+        try {
+          field = cls.getDeclaredField(name);
+        } catch (NoSuchFieldException e) {
+          cls = cls.getSuperclass();
+        }
+      }
+      return field;
     }
 
     private static class ExecutorServiceCloseableResourceWrapper implements CloseableResource {

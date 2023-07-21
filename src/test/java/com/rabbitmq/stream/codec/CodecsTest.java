@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -84,7 +84,7 @@ public class CodecsTest {
 
   static Stream<MessageBuilder> messageBuilders() {
     return Stream.of(
-        new QpidProtonMessageBuilder(),
+        new QpidProtonMessageBuilder("", (stream, builder) -> null),
         new SwiftMqMessageBuilder(),
         new WrapperMessageBuilder(),
         new SimpleCodec().messageBuilder());
@@ -525,7 +525,7 @@ public class CodecsTest {
               org.apache.qpid.proton.message.Message.Factory.create();
           nativeMessage.setBody(new AmqpValue(content));
           QpidProtonAmqpMessageWrapper wrapper =
-              new QpidProtonAmqpMessageWrapper(true, 1L, nativeMessage);
+              new QpidProtonAmqpMessageWrapper(true, 1L, nativeMessage, null);
           EncodedMessage encoded = new QpidProtonCodec().encode(wrapper);
           byte[] encodedData = new byte[encoded.getSize()];
           System.arraycopy(encoded.getData(), 0, encodedData, 0, encoded.getSize());

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.codec;
 
+import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import java.math.BigDecimal;
@@ -33,6 +34,8 @@ import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 
 class QpidProtonMessageBuilder implements MessageBuilder {
 
+  private final String stream;
+  private final Codec.MessageBuilderListener listener;
   private final org.apache.qpid.proton.message.Message message =
       org.apache.qpid.proton.message.Message.Factory.create();
   private final AtomicBoolean built = new AtomicBoolean(false);
@@ -42,9 +45,15 @@ class QpidProtonMessageBuilder implements MessageBuilder {
   private QpidProtonjApplicationPropertiesBuilder applicationPropertiesBuilder;
   private QpidProtonjMessageAnnotationsBuilder messageAnnotationsBuilder;
 
+  QpidProtonMessageBuilder(String stream, Codec.MessageBuilderListener listener) {
+    this.stream = stream;
+    this.listener = listener;
+  }
+
   @Override
   public Message build() {
     if (built.compareAndSet(false, true)) {
+      Object context = listener.accept(this.stream, this);
       if (propertiesBuilder != null) {
         message.setProperties(propertiesBuilder.properties);
       }
@@ -57,7 +66,7 @@ class QpidProtonMessageBuilder implements MessageBuilder {
             new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
       }
       return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(
-          hasPublishingId, publishingId, message);
+          hasPublishingId, publishingId, message, context);
     } else {
       throw new IllegalStateException("A message builder can build only one message");
     }

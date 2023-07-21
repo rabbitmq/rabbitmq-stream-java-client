@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -32,9 +32,18 @@ import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
 public class QpidProtonCodec implements Codec {
+  private static final MessageBuilderListener NO_OP_MESSAGE_BUILDER_LISTENER = (s, mb) -> null;
   private static final Function<String, String> MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR = k -> k;
   private static final Function<Symbol, String> MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR =
       Symbol::toString;
+
+  public QpidProtonCodec() {
+    this(NO_OP_MESSAGE_BUILDER_LISTENER);
+  }
+
+  public QpidProtonCodec(MessageBuilderListener messageBuilderListener) {
+    this.messageBuilderListener = messageBuilderListener;
+  }
 
   private static Map<String, Object> createApplicationProperties(
       org.apache.qpid.proton.message.Message message) {
@@ -101,6 +110,22 @@ public class QpidProtonCodec implements Codec {
     } else {
       throw new IllegalArgumentException(
           "Type not supported for an application property: " + value.getClass());
+    }
+  }
+
+  private final MessageBuilderListener messageBuilderListener;
+
+  @Override
+  public Codec messageBuilderListener(MessageBuilderListener listener) {
+    return new QpidProtonCodec(listener);
+  }
+
+  @Override
+  public Object listenerContext(Message message) {
+    if (message instanceof QpidProtonAmqpMessageWrapper) {
+      return ((QpidProtonAmqpMessageWrapper) message).listenerContext;
+    } else {
+      return null;
     }
   }
 
@@ -301,7 +326,12 @@ public class QpidProtonCodec implements Codec {
 
   @Override
   public MessageBuilder messageBuilder() {
-    return new QpidProtonMessageBuilder();
+    return this.messageBuilder(null);
+  }
+
+  @Override
+  public MessageBuilder messageBuilder(String stream) {
+    return new QpidProtonMessageBuilder(stream, this.messageBuilderListener);
   }
 
   private static final class QpidProtonProperties implements Properties {
@@ -511,6 +541,7 @@ public class QpidProtonCodec implements Codec {
     private final boolean hasPublishingId;
     private final long publishingId;
     private final org.apache.qpid.proton.message.Message message;
+    private final Object listenerContext;
     private Properties properties;
     private Map<String, Object> applicationProperties;
     private Map<String, Object> messageAnnotations;
@@ -518,10 +549,12 @@ public class QpidProtonCodec implements Codec {
     QpidProtonAmqpMessageWrapper(
         boolean hasPublishingId,
         long publishingId,
-        org.apache.qpid.proton.message.Message message) {
+        org.apache.qpid.proton.message.Message message,
+        Object listenerContext) {
       this.hasPublishingId = hasPublishingId;
       this.publishingId = publishingId;
       this.message = message;
+      this.listenerContext = listenerContext;
     }
 
     @Override
