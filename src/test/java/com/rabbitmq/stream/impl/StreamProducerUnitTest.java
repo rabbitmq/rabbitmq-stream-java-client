@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2021-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -22,6 +22,7 @@ import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.compression.Compression;
@@ -112,6 +113,7 @@ public class StreamProducerUnitTest {
     when(env.locatorOperation(any())).thenCallRealMethod();
     when(env.clock()).thenReturn(clock);
     when(env.codec()).thenReturn(new SimpleCodec());
+    when(env.observationCollector()).thenReturn(ObservationCollector.NO_OP);
     doAnswer(
             (Answer<Runnable>)
                 invocationOnMock -> {

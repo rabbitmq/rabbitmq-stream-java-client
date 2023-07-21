@@ -39,12 +39,12 @@ public class SimpleCodec implements Codec {
 
   @Override
   public MessageBuilder messageBuilder(String stream) {
-    return null;
+    return new SimpleMessageBuilder();
   }
 
   @Override
   public Codec messageBuilderListener(MessageBuilderListener listener) {
-    return null;
+    return new SimpleCodec();
   }
 
   @Override

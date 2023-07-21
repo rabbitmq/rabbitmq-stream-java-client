@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.codec;
 
+import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -32,7 +33,6 @@ import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -53,7 +53,7 @@ public class CodecsTest {
   static UUID TEST_UUID = UUID.randomUUID();
 
   static Iterable<CodecCouple> codecsCouples() {
-    List<Codec> codecs = Arrays.asList(new QpidProtonCodec(), new SwiftMqCodec());
+    List<Codec> codecs = asList(new QpidProtonCodec(), new SwiftMqCodec());
     List<CodecCouple> couples = new ArrayList<>();
     for (Codec serializer : codecs) {
       for (Codec deserializer : codecs) {
@@ -65,14 +65,14 @@ public class CodecsTest {
   }
 
   static Iterable<Supplier<MessageBuilder>> messageBuilderSuppliers() {
-    return Arrays.asList(
-        new MessageBuilderCreator(QpidProtonMessageBuilder.class),
-        new MessageBuilderCreator(SwiftMqMessageBuilder.class),
-        new MessageBuilderCreator(WrapperMessageBuilder.class));
+    return asList(
+        () -> new QpidProtonMessageBuilder("", (stream, builder) -> null),
+        SwiftMqMessageBuilder::new,
+        WrapperMessageBuilder::new);
   }
 
   static Iterable<Codec> readCreatedMessage() {
-    return Arrays.asList(
+    return asList(
         when(mock(Codec.class).messageBuilder()).thenReturn(new WrapperMessageBuilder()).getMock(),
         new QpidProtonCodec(),
         new SwiftMqCodec());
@@ -596,31 +596,6 @@ public class CodecsTest {
           + deserializer.getClass().getSimpleName()
           + ", messageBuilder="
           + messageBuilderSupplier.get().getClass().getSimpleName();
-    }
-  }
-
-  static class MessageBuilderCreator implements Supplier<MessageBuilder> {
-
-    final Supplier<MessageBuilder> supplier;
-
-    MessageBuilderCreator(Class<? extends MessageBuilder> clazz) {
-      supplier =
-          () -> {
-            try {
-              return clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-              throw new RuntimeException(e);
-            }
-          };
-    }
-
-    public MessageBuilder get() {
-      return supplier.get();
-    }
-
-    @Override
-    public String toString() {
-      return get().getClass().getSimpleName();
     }
   }
 }

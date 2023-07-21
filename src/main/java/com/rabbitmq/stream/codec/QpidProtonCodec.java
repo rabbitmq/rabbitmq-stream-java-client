@@ -32,7 +32,7 @@ import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
 public class QpidProtonCodec implements Codec {
-  private static final MessageBuilderListener NO_OP_MESSAGE_BUILDER_LISTENER = (s, mb) -> null;
+  static final MessageBuilderListener NO_OP_MESSAGE_BUILDER_LISTENER = (s, mb) -> null;
   private static final Function<String, String> MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR = k -> k;
   private static final Function<Symbol, String> MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR =
       Symbol::toString;
