@@ -41,6 +41,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       int maxFrameSize,
       ToLongFunction<Message> publishSequenceFunction,
       Clock clock,
+      String stream,
       ObservationCollector observationCollector) {
     super(
         subEntrySize * batchSize,
@@ -49,6 +50,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
         publishSequenceFunction,
         null,
         clock,
+        stream,
         observationCollector);
     this.subEntrySize = subEntrySize;
     this.compressionCodec = compressionCodec;
@@ -76,7 +78,8 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       if (message == null) {
         break;
       }
-      this.observationCollector.publish(this.codec, message.confirmationCallback().message());
+      this.observationCollector.published(
+          message.observationContext(), message.confirmationCallback().message());
       lastMessageInBatch = message;
       batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
       count++;
@@ -85,7 +88,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       return null;
     } else {
       batch.time = lastMessageInBatch.time();
-      batch.publishingId = lastMessageInBatch.publishindId();
+      batch.publishingId = lastMessageInBatch.publishingId();
       batch.encodedMessageBatch.close();
       return batch;
     }
@@ -117,7 +120,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     }
 
     @Override
-    public long publishindId() {
+    public long publishingId() {
       return publishingId;
     }
 
@@ -139,6 +142,12 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     @Override
     public StreamProducer.ConfirmationCallback confirmationCallback() {
       return confirmationCallback;
+    }
+
+    @Override
+    public Object observationContext() {
+      throw new UnsupportedOperationException(
+          "batch entity does not contain only one observation context");
     }
   }
 

@@ -28,12 +28,6 @@ public interface Codec {
 
   MessageBuilder messageBuilder();
 
-  MessageBuilder messageBuilder(String stream);
-
-  Codec messageBuilderListener(MessageBuilderListener listener);
-
-  Object listenerContext(Message message);
-
   class EncodedMessage {
 
     private final int size;
@@ -51,11 +45,5 @@ public interface Codec {
     public int getSize() {
       return size;
     }
-  }
-
-  @FunctionalInterface
-  interface MessageBuilderListener {
-
-    Object accept(String stream, MessageBuilder builder);
   }
 }

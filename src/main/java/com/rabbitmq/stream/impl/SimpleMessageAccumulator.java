@@ -31,6 +31,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   private final int maxFrameSize;
   private final ToLongFunction<Message> publishSequenceFunction;
   private final Function<Message, String> filterValueExtractor;
+  final String stream;
   final ObservationCollector observationCollector;
 
   SimpleMessageAccumulator(
@@ -40,6 +41,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       ToLongFunction<Message> publishSequenceFunction,
       Function<Message, String> filterValueExtractor,
       Clock clock,
+      String stream,
       ObservationCollector observationCollector) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
@@ -49,10 +51,12 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     this.filterValueExtractor =
         filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
     this.clock = clock;
+    this.stream = stream;
     this.observationCollector = observationCollector;
   }
 
   public boolean add(Message message, ConfirmationHandler confirmationHandler) {
+    Object observationContext = this.observationCollector.prePublish(this.stream, message);
     Codec.EncodedMessage encodedMessage = this.codec.encode(message);
     Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
     long publishingId = this.publishSequenceFunction.applyAsLong(message);
@@ -64,7 +68,8 @@ class SimpleMessageAccumulator implements MessageAccumulator {
                   publishingId,
                   this.filterValueExtractor.apply(message),
                   encodedMessage,
-                  new SimpleConfirmationCallback(message, confirmationHandler)),
+                  new SimpleConfirmationCallback(message, confirmationHandler),
+                  observationContext),
               60,
               TimeUnit.SECONDS);
       if (!offered) {
@@ -80,7 +85,8 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   public AccumulatedEntity get() {
     AccumulatedEntity entity = this.messages.poll();
     if (entity != null) {
-      this.observationCollector.publish(this.codec, entity.confirmationCallback().message());
+      this.observationCollector.published(
+          entity.observationContext(), entity.confirmationCallback().message());
     }
     return entity;
   }
@@ -102,22 +108,25 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     private final String filterValue;
     private final Codec.EncodedMessage encodedMessage;
     private final StreamProducer.ConfirmationCallback confirmationCallback;
+    private final Object observationContext;
 
     private SimpleAccumulatedEntity(
         long time,
         long publishingId,
         String filterValue,
         Codec.EncodedMessage encodedMessage,
-        StreamProducer.ConfirmationCallback confirmationCallback) {
+        StreamProducer.ConfirmationCallback confirmationCallback,
+        Object observationContext) {
       this.time = time;
       this.publishingId = publishingId;
       this.encodedMessage = encodedMessage;
       this.filterValue = filterValue;
       this.confirmationCallback = confirmationCallback;
+      this.observationContext = observationContext;
     }
 
     @Override
-    public long publishindId() {
+    public long publishingId() {
       return publishingId;
     }
 
@@ -139,6 +148,11 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     @Override
     public StreamProducer.ConfirmationCallback confirmationCallback() {
       return confirmationCallback;
+    }
+
+    @Override
+    public Object observationContext() {
+      return this.observationContext;
     }
   }
 

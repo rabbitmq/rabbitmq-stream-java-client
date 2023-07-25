@@ -46,8 +46,8 @@ public class DefaultPublishObservationConvention implements PublishObservationCo
   public KeyValues getHighCardinalityKeyValues(PublishContext context) {
     return KeyValues.of(
         MESSAGING_DESTINATION_NAME.withValue(context.stream()),
-        MESSAGING_SOURCE_NAME.withValue(context.stream()));
-    //        MESSAGING_MESSAGE_PAYLOAD_SIZE_BYTES.withValue(
-    //            String.valueOf(context.getPayloadSizeBytes())));
+        MESSAGING_SOURCE_NAME.withValue(context.stream()),
+        MESSAGING_MESSAGE_PAYLOAD_SIZE_BYTES.withValue(
+            String.valueOf(context.getPayloadSizeBytes())));
   }
 }

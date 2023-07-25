@@ -13,7 +13,6 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.codec;
 
-import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import java.math.BigDecimal;
@@ -34,8 +33,6 @@ import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 
 class QpidProtonMessageBuilder implements MessageBuilder {
 
-  private final String stream;
-  private final Codec.MessageBuilderListener listener;
   private final org.apache.qpid.proton.message.Message message =
       org.apache.qpid.proton.message.Message.Factory.create();
   private final AtomicBoolean built = new AtomicBoolean(false);
@@ -45,15 +42,9 @@ class QpidProtonMessageBuilder implements MessageBuilder {
   private QpidProtonjApplicationPropertiesBuilder applicationPropertiesBuilder;
   private QpidProtonjMessageAnnotationsBuilder messageAnnotationsBuilder;
 
-  QpidProtonMessageBuilder(String stream, Codec.MessageBuilderListener listener) {
-    this.stream = stream;
-    this.listener = listener;
-  }
-
   @Override
   public Message build() {
     if (built.compareAndSet(false, true)) {
-      Object context = listener.accept(this.stream, this);
       if (propertiesBuilder != null) {
         message.setProperties(propertiesBuilder.properties);
       }
@@ -66,7 +57,7 @@ class QpidProtonMessageBuilder implements MessageBuilder {
             new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
       }
       return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(
-          hasPublishingId, publishingId, message, context);
+          hasPublishingId, publishingId, message);
     } else {
       throw new IllegalStateException("A message builder can build only one message");
     }

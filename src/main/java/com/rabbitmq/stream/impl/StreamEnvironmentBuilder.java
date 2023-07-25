@@ -302,11 +302,6 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     this.clientParameters.channelCustomizer(this.netty.channelCustomizer);
     this.clientParameters.bootstrapCustomizer(this.netty.bootstrapCustomizer);
 
-    Codec codec =
-        this.clientParameters.codec() == null ? Codecs.DEFAULT : this.clientParameters.codec();
-    codec = this.observationCollector.register(codec);
-    this.clientParameters.codec(codec);
-
     return new StreamEnvironment(
         scheduledExecutorService,
         clientParameters,

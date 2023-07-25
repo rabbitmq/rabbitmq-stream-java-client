@@ -18,12 +18,12 @@ public interface ObservationCollector {
   ObservationCollector NO_OP =
       new ObservationCollector() {
         @Override
-        public Codec register(Codec codec) {
-          return codec;
+        public Object prePublish(String stream, Message message) {
+          return null;
         }
 
         @Override
-        public void publish(Codec codec, Message message) {}
+        public void published(Object context, Message message) {}
 
         @Override
         public MessageHandler subscribe(MessageHandler handler) {
@@ -31,9 +31,9 @@ public interface ObservationCollector {
         }
       };
 
-  Codec register(Codec codec);
+  void published(Object context, Message message);
 
-  void publish(Codec codec, Message message);
+  Object prePublish(String stream, Message message);
 
   MessageHandler subscribe(MessageHandler handler);
 }

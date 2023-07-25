@@ -89,6 +89,7 @@ public class MicrometerObservationCollectorTest {
           SpanAssert.assertThat(buildingBlocks.getFinishedSpans().get(0))
               .hasNameEqualTo(stream + " publish")
               .hasTag("messaging.destination.name", stream)
+              .hasTag("messaging.message.payload_size_bytes", String.valueOf(PAYLOAD.length))
               .hasTag("net.protocol.name", "rabbitmq-stream")
               .hasTag("net.protocol.version", "1.0");
           SpanAssert.assertThat(buildingBlocks.getFinishedSpans().get(1))

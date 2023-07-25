@@ -32,18 +32,10 @@ import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
 public class QpidProtonCodec implements Codec {
-  static final MessageBuilderListener NO_OP_MESSAGE_BUILDER_LISTENER = (s, mb) -> null;
+
   private static final Function<String, String> MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR = k -> k;
   private static final Function<Symbol, String> MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR =
       Symbol::toString;
-
-  public QpidProtonCodec() {
-    this(NO_OP_MESSAGE_BUILDER_LISTENER);
-  }
-
-  public QpidProtonCodec(MessageBuilderListener messageBuilderListener) {
-    this.messageBuilderListener = messageBuilderListener;
-  }
 
   private static Map<String, Object> createApplicationProperties(
       org.apache.qpid.proton.message.Message message) {
@@ -61,7 +53,7 @@ public class QpidProtonCodec implements Codec {
       return createMapFromAmqpMap(
           MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR, message.getMessageAnnotations().getValue());
     } else {
-      return null;
+      return new LinkedHashMap<>();
     }
   }
 
@@ -110,22 +102,6 @@ public class QpidProtonCodec implements Codec {
     } else {
       throw new IllegalArgumentException(
           "Type not supported for an application property: " + value.getClass());
-    }
-  }
-
-  private final MessageBuilderListener messageBuilderListener;
-
-  @Override
-  public Codec messageBuilderListener(MessageBuilderListener listener) {
-    return new QpidProtonCodec(listener);
-  }
-
-  @Override
-  public Object listenerContext(Message message) {
-    if (message instanceof QpidProtonAmqpMessageWrapper) {
-      return ((QpidProtonAmqpMessageWrapper) message).listenerContext;
-    } else {
-      return null;
     }
   }
 
@@ -326,12 +302,7 @@ public class QpidProtonCodec implements Codec {
 
   @Override
   public MessageBuilder messageBuilder() {
-    return this.messageBuilder(null);
-  }
-
-  @Override
-  public MessageBuilder messageBuilder(String stream) {
-    return new QpidProtonMessageBuilder(stream, this.messageBuilderListener);
+    return new QpidProtonMessageBuilder();
   }
 
   private static final class QpidProtonProperties implements Properties {
@@ -534,6 +505,12 @@ public class QpidProtonCodec implements Codec {
     public Map<String, Object> getMessageAnnotations() {
       return messageAnnotations;
     }
+
+    @Override
+    public Message annotate(String key, Object value) {
+      this.messageAnnotations.put(key, value);
+      return this;
+    }
   }
 
   static class QpidProtonAmqpMessageWrapper implements Message {
@@ -541,7 +518,6 @@ public class QpidProtonCodec implements Codec {
     private final boolean hasPublishingId;
     private final long publishingId;
     private final org.apache.qpid.proton.message.Message message;
-    private final Object listenerContext;
     private Properties properties;
     private Map<String, Object> applicationProperties;
     private Map<String, Object> messageAnnotations;
@@ -549,12 +525,10 @@ public class QpidProtonCodec implements Codec {
     QpidProtonAmqpMessageWrapper(
         boolean hasPublishingId,
         long publishingId,
-        org.apache.qpid.proton.message.Message message,
-        Object listenerContext) {
+        org.apache.qpid.proton.message.Message message) {
       this.hasPublishingId = hasPublishingId;
       this.publishingId = publishingId;
       this.message = message;
-      this.listenerContext = listenerContext;
     }
 
     @Override
@@ -611,6 +585,17 @@ public class QpidProtonCodec implements Codec {
       } else {
         return null;
       }
+    }
+
+    @Override
+    public Message annotate(String key, Object value) {
+      MessageAnnotations annotations = this.message.getMessageAnnotations();
+      if (annotations == null) {
+        annotations = new MessageAnnotations(new LinkedHashMap<>());
+        this.message.setMessageAnnotations(annotations);
+      }
+      annotations.getValue().put(Symbol.getSymbol(key), value);
+      return this;
     }
   }
 

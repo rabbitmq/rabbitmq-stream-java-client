@@ -37,29 +37,25 @@ class MicrometerObservationCollector implements ObservationCollector {
   }
 
   @Override
-  public Codec register(Codec codec) {
-    return codec.messageBuilderListener(
-        (stream, builder) -> {
-          PublishContext context = new PublishContext(stream, builder);
-          Observation observation =
-              StreamObservationDocumentation.PUBLISH_OBSERVATION.observation(
-                  customPublishConvention, defaultPublishConvention, () -> context, registry);
-          observation.start();
-          return observation;
-        });
-  }
-
-  @Override
-  public void publish(Codec codec, Message message) {
-    Object context = codec.listenerContext(message);
+  public void published(Object context, Message message) {
     if (context instanceof Observation) {
       Observation observation = (Observation) context;
       try {
         observation.stop();
       } catch (Exception e) {
-        e.printStackTrace();
+        // TODO log error
       }
     }
+  }
+
+  @Override
+  public Object prePublish(String stream, Message message) {
+    PublishContext context = new PublishContext(stream, message);
+    Observation observation =
+        StreamObservationDocumentation.PUBLISH_OBSERVATION.observation(
+            customPublishConvention, defaultPublishConvention, () -> context, registry);
+    observation.start();
+    return observation;
   }
 
   @Override

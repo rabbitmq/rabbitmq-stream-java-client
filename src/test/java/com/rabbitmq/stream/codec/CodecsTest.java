@@ -66,9 +66,7 @@ public class CodecsTest {
 
   static Iterable<Supplier<MessageBuilder>> messageBuilderSuppliers() {
     return asList(
-        () -> new QpidProtonMessageBuilder("", (stream, builder) -> null),
-        SwiftMqMessageBuilder::new,
-        WrapperMessageBuilder::new);
+        QpidProtonMessageBuilder::new, SwiftMqMessageBuilder::new, WrapperMessageBuilder::new);
   }
 
   static Iterable<Codec> readCreatedMessage() {
@@ -84,7 +82,7 @@ public class CodecsTest {
 
   static Stream<MessageBuilder> messageBuilders() {
     return Stream.of(
-        new QpidProtonMessageBuilder("", (stream, builder) -> null),
+        new QpidProtonMessageBuilder(),
         new SwiftMqMessageBuilder(),
         new WrapperMessageBuilder(),
         new SimpleCodec().messageBuilder());
@@ -239,6 +237,8 @@ public class CodecsTest {
                   .entry("annotations.null", (String) null)
                   .messageBuilder()
                   .build();
+          outboundMessage.annotate("extra.annotation", "extra annotation value");
+
           Codec.EncodedMessage encoded = serializer.encode(outboundMessage);
 
           byte[] encodedData = new byte[encoded.getSize()];
@@ -457,6 +457,10 @@ public class CodecsTest {
               .isInstanceOf(String.class)
               .isEqualTo(symbol);
           assertThat(inboundMessage.getMessageAnnotations().get("annotations.null")).isNull();
+          assertThat(inboundMessage.getMessageAnnotations().get("extra.annotation"))
+              .isNotNull()
+              .isInstanceOf(String.class)
+              .isEqualTo("extra annotation value");
         });
   }
 
@@ -525,12 +529,11 @@ public class CodecsTest {
               org.apache.qpid.proton.message.Message.Factory.create();
           nativeMessage.setBody(new AmqpValue(content));
           QpidProtonAmqpMessageWrapper wrapper =
-              new QpidProtonAmqpMessageWrapper(true, 1L, nativeMessage, null);
+              new QpidProtonAmqpMessageWrapper(true, 1L, nativeMessage);
           EncodedMessage encoded = new QpidProtonCodec().encode(wrapper);
           byte[] encodedData = new byte[encoded.getSize()];
           System.arraycopy(encoded.getData(), 0, encodedData, 0, encoded.getSize());
-          Message decodedMessage = codec.decode(encodedData);
-          return decodedMessage;
+          return codec.decode(encodedData);
         };
 
     Message m1 = encodeDecode.apply("hello".getBytes(StandardCharsets.UTF_8));

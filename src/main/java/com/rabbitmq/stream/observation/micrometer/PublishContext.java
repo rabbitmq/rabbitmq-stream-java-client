@@ -13,21 +13,34 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.observation.micrometer;
 
-import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.Message;
 import io.micrometer.observation.transport.SenderContext;
 
-public class PublishContext extends SenderContext<MessageBuilder> {
+public class PublishContext extends SenderContext<Message> {
 
-  // TODO need stream and payload size
+  // TODO need payload size
   private final String stream;
+  private final int payloadSizeBytes;
 
-  PublishContext(String stream, MessageBuilder messageBuilder) {
-    super((carrier, key, value) -> carrier.messageAnnotations().entry(key, value));
+  PublishContext(String stream, Message message) {
+    super((carrier, key, value) -> carrier.annotate(key, value));
     this.stream = stream;
-    setCarrier(messageBuilder);
+    int payloadSize;
+    try {
+      byte[] body = message.getBodyAsBinary();
+      payloadSize = body == null ? 0 : body.length;
+    } catch (Exception e) {
+      payloadSize = 0;
+    }
+    this.payloadSizeBytes = payloadSize;
+    setCarrier(message);
   }
 
   public String stream() {
     return this.stream;
+  }
+
+  public int getPayloadSizeBytes() {
+    return this.payloadSizeBytes;
   }
 }

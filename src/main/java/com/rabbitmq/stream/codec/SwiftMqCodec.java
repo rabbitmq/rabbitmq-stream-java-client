@@ -123,21 +123,6 @@ public class SwiftMqCodec implements Codec {
   }
 
   @Override
-  public MessageBuilder messageBuilder(String stream) {
-    return null;
-  }
-
-  @Override
-  public Codec messageBuilderListener(MessageBuilderListener listener) {
-    return null;
-  }
-
-  @Override
-  public Object listenerContext(Message message) {
-    return null;
-  }
-
-  @Override
   public EncodedMessage encode(Message message) {
     AMQPMessage outboundMessage;
     if (message instanceof SwiftMqAmqpMessageWrapper) {
@@ -295,7 +280,7 @@ public class SwiftMqCodec implements Codec {
     }
   }
 
-  protected AMQPType convertToSwiftMqType(Object value) {
+  protected static AMQPType convertToSwiftMqType(Object value) {
     if (value instanceof Boolean) {
       return ((Boolean) value).booleanValue() ? AMQPBoolean.TRUE : AMQPBoolean.FALSE;
     } else if (value instanceof Byte) {
@@ -662,6 +647,26 @@ public class SwiftMqCodec implements Codec {
       } else {
         return null;
       }
+    }
+
+    @Override
+    public Message annotate(String key, Object value) {
+      MessageAnnotations annotations = this.message.getMessageAnnotations();
+      Map<AMQPType, AMQPType> map;
+      try {
+        if (annotations == null) {
+          map = new LinkedHashMap<>();
+          annotations = new MessageAnnotations(map);
+          this.message.setMessageAnnotations(annotations);
+        } else {
+          map = annotations.getValue();
+        }
+        map.put(new AMQPSymbol(key), convertToSwiftMqType(value));
+        annotations.setValue(map);
+      } catch (IOException e) {
+        throw new StreamException("Error while annotating SwiftMQ message");
+      }
+      return this;
     }
   }
 }

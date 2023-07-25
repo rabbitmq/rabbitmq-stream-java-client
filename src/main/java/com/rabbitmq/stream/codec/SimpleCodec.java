@@ -37,21 +37,6 @@ public class SimpleCodec implements Codec {
     return new SimpleMessageBuilder();
   }
 
-  @Override
-  public MessageBuilder messageBuilder(String stream) {
-    return new SimpleMessageBuilder();
-  }
-
-  @Override
-  public Codec messageBuilderListener(MessageBuilderListener listener) {
-    return new SimpleCodec();
-  }
-
-  @Override
-  public Object listenerContext(Message message) {
-    return null;
-  }
-
   private static class SimpleMessage implements Message {
 
     private final boolean hasPublishingId;

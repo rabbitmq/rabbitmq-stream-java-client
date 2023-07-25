@@ -46,21 +46,6 @@ public class DeliveryTest {
         public MessageBuilder messageBuilder() {
           return null;
         }
-
-        @Override
-        public MessageBuilder messageBuilder(String stream) {
-          return null;
-        }
-
-        @Override
-        public Codec messageBuilderListener(MessageBuilderListener listener) {
-          return null;
-        }
-
-        @Override
-        public Object listenerContext(Message message) {
-          return null;
-        }
       };
 
   ByteBuf generateFrameBuffer(

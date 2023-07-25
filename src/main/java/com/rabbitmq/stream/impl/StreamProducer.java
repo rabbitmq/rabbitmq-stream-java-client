@@ -73,7 +73,7 @@ class StreamProducer implements Producer {
   private final int maxUnconfirmedMessages;
   private final Codec codec;
   private final ToLongFunction<Object> publishSequenceFunction =
-      entity -> ((AccumulatedEntity) entity).publishindId();
+      entity -> ((AccumulatedEntity) entity).publishingId();
   private final long enqueueTimeoutMs;
   private final boolean blockOnMaxUnconfirmed;
   private volatile Client client;
@@ -123,6 +123,7 @@ class StreamProducer implements Producer {
               accumulatorPublishSequenceFunction,
               filterValueExtractor,
               this.environment.clock(),
+              stream,
               this.environment.observationCollector());
       if (filterValueExtractor == null) {
         delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
@@ -142,6 +143,7 @@ class StreamProducer implements Producer {
               client.maxFrameSize(),
               accumulatorPublishSequenceFunction,
               this.environment.clock(),
+              stream,
               environment.observationCollector());
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
@@ -331,7 +333,7 @@ class StreamProducer implements Producer {
 
   @Override
   public MessageBuilder messageBuilder() {
-    return codec.messageBuilder(this.stream);
+    return codec.messageBuilder();
   }
 
   @Override
