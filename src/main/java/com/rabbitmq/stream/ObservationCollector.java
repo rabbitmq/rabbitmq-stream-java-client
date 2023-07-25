@@ -36,4 +36,8 @@ public interface ObservationCollector<T> {
   T prePublish(String stream, Message message);
 
   MessageHandler subscribe(MessageHandler handler);
+
+  default boolean isNoop() {
+    return this == NO_OP;
+  }
 }

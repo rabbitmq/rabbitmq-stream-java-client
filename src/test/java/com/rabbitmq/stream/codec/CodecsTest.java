@@ -39,6 +39,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -57,8 +58,19 @@ public class CodecsTest {
     List<CodecCouple> couples = new ArrayList<>();
     for (Codec serializer : codecs) {
       for (Codec deserializer : codecs) {
-        couples.add(new CodecCouple(serializer, deserializer, () -> serializer.messageBuilder()));
-        couples.add(new CodecCouple(serializer, deserializer, () -> new WrapperMessageBuilder()));
+        couples.add(new CodecCouple(serializer, deserializer, serializer::messageBuilder));
+        couples.add(new CodecCouple(serializer, deserializer, WrapperMessageBuilder::new));
+      }
+    }
+    return couples;
+  }
+
+  static Iterable<CodecCouple> codecsCombinations() {
+    List<Codec> codecs = asList(new QpidProtonCodec(), new SwiftMqCodec());
+    List<CodecCouple> couples = new ArrayList<>();
+    for (Codec serializer : codecs) {
+      for (Codec deserializer : codecs) {
+        couples.add(new CodecCouple(serializer, deserializer, serializer::messageBuilder));
       }
     }
     return couples;
@@ -557,6 +569,58 @@ public class CodecsTest {
     Message message = builder.build();
     assertThat(message.hasPublishingId()).isFalse();
     assertThat(message.getPublishingId()).isEqualTo(0);
+  }
+
+  @ParameterizedTest
+  @MethodSource("codecsCombinations")
+  void copy(CodecCouple codecCouple) {
+    Codec serializer = codecCouple.serializer;
+    Codec deserializer = codecCouple.deserializer;
+    byte[] body = "hello".getBytes(StandardCharsets.UTF_8);
+
+    Message message =
+        serializer
+            .messageBuilder()
+            .addData(body)
+            .messageAnnotations()
+            .entry("foo", "bar")
+            .messageBuilder()
+            .build();
+    Message copy = message.copy();
+
+    message.annotate("original", "original value");
+    copy.annotate("copy", "copy value");
+
+    assertThat(message.getMessageAnnotations())
+        .hasSize(2)
+        .containsEntry("foo", "bar")
+        .containsEntry("original", "original value");
+
+    assertThat(copy.getMessageAnnotations())
+        .hasSize(2)
+        .containsEntry("foo", "bar")
+        .containsEntry("copy", "copy value");
+
+    UnaryOperator<Message> encodeDecode =
+        msg -> {
+          EncodedMessage encoded = serializer.encode(msg);
+          byte[] encodedData = new byte[encoded.getSize()];
+          System.arraycopy(encoded.getData(), 0, encodedData, 0, encoded.getSize());
+          return deserializer.decode(encodedData);
+        };
+
+    message = encodeDecode.apply(message);
+
+    assertThat(message.getMessageAnnotations())
+        .hasSize(2)
+        .containsEntry("foo", "bar")
+        .containsEntry("original", "original value");
+
+    copy = encodeDecode.apply(copy);
+    assertThat(copy.getMessageAnnotations())
+        .hasSize(2)
+        .containsEntry("foo", "bar")
+        .containsEntry("copy", "copy value");
   }
 
   MessageTestConfiguration test(

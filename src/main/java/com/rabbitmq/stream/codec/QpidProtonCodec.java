@@ -259,7 +259,7 @@ public class QpidProtonCodec implements Codec {
         createMessageAnnotations(message));
   }
 
-  protected Properties createProperties(org.apache.qpid.proton.message.Message message) {
+  protected static Properties createProperties(org.apache.qpid.proton.message.Message message) {
     if (message.getProperties() != null) {
       return new QpidProtonProperties(message.getProperties());
     } else {
@@ -511,6 +511,15 @@ public class QpidProtonCodec implements Codec {
       this.messageAnnotations.put(key, value);
       return this;
     }
+
+    @Override
+    public Message copy() {
+      return new QpidProtonMessage(
+          message,
+          createProperties(message),
+          createApplicationProperties(message),
+          createMessageAnnotations(message));
+    }
   }
 
   static class QpidProtonAmqpMessageWrapper implements Message {
@@ -596,6 +605,27 @@ public class QpidProtonCodec implements Codec {
       }
       annotations.getValue().put(Symbol.getSymbol(key), value);
       return this;
+    }
+
+    @Override
+    public Message copy() {
+      org.apache.qpid.proton.message.Message copy =
+          org.apache.qpid.proton.message.Message.Factory.create();
+      copy.setProperties(this.message.getProperties());
+      copy.setBody(this.message.getBody());
+      copy.setApplicationProperties(this.message.getApplicationProperties());
+      if (this.message.getMessageAnnotations() != null) {
+        Map<Symbol, Object> annotations = message.getMessageAnnotations().getValue();
+        Map<Symbol, Object> annotationCopy;
+        if (annotations == null) {
+          annotationCopy = null;
+        } else {
+          annotationCopy = new LinkedHashMap<>(annotations.size());
+          annotationCopy.putAll(annotations);
+        }
+        copy.setMessageAnnotations(new MessageAnnotations(annotationCopy));
+      }
+      return new QpidProtonAmqpMessageWrapper(this.hasPublishingId, this.publishingId, copy);
     }
   }
 

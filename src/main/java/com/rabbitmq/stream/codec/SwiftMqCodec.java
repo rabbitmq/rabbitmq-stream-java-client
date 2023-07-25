@@ -276,7 +276,7 @@ public class SwiftMqCodec implements Codec {
       outboundMessage.writeContent(output);
       return new EncodedMessage(output.getCount(), output.getBuffer());
     } catch (IOException e) {
-      throw new StreamException("Error while writing AMQP 1.0 message to output stream");
+      throw new StreamException("Error while writing AMQP 1.0 message to output stream", e);
     }
   }
 
@@ -355,7 +355,7 @@ public class SwiftMqCodec implements Codec {
     try {
       amqpMessage = new AMQPMessage(data);
     } catch (Exception e) {
-      throw new StreamException("Error while decoding AMQP 1.0 message");
+      throw new StreamException("Error while decoding AMQP 1.0 message", e);
     }
 
     Object body = extractBody(amqpMessage);
@@ -664,9 +664,31 @@ public class SwiftMqCodec implements Codec {
         map.put(new AMQPSymbol(key), convertToSwiftMqType(value));
         annotations.setValue(map);
       } catch (IOException e) {
-        throw new StreamException("Error while annotating SwiftMQ message");
+        throw new StreamException("Error while annotating SwiftMQ message", e);
       }
       return this;
+    }
+
+    @Override
+    public Message copy() {
+      AMQPMessage copy = new AMQPMessage();
+      copy.setProperties(this.message.getProperties());
+      if (this.message.getData() != null) {
+        this.message.getData().forEach(copy::addData);
+      }
+      copy.setApplicationProperties(this.message.getApplicationProperties());
+      MessageAnnotations annotations = this.message.getMessageAnnotations();
+      if (annotations != null) {
+        Map<AMQPType, AMQPType> annotationCopy = null;
+        try {
+          annotationCopy = new LinkedHashMap<>(annotations.getValue().size());
+          annotationCopy.putAll(annotations.getValue());
+          copy.setMessageAnnotations(new MessageAnnotations(annotationCopy));
+        } catch (IOException e) {
+          throw new StreamException("Error while copying SwiftMQ message annotations", e);
+        }
+      }
+      return new SwiftMqAmqpMessageWrapper(this.hasPublishingId, this.publishingId, copy);
     }
   }
 }

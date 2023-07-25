@@ -90,4 +90,8 @@ public interface Message {
     this.getMessageAnnotations().put(key, value);
     return this;
   }
+
+  default Message copy() {
+    return this;
+  }
 }

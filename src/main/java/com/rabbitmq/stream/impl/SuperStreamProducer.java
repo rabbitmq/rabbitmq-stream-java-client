@@ -15,14 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.ConfirmationStatus;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.MessageBuilder;
-import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.RoutingStrategy;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.RoutingStrategy.Metadata;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +40,13 @@ class SuperStreamProducer implements Producer {
   private final Metadata superStreamMetadata;
   private final AtomicBoolean closed = new AtomicBoolean(false);
 
+  /**
+   * passthrough, except when observation collector is not no-op and a message must be sent to
+   * several streams. In this it creates a copy of the message with distinct message annotations for
+   * each message, so that the collector can populate these messages annotations without collision
+   */
+  private final MessageInterceptor messageInterceptor;
+
   SuperStreamProducer(
       StreamProducerBuilder producerBuilder,
       String name,
@@ -62,6 +62,10 @@ class SuperStreamProducer implements Producer {
     this.producerBuilder = producerBuilder.duplicate();
     this.producerBuilder.stream(null);
     this.producerBuilder.resetRouting();
+    this.messageInterceptor =
+        environment.observationCollector().isNoop()
+            ? (i, msg) -> msg
+            : (i, msg) -> i == 0 ? msg : msg.copy();
   }
 
   @Override
@@ -111,23 +115,27 @@ class SuperStreamProducer implements Producer {
       if (streams.isEmpty()) {
         confirmationHandler.handle(
             new ConfirmationStatus(message, false, Constants.CODE_NO_ROUTE_FOUND));
+      } else if (streams.size() == 1) {
+        producer(streams.get(0)).send(message, confirmationHandler);
       } else {
-        for (String stream : streams) {
-          Producer producer =
-              producers.computeIfAbsent(
-                  stream,
-                  stream1 -> {
-                    Producer p =
-                        producerBuilder.duplicate().superStream(null).stream(stream1).build();
-                    return p;
-                  });
-          producer.send(message, confirmationHandler);
+        for (int i = 0; i < streams.size(); i++) {
+          Producer producer = producer(streams.get(i));
+          producer(streams.get(i)).send(messageInterceptor.apply(i, message), confirmationHandler);
         }
       }
     } else {
       confirmationHandler.handle(
           new ConfirmationStatus(message, false, Constants.CODE_PRODUCER_CLOSED));
     }
+  }
+
+  private Producer producer(String stream) {
+    return producers.computeIfAbsent(
+        stream,
+        stream1 -> {
+          Producer p = producerBuilder.duplicate().superStream(null).stream(stream1).build();
+          return p;
+        });
   }
 
   private boolean canSend() {
@@ -190,5 +198,11 @@ class SuperStreamProducer implements Producer {
                       this.superStream,
                       routingKey1)));
     }
+  }
+
+  @FunctionalInterface
+  private interface MessageInterceptor {
+
+    Message apply(int partitionIndex, Message message);
   }
 }
