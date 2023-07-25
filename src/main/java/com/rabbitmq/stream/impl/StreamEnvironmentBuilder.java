@@ -63,7 +63,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private CompressionCodecFactory compressionCodecFactory;
   private boolean lazyInit = false;
   private Function<Client.ClientParameters, Client> clientFactory = Client::new;
-  private ObservationCollector observationCollector = ObservationCollector.NO_OP;
+  private ObservationCollector<?> observationCollector = ObservationCollector.NO_OP;
 
   public StreamEnvironmentBuilder() {}
 
@@ -282,7 +282,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
-  public EnvironmentBuilder observationCollector(ObservationCollector observationCollector) {
+  public EnvironmentBuilder observationCollector(ObservationCollector<?> observationCollector) {
     this.observationCollector = observationCollector;
     return this;
   }

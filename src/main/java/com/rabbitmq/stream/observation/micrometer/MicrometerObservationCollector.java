@@ -17,7 +17,7 @@ import com.rabbitmq.stream.*;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 
-class MicrometerObservationCollector implements ObservationCollector {
+class MicrometerObservationCollector implements ObservationCollector<Observation> {
 
   private final ObservationRegistry registry;
   private final PublishObservationConvention customPublishConvention, defaultPublishConvention;
@@ -37,19 +37,16 @@ class MicrometerObservationCollector implements ObservationCollector {
   }
 
   @Override
-  public void published(Object context, Message message) {
-    if (context instanceof Observation) {
-      Observation observation = (Observation) context;
-      try {
-        observation.stop();
-      } catch (Exception e) {
-        // TODO log error
-      }
+  public void published(Observation observation, Message message) {
+    try {
+      observation.stop();
+    } catch (Exception e) {
+      // TODO log error
     }
   }
 
   @Override
-  public Object prePublish(String stream, Message message) {
+  public Observation prePublish(String stream, Message message) {
     PublishContext context = new PublishContext(stream, message);
     Observation observation =
         StreamObservationDocumentation.PUBLISH_OBSERVATION.observation(

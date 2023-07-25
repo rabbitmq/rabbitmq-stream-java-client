@@ -222,7 +222,7 @@ public interface EnvironmentBuilder {
    */
   EnvironmentBuilder metricsCollector(MetricsCollector metricsCollector);
 
-  EnvironmentBuilder observationCollector(ObservationCollector observationCollector);
+  EnvironmentBuilder observationCollector(ObservationCollector<?> observationCollector);
 
   /**
    * The maximum number of producers allocated to a single connection.

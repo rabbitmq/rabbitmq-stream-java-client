@@ -32,8 +32,9 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   private final ToLongFunction<Message> publishSequenceFunction;
   private final Function<Message, String> filterValueExtractor;
   final String stream;
-  final ObservationCollector observationCollector;
+  final ObservationCollector<Object> observationCollector;
 
+  @SuppressWarnings("unchecked")
   SimpleMessageAccumulator(
       int capacity,
       Codec codec,
@@ -42,7 +43,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       Function<Message, String> filterValueExtractor,
       Clock clock,
       String stream,
-      ObservationCollector observationCollector) {
+      ObservationCollector<?> observationCollector) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
     this.codec = codec;
@@ -52,7 +53,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
         filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
     this.clock = clock;
     this.stream = stream;
-    this.observationCollector = observationCollector;
+    this.observationCollector = (ObservationCollector<Object>) observationCollector;
   }
 
   public boolean add(Message message, ConfirmationHandler confirmationHandler) {

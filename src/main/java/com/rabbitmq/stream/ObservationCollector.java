@@ -13,17 +13,17 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
-public interface ObservationCollector {
+public interface ObservationCollector<T> {
 
-  ObservationCollector NO_OP =
-      new ObservationCollector() {
+  ObservationCollector<Void> NO_OP =
+      new ObservationCollector<Void>() {
         @Override
-        public Object prePublish(String stream, Message message) {
+        public Void prePublish(String stream, Message message) {
           return null;
         }
 
         @Override
-        public void published(Object context, Message message) {}
+        public void published(Void context, Message message) {}
 
         @Override
         public MessageHandler subscribe(MessageHandler handler) {
@@ -31,9 +31,9 @@ public interface ObservationCollector {
         }
       };
 
-  void published(Object context, Message message);
+  void published(T context, Message message);
 
-  Object prePublish(String stream, Message message);
+  T prePublish(String stream, Message message);
 
   MessageHandler subscribe(MessageHandler handler);
 }

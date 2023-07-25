@@ -85,7 +85,7 @@ class StreamEnvironment implements Environment {
   private final Runnable locatorInitializationSequence;
   private final List<Locator> locators = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory;
-  private final ObservationCollector observationCollector;
+  private final ObservationCollector<?> observationCollector;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -102,7 +102,7 @@ class StreamEnvironment implements Environment {
       boolean lazyInit,
       Function<ClientConnectionType, String> connectionNamingStrategy,
       Function<Client.ClientParameters, Client> clientFactory,
-      ObservationCollector observationCollector) {
+      ObservationCollector<?> observationCollector) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
     this.byteBufAllocator = byteBufAllocator;
@@ -646,7 +646,7 @@ class StreamEnvironment implements Environment {
     return this.clientParametersPrototype.compressionCodecFactory;
   }
 
-  ObservationCollector observationCollector() {
+  ObservationCollector<?> observationCollector() {
     return this.observationCollector;
   }
 

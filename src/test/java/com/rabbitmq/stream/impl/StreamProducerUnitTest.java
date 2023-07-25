@@ -113,7 +113,7 @@ public class StreamProducerUnitTest {
     when(env.locatorOperation(any())).thenCallRealMethod();
     when(env.clock()).thenReturn(clock);
     when(env.codec()).thenReturn(new SimpleCodec());
-    when(env.observationCollector()).thenReturn(ObservationCollector.NO_OP);
+    when(env.observationCollector()).thenAnswer(invocation -> ObservationCollector.NO_OP);
     doAnswer(
             (Answer<Runnable>)
                 invocationOnMock -> {
