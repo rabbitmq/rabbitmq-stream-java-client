@@ -18,6 +18,11 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationConvention;
 import io.micrometer.observation.docs.ObservationDocumentation;
 
+/**
+ * {@link ObservationDocumentation} for RabbitMQ Stream.
+ *
+ * @since 0.12.0
+ */
 public enum StreamObservationDocumentation implements ObservationDocumentation {
 
   /** Observation for publishing a message. */

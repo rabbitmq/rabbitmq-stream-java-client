@@ -18,6 +18,11 @@ import static com.rabbitmq.stream.observation.micrometer.StreamObservationDocume
 import com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation.LowCardinalityTags;
 import io.micrometer.common.KeyValues;
 
+/**
+ * Default {@link PublishObservationConvention}.
+ *
+ * @since 0.12.0
+ */
 public class DefaultPublishObservationConvention implements PublishObservationConvention {
 
   private static final String OPERATION = "publish";

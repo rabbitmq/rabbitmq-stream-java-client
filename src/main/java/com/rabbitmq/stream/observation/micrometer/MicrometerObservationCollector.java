@@ -16,14 +16,24 @@ package com.rabbitmq.stream.observation.micrometer;
 import com.rabbitmq.stream.*;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+/**
+ * Micrometer's {@link ObservationCollector}.
+ *
+ * @since 0.12.0
+ */
 class MicrometerObservationCollector implements ObservationCollector<Observation> {
+
+  private static final Logger LOGGER =
+      LoggerFactory.getLogger(MicrometerObservationCollector.class);
 
   private final ObservationRegistry registry;
   private final PublishObservationConvention customPublishConvention, defaultPublishConvention;
   private final ProcessObservationConvention customProcessConvention, defaultProcessConvention;
 
-  public MicrometerObservationCollector(
+  MicrometerObservationCollector(
       ObservationRegistry registry,
       PublishObservationConvention customPublishConvention,
       PublishObservationConvention defaultPublishConvention,
@@ -41,7 +51,7 @@ class MicrometerObservationCollector implements ObservationCollector<Observation
     try {
       observation.stop();
     } catch (Exception e) {
-      // TODO log error
+      LOGGER.warn("Error while stopping Micrometer observation: {}", e.getMessage());
     }
   }
 

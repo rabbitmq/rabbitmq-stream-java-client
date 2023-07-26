@@ -16,9 +16,13 @@ package com.rabbitmq.stream.observation.micrometer;
 import com.rabbitmq.stream.Message;
 import io.micrometer.observation.transport.SenderContext;
 
+/**
+ * {@link io.micrometer.observation.Observation.Context} for RabbitMQ Stream publishing.
+ *
+ * @since 0.12.0
+ */
 public class PublishContext extends SenderContext<Message> {
 
-  // TODO need payload size
   private final String stream;
   private final int payloadSizeBytes;
 

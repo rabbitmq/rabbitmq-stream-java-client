@@ -16,6 +16,11 @@ package com.rabbitmq.stream.observation.micrometer;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationConvention;
 
+/**
+ * {@link ObservationConvention} for RabbitMQ Stream consuming.
+ *
+ * @since 0.12.0
+ */
 public interface ProcessObservationConvention extends ObservationConvention<ProcessContext> {
 
   @Override

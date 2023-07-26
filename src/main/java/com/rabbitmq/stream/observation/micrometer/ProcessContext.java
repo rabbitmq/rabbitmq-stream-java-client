@@ -17,6 +17,11 @@ import com.rabbitmq.stream.Message;
 import io.micrometer.observation.transport.ReceiverContext;
 import java.util.Map;
 
+/**
+ * {@link io.micrometer.observation.Observation.Context} for RabbitMQ Stream consuming.
+ *
+ * @since 0.12.0
+ */
 public class ProcessContext extends ReceiverContext<Message> {
 
   private final String stream;
