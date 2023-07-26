@@ -17,12 +17,15 @@ import static com.rabbitmq.stream.OffsetSpecification.first;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static io.micrometer.tracing.test.simple.SpanAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.codec.QpidProtonCodec;
+import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.TestUtils;
 import io.micrometer.tracing.test.SampleTestRunner;
-import io.micrometer.tracing.test.simple.SpanAssert;
+import io.micrometer.tracing.test.reporter.BuildingBlocks;
 import io.micrometer.tracing.test.simple.SpansAssert;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
@@ -48,26 +51,96 @@ public class MicrometerObservationCollectorTest {
           .addressResolver(add -> localhost());
     }
 
+    ObservationCollector<?> observationCollector() {
+      return new MicrometerObservationCollectorBuilder().registry(getObservationRegistry()).build();
+    }
+
     @Override
     public TracingSetup[] getTracingSetup() {
       return new TracingSetup[] {TracingSetup.IN_MEMORY_BRAVE, TracingSetup.ZIPKIN_BRAVE};
     }
+
+    void publishConsume(Codec codec, BuildingBlocks buildingBlocks) throws Exception {
+      try (Environment env =
+          environmentBuilder().codec(codec).observationCollector(observationCollector()).build()) {
+        Producer producer = env.producerBuilder().stream(stream).build();
+        CountDownLatch publishLatch = new CountDownLatch(1);
+        producer.send(
+            producer.messageBuilder().addData(PAYLOAD).build(), status -> publishLatch.countDown());
+
+        assertThat(publishLatch).is(completed());
+
+        CountDownLatch consumeLatch = new CountDownLatch(1);
+        env.consumerBuilder().stream(stream)
+            .offset(first())
+            .messageHandler((ctx, msg) -> consumeLatch.countDown())
+            .build();
+
+        assertThat(consumeLatch).is(completed());
+
+        waitAtMost(() -> buildingBlocks.getFinishedSpans().size() == 2);
+
+        SpansAssert.assertThat(buildingBlocks.getFinishedSpans()).haveSameTraceId().hasSize(2);
+        assertThat(buildingBlocks.getFinishedSpans().get(0))
+            .hasNameEqualTo(stream + " publish")
+            .hasTag("messaging.destination.name", stream)
+            .hasTag("messaging.message.payload_size_bytes", String.valueOf(PAYLOAD.length))
+            .hasTag("net.protocol.name", "rabbitmq-stream")
+            .hasTag("net.protocol.version", "1.0");
+        assertThat(buildingBlocks.getFinishedSpans().get(1))
+            .hasNameEqualTo(stream + " process")
+            .hasTag("messaging.destination.name", stream)
+            .hasTag("messaging.source.name", stream)
+            .hasTag("messaging.message.payload_size_bytes", String.valueOf(PAYLOAD.length))
+            .hasTag("net.protocol.name", "rabbitmq-stream")
+            .hasTag("net.protocol.version", "1.0");
+        waitAtMost(
+            () ->
+                getMeterRegistry().find("rabbitmq.stream.publish").timer() != null
+                    && getMeterRegistry().find("rabbitmq.stream.process").timer() != null);
+        getMeterRegistry()
+            .get("rabbitmq.stream.publish")
+            .tag("messaging.operation", "publish")
+            .tag("messaging.system", "rabbitmq")
+            .timer();
+        getMeterRegistry()
+            .get("rabbitmq.stream.process")
+            .tag("messaging.operation", "process")
+            .tag("messaging.system", "rabbitmq")
+            .timer();
+      }
+    }
   }
 
   @Nested
-  class PublishConsume extends IntegrationTest {
+  class PublishConsumeQpidCodec extends IntegrationTest {
+
+    @Override
+    public SampleTestRunnerConsumer yourCode() {
+      return (buildingBlocks, meterRegistry) ->
+          publishConsume(new QpidProtonCodec(), buildingBlocks);
+    }
+  }
+
+  @Nested
+  class PublishConsumeSwiftMqCodec extends IntegrationTest {
+
+    @Override
+    public SampleTestRunnerConsumer yourCode() {
+      return (buildingBlocks, meterRegistry) -> publishConsume(new SwiftMqCodec(), buildingBlocks);
+    }
+  }
+
+  @Nested
+  class ConsumeWithoutObservationShouldNotFail extends IntegrationTest {
 
     @Override
     public SampleTestRunnerConsumer yourCode() {
       return (buildingBlocks, meterRegistry) -> {
-        try (Environment env =
-            environmentBuilder()
-                .observationCollector(
-                    new MicrometerObservationCollectorBuilder()
-                        .registry(getObservationRegistry())
-                        .build())
-                .build()) {
-          Producer producer = env.producerBuilder().stream(stream).build();
+        try (Environment publishEnv = environmentBuilder().build();
+            Environment consumeEnv =
+                environmentBuilder().observationCollector(observationCollector()).build()) {
+          Producer producer = publishEnv.producerBuilder().stream(stream).build();
           CountDownLatch publishLatch = new CountDownLatch(1);
           producer.send(
               producer.messageBuilder().addData(PAYLOAD).build(),
@@ -76,86 +149,30 @@ public class MicrometerObservationCollectorTest {
           assertThat(publishLatch).is(completed());
 
           CountDownLatch consumeLatch = new CountDownLatch(1);
-          env.consumerBuilder().stream(stream)
+          consumeEnv.consumerBuilder().stream(stream)
               .offset(first())
               .messageHandler((ctx, msg) -> consumeLatch.countDown())
               .build();
 
           assertThat(consumeLatch).is(completed());
 
-          waitAtMost(() -> buildingBlocks.getFinishedSpans().size() == 2);
+          waitAtMost(() -> buildingBlocks.getFinishedSpans().size() == 1);
 
-          SpansAssert.assertThat(buildingBlocks.getFinishedSpans()).haveSameTraceId().hasSize(2);
-          SpanAssert.assertThat(buildingBlocks.getFinishedSpans().get(0))
-              .hasNameEqualTo(stream + " publish")
-              .hasTag("messaging.destination.name", stream)
-              .hasTag("messaging.message.payload_size_bytes", String.valueOf(PAYLOAD.length))
-              .hasTag("net.protocol.name", "rabbitmq-stream")
-              .hasTag("net.protocol.version", "1.0");
-          SpanAssert.assertThat(buildingBlocks.getFinishedSpans().get(1))
+          SpansAssert.assertThat(buildingBlocks.getFinishedSpans()).haveSameTraceId().hasSize(1);
+          assertThat(buildingBlocks.getFinishedSpans().get(0))
               .hasNameEqualTo(stream + " process")
               .hasTag("messaging.destination.name", stream)
               .hasTag("messaging.source.name", stream)
               .hasTag("messaging.message.payload_size_bytes", String.valueOf(PAYLOAD.length))
               .hasTag("net.protocol.name", "rabbitmq-stream")
               .hasTag("net.protocol.version", "1.0");
-          waitAtMost(
-              () ->
-                  getMeterRegistry().find("rabbitmq.stream.publish").timer() != null
-                      && getMeterRegistry().find("rabbitmq.stream.process").timer() != null);
-          getMeterRegistry()
-              .get("rabbitmq.stream.publish")
-              .tag("messaging.operation", "publish")
-              .tag("messaging.system", "rabbitmq")
-              .timer();
+          waitAtMost(() -> getMeterRegistry().find("rabbitmq.stream.process").timer() != null);
           getMeterRegistry()
               .get("rabbitmq.stream.process")
               .tag("messaging.operation", "process")
               .tag("messaging.system", "rabbitmq")
               .timer();
         }
-
-        /*
-          assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
-          waitAtMost(() -> buildingBlocks.getFinishedSpans().size() == 2);
-          SpansAssert.assertThat(buildingBlocks.getFinishedSpans()).haveSameTraceId().hasSize(2);
-          SpanAssert.assertThat(buildingBlocks.getFinishedSpans().get(0))
-              .hasNameEqualTo("metrics.queue publish")
-              .hasTag("messaging.rabbitmq.destination.routing_key", "metrics.queue")
-              .hasTag("messaging.destination.name", "amq.default")
-              .hasTag("messaging.message.payload_size_bytes", String.valueOf(PAYLOAD.length))
-              .hasTagWithKey("net.sock.peer.addr")
-              .hasTag("net.sock.peer.port", "5672")
-              .hasTag("net.protocol.name", "amqp")
-              .hasTag("net.protocol.version", "0.9.1");
-          SpanAssert.assertThat(buildingBlocks.getFinishedSpans().get(1))
-              .hasNameEqualTo("metrics.queue process")
-              .hasTag("messaging.rabbitmq.destination.routing_key", "metrics.queue")
-              .hasTag("messaging.destination.name", "amq.default")
-              .hasTag("messaging.source.name", "metrics.queue")
-              .hasTag("messaging.message.payload_size_bytes", String.valueOf(PAYLOAD.length))
-              .hasTag("net.protocol.name", "amqp")
-              .hasTag("net.protocol.version", "0.9.1");
-          waitAtMost(
-              () ->
-                  getMeterRegistry().find("rabbitmq.publish").timer() != null
-                      && getMeterRegistry().find("rabbitmq.process").timer() != null);
-          getMeterRegistry()
-              .get("rabbitmq.publish")
-              .tag("messaging.operation", "publish")
-              .tag("messaging.system", "rabbitmq")
-              .timer();
-          getMeterRegistry()
-              .get("rabbitmq.process")
-              .tag("messaging.operation", "process")
-              .tag("messaging.system", "rabbitmq")
-              .timer();
-        } finally {
-          safeClose(publishConnection);
-          safeClose(consumeConnection);
-        }
-
-         */
       };
     }
   }
