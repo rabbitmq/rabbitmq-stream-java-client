@@ -76,7 +76,7 @@ public enum StreamObservationDocumentation implements ObservationDocumentation {
       }
     },
 
-    /** A string identifying the protocol (AMQP). */
+    /** A string identifying the protocol (RabbitMQ Stream). */
     NET_PROTOCOL_NAME {
 
       @Override
@@ -85,7 +85,7 @@ public enum StreamObservationDocumentation implements ObservationDocumentation {
       }
     },
 
-    /** A string identifying the protocol version (0.9.1). */
+    /** A string identifying the protocol version (1.0). */
     NET_PROTOCOL_VERSION {
 
       @Override
