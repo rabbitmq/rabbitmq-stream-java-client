@@ -154,7 +154,7 @@ public class EnvironmentUsage {
         // tag::micrometer-observation[]
         Environment environment = Environment.builder()
             .observationCollector(new MicrometerObservationCollectorBuilder()  // <1>
-                .registry(observationRegistry).build())  // <1>
+                .registry(observationRegistry).build())  // <2>
             .build();
         // end::micrometer-observation[]
     }
