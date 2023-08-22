@@ -67,7 +67,7 @@
     <jgroups-kubernetes.version>2.0.1.Final</jgroups-kubernetes.version>
     <junit.jupiter.version>5.10.0</junit.jupiter.version>
     <assertj.version>3.24.2</assertj.version>
-    <mockito.version>5.4.0</mockito.version>
+    <mockito.version>5.5.0</mockito.version>
     <amqp-client.version>5.18.0</amqp-client.version>
     <commons-lang3.version>3.13.0</commons-lang3.version>
     <commons-codec.version>1.16.0</commons-codec.version>
