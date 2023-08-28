@@ -35,6 +35,6 @@ jobs:
             -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem \
-            -Dnet.bytebuddy.experimental=true
+            -Dnet.bytebuddy.experimental=true -Djacoco.skip=true
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
