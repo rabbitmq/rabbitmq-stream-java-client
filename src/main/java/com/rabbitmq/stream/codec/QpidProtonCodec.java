@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -32,6 +32,7 @@ import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
 public class QpidProtonCodec implements Codec {
+
   private static final Function<String, String> MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR = k -> k;
   private static final Function<Symbol, String> MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR =
       Symbol::toString;
@@ -52,7 +53,7 @@ public class QpidProtonCodec implements Codec {
       return createMapFromAmqpMap(
           MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR, message.getMessageAnnotations().getValue());
     } else {
-      return null;
+      return new LinkedHashMap<>();
     }
   }
 
@@ -258,7 +259,7 @@ public class QpidProtonCodec implements Codec {
         createMessageAnnotations(message));
   }
 
-  protected Properties createProperties(org.apache.qpid.proton.message.Message message) {
+  protected static Properties createProperties(org.apache.qpid.proton.message.Message message) {
     if (message.getProperties() != null) {
       return new QpidProtonProperties(message.getProperties());
     } else {
@@ -504,6 +505,21 @@ public class QpidProtonCodec implements Codec {
     public Map<String, Object> getMessageAnnotations() {
       return messageAnnotations;
     }
+
+    @Override
+    public Message annotate(String key, Object value) {
+      this.messageAnnotations.put(key, value);
+      return this;
+    }
+
+    @Override
+    public Message copy() {
+      return new QpidProtonMessage(
+          message,
+          createProperties(message),
+          createApplicationProperties(message),
+          createMessageAnnotations(message));
+    }
   }
 
   static class QpidProtonAmqpMessageWrapper implements Message {
@@ -578,6 +594,38 @@ public class QpidProtonCodec implements Codec {
       } else {
         return null;
       }
+    }
+
+    @Override
+    public Message annotate(String key, Object value) {
+      MessageAnnotations annotations = this.message.getMessageAnnotations();
+      if (annotations == null) {
+        annotations = new MessageAnnotations(new LinkedHashMap<>());
+        this.message.setMessageAnnotations(annotations);
+      }
+      annotations.getValue().put(Symbol.getSymbol(key), value);
+      return this;
+    }
+
+    @Override
+    public Message copy() {
+      org.apache.qpid.proton.message.Message copy =
+          org.apache.qpid.proton.message.Message.Factory.create();
+      copy.setProperties(this.message.getProperties());
+      copy.setBody(this.message.getBody());
+      copy.setApplicationProperties(this.message.getApplicationProperties());
+      if (this.message.getMessageAnnotations() != null) {
+        Map<Symbol, Object> annotations = message.getMessageAnnotations().getValue();
+        Map<Symbol, Object> annotationCopy;
+        if (annotations == null) {
+          annotationCopy = null;
+        } else {
+          annotationCopy = new LinkedHashMap<>(annotations.size());
+          annotationCopy.putAll(annotations);
+        }
+        copy.setMessageAnnotations(new MessageAnnotations(annotationCopy));
+      }
+      return new QpidProtonAmqpMessageWrapper(this.hasPublishingId, this.publishingId, copy);
     }
   }
 

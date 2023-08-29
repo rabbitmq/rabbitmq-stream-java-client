@@ -2,8 +2,13 @@
 
 . $(pwd)/release-versions.txt
 
+./mvnw clean test-compile exec:java \
+  -Dexec.mainClass=io.micrometer.docs.DocsGeneratorCommand \
+  -Dexec.classpathScope="test" \
+  -Dexec.args='src/main/java/com/rabbitmq/stream/observation/micrometer .* target/micrometer-observation-docs'
+
 MESSAGE=$(git log -1 --pretty=%B)
-./mvnw clean buildnumber:create pre-site --no-transfer-progress
+./mvnw buildnumber:create pre-site --no-transfer-progress
 
 ./mvnw javadoc:javadoc -Dmaven.javadoc.skip=false --no-transfer-progress
 

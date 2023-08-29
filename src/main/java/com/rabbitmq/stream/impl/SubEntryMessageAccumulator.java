@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
 import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.EncodedMessageBatch;
@@ -39,8 +40,18 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       ByteBufAllocator byteBufAllocator,
       int maxFrameSize,
       ToLongFunction<Message> publishSequenceFunction,
-      Clock clock) {
-    super(subEntrySize * batchSize, codec, maxFrameSize, publishSequenceFunction, null, clock);
+      Clock clock,
+      String stream,
+      ObservationCollector observationCollector) {
+    super(
+        subEntrySize * batchSize,
+        codec,
+        maxFrameSize,
+        publishSequenceFunction,
+        null,
+        clock,
+        stream,
+        observationCollector);
     this.subEntrySize = subEntrySize;
     this.compressionCodec = compressionCodec;
     this.compression = compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
@@ -67,6 +78,8 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       if (message == null) {
         break;
       }
+      this.observationCollector.published(
+          message.observationContext(), message.confirmationCallback().message());
       lastMessageInBatch = message;
       batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
       count++;
@@ -75,7 +88,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       return null;
     } else {
       batch.time = lastMessageInBatch.time();
-      batch.publishingId = lastMessageInBatch.publishindId();
+      batch.publishingId = lastMessageInBatch.publishingId();
       batch.encodedMessageBatch.close();
       return batch;
     }
@@ -107,7 +120,7 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     }
 
     @Override
-    public long publishindId() {
+    public long publishingId() {
       return publishingId;
     }
 
@@ -130,6 +143,12 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     public StreamProducer.ConfirmationCallback confirmationCallback() {
       return confirmationCallback;
     }
+
+    @Override
+    public Object observationContext() {
+      throw new UnsupportedOperationException(
+          "batch entity does not contain only one observation context");
+    }
   }
 
   private static class CompositeConfirmationCallback
@@ -151,6 +170,12 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
         callback.handle(confirmed, code);
       }
       return callbacks.size();
+    }
+
+    @Override
+    public Message message() {
+      throw new UnsupportedOperationException(
+          "composite confirmation callback does not contain just one message");
     }
   }
 }

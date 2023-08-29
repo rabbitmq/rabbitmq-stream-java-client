@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -73,7 +73,7 @@ class StreamProducer implements Producer {
   private final int maxUnconfirmedMessages;
   private final Codec codec;
   private final ToLongFunction<Object> publishSequenceFunction =
-      entity -> ((AccumulatedEntity) entity).publishindId();
+      entity -> ((AccumulatedEntity) entity).publishingId();
   private final long enqueueTimeoutMs;
   private final boolean blockOnMaxUnconfirmed;
   private volatile Client client;
@@ -122,7 +122,9 @@ class StreamProducer implements Producer {
               client.maxFrameSize(),
               accumulatorPublishSequenceFunction,
               filterValueExtractor,
-              this.environment.clock());
+              this.environment.clock(),
+              stream,
+              this.environment.observationCollector());
       if (filterValueExtractor == null) {
         delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
       } else {
@@ -140,7 +142,9 @@ class StreamProducer implements Producer {
               this.environment.byteBufAllocator(),
               client.maxFrameSize(),
               accumulatorPublishSequenceFunction,
-              this.environment.clock());
+              this.environment.clock(),
+              stream,
+              environment.observationCollector());
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
 
@@ -559,6 +563,8 @@ class StreamProducer implements Producer {
   interface ConfirmationCallback {
 
     int handle(boolean confirmed, short code);
+
+    Message message();
   }
 
   @Override

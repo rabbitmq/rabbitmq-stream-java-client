@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -13,11 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.ConfirmationStatus;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -31,18 +27,23 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   protected final BlockingQueue<AccumulatedEntity> messages;
   protected final Clock clock;
   private final int capacity;
-  private final Codec codec;
+  protected final Codec codec;
   private final int maxFrameSize;
   private final ToLongFunction<Message> publishSequenceFunction;
   private final Function<Message, String> filterValueExtractor;
+  final String stream;
+  final ObservationCollector<Object> observationCollector;
 
+  @SuppressWarnings("unchecked")
   SimpleMessageAccumulator(
       int capacity,
       Codec codec,
       int maxFrameSize,
       ToLongFunction<Message> publishSequenceFunction,
       Function<Message, String> filterValueExtractor,
-      Clock clock) {
+      Clock clock,
+      String stream,
+      ObservationCollector<?> observationCollector) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
     this.codec = codec;
@@ -51,9 +52,12 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     this.filterValueExtractor =
         filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
     this.clock = clock;
+    this.stream = stream;
+    this.observationCollector = (ObservationCollector<Object>) observationCollector;
   }
 
   public boolean add(Message message, ConfirmationHandler confirmationHandler) {
+    Object observationContext = this.observationCollector.prePublish(this.stream, message);
     Codec.EncodedMessage encodedMessage = this.codec.encode(message);
     Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
     long publishingId = this.publishSequenceFunction.applyAsLong(message);
@@ -65,7 +69,8 @@ class SimpleMessageAccumulator implements MessageAccumulator {
                   publishingId,
                   this.filterValueExtractor.apply(message),
                   encodedMessage,
-                  new SimpleConfirmationCallback(message, confirmationHandler)),
+                  new SimpleConfirmationCallback(message, confirmationHandler),
+                  observationContext),
               60,
               TimeUnit.SECONDS);
       if (!offered) {
@@ -79,7 +84,12 @@ class SimpleMessageAccumulator implements MessageAccumulator {
 
   @Override
   public AccumulatedEntity get() {
-    return this.messages.poll();
+    AccumulatedEntity entity = this.messages.poll();
+    if (entity != null) {
+      this.observationCollector.published(
+          entity.observationContext(), entity.confirmationCallback().message());
+    }
+    return entity;
   }
 
   @Override
@@ -99,22 +109,25 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     private final String filterValue;
     private final Codec.EncodedMessage encodedMessage;
     private final StreamProducer.ConfirmationCallback confirmationCallback;
+    private final Object observationContext;
 
     private SimpleAccumulatedEntity(
         long time,
         long publishingId,
         String filterValue,
         Codec.EncodedMessage encodedMessage,
-        StreamProducer.ConfirmationCallback confirmationCallback) {
+        StreamProducer.ConfirmationCallback confirmationCallback,
+        Object observationContext) {
       this.time = time;
       this.publishingId = publishingId;
       this.encodedMessage = encodedMessage;
       this.filterValue = filterValue;
       this.confirmationCallback = confirmationCallback;
+      this.observationContext = observationContext;
     }
 
     @Override
-    public long publishindId() {
+    public long publishingId() {
       return publishingId;
     }
 
@@ -137,6 +150,11 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     public StreamProducer.ConfirmationCallback confirmationCallback() {
       return confirmationCallback;
     }
+
+    @Override
+    public Object observationContext() {
+      return this.observationContext;
+    }
   }
 
   private static final class SimpleConfirmationCallback
@@ -154,6 +172,11 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     public int handle(boolean confirmed, short code) {
       confirmationHandler.handle(new ConfirmationStatus(message, confirmed, code));
       return 1;
+    }
+
+    @Override
+    public Message message() {
+      return this.message;
     }
   }
 }

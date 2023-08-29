@@ -1,6 +1,7 @@
 = RabbitMQ Stream Java Client
 :revnumber: {project-version}
 :revremark: ({build-number})
+:appendix-caption: Appendix
 ifndef::imagesdir[:imagesdir: images]
 ifndef::sourcedir[:sourcedir: ../../main/java]
 :source-highlighter: prettify
@@ -29,3 +30,5 @@ include::advanced-topics.adoc[]
 include::building.adoc[]
 
 include::performance-tool.adoc[]
+
+include::appendixes.adoc[]

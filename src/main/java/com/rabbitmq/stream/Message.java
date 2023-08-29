@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -85,4 +85,31 @@ public interface Message {
    * @return the message annotations
    */
   Map<String, Object> getMessageAnnotations();
+
+  /**
+   * Add a message annotation to the message.
+   *
+   * @param key the message annotation key
+   * @param value the message annotation value
+   * @return the modified message
+   * @since 0.12.0
+   */
+  default Message annotate(String key, Object value) {
+    this.getMessageAnnotations().put(key, value);
+    return this;
+  }
+
+  /**
+   * Create a copy of the message.
+   *
+   * <p>The message copy contains the exact same instances of the original bare message (body,
+   * properties, application properties), only the message annotations are actually copied and can
+   * be modified independently.
+   *
+   * @return the message copy
+   * @since 0.12.0
+   */
+  default Message copy() {
+    return this;
+  }
 }

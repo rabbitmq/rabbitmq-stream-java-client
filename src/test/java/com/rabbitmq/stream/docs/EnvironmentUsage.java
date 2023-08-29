@@ -14,12 +14,10 @@
 
 package com.rabbitmq.stream.docs;
 
-import com.rabbitmq.stream.Address;
-import com.rabbitmq.stream.ByteCapacity;
-import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.*;
 
-import com.rabbitmq.stream.EnvironmentBuilder;
-import io.netty.channel.Channel;
+import com.rabbitmq.stream.observation.micrometer.MicrometerObservationCollectorBuilder;
+import io.micrometer.observation.ObservationRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollSocketChannel;
@@ -30,8 +28,6 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class EnvironmentUsage {
 
@@ -151,6 +147,16 @@ public class EnvironmentUsage {
                 .environmentBuilder()
             .build();
         // end::native-epoll[]
+    }
+
+    void micrometerObservation() {
+        ObservationRegistry observationRegistry = ObservationRegistry.NOOP;
+        // tag::micrometer-observation[]
+        Environment environment = Environment.builder()
+            .observationCollector(new MicrometerObservationCollectorBuilder()  // <1>
+                .registry(observationRegistry).build())  // <2>
+            .build();
+        // end::micrometer-observation[]
     }
 
 }

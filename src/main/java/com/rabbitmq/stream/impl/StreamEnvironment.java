@@ -85,6 +85,7 @@ class StreamEnvironment implements Environment {
   private final Runnable locatorInitializationSequence;
   private final List<Locator> locators = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory;
+  private final ObservationCollector<?> observationCollector;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -100,7 +101,8 @@ class StreamEnvironment implements Environment {
       ByteBufAllocator byteBufAllocator,
       boolean lazyInit,
       Function<ClientConnectionType, String> connectionNamingStrategy,
-      Function<Client.ClientParameters, Client> clientFactory) {
+      Function<Client.ClientParameters, Client> clientFactory,
+      ObservationCollector<?> observationCollector) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
     this.byteBufAllocator = byteBufAllocator;
@@ -108,6 +110,7 @@ class StreamEnvironment implements Environment {
     clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
     this.addressResolver = addressResolver;
+    this.observationCollector = observationCollector;
 
     boolean tls;
     if (tlsConfiguration != null && tlsConfiguration.enabled()) {
@@ -641,6 +644,10 @@ class StreamEnvironment implements Environment {
 
   CompressionCodecFactory compressionCodecFactory() {
     return this.clientParametersPrototype.compressionCodecFactory;
+  }
+
+  ObservationCollector<?> observationCollector() {
+    return this.observationCollector;
   }
 
   Runnable registerConsumer(

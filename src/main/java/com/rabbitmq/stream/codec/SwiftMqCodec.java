@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -276,11 +276,11 @@ public class SwiftMqCodec implements Codec {
       outboundMessage.writeContent(output);
       return new EncodedMessage(output.getCount(), output.getBuffer());
     } catch (IOException e) {
-      throw new StreamException("Error while writing AMQP 1.0 message to output stream");
+      throw new StreamException("Error while writing AMQP 1.0 message to output stream", e);
     }
   }
 
-  protected AMQPType convertToSwiftMqType(Object value) {
+  protected static AMQPType convertToSwiftMqType(Object value) {
     if (value instanceof Boolean) {
       return ((Boolean) value).booleanValue() ? AMQPBoolean.TRUE : AMQPBoolean.FALSE;
     } else if (value instanceof Byte) {
@@ -355,7 +355,7 @@ public class SwiftMqCodec implements Codec {
     try {
       amqpMessage = new AMQPMessage(data);
     } catch (Exception e) {
-      throw new StreamException("Error while decoding AMQP 1.0 message");
+      throw new StreamException("Error while decoding AMQP 1.0 message", e);
     }
 
     Object body = extractBody(amqpMessage);
@@ -647,6 +647,48 @@ public class SwiftMqCodec implements Codec {
       } else {
         return null;
       }
+    }
+
+    @Override
+    public Message annotate(String key, Object value) {
+      MessageAnnotations annotations = this.message.getMessageAnnotations();
+      Map<AMQPType, AMQPType> map;
+      try {
+        if (annotations == null) {
+          map = new LinkedHashMap<>();
+          annotations = new MessageAnnotations(map);
+          this.message.setMessageAnnotations(annotations);
+        } else {
+          map = annotations.getValue();
+        }
+        map.put(new AMQPSymbol(key), convertToSwiftMqType(value));
+        annotations.setValue(map);
+      } catch (IOException e) {
+        throw new StreamException("Error while annotating SwiftMQ message", e);
+      }
+      return this;
+    }
+
+    @Override
+    public Message copy() {
+      AMQPMessage copy = new AMQPMessage();
+      copy.setProperties(this.message.getProperties());
+      if (this.message.getData() != null) {
+        this.message.getData().forEach(copy::addData);
+      }
+      copy.setApplicationProperties(this.message.getApplicationProperties());
+      MessageAnnotations annotations = this.message.getMessageAnnotations();
+      if (annotations != null) {
+        Map<AMQPType, AMQPType> annotationCopy = null;
+        try {
+          annotationCopy = new LinkedHashMap<>(annotations.getValue().size());
+          annotationCopy.putAll(annotations.getValue());
+          copy.setMessageAnnotations(new MessageAnnotations(annotationCopy));
+        } catch (IOException e) {
+          throw new StreamException("Error while copying SwiftMQ message annotations", e);
+        }
+      }
+      return new SwiftMqAmqpMessageWrapper(this.hasPublishingId, this.publishingId, copy);
     }
   }
 }
