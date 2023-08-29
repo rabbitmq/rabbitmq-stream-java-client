@@ -4,5 +4,6 @@ com.rabbitmq.stream.codec
 com.rabbitmq.stream.compression
 com.rabbitmq.stream.impl
 com.rabbitmq.stream.metrics
+com.rabbitmq.stream.observation.micrometer
 com.rabbitmq.stream.perf
 com.rabbitmq.stream.sasl
