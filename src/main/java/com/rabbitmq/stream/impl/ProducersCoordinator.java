@@ -599,7 +599,10 @@ class ProducersCoordinator {
           };
       ShutdownListener shutdownListener =
           shutdownContext -> {
-            managers.remove(this);
+            if (clientInitializedInManager.get()) {
+              this.closed.set(true);
+              managers.remove(this);
+            }
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
                   "Recovering {} producer(s) after unexpected connection termination",

@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.answer;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,6 +50,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.stubbing.Answer;
 
 public class ProducersCoordinatorTest {
 
@@ -600,6 +602,41 @@ public class ProducersCoordinatorTest {
 
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
+  }
+
+  @Test
+  void producerShouldBeCreatedProperlyIfManagerClientIsRetried() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(50);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+
+    when(clientFactory.client(any()))
+        .thenAnswer(
+            (Answer<Client>)
+                invocationOnMock -> {
+                  shutdownListener.handle(
+                      new Client.ShutdownContext(
+                          Client.ShutdownContext.ShutdownReason.CLIENT_CLOSE));
+
+                  return client;
+                })
+        .thenReturn(client);
+
+    when(producer.isOpen()).thenReturn(true);
+    when(trackingConsumer.isOpen()).thenReturn(true);
+
+    CountDownLatch setClientLatch = new CountDownLatch(1);
+    doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
+
+    coordinator.registerProducer(producer, null, "stream");
+
+    verify(producer, times(1)).setClient(client);
+    assertThat(coordinator.nodesConnected()).isEqualTo(1);
+    assertThat(coordinator.clientCount()).isEqualTo(1);
+
+    assertThat(setClientLatch).is(completed());
   }
 
   private static ScheduledExecutorService createScheduledExecutorService() {

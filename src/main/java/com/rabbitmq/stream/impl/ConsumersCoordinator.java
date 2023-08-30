@@ -635,8 +635,10 @@ class ConsumersCoordinator {
           };
       ShutdownListener shutdownListener =
           shutdownContext -> {
-            this.closed.set(true);
-            managers.remove(this);
+            if (clientInitializedInManager.get()) {
+              this.closed.set(true);
+              managers.remove(this);
+            }
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
                   "Unexpected shutdown notification on subscription connection {}, scheduling consumers re-assignment",
@@ -906,9 +908,15 @@ class ConsumersCoordinator {
         OffsetSpecification offsetSpecification,
         boolean isInitialSubscription) {
       if (this.isFull()) {
+        LOGGER.debug(
+            "Cannot add subscription tracker for stream '{}', manager is full",
+            subscriptionTracker.stream);
         throw new IllegalStateException("Cannot add subscription tracker, the manager is full");
       }
       if (this.isClosed()) {
+        LOGGER.debug(
+            "Cannot add subscription tracker for stream '{}', manager is closed",
+            subscriptionTracker.stream);
         throw new IllegalStateException("Cannot add subscription tracker, the manager is closed");
       }
 
