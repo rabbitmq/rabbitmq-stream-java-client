@@ -67,6 +67,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.stubbing.Answer;
 
 public class ConsumersCoordinatorTest {
 
@@ -1716,6 +1717,73 @@ public class ConsumersCoordinatorTest {
     } finally {
       executorService.shutdownNow();
     }
+  }
+
+  @Test
+  void consumerShouldBeCreatedProperlyIfManagerClientIsRetried() {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+
+    when(clientFactory.client(any()))
+        .thenAnswer(
+            (Answer<Client>)
+                invocationOnMock -> {
+                  // simulates the client is not the good one (e.g. because of load balancer),
+                  // so the connection is closed (hence the call to the shutdown listener)
+                  shutdownListener.handle(
+                      new Client.ShutdownContext(
+                          Client.ShutdownContext.ShutdownReason.CLIENT_CLOSE));
+                  // and a client is returned
+                  return client;
+                });
+
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    AtomicInteger messageHandlerCalls = new AtomicInteger();
+    Runnable closingRunnable =
+        coordinator.subscribe(
+            consumer,
+            "stream",
+            OffsetSpecification.first(),
+            null,
+            NO_OP_SUBSCRIPTION_LISTENER,
+            NO_OP_TRACKING_CLOSING_CALLBACK,
+            (offset, message) -> messageHandlerCalls.incrementAndGet(),
+            Collections.emptyMap(),
+            flowStrategy());
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    assertThat(messageHandlerCalls.get()).isEqualTo(0);
+    messageListener.handle(
+        subscriptionIdCaptor.getAllValues().get(0),
+        1,
+        0,
+        0,
+        null,
+        new WrapperMessageBuilder().build());
+    assertThat(messageHandlerCalls.get()).isEqualTo(1);
+
+    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    closingRunnable.run();
+    verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
+    assertThat(messageHandlerCalls.get()).isEqualTo(1);
   }
 
   Client.Broker leader() {
