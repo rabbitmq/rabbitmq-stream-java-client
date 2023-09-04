@@ -438,7 +438,7 @@ public final class TestUtils {
     return metadata("stream", leader, replicas);
   }
 
-  private static String currentVersion(String currentVersion) {
+  static String currentVersion(String currentVersion) {
     // versions built from source: 3.7.0+rc.1.4.gedc5d96
     if (currentVersion.contains("+")) {
       currentVersion = currentVersion.substring(0, currentVersion.indexOf("+"));
@@ -452,6 +452,14 @@ public final class TestUtils {
       currentVersion = currentVersion.substring(0, currentVersion.indexOf("-"));
     }
     return currentVersion;
+  }
+
+  static boolean beforeMessageContainers(String currentVersion) {
+    return Utils.versionCompare(currentVersion(currentVersion), "3.13.0") < 0;
+  }
+
+  static boolean afterMessageContainers(String currentVersion) {
+    return Utils.versionCompare(currentVersion(currentVersion), "3.13.0") >= 0;
   }
 
   static boolean atLeastVersion(String expectedVersion, String currentVersion) {
@@ -607,6 +615,7 @@ public final class TestUtils {
         field.set(context.getTestInstance().get(), eventLoopGroup(context));
       }
 
+      String brokerVersion = null;
       field = field(context.getTestInstance().get().getClass(), "stream");
       if (field != null) {
         field.setAccessible(true);
@@ -614,6 +623,7 @@ public final class TestUtils {
         field.set(context.getTestInstance().get(), stream);
         Client client =
             new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
+        brokerVersion = currentVersion(client.brokerVersion());
         Client.Response response = client.create(stream);
         assertThat(response.isOk()).isTrue();
         store(context.getRoot()).put("filteringSupported", client.filteringSupported());
@@ -629,6 +639,22 @@ public final class TestUtils {
           store(context).put("testClientFactory", clientFactory);
           break;
         }
+      }
+
+      field = field(context.getTestInstance().get().getClass(), "brokerVersion");
+      if (field != null) {
+        if (brokerVersion == null) {
+          brokerVersion =
+              context.getRoot().getStore(Namespace.GLOBAL).get("brokerVersion", String.class);
+        }
+        if (brokerVersion == null) {
+          Client client =
+              new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
+          brokerVersion = currentVersion(client.brokerVersion());
+        }
+        context.getRoot().getStore(Namespace.GLOBAL).put("brokerVersion", brokerVersion);
+        field.setAccessible(true);
+        field.set(context.getTestInstance().get(), brokerVersion);
       }
     }
 

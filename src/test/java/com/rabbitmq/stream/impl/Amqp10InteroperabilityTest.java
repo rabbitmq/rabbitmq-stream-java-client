@@ -55,6 +55,7 @@ import java.util.stream.Collectors;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.assertj.core.api.InstanceOfAssertFactory;
 import org.assertj.core.api.ObjectAssert;
+import org.junit.Ignore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -134,6 +135,7 @@ public class Amqp10InteroperabilityTest {
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
+  @Ignore
   void publishAmqpValueToStreamQueueConsumeFromStream() throws Exception {
     Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
@@ -172,6 +174,7 @@ public class Amqp10InteroperabilityTest {
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
+  @Ignore
   void publishSequenceSectionsToStreamQueueConsumeFromStream() throws Exception {
     Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();

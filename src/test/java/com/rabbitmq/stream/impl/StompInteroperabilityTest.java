@@ -13,9 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.b;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,7 +24,6 @@ import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.impl.TestUtils.DisabledIfStompNotEnabled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.io.BufferedReader;
@@ -61,7 +58,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
-@DisabledIfStompNotEnabled
+@TestUtils.DisabledIfStompNotEnabled
 public class StompInteroperabilityTest {
 
   public static final String MESSAGE_ID = "message-id";
@@ -73,6 +70,7 @@ public class StompInteroperabilityTest {
   static EventLoopGroup eventLoopGroup;
   TestUtils.ClientFactory cf;
   EnvironmentBuilder environmentBuilder;
+  String brokerVersion;
   String stream;
   Environment env;
   Socket socket;
@@ -298,7 +296,9 @@ public class StompInteroperabilityTest {
 
     assertThat(payload).isNotNull().isEqualTo(new String(messageBody));
 
-    assertThat(headers.get("x-message-id-type")).isEqualTo("ulong");
+    if (beforeMessageContainers(brokerVersion)) {
+      assertThat(headers.get("x-message-id-type")).isEqualTo("ulong");
+    }
     assertThat(headers.get("amqp-message-id")).isEqualTo("42");
     assertThat(headers.get("message-id")).isNotEqualTo("42");
     assertThat(headers.get("user-id")).isEqualTo("the user ID");

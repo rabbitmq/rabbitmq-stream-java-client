@@ -41,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -57,6 +58,7 @@ public class AmqpInteroperabilityTest {
 
   String stream;
   TestUtils.ClientFactory cf;
+  String brokerVersion;
 
   static Stream<Codec> codecs() {
     return Stream.of(new QpidProtonCodec(), new SwiftMqCodec());
@@ -68,13 +70,27 @@ public class AmqpInteroperabilityTest {
   }
 
   private static PropertiesTestConfiguration ptc(
+      Predicate<String> condition,
+      Consumer<AMQP.BasicProperties.Builder> builder,
+      Consumer<Message> assertion) {
+    return new PropertiesTestConfiguration(builder, assertion, condition);
+  }
+
+  private static PropertiesTestConfiguration ptc(
       Consumer<AMQP.BasicProperties.Builder> builder, Consumer<Message> assertion) {
-    return new PropertiesTestConfiguration(builder, assertion);
+    return new PropertiesTestConfiguration(builder, assertion, ignored -> true);
+  }
+
+  static MessageOperation mo(
+      Predicate<String> brokerVersionCondition,
+      Consumer<MessageBuilder> messageBuilderConsumer,
+      Consumer<Delivery> deliveryConsumer) {
+    return new MessageOperation(messageBuilderConsumer, deliveryConsumer, brokerVersionCondition);
   }
 
   static MessageOperation mo(
       Consumer<MessageBuilder> messageBuilderConsumer, Consumer<Delivery> deliveryConsumer) {
-    return new MessageOperation(messageBuilderConsumer, deliveryConsumer);
+    return new MessageOperation(messageBuilderConsumer, deliveryConsumer, ignored -> true);
   }
 
   @ParameterizedTest
@@ -88,10 +104,15 @@ public class AmqpInteroperabilityTest {
         () ->
             Stream.of(
                 ptc(
+                    BEFORE_MESSAGE_CONTAINERS,
                     b -> b.appId("application id"),
                     m ->
                         assertThat(m.getApplicationProperties().get("x-basic-app-id"))
                             .isEqualTo("application id")),
+                ptc(
+                    AFTER_MESSAGE_CONTAINERS,
+                    b -> b.appId("application id"),
+                    m -> assertThat(m.getProperties().getGroupId()).isEqualTo("application id")),
                 ptc(
                     b -> b.contentEncoding("content encoding"),
                     m ->
@@ -137,9 +158,16 @@ public class AmqpInteroperabilityTest {
                                     * 1000)), // in seconds in 091, in ms in 1.0, so losing some
                 // precision
                 ptc(
+                    BEFORE_MESSAGE_CONTAINERS,
                     b -> b.type("the type"),
                     m ->
                         assertThat(m.getApplicationProperties().get("x-basic-type"))
+                            .isEqualTo("the type")),
+                ptc(
+                    AFTER_MESSAGE_CONTAINERS,
+                    b -> b.type("the type"),
+                    m ->
+                        assertThat(m.getMessageAnnotations().get("x-basic-type"))
                             .isEqualTo("the type")),
                 ptc(
                     b -> b.userId("guest"),
@@ -199,6 +227,7 @@ public class AmqpInteroperabilityTest {
       AMQP.BasicProperties.Builder builder = new AMQP.BasicProperties.Builder();
       propertiesTestConfigurations
           .get()
+          .filter(configuration -> configuration.brokerVersionCondition.test(brokerVersion))
           .forEach(configuration -> configuration.builder.accept(builder));
 
       AMQP.BasicProperties properties = builder.headers(headers).build();
@@ -234,7 +263,10 @@ public class AmqpInteroperabilityTest {
         .forEach(i -> assertThat(messageBodies.contains("amqp " + i)).isTrue());
     Message message = messages.iterator().next();
 
-    propertiesTestConfigurations.get().forEach(c -> c.assertion.accept(message));
+    propertiesTestConfigurations
+        .get()
+        .filter(c -> c.brokerVersionCondition.test(brokerVersion))
+        .forEach(c -> c.assertion.accept(message));
 
     assertThat(message.getMessageAnnotations().get("x-exchange")).isEqualTo("");
     assertThat(message.getMessageAnnotations().get("x-routing-key")).isEqualTo(stream);
@@ -285,6 +317,7 @@ public class AmqpInteroperabilityTest {
                               LongStringHelper.asLongString(StringUtils.repeat("*", 300)));
                     }),
                 mo(
+                    BEFORE_MESSAGE_CONTAINERS,
                     mb -> {
                       mb.properties().messageId(messageIdUuid);
                       mb.properties().correlationId(correlationIdUuid);
@@ -300,6 +333,19 @@ public class AmqpInteroperabilityTest {
                               "x-correlation-id-type", LongStringHelper.asLongString("uuid"));
                     }),
                 mo(
+                    AFTER_MESSAGE_CONTAINERS,
+                    mb -> {
+                      mb.properties().messageId(messageIdUuid);
+                      mb.properties().correlationId(correlationIdUuid);
+                    },
+                    d -> {
+                      assertThat(d.getProperties().getMessageId())
+                          .isEqualTo("urn:uuid:" + messageIdUuid);
+                      assertThat(d.getProperties().getCorrelationId())
+                          .isEqualTo("urn:uuid:" + correlationIdUuid);
+                    }),
+                mo(
+                    BEFORE_MESSAGE_CONTAINERS,
                     mb -> {
                       mb.properties().messageId(10);
                       mb.properties().correlationId(20);
@@ -314,6 +360,19 @@ public class AmqpInteroperabilityTest {
                               "x-correlation-id-type", LongStringHelper.asLongString("ulong"));
                     }),
                 mo(
+                    AFTER_MESSAGE_CONTAINERS,
+                    mb -> {
+                      mb.properties().messageId(10);
+                      mb.properties().correlationId(20);
+                    },
+                    d -> {
+                      assertThat(d.getProperties().getMessageId()).isEqualTo("10");
+                      assertThat(d.getProperties().getCorrelationId()).isEqualTo("20");
+                      assertThat(d.getProperties().getHeaders())
+                          .doesNotContainKeys("x-message-id-type", "x-correlation-id-type");
+                    }),
+                mo(
+                    BEFORE_MESSAGE_CONTAINERS,
                     mb -> {
                       mb.properties().messageId("the message ID".getBytes(UTF8));
                       mb.properties().correlationId("the correlation ID".getBytes(UTF8));
@@ -328,6 +387,30 @@ public class AmqpInteroperabilityTest {
                               "x-message-id-type", LongStringHelper.asLongString("binary"))
                           .containsEntry(
                               "x-correlation-id-type", LongStringHelper.asLongString("binary"));
+                    }),
+                mo(
+                    AFTER_MESSAGE_CONTAINERS,
+                    mb -> {
+                      mb.properties().messageId("the message ID".getBytes(UTF8));
+                      mb.properties().correlationId("the correlation ID".getBytes(UTF8));
+                    },
+                    d -> {
+                      assertThat(d.getProperties().getMessageId()).isNull();
+                      assertThat(d.getProperties().getCorrelationId()).isNull();
+                      assertThat(
+                              d.getProperties()
+                                  .getHeaders()
+                                  .get("x-message-id")
+                                  .toString()
+                                  .getBytes(UTF8))
+                          .isEqualTo("the message ID".getBytes(UTF8));
+                      assertThat(
+                              d.getProperties()
+                                  .getHeaders()
+                                  .get("x-correlation-id")
+                                  .toString()
+                                  .getBytes(UTF8))
+                          .isEqualTo("the correlation ID".getBytes(UTF8));
                     }),
                 mo(
                     mb -> {
@@ -356,6 +439,8 @@ public class AmqpInteroperabilityTest {
 
     testMessageOperations
         .get()
+        .filter(
+            testMessageOperation -> testMessageOperation.brokerVersionCondition.test(brokerVersion))
         .forEach(
             testMessageOperation -> {
               CountDownLatch confirmLatch = new CountDownLatch(messageCount);
@@ -476,6 +561,9 @@ public class AmqpInteroperabilityTest {
 
                         messageOperations
                             .get()
+                            .filter(
+                                messageOperation ->
+                                    messageOperation.brokerVersionCondition.test(brokerVersion))
                             .forEach(
                                 messageOperation ->
                                     messageOperation.messageBuilderConsumer.accept(messageBuilder));
@@ -518,6 +606,9 @@ public class AmqpInteroperabilityTest {
 
                 messageOperations
                     .get()
+                    .filter(
+                        messageOperation ->
+                            messageOperation.brokerVersionCondition.test(brokerVersion))
                     .forEach(messageOperation -> messageOperation.deliveryConsumer.accept(message));
 
               } catch (Exception e) {
@@ -562,11 +653,15 @@ public class AmqpInteroperabilityTest {
   private static class PropertiesTestConfiguration {
     final Consumer<AMQP.BasicProperties.Builder> builder;
     final Consumer<Message> assertion;
+    final Predicate<String> brokerVersionCondition;
 
     private PropertiesTestConfiguration(
-        Consumer<AMQP.BasicProperties.Builder> builder, Consumer<Message> assertion) {
+        Consumer<AMQP.BasicProperties.Builder> builder,
+        Consumer<Message> assertion,
+        Predicate<String> brokerVersionCondition) {
       this.builder = builder;
       this.assertion = assertion;
+      this.brokerVersionCondition = brokerVersionCondition;
     }
   }
 
@@ -584,11 +679,21 @@ public class AmqpInteroperabilityTest {
   private static class MessageOperation {
     final Consumer<MessageBuilder> messageBuilderConsumer;
     final Consumer<Delivery> deliveryConsumer;
+    final Predicate<String> brokerVersionCondition;
 
     MessageOperation(
-        Consumer<MessageBuilder> messageBuilderConsumer, Consumer<Delivery> deliveryConsumer) {
+        Consumer<MessageBuilder> messageBuilderConsumer,
+        Consumer<Delivery> deliveryConsumer,
+        Predicate<String> brokerVersionCondition) {
       this.messageBuilderConsumer = messageBuilderConsumer;
       this.deliveryConsumer = deliveryConsumer;
+      this.brokerVersionCondition = brokerVersionCondition;
     }
   }
+
+  private static final Predicate<String> BEFORE_MESSAGE_CONTAINERS =
+      TestUtils::beforeMessageContainers;
+
+  private static final Predicate<String> AFTER_MESSAGE_CONTAINERS =
+      TestUtils::afterMessageContainers;
 }

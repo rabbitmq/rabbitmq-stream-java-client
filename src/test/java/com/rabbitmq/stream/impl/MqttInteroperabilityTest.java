@@ -13,8 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,7 +25,6 @@ import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.amqp.UnsignedByte;
-import com.rabbitmq.stream.impl.TestUtils.DisabledIfMqttNotEnabled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.nio.charset.StandardCharsets;
@@ -47,13 +45,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
-@DisabledIfMqttNotEnabled
+@TestUtils.DisabledIfMqttNotEnabled
 public class MqttInteroperabilityTest {
 
   static EventLoopGroup eventLoopGroup;
   EnvironmentBuilder environmentBuilder;
   String stream;
   Environment env;
+  String brokerVersion;
 
   @BeforeAll
   static void initAll() {
@@ -118,11 +117,13 @@ public class MqttInteroperabilityTest {
     assertThat(latchAssert(latch)).completes();
     Message message = messageReference.get();
     assertThat(message.getBodyAsBinary()).isEqualTo(messageBody);
-    // see
-    // https://github.com/rabbitmq/rabbitmq-mqtt/blob/ebcb6dabf0e2b2f34315bc90530ca7791330df24/src/rabbit_mqtt_processor.erl#L856-L860
-    assertThat(message.getMessageAnnotations().get("x-basic-delivery-mode"))
-        .isEqualTo(UnsignedByte.valueOf("1"));
-    assertThat(message.getApplicationProperties().get("x-mqtt-publish-qos"))
-        .isEqualTo(Byte.valueOf("0"));
+    if (beforeMessageContainers(brokerVersion)) {
+      // see
+      // https://github.com/rabbitmq/rabbitmq-mqtt/blob/ebcb6dabf0e2b2f34315bc90530ca7791330df24/src/rabbit_mqtt_processor.erl#L856-L860
+      assertThat(message.getMessageAnnotations().get("x-basic-delivery-mode"))
+          .isEqualTo(UnsignedByte.valueOf("1"));
+      assertThat(message.getApplicationProperties().get("x-mqtt-publish-qos"))
+          .isEqualTo(Byte.valueOf("0"));
+    }
   }
 }
