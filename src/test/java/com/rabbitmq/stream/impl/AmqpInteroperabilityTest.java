@@ -13,10 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
-import static com.rabbitmq.stream.impl.TestUtils.b;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -127,25 +125,46 @@ public class AmqpInteroperabilityTest {
                         assertThat(m.getProperties().getCorrelationIdAsString())
                             .isEqualTo("correlation id")),
                 ptc(
+                    BEFORE_MESSAGE_CONTAINERS,
                     b -> b.deliveryMode(2),
                     m ->
                         assertThat(m.getMessageAnnotations().get("x-basic-delivery-mode"))
                             .isEqualTo(UnsignedByte.valueOf("2"))),
                 ptc(
+                    AFTER_MESSAGE_CONTAINERS,
+                    b -> b.deliveryMode(2),
+                    m ->
+                        assertThat(m.getMessageAnnotations())
+                            .doesNotContainKeys(("x-basic-delivery-mode"))),
+                ptc(
+                    BEFORE_MESSAGE_CONTAINERS,
                     b -> b.expiration(String.valueOf(60_000)),
                     m ->
                         assertThat(m.getMessageAnnotations().get("x-basic-expiration"))
                             .isEqualTo(String.valueOf(60_000))),
+                ptc(
+                    AFTER_MESSAGE_CONTAINERS,
+                    b -> b.expiration(String.valueOf(60_000)),
+                    m ->
+                        assertThat(m.getMessageAnnotations())
+                            .doesNotContainKeys("x-basic-expiration")),
                 ptc(
                     b -> b.messageId("message id"),
                     m ->
                         assertThat(m.getProperties().getMessageIdAsString())
                             .isEqualTo("message id")),
                 ptc(
+                    BEFORE_MESSAGE_CONTAINERS,
                     b -> b.priority(5),
                     m ->
                         assertThat(m.getMessageAnnotations().get("x-basic-priority"))
                             .isEqualTo(UnsignedByte.valueOf("5"))),
+                ptc(
+                    AFTER_MESSAGE_CONTAINERS,
+                    b -> b.priority(5),
+                    m ->
+                        assertThat(m.getMessageAnnotations())
+                            .doesNotContainKeys("x-basic-priority")),
                 ptc(
                     b -> b.replyTo("reply to"),
                     m -> assertThat(m.getProperties().getReplyTo()).isEqualTo("reply to")),
