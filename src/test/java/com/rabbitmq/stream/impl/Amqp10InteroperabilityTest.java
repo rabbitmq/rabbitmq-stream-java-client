@@ -132,7 +132,7 @@ public class Amqp10InteroperabilityTest {
         .containsEntry("x-routing-key", stream);
   }
 
-  //  @Test
+  @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishAmqpValueToStreamQueueConsumeFromStream() throws Exception {
     Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
@@ -170,7 +170,7 @@ public class Amqp10InteroperabilityTest {
     assertThat(receivedBody).isEqualTo(receivedBody);
   }
 
-  //  @Test
+  @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishSequenceSectionsToStreamQueueConsumeFromStream() throws Exception {
     Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
