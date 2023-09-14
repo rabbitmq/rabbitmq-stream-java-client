@@ -693,7 +693,7 @@ public class StreamPerfTest implements Callable<Integer> {
           closeStep("Closing environment executor", () -> envExecutor.shutdownNow()));
 
       boolean tls = isTls(this.uris);
-      AddressResolver addrResolver;
+      AddressResolver addrResolver = null;
       if (loadBalancer) {
         int defaultPort = tls ? Client.DEFAULT_TLS_PORT : Client.DEFAULT_PORT;
         List<Address> addresses =
@@ -717,9 +717,7 @@ public class StreamPerfTest implements Callable<Integer> {
         addrResolver =
             address -> addresses.get(connectionAttemptCount.getAndIncrement() % addresses.size());
       } else {
-        if (this.addressResolver == null) {
-          addrResolver = address -> address;
-        } else {
+        if (this.addressResolver != null) {
           addrResolver = this.addressResolver; // should happen only in tests
         }
       }
@@ -737,7 +735,6 @@ public class StreamPerfTest implements Callable<Integer> {
           Environment.builder()
               .id("stream-perf-test")
               .uris(this.uris)
-              .addressResolver(addrResolver)
               .scheduledExecutorService(envExecutor)
               .metricsCollector(metricsCollector)
               .netty()
@@ -751,6 +748,10 @@ public class StreamPerfTest implements Callable<Integer> {
               .maxConsumersByConnection(this.consumersByConnection)
               .rpcTimeout(Duration.ofSeconds(this.rpcTimeout))
               .requestedMaxFrameSize((int) this.requestedMaxFrameSize.toBytes());
+
+      if (addrResolver != null) {
+        environmentBuilder = environmentBuilder.addressResolver(addrResolver);
+      }
 
       java.util.function.Consumer<io.netty.channel.Channel> channelCustomizer = channel -> {};
 

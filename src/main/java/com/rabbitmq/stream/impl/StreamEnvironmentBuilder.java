@@ -13,6 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Utils.DEFAULT_ADDRESS_RESOLVER;
 import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
 
 import com.rabbitmq.stream.*;
@@ -55,7 +56,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       BackOffDelayPolicy.fixed(Duration.ofSeconds(5));
   private BackOffDelayPolicy topologyBackOffDelayPolicy =
       BackOffDelayPolicy.fixedWithInitialDelay(Duration.ofSeconds(5), Duration.ofSeconds(1));
-  private AddressResolver addressResolver = address -> address;
+  private AddressResolver addressResolver = DEFAULT_ADDRESS_RESOLVER;
   private int maxProducersByConnection = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT;
   private int maxTrackingConsumersByConnection =
       ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT;

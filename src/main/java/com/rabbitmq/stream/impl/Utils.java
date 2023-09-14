@@ -15,14 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import static java.lang.String.format;
 
-import com.rabbitmq.stream.Address;
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.StreamDoesNotExistException;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.StreamNotAvailableException;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import java.net.UnknownHostException;
 import java.security.cert.X509Certificate;
@@ -86,6 +79,9 @@ final class Utils {
             });
     CONSTANT_LABELS = Collections.unmodifiableMap(labels);
   }
+
+  static final AddressResolver DEFAULT_ADDRESS_RESOLVER = address -> address;
+  static final String DEFAULT_USERNAME = "guest";
 
   private Utils() {}
 

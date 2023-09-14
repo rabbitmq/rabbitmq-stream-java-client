@@ -14,11 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.*;
-import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
-import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
-import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
-import static com.rabbitmq.stream.impl.Utils.formatConstant;
-import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
+import static com.rabbitmq.stream.impl.Utils.*;
 import static java.lang.String.format;
 import static java.lang.String.join;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -495,10 +491,21 @@ public class Client implements AutoCloseable {
       } else if (saslAuthenticateResponse.isChallenge()) {
         challenge = saslAuthenticateResponse.challenge;
       } else if (saslAuthenticateResponse.isAuthenticationFailure()) {
-        throw new AuthenticationFailureException(
+        String message =
             "Unexpected response code during authentication: "
-                + formatConstant(saslAuthenticateResponse.getResponseCode()),
-            saslAuthenticateResponse.getResponseCode());
+                + formatConstant(saslAuthenticateResponse.getResponseCode());
+        if (saslAuthenticateResponse.getResponseCode()
+            == RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK) {
+          message +=
+              ". The user is not authorized to connect from a remote host. "
+                  + "If the broker is running locally, make sure the '"
+                  + this.host
+                  + "' hostname is resolved to "
+                  + "the loopback interface (localhost, 127.0.0.1, ::1). "
+                  + "See https://www.rabbitmq.com/access-control.html#loopback-users.";
+        }
+        throw new AuthenticationFailureException(
+            message, saslAuthenticateResponse.getResponseCode());
       } else {
         throw new StreamException(
             "Unexpected response code during authentication: "
@@ -2234,7 +2241,7 @@ public class Client implements AutoCloseable {
     private ShutdownListener shutdownListener = shutdownContext -> {};
     private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
     private CredentialsProvider credentialsProvider =
-        new DefaultUsernamePasswordCredentialsProvider("guest", "guest");
+        new DefaultUsernamePasswordCredentialsProvider(DEFAULT_USERNAME, "guest");
     private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
@@ -2436,6 +2443,10 @@ public class Client implements AutoCloseable {
 
     Codec codec() {
       return this.codec;
+    }
+
+    CredentialsProvider credentialsProvider() {
+      return this.credentialsProvider;
     }
 
     public ClientParameters channelCustomizer(Consumer<Channel> channelCustomizer) {

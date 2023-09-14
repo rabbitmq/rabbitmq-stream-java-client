@@ -96,7 +96,6 @@ public class StreamConsumerTest {
       recoveryInitialDelay = RECOVERY_DELAY;
     }
     EnvironmentBuilder environmentBuilder = environmentBuilder();
-    environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
   }
 
