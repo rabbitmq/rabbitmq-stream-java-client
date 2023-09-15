@@ -63,8 +63,26 @@ public interface EnvironmentBuilder {
    * <p>Applications can use this abstraction to make sure connection attempts ignore metadata hints
    * and always go to a single point like a load balancer.
    *
+   * <p>The default implementation does not perform any logic, it just returns the passed-in
+   * address.
+   *
+   * <p><i>The default implementation is overridden automatically if the following conditions are
+   * met: the host to connect to is <code>localhost</code>, the user is <code>guest</code>, and no
+   * address resolver has been provided. The client will then always tries to connect to <code>
+   * localhost</code> to facilitate the so-called "beginner experience", that is a developer working
+   * against a local RabbitMQ instance. Just provide a pass-through address resolver to avoid this
+   * behavior, e.g.:</i>
+   *
+   * <pre>
+   * Environment.builder()
+   *   .addressResolver(address -> address)
+   *   .build();
+   * </pre>
+   *
    * @param addressResolver
    * @return this builder instance
+   * @see <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/">"Connecting to
+   *     Streams" blog post</a>
    */
   EnvironmentBuilder addressResolver(AddressResolver addressResolver);
 
@@ -172,7 +190,7 @@ public interface EnvironmentBuilder {
    *
    * @param requestedHeartbeat
    * @return this builder instance
-   * @see <a href="https://rabbitmq.com/stream.html#protocol">See stream plugin documentation</a>
+   * @see <a href="https://rabbitmq.com/stream.html#protocol">Stream plugin documentation</a>
    */
   EnvironmentBuilder requestedHeartbeat(Duration requestedHeartbeat);
 
@@ -183,7 +201,7 @@ public interface EnvironmentBuilder {
    *
    * @param requestedMaxFrameSize
    * @return this builder instance
-   * @see <a href="https://rabbitmq.com/stream.html#protocol">See stream plugin documentation</a>
+   * @see <a href="https://rabbitmq.com/stream.html#protocol">Stream plugin documentation</a>
    */
   EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
 

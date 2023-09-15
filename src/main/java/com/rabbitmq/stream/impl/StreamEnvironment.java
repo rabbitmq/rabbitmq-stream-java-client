@@ -14,10 +14,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
-import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
-import static com.rabbitmq.stream.impl.Utils.exceptionMessage;
-import static com.rabbitmq.stream.impl.Utils.formatConstant;
-import static com.rabbitmq.stream.impl.Utils.namedRunnable;
+import static com.rabbitmq.stream.impl.Utils.*;
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -31,6 +28,8 @@ import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
+import com.rabbitmq.stream.sasl.CredentialsProvider;
+import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -109,7 +108,6 @@ class StreamEnvironment implements Environment {
     clientParametersPrototype = clientParametersPrototype.byteBufAllocator(byteBufAllocator);
     clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
-    this.addressResolver = addressResolver;
     this.observationCollector = observationCollector;
 
     boolean tls;
@@ -147,6 +145,26 @@ class StreamEnvironment implements Environment {
                           uriItem.getPort() == -1 ? defaultPort : uriItem.getPort()))
               .collect(Collectors.toList());
     }
+
+    AddressResolver addressResolverToUse = addressResolver;
+    if (this.addresses.size() == 1
+        && "localhost".equals(this.addresses.get(0).host())
+        && addressResolver == DEFAULT_ADDRESS_RESOLVER) {
+      CredentialsProvider credentialsProvider = clientParametersPrototype.credentialsProvider();
+      if (credentialsProvider instanceof UsernamePasswordCredentialsProvider) {
+        String username = ((UsernamePasswordCredentialsProvider) credentialsProvider).getUsername();
+        if (DEFAULT_USERNAME.equals(username)) {
+          Address address = new Address("localhost", clientParametersPrototype.port());
+          addressResolverToUse = ignored -> address;
+          LOGGER.info(
+              "Connecting to localhost with {} user, assuming development environment",
+              DEFAULT_USERNAME);
+          LOGGER.info("Using address resolver to always connect to localhost");
+        }
+      }
+    }
+
+    this.addressResolver = addressResolverToUse;
 
     this.addresses.forEach(address -> this.locators.add(new Locator(address)));
     this.executorServiceFactory =

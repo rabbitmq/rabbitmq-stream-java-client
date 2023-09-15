@@ -70,7 +70,6 @@ public class StreamProducerTest {
   @BeforeEach
   void init() {
     EnvironmentBuilder environmentBuilder = environmentBuilder();
-    environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
   }
 

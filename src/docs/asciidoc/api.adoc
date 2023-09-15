@@ -77,6 +77,11 @@ Creating publishers and consumers can cause problems as the client uses hints fr
 These connection hints can be accurate or less appropriate depending on the infrastructure.
 If you hit some connection problems at some point – like hostnames impossible to resolve for client applications - this https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/[blog post] should help you understand what is going on and fix the issues.
 
+To make the local development experience simple, the client library can choose to always use `localhost` for producers and consumers.
+This happens if the following conditions are met: the initial host to connect to is `localhost`, the user is `guest`, and no custom address resolver has been provided.
+Provide a pass-through `AddressResolver` to `EnvironmentBuilder#addressResolver(AddressResolver)` to avoid this behavior.
+It is unlikely this behavior applies for any real-world deployment, where `localhost` and/or the default `guest` user should not be used.
+
 ===== Enabling TLS
 
 TLS can be enabled by using the `rabbitmq-stream+tls` scheme in the URI.

@@ -15,7 +15,6 @@ package com.rabbitmq.stream.observation.micrometer;
 
 import static com.rabbitmq.stream.OffsetSpecification.first;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static io.micrometer.tracing.test.simple.SpanAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,11 +43,7 @@ public class MicrometerObservationCollectorTest {
     EventLoopGroup eventLoopGroup;
 
     EnvironmentBuilder environmentBuilder() {
-      return Environment.builder()
-          .netty()
-          .eventLoopGroup(eventLoopGroup)
-          .environmentBuilder()
-          .addressResolver(add -> localhost());
+      return Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
     }
 
     ObservationCollector<?> observationCollector() {

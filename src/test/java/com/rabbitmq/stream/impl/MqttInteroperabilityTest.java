@@ -67,7 +67,6 @@ public class MqttInteroperabilityTest {
   @BeforeEach
   void init() {
     environmentBuilder = Environment.builder();
-    environmentBuilder.addressResolver(add -> localhost());
     env = environmentBuilder.netty().eventLoopGroup(eventLoopGroup).environmentBuilder().build();
   }
 

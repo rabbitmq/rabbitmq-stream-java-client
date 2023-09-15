@@ -13,7 +13,6 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.publishAndWaitForConfirms;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,7 +52,6 @@ public class SacStreamConsumerTest {
             .eventLoopGroup(eventLoopGroup)
             .environmentBuilder()
             .maxConsumersByConnection(1);
-    environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
   }
 

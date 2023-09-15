@@ -16,7 +16,6 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
@@ -63,7 +62,6 @@ public class SuperStreamTest {
   void init(TestInfo info) throws Exception {
     EnvironmentBuilder environmentBuilder =
         Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
-    environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
     connection = new ConnectionFactory().newConnection();
     superStream = TestUtils.streamName(info);

@@ -61,7 +61,6 @@ public class FilteringTest {
   void init() throws Exception {
     EnvironmentBuilder environmentBuilder =
         Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
-    environmentBuilder.addressResolver(add -> localhost());
     environment = environmentBuilder.build();
   }
 

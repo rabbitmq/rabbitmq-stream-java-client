@@ -107,7 +107,6 @@ public class StompInteroperabilityTest {
   @BeforeEach
   void init() throws Exception {
     environmentBuilder = Environment.builder();
-    environmentBuilder.addressResolver(add -> localhost());
     env = environmentBuilder.netty().eventLoopGroup(eventLoopGroup).environmentBuilder().build();
     socket = new Socket("localhost", 61613);
     out = socket.getOutputStream();
