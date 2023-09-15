@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.13.0-SNAPSHOT</span>
-<br><span id="revremark">(8c8b127)</span>
+<br><span id="revremark">(5ad0201)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1469,6 +1469,12 @@ Creating publishers and consumers can cause problems as the client uses hints fr
 <div class="paragraph">
 <p>These connection hints can be accurate or less appropriate depending on the infrastructure.
 If you hit some connection problems at some point – like hostnames impossible to resolve for client applications - this <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/">blog post</a> should help you understand what is going on and fix the issues.</p>
+</div>
+<div class="paragraph">
+<p>To make the local development experience simple, the client library can choose to always use <code>localhost</code> for producers and consumers.
+This happens if the following conditions are met: the initial host to connect to is <code>localhost</code>, the user is <code>guest</code>, and no custom address resolver has been provided.
+Provide a pass-through <code>AddressResolver</code> to <code>EnvironmentBuilder#addressResolver(AddressResolver)</code> to avoid this behavior.
+It is unlikely this behavior applies for any real-world deployment, where <code>localhost</code> and/or the default <code>guest</code> user should not be used.</p>
 </div>
 </div>
 <div class="sect4">
@@ -5861,7 +5867,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.13.0-SNAPSHOT<br>
-Last updated 2023-09-13 02:15:30 UTC
+Last updated 2023-09-15 18:38:33 UTC
 </div>
 </div>
 </body>
