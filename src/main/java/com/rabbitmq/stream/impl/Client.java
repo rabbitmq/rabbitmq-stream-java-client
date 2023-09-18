@@ -14,7 +14,12 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.*;
-import static com.rabbitmq.stream.impl.Utils.*;
+import static com.rabbitmq.stream.impl.Utils.DEFAULT_USERNAME;
+import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
+import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
+import static com.rabbitmq.stream.impl.Utils.extractResponseCode;
+import static com.rabbitmq.stream.impl.Utils.formatConstant;
+import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
 import static java.lang.String.format;
 import static java.lang.String.join;
 import static java.util.concurrent.TimeUnit.SECONDS;
