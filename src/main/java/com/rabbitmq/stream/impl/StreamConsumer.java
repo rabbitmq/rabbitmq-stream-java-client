@@ -76,7 +76,9 @@ class StreamConsumer implements Consumer {
       ConsumerUpdateListener consumerUpdateListener,
       ConsumerFlowStrategy flowStrategy) {
     if (Utils.filteringEnabled(subscriptionProperties) && !environment.filteringSupported()) {
-      throw new IllegalArgumentException("Filtering is not supported by the broker");
+      throw new IllegalArgumentException(
+          "Filtering is not supported by the broker "
+              + "(requires RabbitMQ 3.13+ and stream_filtering feature flag activated");
     }
     this.id = ID_SEQUENCE.getAndIncrement();
     Runnable trackingClosingCallback;
