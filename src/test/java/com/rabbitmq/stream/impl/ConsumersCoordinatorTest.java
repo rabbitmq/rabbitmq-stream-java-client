@@ -164,8 +164,10 @@ public class ConsumersCoordinatorTest {
 
   @AfterEach
   void tearDown() throws Exception {
-    // just taking the opportunity to check toString() generates valid JSON
-    MonitoringTestUtils.extract(coordinator);
+    if (coordinator != null) {
+      // just taking the opportunity to check toString() generates valid JSON
+      MonitoringTestUtils.extract(coordinator);
+    }
     if (scheduledExecutorService != null) {
       scheduledExecutorService.shutdownNow();
     }
