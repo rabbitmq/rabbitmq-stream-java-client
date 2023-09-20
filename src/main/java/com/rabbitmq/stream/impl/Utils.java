@@ -207,7 +207,7 @@ final class Utils {
   }
 
   static <T> T callAndMaybeRetry(
-      Supplier<T> operation, Predicate<Exception> retryCondition, String format, Object... args) {
+      Callable<T> operation, Predicate<Exception> retryCondition, String format, Object... args) {
     return callAndMaybeRetry(
         operation,
         retryCondition,
@@ -217,7 +217,7 @@ final class Utils {
   }
 
   static <T> T callAndMaybeRetry(
-      Supplier<T> operation,
+      Callable<T> operation,
       Predicate<Exception> retryCondition,
       BackOffDelayPolicy delayPolicy,
       String format,
@@ -230,7 +230,7 @@ final class Utils {
     while (keepTrying) {
       try {
         attempt++;
-        T result = operation.get();
+        T result = operation.call();
         Duration operationDuration = Duration.ofNanos(System.nanoTime() - startTime);
         LOGGER.debug(
             "Operation '{}' completed in {} ms after {} attempt(s)",

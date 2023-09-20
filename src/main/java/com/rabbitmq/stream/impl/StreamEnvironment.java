@@ -208,7 +208,8 @@ class StreamEnvironment implements Environment {
             this,
             maxConsumersByConnection,
             connectionNamingStrategy,
-            Utils.coordinatorClientFactory(this));
+            Utils.coordinatorClientFactory(this),
+            false);
     this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
     ClientParameters clientParametersForInit = locatorParametersCopy();
     Runnable locatorInitSequence =

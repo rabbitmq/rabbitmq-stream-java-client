@@ -20,6 +20,7 @@ import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.lang.String.format;
+import static java.util.Collections.emptyList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -159,7 +160,8 @@ public class ConsumersCoordinatorTest {
             environment,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             type -> "consumer-connection",
-            clientFactory);
+            clientFactory,
+            false);
   }
 
   @AfterEach
@@ -188,7 +190,8 @@ public class ConsumersCoordinatorTest {
             environment,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             type -> "consumer-connection",
-            cf);
+            cf,
+            false);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -229,7 +232,8 @@ public class ConsumersCoordinatorTest {
             environment,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             type -> "consumer-connection",
-            cf);
+            cf,
+            false);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -397,13 +401,15 @@ public class ConsumersCoordinatorTest {
   @Test
   void findBrokersForStreamShouldReturnLeaderIfNoReplicas() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
-    assertThat(coordinator.findBrokersForStream("stream")).hasSize(1).contains(leader());
+    assertThat(coordinator.findBrokersForStream("stream", false)).hasSize(1).contains(leader());
   }
 
   @Test
   void findBrokersForStreamShouldReturnReplicasIfThereAreSome() {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
-    assertThat(coordinator.findBrokersForStream("stream")).hasSize(2).hasSameElementsAs(replicas());
+    assertThat(coordinator.findBrokersForStream("stream", false))
+        .hasSize(2)
+        .hasSameElementsAs(replicas());
   }
 
   @Test
@@ -593,8 +599,8 @@ public class ConsumersCoordinatorTest {
     when(locator.metadata("stream"))
         .thenReturn(metadata(null, replica()))
         .thenReturn(metadata(null, replica())) // for the second consumer
-        .thenReturn(metadata(null, Collections.emptyList()))
-        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, emptyList()))
+        .thenReturn(metadata(null, emptyList()))
         .thenReturn(metadata(null, replica()));
 
     when(clientFactory.client(any())).thenReturn(client);
@@ -865,8 +871,8 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
         .thenReturn(metadata(null, replicas()))
-        .thenReturn(metadata(null, Collections.emptyList()))
-        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, emptyList()))
+        .thenReturn(metadata(null, emptyList()))
         .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
@@ -1248,7 +1254,7 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
         .thenReturn(metadata(null, replicas()))
-        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, emptyList()))
         .thenReturn(metadata(null, replicas()));
 
     ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
@@ -1321,7 +1327,7 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
         .thenReturn(metadata(null, replicas()))
-        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, emptyList()))
         .thenReturn(metadata(null, replicas()));
 
     ArgumentCaptor<OffsetSpecification> offsetSpecificationArgumentCaptor =
@@ -1386,7 +1392,7 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream"))
         .thenReturn(metadata(null, replicas()))
-        .thenReturn(metadata(null, Collections.emptyList()))
+        .thenReturn(metadata(null, emptyList()))
         .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
@@ -1786,6 +1792,105 @@ public class ConsumersCoordinatorTest {
     messageListener.handle(
         subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
+  }
+
+  @Test
+  void shouldRetryUntilReplicaIsAvailableWhenForceReplicaIsOn() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(leader(), replica()))
+        .thenReturn(metadata(leader(), emptyList()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return new Client.Response(Constants.RESPONSE_CODE_OK);
+            });
+
+    coordinator =
+        new ConsumersCoordinator(
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            clientFactory,
+            true);
+
+    AtomicInteger messageHandlerCalls = new AtomicInteger();
+    Runnable closingRunnable =
+        coordinator.subscribe(
+            consumer,
+            "stream",
+            OffsetSpecification.first(),
+            null,
+            NO_OP_SUBSCRIPTION_LISTENER,
+            NO_OP_TRACKING_CLOSING_CALLBACK,
+            (offset, message) -> messageHandlerCalls.incrementAndGet(),
+            Collections.emptyMap(),
+            flowStrategy());
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    assertThat(messageHandlerCalls.get()).isEqualTo(0);
+    messageListener.handle(
+        subscriptionIdCaptor.getAllValues().get(0),
+        1,
+        0,
+        0,
+        null,
+        new WrapperMessageBuilder().build());
+    assertThat(messageHandlerCalls.get()).isEqualTo(1);
+
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 2);
+
+    // metadata calls: the first registration, then the max number of attempts to get a replica,
+    // then the last attempt that falls back to the leader
+    verify(locator, times(1 + ConsumersCoordinator.MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER + 1))
+        .metadata("stream");
+
+    // the consumer connection should be reset after the connection disruption
+    verify(consumer, times(1)).setSubscriptionClient(isNull());
+
+    verify(client, times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    assertThat(messageHandlerCalls.get()).isEqualTo(1);
+    messageListener.handle(
+        subscriptionIdCaptor.getAllValues().get(0),
+        0,
+        0,
+        0,
+        null,
+        new WrapperMessageBuilder().build());
+    assertThat(messageHandlerCalls.get()).isEqualTo(2);
+
+    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    closingRunnable.run();
+    verify(client, times(1)).unsubscribe(subscriptionIdCaptor.getValue());
+
+    messageListener.handle(
+        subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
+    assertThat(messageHandlerCalls.get()).isEqualTo(2);
   }
 
   Client.Broker leader() {

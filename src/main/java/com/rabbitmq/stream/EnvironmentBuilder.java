@@ -69,9 +69,8 @@ public interface EnvironmentBuilder {
    * <p><i>The default implementation is overridden automatically if the following conditions are
    * met: the host to connect to is <code>localhost</code>, the user is <code>guest</code>, and no
    * address resolver has been provided. The client will then always tries to connect to <code>
-   * localhost</code> to facilitate local development.
-   * Just provide a pass-through address resolver to avoid this
-   * behavior, e.g.:</i>
+   * localhost</code> to facilitate local development. Just provide a pass-through address resolver
+   * to avoid this behavior, e.g.:</i>
    *
    * <pre>
    * Environment.builder()
