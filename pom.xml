@@ -399,7 +399,7 @@
           <excludes>
             <exclude>**/*TestSuite.java</exclude>
           </excludes>
-          <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+          <argLine>${test-arguments}</argLine>
           <systemPropertyVariables>
             <net.bytebuddy.experimental>true</net.bytebuddy.experimental>
             <rabbitmqctl.bin>DOCKER:rabbitmq</rabbitmqctl.bin>
@@ -866,6 +866,15 @@
       </activation>
       <properties>
         <mockito.version>4.11.0</mockito.version>
+      </properties>
+    </profile>
+    <profile>
+      <id>jvm-test-arguments-java-21-and-more</id>
+      <activation>
+        <jdk>[21,)</jdk>
+      </activation>
+      <properties>
+        <test-arguments>-XX:+EnableDynamicAgentLoading</test-arguments>
       </properties>
     </profile>
 
