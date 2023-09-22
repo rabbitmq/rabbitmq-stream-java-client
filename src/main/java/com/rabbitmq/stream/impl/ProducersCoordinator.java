@@ -162,7 +162,7 @@ class ProducersCoordinator {
       try {
         pickedManager.register(tracker);
         LOGGER.debug(
-            "Assigned {} tracker {} (stream '{}') to manager {} (node {}), subscription ID {}",
+            "Assigned {} tracker {} (stream '{}') to manager {} (node {}), publisher ID {}",
             tracker.type(),
             tracker.uniqueId(),
             tracker.stream(),
@@ -605,8 +605,9 @@ class ProducersCoordinator {
             }
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
-                  "Recovering {} producer(s) after unexpected connection termination",
-                  producers.size());
+                  "Recovering {} producer(s) and {} tracking consumer(s) after unexpected connection termination",
+                  producers.size(),
+                  trackingConsumerTrackers.size());
               producers.forEach((publishingId, tracker) -> tracker.unavailable());
               trackingConsumerTrackers.forEach(AgentTracker::unavailable);
               // execute in thread pool to free the IO thread
@@ -701,7 +702,8 @@ class ProducersCoordinator {
           .thenAccept(
               broker -> {
                 String key = keyForNode(broker);
-                LOGGER.debug("Assigning {} producer(s) to {}", trackers.size(), key);
+                LOGGER.debug(
+                    "Assigning {} producer(s) and consumer tracker(s) to {}", trackers.size(), key);
                 trackers.forEach(tracker -> maybeRecoverAgent(broker, tracker));
               })
           .exceptionally(
@@ -767,10 +769,10 @@ class ProducersCoordinator {
             | ClientClosedException
             | StreamNotAvailableException e) {
           LOGGER.debug(
-              "{} re-assignment on stream {} timed out or connection closed or stream not available, "
+              "{} re-assignment on stream {} (ID {}) timed out or connection closed or stream not available, "
                   + "refreshing candidate leader and retrying",
               tracker.type(),
-              tracker.id(),
+              tracker.identifiable() ? tracker.id() : "N/A",
               tracker.stream());
           // maybe not a good candidate, let's refresh and retry for this one
           node =

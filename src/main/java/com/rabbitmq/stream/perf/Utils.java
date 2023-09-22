@@ -13,6 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.perf;
 
+import static java.time.Duration.ofSeconds;
+
 import com.codahale.metrics.MetricRegistry;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
@@ -20,6 +22,7 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.SocketConfigurator;
 import com.rabbitmq.client.SocketConfigurators;
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
@@ -676,6 +679,44 @@ class Utils {
     }
   }
 
+  static class BackOffDelayPolicyTypeConverter
+      implements CommandLine.ITypeConverter<BackOffDelayPolicy> {
+
+    @Override
+    public BackOffDelayPolicy convert(String input) {
+      if (input == null || input.trim().isEmpty()) {
+        typeConversionException("Value for back-off delay policy cannot be empty");
+      }
+      String[] values = input.split(":");
+      if (values.length != 1 && values.length != 2) {
+        typeConversionException("Invalid value for back-off delay policy: " + input);
+      }
+      int firstAttempt = 0, nextAttempts = 0;
+      try {
+        firstAttempt = Integer.parseInt(values[0]);
+        if (firstAttempt <= 0) {
+          throw new IllegalArgumentException();
+        }
+      } catch (Exception e) {
+        typeConversionException("Invalid value for back-off delay policy: " + input);
+      }
+      if (values.length == 2) {
+        try {
+          nextAttempts = Integer.parseInt(values[1]);
+          if (nextAttempts <= 0) {
+            throw new IllegalArgumentException();
+          }
+        } catch (Exception e) {
+          typeConversionException("Invalid value for back-off delay policy: " + input);
+        }
+      } else {
+        nextAttempts = firstAttempt;
+      }
+      return BackOffDelayPolicy.fixedWithInitialDelay(
+          ofSeconds(firstAttempt), ofSeconds(nextAttempts));
+    }
+  }
+
   private static void typeConversionException(String message) {
     throw new TypeConversionException(message);
   }
@@ -820,7 +861,7 @@ class Utils {
           .tags(tags)
           .description("chunk size")
           .publishPercentiles(0.5, 0.75, 0.95, 0.99)
-          .distributionStatisticExpiry(Duration.ofSeconds(1))
+          .distributionStatisticExpiry(ofSeconds(1))
           .serviceLevelObjectives()
           .register(registry);
     }

@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.params.provider.Arguments.of;
 
+import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.perf.Utils.CompressionTypeConverter;
@@ -30,6 +31,7 @@ import com.rabbitmq.stream.perf.Utils.PatternNameStrategy;
 import com.rabbitmq.stream.perf.Utils.RangeTypeConverter;
 import com.rabbitmq.stream.perf.Utils.SniServerNamesConverter;
 import io.micrometer.core.instrument.Tag;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -387,6 +389,30 @@ public class UtilsTest {
     assertThat(converter.convert("one,two,three")).containsExactly("one", "two", "three");
     assertThat(converter.convert("1..10")).hasSize(10).contains("1", "2", "10");
     assertThat(converter.convert("5..10")).hasSize(6).contains("5", "6", "10");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"foo", "foo:bar", "0", "1:0", "-1", "1:-2", "1:foo"})
+  void backOffDelayPolicyConverterKo(String input) {
+    CommandLine.ITypeConverter<BackOffDelayPolicy> converter =
+        new Utils.BackOffDelayPolicyTypeConverter();
+    assertThatThrownBy(() -> converter.convert(input)).isInstanceOf(TypeConversionException.class);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"5,0:5|1:5|4:5", "5:10,0:5|1:10|4:10"})
+  void backOffDelayPolicyConverterOk(String input, String expectations) throws Exception {
+    CommandLine.ITypeConverter<BackOffDelayPolicy> converter =
+        new Utils.BackOffDelayPolicyTypeConverter();
+    BackOffDelayPolicy policy = converter.convert(input);
+    Arrays.stream(expectations.split("\\|"))
+        .map(s -> s.split(":"))
+        .forEach(
+            attemptDelay -> {
+              int attempt = Integer.parseInt(attemptDelay[0]);
+              Duration expectedDelay = Duration.ofSeconds(Long.parseLong(attemptDelay[1]));
+              assertThat(policy.delay(attempt)).isEqualTo(expectedDelay);
+            });
   }
 
   @Command(name = "test-command")

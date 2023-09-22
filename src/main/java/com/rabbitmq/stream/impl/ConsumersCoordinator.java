@@ -290,6 +290,8 @@ class ConsumersCoordinator {
       } else {
         mustUseReplica = false;
       }
+      LOGGER.debug(
+          "Looking for broker(s) for stream {}, forcing replica {}", stream, mustUseReplica);
       return findBrokersForStream(stream, mustUseReplica);
     };
   }

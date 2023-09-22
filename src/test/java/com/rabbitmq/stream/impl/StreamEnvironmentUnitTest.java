@@ -96,7 +96,8 @@ public class StreamEnvironmentUnitTest {
             false,
             type -> "locator-connection",
             cf,
-            ObservationCollector.NO_OP);
+            ObservationCollector.NO_OP,
+            false);
   }
 
   @AfterEach
@@ -160,7 +161,8 @@ public class StreamEnvironmentUnitTest {
             false,
             type -> "locator-connection",
             cf,
-            ObservationCollector.NO_OP);
+            ObservationCollector.NO_OP,
+            false);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }
 
@@ -187,7 +189,8 @@ public class StreamEnvironmentUnitTest {
             lazyInit,
             type -> "locator-connection",
             cf,
-            ObservationCollector.NO_OP);
+            ObservationCollector.NO_OP,
+            false);
     verify(cf, times(expectedConnectionCreation)).apply(any(Client.ClientParameters.class));
   }
 

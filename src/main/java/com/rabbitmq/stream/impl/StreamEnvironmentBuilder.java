@@ -63,6 +63,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private int maxConsumersByConnection = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
   private CompressionCodecFactory compressionCodecFactory;
   private boolean lazyInit = false;
+  private boolean forceReplicaForConsumers = false;
   private Function<Client.ClientParameters, Client> clientFactory = Client::new;
   private ObservationCollector<?> observationCollector = ObservationCollector.NO_OP;
 
@@ -267,6 +268,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
+  public EnvironmentBuilder forceReplicaForConsumers(boolean forceReplica) {
+    this.forceReplicaForConsumers = forceReplica;
+    return this;
+  }
+
+  @Override
   public TlsConfiguration tls() {
     this.tls.enable();
     return this.tls;
@@ -318,7 +325,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         lazyInit,
         connectionNamingStrategy,
         this.clientFactory,
-        this.observationCollector);
+        this.observationCollector,
+        this.forceReplicaForConsumers);
   }
 
   static final class DefaultTlsConfiguration implements TlsConfiguration {
