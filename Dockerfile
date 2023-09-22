@@ -1,6 +1,6 @@
 FROM ubuntu:22.04 as builder
 
-ARG stream_perf_test_url="set-url-here"
+#ARG stream_perf_test_url="set-url-here"
 
 RUN set -eux; \
 	\
@@ -44,20 +44,22 @@ ENV RABBITMQ_PGP_KEY_ID="0x0A9AF2115F4687BD29803A206B73A36E6026DFCA"
 ENV STREAM_PERF_TEST_HOME="/stream_perf_test"
 
 RUN set -eux; \
-    \
-    wget --progress dot:giga --output-document "/usr/local/src/stream-perf-test.jar.asc" "$stream_perf_test_url.asc"; \
-    wget --progress dot:giga --output-document "/usr/local/src/stream-perf-test.jar" "$stream_perf_test_url"; \
-    STREAM_PERF_TEST_SHA256="$(wget -qO- $stream_perf_test_url.sha256)"; \
-    echo "$STREAM_PERF_TEST_SHA256 /usr/local/src/stream-perf-test.jar" | sha256sum --check --strict -; \
-    \
-    export GNUPGHOME="$(mktemp -d)"; \
-    gpg --batch --keyserver "$PGP_KEYSERVER" --recv-keys "$RABBITMQ_PGP_KEY_ID"; \
-    gpg --batch --verify "/usr/local/src/stream-perf-test.jar.asc" "/usr/local/src/stream-perf-test.jar"; \
-    gpgconf --kill all; \
-    rm -rf "$GNUPGHOME"; \
-    \
-    mkdir -p "$STREAM_PERF_TEST_HOME"; \
-    cp /usr/local/src/stream-perf-test.jar $STREAM_PERF_TEST_HOME/stream-perf-test.jar
+##    \
+##    wget --progress dot:giga --output-document "/usr/local/src/stream-perf-test.jar.asc" "$stream_perf_test_url.asc"; \
+##    wget --progress dot:giga --output-document "/usr/local/src/stream-perf-test.jar" "$stream_perf_test_url"; \
+##    STREAM_PERF_TEST_SHA256="$(wget -qO- $stream_perf_test_url.sha256)"; \
+##    echo "$STREAM_PERF_TEST_SHA256 /usr/local/src/stream-perf-test.jar" | sha256sum --check --strict -; \
+##    \
+##    export GNUPGHOME="$(mktemp -d)"; \
+##    gpg --batch --keyserver "$PGP_KEYSERVER" --recv-keys "$RABBITMQ_PGP_KEY_ID"; \
+##    gpg --batch --verify "/usr/local/src/stream-perf-test.jar.asc" "/usr/local/src/stream-perf-test.jar"; \
+##    gpgconf --kill all; \
+##    rm -rf "$GNUPGHOME"; \
+##    \
+    mkdir -p "$STREAM_PERF_TEST_HOME"
+#    cp /usr/local/src/stream-perf-test.jar $STREAM_PERF_TEST_HOME/stream-perf-test.jar
+
+COPY target/stream-perf-test.jar $STREAM_PERF_TEST_HOME/stream-perf-test.jar
 
 FROM ubuntu:22.04
 
