@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.13.0-SNAPSHOT</span>
-<br><span id="revremark">(0c01873)</span>
+<br><span id="revremark">(e3c1c11)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1670,6 +1670,18 @@ a new connection is open. The value must be between 1 and 255.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>lazyInitialization</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">To delay the connection opening until necessary.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">false</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>requestedHeartbeat</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Heartbeat requested by the client.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">60 seconds</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>forceReplicaForConsumers</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Retry connecting until a replica is available for consumers.
+The client retries 5 times before falling back to the stream leader node.
+Set to <code>true</code> only for clustered environments, not for 1-node environments, where only the stream leader is available.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>id</code></p></td>
@@ -5867,7 +5879,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.13.0-SNAPSHOT<br>
-Last updated 2023-09-22 06:10:51 UTC
+Last updated 2023-09-22 07:36:51 UTC
 </div>
 </div>
 </body>
