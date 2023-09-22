@@ -204,6 +204,16 @@ a new connection is open. The value must be between 1 and 255.
 |To delay the connection opening until necessary.
 |false
 
+|`requestedHeartbeat`
+|Heartbeat requested by the client.
+|60 seconds
+
+|`forceReplicaForConsumers`
+|Retry connecting until a replica is available for consumers.
+The client retries 5 times before falling back to the stream leader node.
+Set to `true` only for clustered environments, not for 1-node environments, where only the stream leader is available.
+|`false`
+
 |`id`
 |Informational ID for the environment instance.
 Used as a prefix for connection names.

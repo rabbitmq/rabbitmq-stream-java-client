@@ -69,9 +69,8 @@ public interface EnvironmentBuilder {
    * <p><i>The default implementation is overridden automatically if the following conditions are
    * met: the host to connect to is <code>localhost</code>, the user is <code>guest</code>, and no
    * address resolver has been provided. The client will then always tries to connect to <code>
-   * localhost</code> to facilitate local development.
-   * Just provide a pass-through address resolver to avoid this
-   * behavior, e.g.:</i>
+   * localhost</code> to facilitate local development. Just provide a pass-through address resolver
+   * to avoid this behavior, e.g.:</i>
    *
    * <pre>
    * Environment.builder()
@@ -184,7 +183,7 @@ public interface EnvironmentBuilder {
   EnvironmentBuilder virtualHost(String virtualHost);
 
   /**
-   * The hearbeat to request.
+   * The heartbeat to request.
    *
    * <p>Default is 60 seconds.
    *
@@ -322,6 +321,34 @@ public interface EnvironmentBuilder {
    * @return this builder instance
    */
   EnvironmentBuilder lazyInitialization(boolean lazy);
+
+  /**
+   * Flag to force the connection to a stream replica for consumers.
+   *
+   * <p>The library will always prefer to connect to a stream replica to consume from, but it will
+   * fall back to the stream leader if no replica is available. This is the default behavior. Set
+   * this flag to <code>true</code> to make the library wait for a replica to become available if
+   * only the stream leader is available. This can lead to longer recovery time but help to offload
+   * a stream leader and let it deal only with write requests.
+   *
+   * <p>Note the library performs only 5 attempts to locate a replica before falling back to the
+   * leader when the flag is set to <code>true</code>.
+   *
+   * <p>The {@link #recoveryBackOffDelayPolicy(BackOffDelayPolicy)} and {@link
+   * #topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy)} policies control the time between
+   * attempts.
+   *
+   * <p><b>Do not set this flag to <code>true</code> when streams have only 1 member (the leader),
+   * e.g. for local development.</b>
+   *
+   * <p>Default is false.
+   *
+   * @param forceReplica whether to force the connection to a replica or not
+   * @return this builder instance
+   * @see #recoveryBackOffDelayPolicy(BackOffDelayPolicy)
+   * @see #topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy)
+   */
+  EnvironmentBuilder forceReplicaForConsumers(boolean forceReplica);
 
   /**
    * Create the {@link Environment} instance.

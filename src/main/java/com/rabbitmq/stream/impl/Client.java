@@ -185,6 +185,7 @@ public class Client implements AutoCloseable {
       FlushConsolidationHandler.class.getSimpleName();
   private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
   private final String host;
+  private final String clientConnectionName;
   private final int port;
   private final Map<String, String> serverProperties;
   private final Map<String, String> connectionProperties;
@@ -313,6 +314,7 @@ public class Client implements AutoCloseable {
       f = b.connect(parameters.host, parameters.port).sync();
       this.host = parameters.host;
       this.port = parameters.port;
+      this.clientConnectionName = clientConnectionName;
     } catch (Exception e) {
       String message =
           format(
@@ -2696,7 +2698,11 @@ public class Client implements AutoCloseable {
       if (evt instanceof IdleStateEvent) {
         IdleStateEvent e = (IdleStateEvent) evt;
         if (e.state() == IdleState.READER_IDLE) {
-          LOGGER.info("Closing connection because it's been idle for too long");
+          LOGGER.info(
+              "Closing connection {} on {}:{} because it's been idle for too long",
+              clientConnectionName,
+              host,
+              port);
           closing.set(true);
           closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE);
         } else if (e.state() == IdleState.WRITER_IDLE) {

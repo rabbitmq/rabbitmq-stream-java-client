@@ -20,6 +20,7 @@ import static com.rabbitmq.stream.impl.Utils.jsonField;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 import static com.rabbitmq.stream.impl.Utils.quote;
+import static java.lang.String.format;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.Consumer;
@@ -41,10 +42,12 @@ import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.*;
@@ -56,6 +59,7 @@ import org.slf4j.LoggerFactory;
 class ConsumersCoordinator {
 
   static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
+  static final int MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER = 5;
 
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
@@ -74,16 +78,19 @@ class ConsumersCoordinator {
   private final ExecutorServiceFactory executorServiceFactory =
       new DefaultExecutorServiceFactory(
           Runtime.getRuntime().availableProcessors(), 10, "rabbitmq-stream-consumer-connection-");
+  private final boolean forceReplica;
 
   ConsumersCoordinator(
       StreamEnvironment environment,
       int maxConsumersByConnection,
       Function<ClientConnectionType, String> connectionNamingStrategy,
-      ClientFactory clientFactory) {
+      ClientFactory clientFactory,
+      boolean forceReplica) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxConsumersByConnection = maxConsumersByConnection;
     this.connectionNamingStrategy = connectionNamingStrategy;
+    this.forceReplica = forceReplica;
   }
 
   private static String keyForClientSubscription(Client.Broker broker) {
@@ -108,7 +115,7 @@ class ConsumersCoordinator {
       MessageHandler messageHandler,
       Map<String, String> subscriptionProperties,
       ConsumerFlowStrategy flowStrategy) {
-    List<Client.Broker> candidates = findBrokersForStream(stream);
+    List<Client.Broker> candidates = findBrokersForStream(stream, forceReplica);
     Client.Broker newNode = pickBroker(candidates);
     if (newNode == null) {
       throw new IllegalStateException("No available node to subscribe to");
@@ -201,11 +208,8 @@ class ConsumersCoordinator {
         // manager connection is dead or stream not available
         // scheduling manager closing if necessary in another thread to avoid blocking this one
         if (pickedManager.isEmpty()) {
-          ClientSubscriptionsManager manager = pickedManager;
           ConsumersCoordinator.this.environment.execute(
-              () -> {
-                manager.closeIfEmpty();
-              },
+              pickedManager::closeIfEmpty,
               "Consumer manager closing after timeout, consumer %d on stream '%s'",
               tracker.consumer.id(),
               tracker.stream);
@@ -225,12 +229,14 @@ class ConsumersCoordinator {
   }
 
   // package protected for testing
-  List<Client.Broker> findBrokersForStream(String stream) {
+  List<Client.Broker> findBrokersForStream(String stream, boolean forceReplica) {
+    LOGGER.debug(
+        "Candidate lookup to consumer from '{}', forcing replica? {}", stream, forceReplica);
     Map<String, Client.StreamMetadata> metadata =
         this.environment.locatorOperation(
             namedFunction(
                 c -> c.metadata(stream), "Candidate lookup to consume from '%s'", stream));
-    if (metadata.size() == 0 || metadata.get(stream) == null) {
+    if (metadata.isEmpty() || metadata.get(stream) == null) {
       // this is not supposed to happen
       throw new StreamDoesNotExistException(stream);
     }
@@ -253,8 +259,17 @@ class ConsumersCoordinator {
 
     List<Client.Broker> brokers;
     if (replicas == null || replicas.isEmpty()) {
-      brokers = Collections.singletonList(streamMetadata.getLeader());
-      LOGGER.debug("Only leader node {} for consuming from {}", streamMetadata.getLeader(), stream);
+      if (forceReplica) {
+        throw new IllegalStateException(
+            format(
+                "Only the leader node is available for consuming from %s and "
+                    + "consuming from leader has been deactivated for this consumer",
+                stream));
+      } else {
+        brokers = Collections.singletonList(streamMetadata.getLeader());
+        LOGGER.debug(
+            "Only leader node {} for consuming from {}", streamMetadata.getLeader(), stream);
+      }
     } else {
       LOGGER.debug("Replicas for consuming from {}: {}", stream, replicas);
       brokers = new ArrayList<>(replicas);
@@ -263,6 +278,22 @@ class ConsumersCoordinator {
     LOGGER.debug("Candidates to consume from {}: {}", stream, brokers);
 
     return brokers;
+  }
+
+  private Callable<List<Broker>> findBrokersForStream(String stream) {
+    AtomicInteger attemptNumber = new AtomicInteger();
+    return () -> {
+      boolean mustUseReplica;
+      if (forceReplica) {
+        mustUseReplica =
+            attemptNumber.incrementAndGet() <= MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER;
+      } else {
+        mustUseReplica = false;
+      }
+      LOGGER.debug(
+          "Looking for broker(s) for stream {}, forcing replica {}", stream, mustUseReplica);
+      return findBrokersForStream(stream, mustUseReplica);
+    };
   }
 
   private Client.Broker pickBroker(List<Client.Broker> brokers) {
@@ -792,7 +823,7 @@ class ConsumersCoordinator {
             }
           };
 
-      AsyncRetry.asyncRetry(() -> findBrokersForStream(stream))
+      AsyncRetry.asyncRetry(findBrokersForStream(stream))
           .description("Candidate lookup to consume from '%s'", stream)
           .scheduler(environment.scheduledExecutorService())
           .retry(ex -> !(ex instanceof StreamDoesNotExistException))
@@ -885,9 +916,9 @@ class ConsumersCoordinator {
           // maybe not a good candidate, let's refresh and retry for this one
           candidates =
               Utils.callAndMaybeRetry(
-                  () -> findBrokersForStream(tracker.stream),
+                  findBrokersForStream(tracker.stream),
                   ex -> !(ex instanceof StreamDoesNotExistException),
-                  environment.recoveryBackOffDelayPolicy(),
+                  recoveryBackOffDelayPolicy(),
                   "Candidate lookup to consume from '%s' (subscription recovery)",
                   tracker.stream);
         } catch (Exception e) {

@@ -22,24 +22,9 @@ import static java.time.Duration.ofMillis;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
-import com.rabbitmq.stream.Address;
-import com.rabbitmq.stream.AddressResolver;
-import com.rabbitmq.stream.ByteCapacity;
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.ConsumerBuilder;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.EnvironmentBuilder.TlsConfiguration;
-import com.rabbitmq.stream.MessageBuilder;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.ProducerBuilder;
-import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.StreamCreator.LeaderLocator;
-import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.compression.Compression;
@@ -443,6 +428,12 @@ public class StreamPerfTest implements Callable<Integer> {
       split = ",")
   private List<String> filterValues;
 
+  @CommandLine.Option(
+      names = {"--force-replica-for-consumers", "-frfc"},
+      description = "force the connection to a replica for consumers",
+      defaultValue = "false")
+  private boolean forceReplicaForConsumers;
+
   static class InstanceSyncOptions {
 
     @CommandLine.Option(
@@ -483,6 +474,33 @@ public class StreamPerfTest implements Callable<Integer> {
       defaultValue = "1",
       converter = Utils.NotNegativeIntegerTypeConverter.class)
   private int initialCredits;
+
+  @CommandLine.Option(
+      names = {"--heartbeat", "-b"},
+      description = "requested heartbeat in seconds",
+      defaultValue = "60",
+      converter = Utils.GreaterThanOrEqualToZeroIntegerTypeConverter.class)
+  private int heartbeat;
+
+  @CommandLine.Option(
+      names = {"--connection-recovery-interval", "-cri"},
+      description =
+          "connection recovery interval in seconds. "
+              + "Examples: 5 for a fixed delay of 5 seconds, 5:10 for a first attempt after 5 seconds then "
+              + "10 seconds between attempts.",
+      defaultValue = "5",
+      converter = Utils.BackOffDelayPolicyTypeConverter.class)
+  private BackOffDelayPolicy recoveryBackOffDelayPolicy;
+
+  @CommandLine.Option(
+      names = {"--topology-recovery-interval", "-tri"},
+      description =
+          "topology recovery interval in seconds. "
+              + "Examples: 5 for a fixed delay of 5 seconds, 5:10 for a first attempt after 5 seconds then "
+              + "10 seconds between attempts.",
+      defaultValue = "5:1",
+      converter = Utils.BackOffDelayPolicyTypeConverter.class)
+  private BackOffDelayPolicy topologyBackOffDelayPolicy;
 
   private MetricsCollector metricsCollector;
   private PerformanceMetrics performanceMetrics;
@@ -747,7 +765,11 @@ public class StreamPerfTest implements Callable<Integer> {
               .maxTrackingConsumersByConnection(this.trackingConsumersByConnection)
               .maxConsumersByConnection(this.consumersByConnection)
               .rpcTimeout(Duration.ofSeconds(this.rpcTimeout))
-              .requestedMaxFrameSize((int) this.requestedMaxFrameSize.toBytes());
+              .requestedMaxFrameSize((int) this.requestedMaxFrameSize.toBytes())
+              .forceReplicaForConsumers(this.forceReplicaForConsumers)
+              .requestedHeartbeat(Duration.ofSeconds(this.heartbeat))
+              .recoveryBackOffDelayPolicy(this.recoveryBackOffDelayPolicy)
+              .topologyUpdateBackOffDelayPolicy(this.topologyBackOffDelayPolicy);
 
       if (addrResolver != null) {
         environmentBuilder = environmentBuilder.addressResolver(addrResolver);
@@ -978,7 +1000,7 @@ public class StreamPerfTest implements Callable<Integer> {
                           final int msgSize = this.messageSize;
 
                           try {
-                            while (true && !Thread.currentThread().isInterrupted()) {
+                            while (!Thread.currentThread().isInterrupted()) {
                               rateLimiterCallback.run();
                               // Using current time for interoperability with other tools
                               // and also across different processes.
@@ -993,9 +1015,8 @@ public class StreamPerfTest implements Callable<Integer> {
                                   messageBuilder.addData(payload).build(), confirmationHandler);
                             }
                           } catch (Exception e) {
-                            if (e instanceof InterruptedException
-                                || (e.getCause() != null
-                                    && e.getCause() instanceof InterruptedException)) {
+                            if (e.getCause() != null
+                                && e.getCause() instanceof InterruptedException) {
                               LOGGER.info("Publisher #{} thread interrupted", i, e);
                             } else {
                               LOGGER.warn("Publisher #{} crashed", i, e);
