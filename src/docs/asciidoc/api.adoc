@@ -624,7 +624,7 @@ messages that time out. This way the client will do its best to retry messages
 until they are confirmed.
 ====
 
-Consider the producer name a logical name. It should not be a random sequence that
+A producer name must be stable and clear to a human reader. It must not be a random sequence that
 changes when the producer application is restarted. Names like `online-shop-order` or
 `online-shop-invoice` are better names than `3d235e79-047a-46a6-8c80-9d159d3e1b05`.
 There should be only one living instance of a producer with a given name on a given
