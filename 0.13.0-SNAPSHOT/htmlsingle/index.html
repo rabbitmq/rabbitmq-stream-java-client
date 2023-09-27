@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.13.0-SNAPSHOT</span>
-<br><span id="revremark">(892fdae)</span>
+<br><span id="revremark">(eccf216)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2434,13 +2434,13 @@ producer.send(message, confirmationStatus -&gt; { });</code></pre>
 <div class="ulist">
 <ul>
 <li>
-<p>the sequence should start at 0</p>
-</li>
-<li>
 <p>the sequence must be strictly increasing</p>
 </li>
 <li>
 <p>there can be gaps in the sequence (e.g. 0, 1, 2, 3, 6, 7, 9, 10, etc)</p>
+</li>
+<li>
+<p>the sequence does not have to start at 0, as long as it is increasing</p>
 </li>
 </ul>
 </div>
@@ -5879,7 +5879,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.13.0-SNAPSHOT<br>
-Last updated 2023-09-27 05:52:23 UTC
+Last updated 2023-09-27 08:40:08 UTC
 </div>
 </div>
 </body>
