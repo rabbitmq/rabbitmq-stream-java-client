@@ -648,9 +648,9 @@ include::{test-examples}/ProducerUsage.java[tag=message-with-publishing-id]
 
 There are a few rules to follow when using a custom publishing ID sequence:
 
- * the sequence should start at 0
  * the sequence must be strictly increasing
  * there can be gaps in the sequence (e.g. 0, 1, 2, 3, 6, 7, 9, 10, etc)
+ * the sequence does not have to start at 0, as long as it is increasing
 
 A custom publishing ID sequence has usually a meaning: it can be the line number of a file
 or the primary key in a database.
