@@ -301,8 +301,7 @@ public interface EnvironmentBuilder {
    * <p>Topology recovery can kick in when streams leaders and replicas move from nodes to nodes in
    * the cluster.
    *
-   * <p>The default is a first delay of 5 seconds, then 1 second
-   * for the next attempts.
+   * <p>The default is a first delay of 5 seconds, then 1 second for the next attempts.
    *
    * @param topologyUpdateBackOffDelayPolicy
    * @return this builder instance
@@ -348,6 +347,7 @@ public interface EnvironmentBuilder {
    * @return this builder instance
    * @see #recoveryBackOffDelayPolicy(BackOffDelayPolicy)
    * @see #topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy)
+   * @since 0.13.0
    */
   EnvironmentBuilder forceReplicaForConsumers(boolean forceReplica);
 
