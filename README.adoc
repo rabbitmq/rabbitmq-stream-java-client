@@ -68,6 +68,12 @@ To build the JAR file:
 ./mvnw clean package -DskipITs -DskipTests
 ----
 
+To build the https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#the-performance-tool[Stream PerfTest] JAR:
+
+----
+./mvnw clean package checksum:files -Dgpg.skip=true -Dmaven.test.skip -P performance-tool -DfinalName="stream-perf-test.jar" --no-transfer-progress
+----
+
 === Running Tests with Docker
 
 Launch the broker:
