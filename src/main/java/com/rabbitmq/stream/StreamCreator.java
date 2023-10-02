@@ -67,9 +67,15 @@ public interface StreamCreator {
   /**
    * Set the size of the stream chunk filters.
    *
-   * @param size
+   * <p>Must be between 16 and 255 bytes, default is 16.
+   *
+   * <p>Use a bloom filter calculator to size the filter accordingly to the possible number of
+   * filter values and the acceptable rate of false positives (RabbitMQ Stream uses 2 hash
+   * functions).
+   *
+   * @param size (in bytes)
    * @return this creator instance
-   * @see ProducerBuilder#filterValue( Function)
+   * @see ProducerBuilder#filterValue(Function)
    * @see ConsumerBuilder#filter()
    */
   StreamCreator filterSize(int size);
