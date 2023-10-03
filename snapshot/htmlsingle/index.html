@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.14.0-SNAPSHOT</span>
-<br><span id="revremark">(a40ac9f)</span>
+<br><span id="revremark">(3f51f48)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -540,12 +540,11 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#stream-client-overview">Stream Client Overview</a></li>
 <li><a href="#versioning">Versioning</a></li>
 <li><a href="#stability-of-programming-interfaces">Stability of Programming Interfaces</a></li>
-<li><a href="#the-stream-java-client">The Stream Java Client</a>
-<ul class="sectlevel2">
+<li><a href="#pre-requisites">Pre-requisites</a></li>
 <li><a href="#setting-up-rabbitmq">Setting up RabbitMQ</a>
-<ul class="sectlevel3">
+<ul class="sectlevel2">
 <li><a href="#with-docker">With Docker</a>
-<ul class="sectlevel4">
+<ul class="sectlevel3">
 <li><a href="#with-docker-bridge-network-driver">With Docker Bridge Network Driver</a></li>
 <li><a href="#with-docker-host-network-driver">With Docker Host Network Driver</a></li>
 </ul>
@@ -554,18 +553,18 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </ul>
 </li>
 <li><a href="#dependencies">Dependencies</a>
-<ul class="sectlevel3">
+<ul class="sectlevel2">
 <li><a href="#maven">Maven</a></li>
 <li><a href="#gradle">Gradle</a></li>
+<li><a href="#snapshots">Snapshots</a></li>
 </ul>
 </li>
-<li><a href="#snapshots">Snapshots</a></li>
 <li><a href="#sample-application">Sample Application</a></li>
 <li><a href="#rabbitmq-stream-java-api">RabbitMQ Stream Java API</a>
-<ul class="sectlevel3">
+<ul class="sectlevel2">
 <li><a href="#overview">Overview</a></li>
 <li><a href="#environment">Environment</a>
-<ul class="sectlevel4">
+<ul class="sectlevel3">
 <li><a href="#creating-the-environment">Creating the Environment</a></li>
 <li><a href="#understanding-connection-logic">Understanding Connection Logic</a></li>
 <li><a href="#enabling-tls">Enabling TLS</a></li>
@@ -575,12 +574,12 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </ul>
 </li>
 <li><a href="#producer">Producer</a>
-<ul class="sectlevel4">
+<ul class="sectlevel3">
 <li><a href="#creating-a-producer">Creating a Producer</a></li>
 <li><a href="#sending-messages">Sending Messages</a></li>
 <li><a href="#working-with-complex-messages">Working with Complex Messages</a></li>
 <li><a href="#outbound-message-deduplication">Message Deduplication</a>
-<ul class="sectlevel5">
+<ul class="sectlevel4">
 <li><a href="#setting-the-name-of-a-producer">Setting the Name of a Producer</a></li>
 <li><a href="#understanding-publishing-id">Understanding Publishing ID</a></li>
 <li><a href="#restarting-a-producer-where-it-left-off">Restarting a Producer Where It Left Off</a></li>
@@ -590,11 +589,11 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </ul>
 </li>
 <li><a href="#consumer">Consumer</a>
-<ul class="sectlevel4">
+<ul class="sectlevel3">
 <li><a href="#creating-a-consumer">Creating a Consumer</a></li>
 <li><a href="#specifying-an-offset">Specifying an Offset</a></li>
 <li><a href="#consumer-offset-tracking">Tracking the Offset for a Consumer</a>
-<ul class="sectlevel5">
+<ul class="sectlevel4">
 <li><a href="#consumer-automatic-offset-tracking">Automatic Offset Tracking</a></li>
 <li><a href="#consumer-manual-offset-tracking">Manual Offset Tracking</a></li>
 <li><a href="#considerations-on-offset-tracking">Considerations On Offset Tracking</a></li>
@@ -603,7 +602,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </li>
 <li><a href="#flow-control">Flow Control</a></li>
 <li><a href="#single-active-consumer">Single Active Consumer</a>
-<ul class="sectlevel5">
+<ul class="sectlevel4">
 <li><a href="#enabling-single-active-consumer">Enabling Single Active Consumer</a></li>
 <li><a href="#offset-tracking">Offset Tracking</a></li>
 <li><a href="#consumer-update-listener">Reacting to Consumer State Change</a></li>
@@ -612,18 +611,18 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </ul>
 </li>
 <li><a href="#super-streams">Super Streams (Partitioned Streams)</a>
-<ul class="sectlevel4">
+<ul class="sectlevel3">
 <li><a href="#topology">Topology</a></li>
 <li><a href="#super-stream-creation">Super Stream Creation</a></li>
 <li><a href="#super-stream-producer">Publishing to a Super Stream</a>
-<ul class="sectlevel5">
+<ul class="sectlevel4">
 <li><a href="#resolving-routes-with-bindings">Resolving Routes with Bindings</a></li>
 <li><a href="#using-a-custom-routing-strategy">Using a Custom Routing Strategy</a></li>
 <li><a href="#deduplication">Deduplication</a></li>
 </ul>
 </li>
 <li><a href="#consuming-from-a-super-stream">Consuming From a Super Stream</a>
-<ul class="sectlevel5">
+<ul class="sectlevel4">
 <li><a href="#super-stream-consumer-in-practice">Super Stream Consumer in Practice</a></li>
 <li><a href="#declaring-a-super-stream-consumer">Declaring a Super Stream Consumer</a></li>
 <li><a href="#offset-tracking-2">Offset Tracking</a></li>
@@ -635,9 +634,9 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </ul>
 </li>
 <li><a href="#advanced-topics">Advanced Topics</a>
-<ul class="sectlevel3">
+<ul class="sectlevel2">
 <li><a href="#filtering">Filtering</a>
-<ul class="sectlevel4">
+<ul class="sectlevel3">
 <li><a href="#filtering-on-the-publishing-side">Filtering on the Publishing Side</a></li>
 <li><a href="#filtering-on-the-consuming-side">Filtering on the Consuming Side</a></li>
 <li><a href="#considerations-on-filtering">Considerations on Filtering</a></li>
@@ -647,8 +646,6 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </ul>
 </li>
 <li><a href="#building-the-client">Building the Client</a></li>
-</ul>
-</li>
 <li><a href="#micrometer-observation">Appendix A: Micrometer Observation</a>
 <ul class="sectlevel2">
 <li><a href="#observability-conventions">Observability - Conventions</a></li>
@@ -677,6 +674,9 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 the <a href="https://rabbitmq.com/stream.html">RabbitMQ Stream Plugin</a>.
 It allows creating and deleting streams, as well as publishing to and consuming from
 these streams. Learn more in the <a href="#stream-client-overview">client overview</a>.</p>
+</div>
+<div class="paragraph">
+<p><a href="https://github.com/rabbitmq/rabbitmq-stream-perf-test">Stream PerfTest</a> is a performance testing tool based on this client library.</p>
 </div>
 </div>
 </div>
@@ -858,19 +858,22 @@ The next section provides more details about the evolution of programming interf
 </div>
 </div>
 <div class="sect1">
-<h2 id="the-stream-java-client"><a class="anchor" href="#the-stream-java-client"></a>The Stream Java Client</h2>
+<h2 id="pre-requisites"><a class="anchor" href="#pre-requisites"></a>Pre-requisites</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>The library requires Java 8 or later. Java 11 is recommended (CRC calculation uses methods available as of Java 9.)</p>
 </div>
-<div class="sect2">
-<h3 id="setting-up-rabbitmq"><a class="anchor" href="#setting-up-rabbitmq"></a>Setting up RabbitMQ</h3>
+</div>
+</div>
+<div class="sect1">
+<h2 id="setting-up-rabbitmq"><a class="anchor" href="#setting-up-rabbitmq"></a>Setting up RabbitMQ</h2>
+<div class="sectionbody">
 <div class="paragraph">
 <p>A RabbitMQ 3.9+ node with the stream plugin enabled is required. The easiest way
 to get up and running is to use Docker.</p>
 </div>
-<div class="sect3">
-<h4 id="with-docker"><a class="anchor" href="#with-docker"></a>With Docker</h4>
+<div class="sect2">
+<h3 id="with-docker"><a class="anchor" href="#with-docker"></a>With Docker</h3>
 <div class="paragraph">
 <p>There are different ways to make the broker visible to the client application when running
 in Docker. The next sections show a couple of options suitable for local development.</p>
@@ -891,8 +894,8 @@ when using RabbitMQ Stream inside Docker on a Mac.</p>
 </tr>
 </table>
 </div>
-<div class="sect4">
-<h5 id="with-docker-bridge-network-driver"><a class="anchor" href="#with-docker-bridge-network-driver"></a>With Docker Bridge Network Driver</h5>
+<div class="sect3">
+<h4 id="with-docker-bridge-network-driver"><a class="anchor" href="#with-docker-bridge-network-driver"></a>With Docker Bridge Network Driver</h4>
 <div class="paragraph">
 <p>This section shows how to start a broker instance for local development
 (the broker Docker container and the client application are assumed to run on the
@@ -935,8 +938,8 @@ to find out more about its usage.</p>
 </div>
 </div>
 </div>
-<div class="sect4">
-<h5 id="with-docker-host-network-driver"><a class="anchor" href="#with-docker-host-network-driver"></a>With Docker Host Network Driver</h5>
+<div class="sect3">
+<h4 id="with-docker-host-network-driver"><a class="anchor" href="#with-docker-host-network-driver"></a>With Docker Host Network Driver</h4>
 <div class="paragraph">
 <p>This is the simplest way to run the broker locally.
 The container uses the <a href="https://docs.docker.com/network/host/">host network</a>,
@@ -977,8 +980,8 @@ this is perfect for experimenting locally.</p>
 </div>
 </div>
 </div>
-<div class="sect3">
-<h4 id="with-a-rabbitmq-package-running-on-the-host"><a class="anchor" href="#with-a-rabbitmq-package-running-on-the-host"></a>With a RabbitMQ Package Running on the Host</h4>
+<div class="sect2">
+<h3 id="with-a-rabbitmq-package-running-on-the-host"><a class="anchor" href="#with-a-rabbitmq-package-running-on-the-host"></a>With a RabbitMQ Package Running on the Host</h3>
 <div class="paragraph">
 <p>Using a package implies installing Erlang.</p>
 </div>
@@ -1004,13 +1007,15 @@ this is perfect for experimenting locally.</p>
 </div>
 </div>
 </div>
-<div class="sect2">
-<h3 id="dependencies"><a class="anchor" href="#dependencies"></a>Dependencies</h3>
+</div>
+<div class="sect1">
+<h2 id="dependencies"><a class="anchor" href="#dependencies"></a>Dependencies</h2>
+<div class="sectionbody">
 <div class="paragraph">
 <p>Use your favorite build management tool to add the client dependencies to your project.</p>
 </div>
-<div class="sect3">
-<h4 id="maven"><a class="anchor" href="#maven"></a>Maven</h4>
+<div class="sect2">
+<h3 id="maven"><a class="anchor" href="#maven"></a>Maven</h3>
 <div class="listingblock">
 <div class="title">pom.xml</div>
 <div class="content">
@@ -1029,8 +1034,8 @@ this is perfect for experimenting locally.</p>
 <p>Snapshots require to declare the <a href="#snapshots">appropriate repository</a>.</p>
 </div>
 </div>
-<div class="sect3">
-<h4 id="gradle"><a class="anchor" href="#gradle"></a>Gradle</h4>
+<div class="sect2">
+<h3 id="gradle"><a class="anchor" href="#gradle"></a>Gradle</h3>
 <div class="listingblock">
 <div class="title">build.gradle</div>
 <div class="content">
@@ -1041,7 +1046,6 @@ this is perfect for experimenting locally.</p>
 </div>
 <div class="paragraph">
 <p>Snapshots require to declare the <a href="#snapshots">appropriate repository</a>.</p>
-</div>
 </div>
 </div>
 <div class="sect2">
@@ -1081,8 +1085,11 @@ Snapshots are available from a repositoriy which must be declared in the depende
 </div>
 </div>
 </div>
-<div class="sect2">
-<h3 id="sample-application"><a class="anchor" href="#sample-application"></a>Sample Application</h3>
+</div>
+</div>
+<div class="sect1">
+<h2 id="sample-application"><a class="anchor" href="#sample-application"></a>Sample Application</h2>
+<div class="sectionbody">
 <div class="paragraph">
 <p>This section covers the basics of the RabbitMQ Stream Java API by building
 a small publish/consume application. This is a good way to get
@@ -1296,10 +1303,12 @@ Sum: 49995000</pre>
 <p>You can remove the <code>-q</code> flag if you want more insight on the execution of the build.</p>
 </div>
 </div>
+</div>
+<div class="sect1">
+<h2 id="rabbitmq-stream-java-api"><a class="anchor" href="#rabbitmq-stream-java-api"></a>RabbitMQ Stream Java API</h2>
+<div class="sectionbody">
 <div class="sect2">
-<h3 id="rabbitmq-stream-java-api"><a class="anchor" href="#rabbitmq-stream-java-api"></a>RabbitMQ Stream Java API</h3>
-<div class="sect3">
-<h4 id="overview"><a class="anchor" href="#overview"></a>Overview</h4>
+<h3 id="overview"><a class="anchor" href="#overview"></a>Overview</h3>
 <div class="paragraph">
 <p>This section describes the API to connect to the RabbitMQ Stream Plugin, publish messages, and
 consume messages. There are 3 main interfaces:</p>
@@ -1319,10 +1328,10 @@ managing streams.</p>
 </ul>
 </div>
 </div>
+<div class="sect2">
+<h3 id="environment"><a class="anchor" href="#environment"></a>Environment</h3>
 <div class="sect3">
-<h4 id="environment"><a class="anchor" href="#environment"></a>Environment</h4>
-<div class="sect4">
-<h5 id="creating-the-environment"><a class="anchor" href="#creating-the-environment"></a>Creating the Environment</h5>
+<h4 id="creating-the-environment"><a class="anchor" href="#creating-the-environment"></a>Creating the Environment</h4>
 <div class="paragraph">
 <p>The environment is the main entry point to a node or a cluster of nodes. <code>Producer</code> and
 <code>Consumer</code> instances are created from an <code>Environment</code> instance. Here is the simplest
@@ -1416,8 +1425,8 @@ several other URIs to try in case of failure of a node:</p>
 will pick a new URI randomly in case of disconnection.</p>
 </div>
 </div>
-<div class="sect4">
-<h5 id="understanding-connection-logic"><a class="anchor" href="#understanding-connection-logic"></a>Understanding Connection Logic</h5>
+<div class="sect3">
+<h4 id="understanding-connection-logic"><a class="anchor" href="#understanding-connection-logic"></a>Understanding Connection Logic</h4>
 <div class="paragraph">
 <p>Creating the environment to connect to a cluster node works usually seamlessly.
 Creating publishers and consumers can cause problems as the client uses hints from the cluster to find the nodes where stream leaders and replicas are located to connect to the appropriate nodes.</p>
@@ -1433,8 +1442,8 @@ Provide a pass-through <code>AddressResolver</code> to <code>EnvironmentBuilder#
 It is unlikely this behavior applies for any real-world deployment, where <code>localhost</code> and/or the default <code>guest</code> user should not be used.</p>
 </div>
 </div>
-<div class="sect4">
-<h5 id="enabling-tls"><a class="anchor" href="#enabling-tls"></a>Enabling TLS</h5>
+<div class="sect3">
+<h4 id="enabling-tls"><a class="anchor" href="#enabling-tls"></a>Enabling TLS</h4>
 <div class="paragraph">
 <p>TLS can be enabled by using the <code>rabbitmq-stream+tls</code> scheme in the URI.
 The default TLS port is 5551.</p>
@@ -1517,8 +1526,8 @@ not be used in a production environment</strong>.</p>
 </table>
 </div>
 </div>
-<div class="sect4">
-<h5 id="configuring-the-environment"><a class="anchor" href="#configuring-the-environment"></a>Configuring the Environment</h5>
+<div class="sect3">
+<h4 id="configuring-the-environment"><a class="anchor" href="#configuring-the-environment"></a>Configuring the Environment</h4>
 <div class="paragraph">
 <p>The following table sums up the main settings to create an <code>Environment</code>:</p>
 </div>
@@ -1703,8 +1712,8 @@ It is the developer&#8217;s responsibility to close the <code>EventLoopGroup</co
 </tbody>
 </table>
 </div>
-<div class="sect4">
-<h5 id="when-a-load-balancer-is-in-use"><a class="anchor" href="#when-a-load-balancer-is-in-use"></a>When a Load Balancer is in Use</h5>
+<div class="sect3">
+<h4 id="when-a-load-balancer-is-in-use"><a class="anchor" href="#when-a-load-balancer-is-in-use"></a>When a Load Balancer is in Use</h4>
 <div class="paragraph">
 <p>A load balancer can misguide the client when it tries to connect to nodes that host stream leaders and replicas.
 The <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/">"Connecting to Streams"</a> blog post covers why client applications must connect to the appropriate nodes in a cluster and how a <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer">load balancer can make things complicated</a> for them.</p>
@@ -1744,8 +1753,8 @@ Environment environment = Environment.builder()
 <p>The blog post covers the <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#client-workaround-with-a-load-balancer">underlying details of this workaround</a>.</p>
 </div>
 </div>
-<div class="sect4">
-<h5 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h5>
+<div class="sect3">
+<h4 id="managing-streams"><a class="anchor" href="#managing-streams"></a>Managing Streams</h4>
 <div class="paragraph">
 <p>Streams are usually long-lived, centrally-managed entities, that is, applications
 are not supposed to create and delete them. It is nevertheless possible to create and
@@ -1902,10 +1911,10 @@ illustrates how to set the time-based retention policy:</p>
 </div>
 </div>
 </div>
+<div class="sect2">
+<h3 id="producer"><a class="anchor" href="#producer"></a>Producer</h3>
 <div class="sect3">
-<h4 id="producer"><a class="anchor" href="#producer"></a>Producer</h4>
-<div class="sect4">
-<h5 id="creating-a-producer"><a class="anchor" href="#creating-a-producer"></a>Creating a Producer</h5>
+<h4 id="creating-a-producer"><a class="anchor" href="#creating-a-producer"></a>Creating a Producer</h4>
 <div class="paragraph">
 <p>A <code>Producer</code> instance is created from the <code>Environment</code>. The only mandatory
 setting to specify is the stream to publish to:</p>
@@ -2042,8 +2051,8 @@ Set the value to <code>Duration.ZERO</code> if there should be no timeout.</p></
 </tbody>
 </table>
 </div>
-<div class="sect4">
-<h5 id="sending-messages"><a class="anchor" href="#sending-messages"></a>Sending Messages</h5>
+<div class="sect3">
+<h4 id="sending-messages"><a class="anchor" href="#sending-messages"></a>Sending Messages</h4>
 <div class="paragraph">
 <p>Once a <code>Producer</code> has been created, it is possible to send a message with
 the <code>Producer#send(Message, ConfirmationHandler)</code> method. The following
@@ -2129,8 +2138,8 @@ a separate thread (e.g. with an asynchronous <code>ExecutorService</code>).</p>
 </table>
 </div>
 </div>
-<div class="sect4">
-<h5 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h5>
+<div class="sect3">
+<h4 id="working-with-complex-messages"><a class="anchor" href="#working-with-complex-messages"></a>Working with Complex Messages</h4>
 <div class="paragraph">
 <p>The publishing example above showed that messages are made of
 a byte array payload, but it did not go much further. Messages in RabbitMQ Stream
@@ -2235,8 +2244,8 @@ to be accessed as AMQP 0-9-1 queues, without data loss.</p>
 </table>
 </div>
 </div>
-<div class="sect4">
-<h5 id="outbound-message-deduplication"><a class="anchor" href="#outbound-message-deduplication"></a>Message Deduplication</h5>
+<div class="sect3">
+<h4 id="outbound-message-deduplication"><a class="anchor" href="#outbound-message-deduplication"></a>Message Deduplication</h4>
 <div class="paragraph">
 <p>RabbitMQ Stream provides publisher confirms to avoid losing messages: once
 the broker has persisted a message it sends a confirmation for this message.
@@ -2291,8 +2300,8 @@ If you worry about performance, note it is possible to publish hundreds of thous
 </tr>
 </table>
 </div>
-<div class="sect5">
-<h6 id="setting-the-name-of-a-producer"><a class="anchor" href="#setting-the-name-of-a-producer"></a>Setting the Name of a Producer</h6>
+<div class="sect4">
+<h5 id="setting-the-name-of-a-producer"><a class="anchor" href="#setting-the-name-of-a-producer"></a>Setting the Name of a Producer</h5>
 <div class="paragraph">
 <p>The producer name is set when creating the producer instance, which automatically
 enables deduplication:</p>
@@ -2356,8 +2365,8 @@ There should be only one living instance of a producer with a given name on a gi
 stream at the same time.</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="understanding-publishing-id"><a class="anchor" href="#understanding-publishing-id"></a>Understanding Publishing ID</h6>
+<div class="sect4">
+<h5 id="understanding-publishing-id"><a class="anchor" href="#understanding-publishing-id"></a>Understanding Publishing ID</h5>
 <div class="paragraph">
 <p>The producer name is only one part of the deduplication mechanism, the other part
 is the <em>message publishing ID</em>. If the producer has a name, the client automatically
@@ -2428,8 +2437,8 @@ message or assign custom publishing IDs. <strong>Do one or the other, not both!<
 </table>
 </div>
 </div>
-<div class="sect5">
-<h6 id="restarting-a-producer-where-it-left-off"><a class="anchor" href="#restarting-a-producer-where-it-left-off"></a>Restarting a Producer Where It Left Off</h6>
+<div class="sect4">
+<h5 id="restarting-a-producer-where-it-left-off"><a class="anchor" href="#restarting-a-producer-where-it-left-off"></a>Restarting a Producer Where It Left Off</h5>
 <div class="paragraph">
 <p>Using a custom publishing sequence is even more useful to restart a producer where it left
 off. Imagine a scenario whereby the producer is sending a message for each line in a file and
@@ -2492,8 +2501,8 @@ easily scroll to the next line and restart publishing from there.</p>
 </div>
 </div>
 </div>
-<div class="sect4">
-<h5 id="sub-entry-batching-and-compression"><a class="anchor" href="#sub-entry-batching-and-compression"></a>Sub-Entry Batching and Compression</h5>
+<div class="sect3">
+<h4 id="sub-entry-batching-and-compression"><a class="anchor" href="#sub-entry-batching-and-compression"></a>Sub-Entry Batching and Compression</h4>
 <div class="paragraph">
 <p>RabbitMQ Stream provides a special mode to publish, store, and dispatch messages: sub-entry batching.
 This mode increases throughput at the cost of increased latency and potential duplicated messages even when deduplication is enabled.
@@ -2630,13 +2639,13 @@ So when you set up sub-entry batching and compression in your publishers, the co
 </div>
 </div>
 </div>
-<div class="sect3">
-<h4 id="consumer"><a class="anchor" href="#consumer"></a>Consumer</h4>
+<div class="sect2">
+<h3 id="consumer"><a class="anchor" href="#consumer"></a>Consumer</h3>
 <div class="paragraph">
 <p><code>Consumer</code> is the API to consume messages from a stream.</p>
 </div>
-<div class="sect4">
-<h5 id="creating-a-consumer"><a class="anchor" href="#creating-a-consumer"></a>Creating a Consumer</h5>
+<div class="sect3">
+<h4 id="creating-a-consumer"><a class="anchor" href="#creating-a-consumer"></a>Creating a Consumer</h4>
 <div class="paragraph">
 <p>A <code>Consumer</code> instance is created with <code>Environment#consumerBuilder()</code>. The main
 settings are the stream to consume from, the place in the stream to start
@@ -2820,8 +2829,8 @@ types of offset specification.</p>
 </table>
 </div>
 </div>
-<div class="sect4">
-<h5 id="specifying-an-offset"><a class="anchor" href="#specifying-an-offset"></a>Specifying an Offset</h5>
+<div class="sect3">
+<h4 id="specifying-an-offset"><a class="anchor" href="#specifying-an-offset"></a>Specifying an Offset</h4>
 <div class="paragraph">
 <p>The offset is the place in the stream where the consumer starts consuming from.
 The possible values for the offset parameter are the following:</p>
@@ -2891,8 +2900,8 @@ This is this timestamp the broker uses to find the appropriate chunk to start fr
 The broker chooses the closest chunk <em>before</em> the specified timestamp, that is why consumers may see messages published a bit before what they specified.</p>
 </div>
 </div>
-<div class="sect4">
-<h5 id="consumer-offset-tracking"><a class="anchor" href="#consumer-offset-tracking"></a>Tracking the Offset for a Consumer</h5>
+<div class="sect3">
+<h4 id="consumer-offset-tracking"><a class="anchor" href="#consumer-offset-tracking"></a>Tracking the Offset for a Consumer</h4>
 <div class="paragraph">
 <p>RabbitMQ Stream provides server-side offset tracking.
 This means a consumer can track the offset it has reached in a stream.
@@ -2920,8 +2929,8 @@ offsets are stored depends on the tracking strategy: automatic or manual.</p>
 <div class="paragraph">
 <p>Whatever tracking strategy you use, <strong>a consumer must have a name to be able to store offsets</strong>.</p>
 </div>
-<div class="sect5">
-<h6 id="consumer-automatic-offset-tracking"><a class="anchor" href="#consumer-automatic-offset-tracking"></a>Automatic Offset Tracking</h6>
+<div class="sect4">
+<h5 id="consumer-automatic-offset-tracking"><a class="anchor" href="#consumer-automatic-offset-tracking"></a>Automatic Offset Tracking</h5>
 <div class="paragraph">
 <p>The following snippet shows how to enable automatic tracking with the defaults:</p>
 </div>
@@ -3041,8 +3050,8 @@ possible to have more fine-grained control over offset tracking by using
 manual tracking.</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="consumer-manual-offset-tracking"><a class="anchor" href="#consumer-manual-offset-tracking"></a>Manual Offset Tracking</h6>
+<div class="sect4">
+<h5 id="consumer-manual-offset-tracking"><a class="anchor" href="#consumer-manual-offset-tracking"></a>Manual Offset Tracking</h5>
 <div class="paragraph">
 <p>The manual tracking strategy lets the developer in charge of storing offsets
 whenever they want, not only after a given number of messages has been received
@@ -3142,8 +3151,8 @@ in the stream with <code>MessageHandler.Context#consumer()#store(long)</code> or
 simply <code>Consumer#store(long)</code>.</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="considerations-on-offset-tracking"><a class="anchor" href="#considerations-on-offset-tracking"></a>Considerations On Offset Tracking</h6>
+<div class="sect4">
+<h5 id="considerations-on-offset-tracking"><a class="anchor" href="#considerations-on-offset-tracking"></a>Considerations On Offset Tracking</h5>
 <div class="paragraph">
 <p><em>When to store offsets?</em> Avoid storing offsets too often or, worse, for each message.
 Even though offset tracking is a small and fast operation, it will
@@ -3175,8 +3184,8 @@ a modulo to perform an operation every X messages. As the message offsets have
 no guarantee to be contiguous, the operation may not happen exactly every X messages.</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="consumer-subscription-listener"><a class="anchor" href="#consumer-subscription-listener"></a>Subscription Listener</h6>
+<div class="sect4">
+<h5 id="consumer-subscription-listener"><a class="anchor" href="#consumer-subscription-listener"></a>Subscription Listener</h5>
 <div class="paragraph">
 <p>The client provides a <code>SubscriptionListener</code> interface callback to add behavior before a subscription is created.
 This callback can be used to customize the offset the client library computed for the subscription.
@@ -3285,8 +3294,8 @@ A custom <code>SubscriptionListener</code> lets the application developer uses w
 </div>
 </div>
 </div>
-<div class="sect4">
-<h5 id="flow-control"><a class="anchor" href="#flow-control"></a>Flow Control</h5>
+<div class="sect3">
+<h4 id="flow-control"><a class="anchor" href="#flow-control"></a>Flow Control</h4>
 <div class="paragraph">
 <p>This section covers how a consumer can tell the broker when to send more messages.</p>
 </div>
@@ -3361,8 +3370,8 @@ Apart from the default one, the implementations the library provides does not ma
 </ul>
 </div>
 </div>
-<div class="sect4">
-<h5 id="single-active-consumer"><a class="anchor" href="#single-active-consumer"></a>Single Active Consumer</h5>
+<div class="sect3">
+<h4 id="single-active-consumer"><a class="anchor" href="#single-active-consumer"></a>Single Active Consumer</h4>
 <div class="admonitionblock warning">
 <table>
 <tr>
@@ -3452,8 +3461,8 @@ We end up with 3 <code>app-1</code> consumers and 3 <code>app-2</code> consumers
 <div class="paragraph">
 <p>Let&#8217;s see now the API for single active consumer.</p>
 </div>
-<div class="sect5">
-<h6 id="enabling-single-active-consumer"><a class="anchor" href="#enabling-single-active-consumer"></a>Enabling Single Active Consumer</h6>
+<div class="sect4">
+<h5 id="enabling-single-active-consumer"><a class="anchor" href="#enabling-single-active-consumer"></a>Enabling Single Active Consumer</h5>
 <div class="paragraph">
 <p>Use the <code>ConsumerBuilder#singleActiveConsumer()</code> method to enable the feature:</p>
 </div>
@@ -3487,8 +3496,8 @@ We end up with 3 <code>app-1</code> consumers and 3 <code>app-2</code> consumers
 If the consumer instance is the first in a group, it will get messages as soon as there are some available. If it is not the first in the group, it will remain idle until it is its turn to be active (likely when all the instances registered before it are gone).</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="offset-tracking"><a class="anchor" href="#offset-tracking"></a>Offset Tracking</h6>
+<div class="sect4">
+<h5 id="offset-tracking"><a class="anchor" href="#offset-tracking"></a>Offset Tracking</h5>
 <div class="paragraph">
 <p>Single active consumer and offset tracking work together: when the active consumer goes away, another consumer takes over and resumes when the former active left off.
 Well, this is how things should work and luckily this is what happens when using <a href="#consumer-offset-tracking">server-side offset tracking</a>.
@@ -3499,8 +3508,8 @@ So as long as you use <a href="#consumer-automatic-offset-tracking">automatic of
 In this case you need to tell the client library where to resume from and you can do this by implementing the <code>ConsumerUpdateListener</code> API.</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="consumer-update-listener"><a class="anchor" href="#consumer-update-listener"></a>Reacting to Consumer State Change</h6>
+<div class="sect4">
+<h5 id="consumer-update-listener"><a class="anchor" href="#consumer-update-listener"></a>Reacting to Consumer State Change</h5>
 <div class="paragraph">
 <p>The broker notifies a consumer that becomes active before dispatching messages to it.
 The broker expects a response from the consumer and this response contains the offset the dispatching should start from.
@@ -3560,8 +3569,8 @@ In this case, it is possible to use the <code>ConsumerBuilder#consumerUpdateList
 </div>
 </div>
 </div>
-<div class="sect3">
-<h4 id="super-streams"><a class="anchor" href="#super-streams"></a>Super Streams (Partitioned Streams)</h4>
+<div class="sect2">
+<h3 id="super-streams"><a class="anchor" href="#super-streams"></a>Super Streams (Partitioned Streams)</h3>
 <div class="admonitionblock warning">
 <table>
 <tr>
@@ -3606,8 +3615,8 @@ Remember that partitioning always comes with complexity though, even if the impl
 </tr>
 </table>
 </div>
-<div class="sect4">
-<h5 id="topology"><a class="anchor" href="#topology"></a>Topology</h5>
+<div class="sect3">
+<h4 id="topology"><a class="anchor" href="#topology"></a>Topology</h4>
 <div class="paragraph">
 <p>A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
 The topology of a super stream is based on the <a href="https://www.rabbitmq.com/tutorials/amqp-concepts.html">AMQP 0.9.1 model</a>, that is exchange, queues, and bindings between them.
@@ -3641,8 +3650,8 @@ From the application code point of view, using a super stream is mostly configur
 Some logic must also be provided to extract routing information from messages.</p>
 </div>
 </div>
-<div class="sect4">
-<h5 id="super-stream-creation"><a class="anchor" href="#super-stream-creation"></a>Super Stream Creation</h5>
+<div class="sect3">
+<h4 id="super-stream-creation"><a class="anchor" href="#super-stream-creation"></a>Super Stream Creation</h4>
 <div class="paragraph">
 <p>It is possible to create the topology of a super stream with any AMQP 0.9.1 library or with the <a href="https://www.rabbitmq.com/management.html">management plugin</a>, but the <code>rabbitmq-streams add_super_stream</code> command is a handy shortcut.
 Here is how to create an invoices super stream with 3 partitions:</p>
@@ -3657,8 +3666,8 @@ Here is how to create an invoices super stream with 3 partitions:</p>
 <p>Use <code>rabbitmq-streams add_super_stream --help</code> to learn more about the command.</p>
 </div>
 </div>
-<div class="sect4">
-<h5 id="super-stream-producer"><a class="anchor" href="#super-stream-producer"></a>Publishing to a Super Stream</h5>
+<div class="sect3">
+<h4 id="super-stream-producer"><a class="anchor" href="#super-stream-producer"></a>Publishing to a Super Stream</h4>
 <div class="paragraph">
 <p>When the topology of a super stream like the one described above has been set, creating a producer for it is straightforward:</p>
 </div>
@@ -3726,8 +3735,8 @@ This hash function provides good uniformity, performance, and portability, makin
 <div class="paragraph">
 <p>Note using Java&#8217;s <code>hashCode()</code> method is a debatable choice as potential producers in other languages are unlikely to implement it, making the routing different between producers in different languages.</p>
 </div>
-<div class="sect5">
-<h6 id="resolving-routes-with-bindings"><a class="anchor" href="#resolving-routes-with-bindings"></a>Resolving Routes with Bindings</h6>
+<div class="sect4">
+<h5 id="resolving-routes-with-bindings"><a class="anchor" href="#resolving-routes-with-bindings"></a>Resolving Routes with Bindings</h5>
 <div class="paragraph">
 <p>Hashing the routing key to pick a partition is only one way to route messages to the appropriate streams.
 The stream Java client provides another way to resolve streams, based on the routing key <em>and</em> the bindings between the super stream exchange and the streams.</p>
@@ -3772,8 +3781,8 @@ The stream Java client provides another way to resolve streams, based on the rou
 Note the client caches results, it does not query the broker for every message.</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="using-a-custom-routing-strategy"><a class="anchor" href="#using-a-custom-routing-strategy"></a>Using a Custom Routing Strategy</h6>
+<div class="sect4">
+<h5 id="using-a-custom-routing-strategy"><a class="anchor" href="#using-a-custom-routing-strategy"></a>Using a Custom Routing Strategy</h5>
 <div class="paragraph">
 <p>The solution that provides the most control over routing is using a custom routing strategy.
 This should be needed only for specific cases.</p>
@@ -3839,24 +3848,24 @@ Producer producer = environment.producerBuilder()
 </table>
 </div>
 </div>
-<div class="sect5">
-<h6 id="deduplication"><a class="anchor" href="#deduplication"></a>Deduplication</h6>
+<div class="sect4">
+<h5 id="deduplication"><a class="anchor" href="#deduplication"></a>Deduplication</h5>
 <div class="paragraph">
 <p>Deduplication for a super stream producer works the same way as with a <a href="#outbound-message-deduplication">single stream producer</a>.
 The publishing ID values are spread across the streams but this does affect the mechanism.</p>
 </div>
 </div>
 </div>
-<div class="sect4">
-<h5 id="consuming-from-a-super-stream"><a class="anchor" href="#consuming-from-a-super-stream"></a>Consuming From a Super Stream</h5>
+<div class="sect3">
+<h4 id="consuming-from-a-super-stream"><a class="anchor" href="#consuming-from-a-super-stream"></a>Consuming From a Super Stream</h4>
 <div class="paragraph">
 <p>A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
 The programming model is the same as with regular consumers for the application developer: their main job is to provide the application code to process messages, that is a <code>MessageHandler</code> instance.
 The configuration is different though and this section covers its subtleties.
 But let&#8217;s focus on the behavior of a super stream consumer first.</p>
 </div>
-<div class="sect5">
-<h6 id="super-stream-consumer-in-practice"><a class="anchor" href="#super-stream-consumer-in-practice"></a>Super Stream Consumer in Practice</h6>
+<div class="sect4">
+<h5 id="super-stream-consumer-in-practice"><a class="anchor" href="#super-stream-consumer-in-practice"></a>Super Stream Consumer in Practice</h5>
 <div class="paragraph">
 <p>Imagine you have a super stream made of 3 partitions (individual streams).
 You start an instance of your application, that itself creates a super stream consumer for this super stream.
@@ -3877,8 +3886,8 @@ This may be not what you want: the messages will be processed twice!</p>
 <p>The next subsections cover the basic settings of a super stream consumer and a <a href="#super-stream-sac">dedicated section</a> covers how super stream consumers and single active consumer play together.</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="declaring-a-super-stream-consumer"><a class="anchor" href="#declaring-a-super-stream-consumer"></a>Declaring a Super Stream Consumer</h6>
+<div class="sect4">
+<h5 id="declaring-a-super-stream-consumer"><a class="anchor" href="#declaring-a-super-stream-consumer"></a>Declaring a Super Stream Consumer</h5>
 <div class="paragraph">
 <p>Declaring a super stream consumer is not much different from declaring a single stream consumer.
 The <code>ConsumerBuilder#superStream(String)</code> must be used to set the super stream to consume from:</p>
@@ -3913,8 +3922,8 @@ consumer.close();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 The super stream consumer will take of the details (partitions lookup, coordination of the single consumers, etc).</p>
 </div>
 </div>
-<div class="sect5">
-<h6 id="offset-tracking-2"><a class="anchor" href="#offset-tracking-2"></a>Offset Tracking</h6>
+<div class="sect4">
+<h5 id="offset-tracking-2"><a class="anchor" href="#offset-tracking-2"></a>Offset Tracking</h5>
 <div class="paragraph">
 <p>The semantic of offset tracking for a super stream consumer are roughly the same as for an individual stream consumer.
 There are still some subtle differences, so a good understanding of <a href="#consumer-offset-tracking">offset tracking</a> in general and of the <a href="#consumer-automatic-offset-tracking">automatic</a> and <a href="#consumer-manual-offset-tracking">manual</a> offset tracking strategies is recommended.</p>
@@ -3938,8 +3947,8 @@ A call to <code>MessageHandler.Context#storeOffset()</code> will store the curre
 </ul>
 </div>
 </div>
-<div class="sect5">
-<h6 id="super-stream-sac"><a class="anchor" href="#super-stream-sac"></a>Single Active Consumer Support</h6>
+<div class="sect4">
+<h5 id="super-stream-sac"><a class="anchor" href="#super-stream-sac"></a>Single Active Consumer Support</h5>
 <div class="admonitionblock warning">
 <table>
 <tr>
@@ -4232,10 +4241,12 @@ Make sure to store the last processed offset when the consumer becomes inactive 
 </div>
 </div>
 </div>
+</div>
+<div class="sect1">
+<h2 id="advanced-topics"><a class="anchor" href="#advanced-topics"></a>Advanced Topics</h2>
+<div class="sectionbody">
 <div class="sect2">
-<h3 id="advanced-topics"><a class="anchor" href="#advanced-topics"></a>Advanced Topics</h3>
-<div class="sect3">
-<h4 id="filtering"><a class="anchor" href="#filtering"></a>Filtering</h4>
+<h3 id="filtering"><a class="anchor" href="#filtering"></a>Filtering</h3>
 <div class="admonitionblock warning">
 <table>
 <tr>
@@ -4281,8 +4292,8 @@ Because the server-side filtering is probabilistic: messages that do not match t
 The server uses a <a href="https://en.wikipedia.org/wiki/Bloom_filter">Bloom filter</a>, <em>a space-efficient probabilistic data structure</em>, where false positives are possible.
 Despite this, the filtering saves some bandwidth, which is its primary goal.</p>
 </div>
-<div class="sect4">
-<h5 id="filtering-on-the-publishing-side"><a class="anchor" href="#filtering-on-the-publishing-side"></a>Filtering on the Publishing Side</h5>
+<div class="sect3">
+<h4 id="filtering-on-the-publishing-side"><a class="anchor" href="#filtering-on-the-publishing-side"></a>Filtering on the Publishing Side</h4>
 <div class="paragraph">
 <p>Filtering on the publishing side consists in defining some logic to extract the filter value from a message.
 The following snippet shows how to extract the filter value from an application property:</p>
@@ -4310,8 +4321,8 @@ The following snippet shows how to extract the filter value from an application 
 It is called in this context an <em>unfiltered</em> message.</p>
 </div>
 </div>
-<div class="sect4">
-<h5 id="filtering-on-the-consuming-side"><a class="anchor" href="#filtering-on-the-consuming-side"></a>Filtering on the Consuming Side</h5>
+<div class="sect3">
+<h4 id="filtering-on-the-consuming-side"><a class="anchor" href="#filtering-on-the-consuming-side"></a>Filtering on the Consuming Side</h4>
 <div class="paragraph">
 <p>A consumer needs to set up one or several filter values and some filtering logic to enable filtering.
 The filtering logic must be consistent with the filter values.
@@ -4399,8 +4410,8 @@ Consumer consumer = environment.consumerBuilder()
 <p>In the example above, the filtering logic has been adapted to let pass <code>california</code> messages <em>and</em> messages without a state set as well.</p>
 </div>
 </div>
-<div class="sect4">
-<h5 id="considerations-on-filtering"><a class="anchor" href="#considerations-on-filtering"></a>Considerations on Filtering</h5>
+<div class="sect3">
+<h4 id="considerations-on-filtering"><a class="anchor" href="#considerations-on-filtering"></a>Considerations on Filtering</h4>
 <div class="paragraph">
 <p>As stated previously, the server can send messages that do not match the filter value(s) set by consumers.
 This is why application developers must be very careful with the filtering logic they define to avoid processing unwanted messages.</p>
@@ -4416,8 +4427,8 @@ Extreme cardinality (a couple or dozens of thousands) can make filtering less ef
 </div>
 </div>
 </div>
-<div class="sect3">
-<h4 id="using-native-epoll"><a class="anchor" href="#using-native-epoll"></a>Using Native <code>epoll</code></h4>
+<div class="sect2">
+<h3 id="using-native-epoll"><a class="anchor" href="#using-native-epoll"></a>Using Native <code>epoll</code></h3>
 <div class="paragraph">
 <p>The stream Java client uses the <a href="https://netty.io/">Netty</a> network framework and its Java NIO transport implementation by default.
 This should be a reasonable default for most applications.</p>
@@ -4501,8 +4512,10 @@ Environment environment = Environment.builder()
 </div>
 </div>
 </div>
-<div class="sect2">
-<h3 id="building-the-client"><a class="anchor" href="#building-the-client"></a>Building the Client</h3>
+</div>
+<div class="sect1">
+<h2 id="building-the-client"><a class="anchor" href="#building-the-client"></a>Building the Client</h2>
+<div class="sectionbody">
 <div class="paragraph">
 <p>You need JDK 1.8 or more installed.</p>
 </div>
@@ -4520,7 +4533,6 @@ Environment environment = Environment.builder()
 <div class="listingblock">
 <div class="content">
 <pre>./mvnw verify -Drabbitmqctl.bin=/path/to/rabbitmqctl</pre>
-</div>
 </div>
 </div>
 </div>
@@ -4888,7 +4900,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.14.0-SNAPSHOT<br>
-Last updated 2023-10-03 14:16:42 UTC
+Last updated 2023-10-03 15:06:12 UTC
 </div>
 </div>
 </body>
