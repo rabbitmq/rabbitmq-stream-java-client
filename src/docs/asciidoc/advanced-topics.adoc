@@ -1,8 +1,8 @@
 :test-examples: ../../test/java/com/rabbitmq/stream/docs
 
-=== Advanced Topics
+== Advanced Topics
 
-==== Filtering
+=== Filtering
 
 WARNING: Filtering requires *RabbitMQ 3.13* or more.
 
@@ -21,7 +21,7 @@ Because the server-side filtering is probabilistic: messages that do not match t
 The server uses a https://en.wikipedia.org/wiki/Bloom_filter[Bloom filter], _a space-efficient probabilistic data structure_, where false positives are possible.
 Despite this, the filtering saves some bandwidth, which is its primary goal.
 
-===== Filtering on the Publishing Side
+==== Filtering on the Publishing Side
 
 Filtering on the publishing side consists in defining some logic to extract the filter value from a message.
 The following snippet shows how to extract the filter value from an application property:
@@ -36,7 +36,7 @@ include::{test-examples}/FilteringUsage.java[tag=producer-simple]
 Note the filter value can be null: the message is then published in a regular way.
 It is called in this context an _unfiltered_ message.
 
-===== Filtering on the Consuming Side
+==== Filtering on the Consuming Side
 
 A consumer needs to set up one or several filter values and some filtering logic to enable filtering.
 The filtering logic must be consistent with the filter values.
@@ -74,7 +74,7 @@ include::{test-examples}/FilteringUsage.java[tag=consumer-match-unfiltered]
 
 In the example above, the filtering logic has been adapted to let pass `california` messages _and_ messages without a state set as well.
 
-===== Considerations on Filtering
+==== Considerations on Filtering
 
 As stated previously, the server can send messages that do not match the filter value(s) set by consumers.
 This is why application developers must be very careful with the filtering logic they define to avoid processing unwanted messages.
@@ -86,7 +86,7 @@ A defined set of values shared across the messages is a good candidate: geograph
 Cardinality of filter values can be from a few to a few thousands.
 Extreme cardinality (a couple or dozens of thousands) can make filtering less efficient.
 
-==== Using Native `epoll`
+=== Using Native `epoll`
 
 The stream Java client uses the https://netty.io/[Netty] network framework and its Java NIO transport implementation by default.
 This should be a reasonable default for most applications.

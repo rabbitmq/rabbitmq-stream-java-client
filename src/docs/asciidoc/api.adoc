@@ -1,9 +1,9 @@
 :test-examples: ../../test/java/com/rabbitmq/stream/docs
 
 [[rabbitmq-stream-java-api]]
-=== RabbitMQ Stream Java API
+== RabbitMQ Stream Java API
 
-==== Overview
+=== Overview
 
 This section describes the API to connect to the RabbitMQ Stream Plugin, publish messages, and
 consume messages. There are 3 main interfaces:
@@ -13,9 +13,9 @@ managing streams.
 * `com.rabbitmq.stream.Producer` to publish messages.
 * `com.rabbitmq.stream.Consumer` to consume messages.
 
-==== Environment
+=== Environment
 
-===== Creating the Environment
+==== Creating the Environment
 
 The environment is the main entry point to a node or a cluster of nodes. `Producer` and
 `Consumer` instances are created from an `Environment` instance. Here is the simplest
@@ -69,7 +69,7 @@ By specifying several URIs, the environment will try to connect to the first one
 will pick a new URI randomly in case of disconnection.
 
 [[understanding-connection-logic]]
-===== Understanding Connection Logic
+==== Understanding Connection Logic
 
 Creating the environment to connect to a cluster node works usually seamlessly.
 Creating publishers and consumers can cause problems as the client uses hints from the cluster to find the nodes where stream leaders and replicas are located to connect to the appropriate nodes.
@@ -82,7 +82,7 @@ This happens if the following conditions are met: the initial host to connect to
 Provide a pass-through `AddressResolver` to `EnvironmentBuilder#addressResolver(AddressResolver)` to avoid this behavior.
 It is unlikely this behavior applies for any real-world deployment, where `localhost` and/or the default `guest` user should not be used.
 
-===== Enabling TLS
+==== Enabling TLS
 
 TLS can be enabled by using the `rabbitmq-stream+tls` scheme in the URI.
 The default TLS port is 5551.
@@ -119,7 +119,7 @@ include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-tls
 --------
 <1> Trust all server certificates
 
-===== Configuring the Environment
+==== Configuring the Environment
 
 The following table sums up the main settings to create an `Environment`:
 
@@ -266,7 +266,7 @@ It is the developer's responsibility to close the `EventLoopGroup` they provide.
 
 |===
 
-===== When a Load Balancer is in Use
+==== When a Load Balancer is in Use
 
 A load balancer can misguide the client when it tries to connect to nodes that host stream leaders and replicas.
 The https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/["Connecting to Streams"] blog post covers why client applications must connect to the appropriate nodes in a cluster and how a https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer[load balancer can make things complicated] for them.
@@ -285,7 +285,7 @@ include::{test-examples}/EnvironmentUsage.java[tag=address-resolver]
 
 The blog post covers the https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#client-workaround-with-a-load-balancer[underlying details of this workaround].
 
-===== Managing Streams
+==== Managing Streams
 
 Streams are usually long-lived, centrally-managed entities, that is, applications
 are not supposed to create and delete them. It is nevertheless possible to create and
@@ -372,9 +372,9 @@ include::{test-examples}/EnvironmentUsage.java[tag=stream-creation-time-based-re
 <1> Set the maximum age to 6 hours
 <2> Set the segment size to 500 MB
 
-==== Producer
+=== Producer
 
-===== Creating a Producer
+==== Creating a Producer
 
 A `Producer` instance is created from the `Environment`. The only mandatory
 setting to specify is the stream to publish to:
@@ -461,7 +461,7 @@ Set the value to `Duration.ZERO` if there should be no timeout.
 |10 seconds.
 |===
 
-===== Sending Messages
+==== Sending Messages
 
 Once a `Producer` has been created, it is possible to send a message with
 the `Producer#send(Message, ConfirmationHandler)` method. The following
@@ -505,7 +505,7 @@ a separate thread (e.g. with an asynchronous `ExecutorService`).
 ====
 
 [[working-with-complex-messages]]
-===== Working with Complex Messages
+==== Working with Complex Messages
 
 The publishing example above showed that messages are made of
 a byte array payload, but it did not go much further. Messages in RabbitMQ Stream
@@ -556,7 +556,7 @@ to be accessed as AMQP 0-9-1 queues, without data loss.
 ====
 
 [[outbound-message-deduplication]]
-===== Message Deduplication
+==== Message Deduplication
 
 RabbitMQ Stream provides publisher confirms to avoid losing messages: once
 the broker has persisted a message it sends a confirmation for this message.
@@ -592,7 +592,7 @@ So you have to be very careful about the way your applications publish messages 
 If you worry about performance, note it is possible to publish hundreds of thousands of messages in a single thread with RabbitMQ Stream.
 ====
 
-====== Setting the Name of a Producer
+===== Setting the Name of a Producer
 
 The producer name is set when creating the producer instance, which automatically
 enables deduplication:
@@ -630,7 +630,7 @@ changes when the producer application is restarted. Names like `online-shop-orde
 There should be only one living instance of a producer with a given name on a given
 stream at the same time.
 
-====== Understanding Publishing ID
+===== Understanding Publishing ID
 
 The producer name is only one part of the deduplication mechanism, the other part
 is the _message publishing ID_. If the producer has a name, the client automatically
@@ -668,7 +668,7 @@ It is then possible to let the producer assign a publishing ID to each
 message or assign custom publishing IDs. *Do one or the other, not both!*
 ====
 
-====== Restarting a Producer Where It Left Off
+===== Restarting a Producer Where It Left Off
 
 Using a custom publishing sequence is even more useful to restart a producer where it left
 off. Imagine a scenario whereby the producer is sending a message for each line in a file and
@@ -696,7 +696,7 @@ include::{test-examples}/ProducerUsage.java[tag=producer-queries-last-publishing
 <5> Set the message publishing
 
 [[sub-entry-batching-and-compression]]
-===== Sub-Entry Batching and Compression
+==== Sub-Entry Batching and Compression
 
 RabbitMQ Stream provides a special mode to publish, store, and dispatch messages: sub-entry batching.
 This mode increases throughput at the cost of increased latency and potential duplicated messages even when deduplication is enabled.
@@ -770,11 +770,11 @@ The broker dispatches messages to client libraries: they are supposed to figure 
 So when you set up sub-entry batching and compression in your publishers, the consuming applications must use client libraries that support this mode, which is the case for the stream Java client.
 ====
 
-==== Consumer
+=== Consumer
 
 `Consumer` is the API to consume messages from a stream.
 
-===== Creating a Consumer
+==== Creating a Consumer
 
 A `Consumer` instance is created with `Environment#consumerBuilder()`. The main
 settings are the stream to consume from, the place in the stream to start
@@ -885,7 +885,7 @@ types of offset specification.
 ====
 
 [[specifying-an-offset]]
-===== Specifying an Offset
+==== Specifying an Offset
 
 The offset is the place in the stream where the consumer starts consuming from.
 The possible values for the offset parameter are the following:
@@ -939,7 +939,7 @@ This is this timestamp the broker uses to find the appropriate chunk to start fr
 The broker chooses the closest chunk _before_ the specified timestamp, that is why consumers may see messages published a bit before what they specified.
 
 [[consumer-offset-tracking]]
-===== Tracking the Offset for a Consumer
+==== Tracking the Offset for a Consumer
 
 RabbitMQ Stream provides server-side offset tracking.
 This means a consumer can track the offset it has reached in a stream.
@@ -959,7 +959,7 @@ offsets are stored depends on the tracking strategy: automatic or manual.
 Whatever tracking strategy you use, *a consumer must have a name to be able to store offsets*.
 
 [[consumer-automatic-offset-tracking]]
-====== Automatic Offset Tracking
+===== Automatic Offset Tracking
 
 The following snippet shows how to enable automatic tracking with the defaults:
 
@@ -1008,7 +1008,7 @@ possible to have more fine-grained control over offset tracking by using
 manual tracking.
 
 [[consumer-manual-offset-tracking]]
-====== Manual Offset Tracking
+===== Manual Offset Tracking
 
 The manual tracking strategy lets the developer in charge of storing offsets
 whenever they want, not only after a given number of messages has been received
@@ -1047,7 +1047,7 @@ offset of the current message, but it is possible to store anywhere
 in the stream with `MessageHandler.Context#consumer()#store(long)` or
 simply `Consumer#store(long)`.
 
-====== Considerations On Offset Tracking
+===== Considerations On Offset Tracking
 
 _When to store offsets?_ Avoid storing offsets too often or, worse, for each message.
 Even though offset tracking is a small and fast operation, it will
@@ -1076,7 +1076,7 @@ a modulo to perform an operation every X messages. As the message offsets have
 no guarantee to be contiguous, the operation may not happen exactly every X messages.
 
 [[consumer-subscription-listener]]
-====== Subscription Listener
+===== Subscription Listener
 
 The client provides a `SubscriptionListener` interface callback to add behavior before a subscription is created.
 This callback can be used to customize the offset the client library computed for the subscription.
@@ -1118,7 +1118,7 @@ When a glitch happens and triggers the re-subscription, the server-side stored o
 Using this server-side stored offset can lead to duplicates, whereas using the in-memory, application-specific offset tracking variable is more accurate.
 A custom `SubscriptionListener` lets the application developer uses what's best for the application if the computed value is not optimal.
 
-===== Flow Control
+==== Flow Control
 
 This section covers how a consumer can tell the broker when to send more messages.
 
@@ -1161,7 +1161,7 @@ Whether the method is idempotent depends on the flow strategy implementation.
 Apart from the default one, the implementations the library provides does not make `processed()` idempotent.
 
 [[single-active-consumer]]
-===== Single Active Consumer
+==== Single Active Consumer
 
 WARNING: Single Active Consumer requires *RabbitMQ 3.11* or more.
 
@@ -1232,7 +1232,7 @@ We end up with 3 `app-1` consumers and 3 `app-2` consumers, 1 active consumer in
 
 Let's see now the API for single active consumer.
 
-====== Enabling Single Active Consumer
+===== Enabling Single Active Consumer
 
 Use the `ConsumerBuilder#singleActiveConsumer()` method to enable the feature:
 
@@ -1247,7 +1247,7 @@ include::{test-examples}/ConsumerUsage.java[tag=enabling-single-active-consumer]
 With the configuration above, the consumer will take part in the `application-1` group on the `my-stream` stream.
 If the consumer instance is the first in a group, it will get messages as soon as there are some available. If it is not the first in the group, it will remain idle until it is its turn to be active (likely when all the instances registered before it are gone).
 
-====== Offset Tracking
+===== Offset Tracking
 
 Single active consumer and offset tracking work together: when the active consumer goes away, another consumer takes over and resumes when the former active left off.
 Well, this is how things should work and luckily this is what happens when using <<consumer-offset-tracking, server-side offset tracking>>.
@@ -1257,7 +1257,7 @@ The story is different is you are using an external store for offset tracking.
 In this case you need to tell the client library where to resume from and you can do this by implementing the `ConsumerUpdateListener` API.
 
 [[consumer-update-listener]]
-====== Reacting to Consumer State Change
+===== Reacting to Consumer State Change
 
 The broker notifies a consumer that becomes active before dispatching messages to it.
 The broker expects a response from the consumer and this response contains the offset the dispatching should start from.

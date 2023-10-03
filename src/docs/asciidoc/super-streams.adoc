@@ -1,7 +1,7 @@
 :test-examples: ../../test/java/com/rabbitmq/stream/docs
 
 [[super-streams]]
-==== Super Streams (Partitioned Streams)
+=== Super Streams (Partitioned Streams)
 
 WARNING: Super Streams require *RabbitMQ 3.11* or more.
 
@@ -26,7 +26,7 @@ Remember that partitioning always comes with complexity though, even if the impl
 ====
 
 
-===== Topology
+==== Topology
 
 A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
 The topology of a super stream is based on the https://www.rabbitmq.com/tutorials/amqp-concepts.html[AMQP 0.9.1 model], that is exchange, queues, and bindings between them.
@@ -58,7 +58,7 @@ When a super stream is in use, the stream Java client queries this information t
 From the application code point of view, using a super stream is mostly configuration-based.
 Some logic must also be provided to extract routing information from messages.
 
-===== Super Stream Creation
+==== Super Stream Creation
 
 It is possible to create the topology of a super stream with any AMQP 0.9.1 library or with the https://www.rabbitmq.com/management.html[management plugin], but the `rabbitmq-streams add_super_stream` command is a handy shortcut.
 Here is how to create an invoices super stream with 3 partitions:
@@ -71,7 +71,7 @@ rabbitmq-streams add_super_stream invoices --partitions 3
 Use `rabbitmq-streams add_super_stream --help` to learn more about the command.
 
 [[super-stream-producer]]
-===== Publishing to a Super Stream
+==== Publishing to a Super Stream
 
 When the topology of a super stream like the one described above has been set, creating a producer for it is straightforward:
 
@@ -102,7 +102,7 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-custom-hash-function
 
 Note using Java's `hashCode()` method is a debatable choice as potential producers in other languages are unlikely to implement it, making the routing different between producers in different languages.
 
-====== Resolving Routes with Bindings
+===== Resolving Routes with Bindings
 
 Hashing the routing key to pick a partition is only one way to route messages to the appropriate streams.
 The stream Java client provides another way to resolve streams, based on the routing key _and_ the bindings between the super stream exchange and the streams.
@@ -138,7 +138,7 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-key-routing-strategy
 Internally the client will query the broker to resolve the destination streams for a given routing key, making the routing logic from any exchange type available to streams.
 Note the client caches results, it does not query the broker for every message.
 
-====== Using a Custom Routing Strategy
+===== Using a Custom Routing Strategy
 
 The solution that provides the most control over routing is using a custom routing strategy.
 This should be needed only for specific cases.
@@ -179,12 +179,12 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-custom-routing-strat
 
 
 
-====== Deduplication
+===== Deduplication
 
 Deduplication for a super stream producer works the same way as with a <<api.adoc#outbound-message-deduplication, single stream producer>>.
 The publishing ID values are spread across the streams but this does affect the mechanism.
 
-===== Consuming From a Super Stream
+==== Consuming From a Super Stream
 
 A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
 The programming model is the same as with regular consumers for the application developer: their main job is to provide the application code to process messages, that is a `MessageHandler` instance.
@@ -192,7 +192,7 @@ The configuration is different though and this section covers its subtleties.
 But let's focus on the behavior of a super stream consumer first.
 
 [[super-stream-consumer-in-practice]]
-====== Super Stream Consumer in Practice
+===== Super Stream Consumer in Practice
 
 Imagine you have a super stream made of 3 partitions (individual streams).
 You start an instance of your application, that itself creates a super stream consumer for this super stream.
@@ -208,7 +208,7 @@ But if you want to scale the processing across several OS processes (or bare-met
 
 The next subsections cover the basic settings of a super stream consumer and a <<super-stream-sac, dedicated section>> covers how super stream consumers and single active consumer play together.
 
-====== Declaring a Super Stream Consumer
+===== Declaring a Super Stream Consumer
 
 Declaring a super stream consumer is not much different from declaring a single stream consumer.
 The `ConsumerBuilder#superStream(String)` must be used to set the super stream to consume from:
@@ -224,7 +224,7 @@ include::{test-examples}/SuperStreamUsage.java[tag=consumer-simple]
 That's all.
 The super stream consumer will take of the details (partitions lookup, coordination of the single consumers, etc).
 
-====== Offset Tracking
+===== Offset Tracking
 
 The semantic of offset tracking for a super stream consumer are roughly the same as for an individual stream consumer.
 There are still some subtle differences, so a good understanding of <<api.adoc#consumer-offset-tracking, offset tracking>> in general and of the <<api.adoc#consumer-automatic-offset-tracking,automatic>> and <<api.adoc#consumer-manual-offset-tracking,manual>> offset tracking strategies is recommended.
@@ -240,7 +240,7 @@ A good rule of thumb is to then multiply the expected per-stream `messageCountBe
 A call to `MessageHandler.Context#storeOffset()` will store the current message offset in _its_ stream, but also the offset of the last dispatched message for the other streams of the super stream.
 
 [[super-stream-sac]]
-====== Single Active Consumer Support
+===== Single Active Consumer Support
 
 WARNING: Single Active Consumer requires *RabbitMQ 3.11* or more.
 

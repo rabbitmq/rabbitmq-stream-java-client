@@ -1,6 +1,6 @@
 :test-examples: ../../test/java/com/rabbitmq/stream/docs
 
-=== Sample Application
+== Sample Application
 
 This section covers the basics of the RabbitMQ Stream Java API by building
 a small publish/consume application. This is a good way to get

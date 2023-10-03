@@ -1,9 +1,9 @@
-=== Setting up RabbitMQ
+== Setting up RabbitMQ
 
 A RabbitMQ 3.9+ node with the stream plugin enabled is required. The easiest way
 to get up and running is to use Docker.
 
-==== With Docker
+=== With Docker
 
 There are different ways to make the broker visible to the client application when running
 in Docker. The next sections show a couple of options suitable for local development.
@@ -15,7 +15,7 @@ Docker runs on a virtual machine when using macOS, so do not expect high perform
 when using RabbitMQ Stream inside Docker on a Mac.
 ====
 
-===== With Docker Bridge Network Driver
+==== With Docker Bridge Network Driver
 
 This section shows how to start a broker instance for local development
 (the broker Docker container and the client application are assumed to run on the
@@ -52,7 +52,7 @@ Once the container is started, **the stream plugin must be enabled**:
 docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream
 ----
 
-===== With Docker Host Network Driver
+==== With Docker Host Network Driver
 
 This is the simplest way to run the broker locally.
 The container uses the https://docs.docker.com/network/host/[host network],
@@ -79,7 +79,7 @@ The container will use the following ports: 5552 (for stream) and 5672 (for AMQP
 The host networking driver *only works on Linux hosts*.
 ====
 
-==== With a RabbitMQ Package Running on the Host
+=== With a RabbitMQ Package Running on the Host
 
 Using a package implies installing Erlang.
 
@@ -91,11 +91,11 @@ https://rabbitmq.com/download.html[install Erlang and the appropriate package]
 
 Refer to the https://rabbitmq.com/stream.html[stream plugin documentation] for more information on configuration.
 
-=== Dependencies
+== Dependencies
 
 Use your favorite build management tool to add the client dependencies to your project.
 
-==== Maven
+=== Maven
 
 .pom.xml
 [source,xml,subs="attributes,specialcharacters"]
@@ -113,7 +113,7 @@ Use your favorite build management tool to add the client dependencies to your p
 
 Snapshots require to declare the <<snapshots,appropriate repository>>.
 
-==== Gradle
+=== Gradle
 
 .build.gradle
 [source,groovy,subs="attributes,specialcharacters"]
