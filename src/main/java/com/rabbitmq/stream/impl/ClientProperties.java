@@ -21,7 +21,7 @@ import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-final class ClientProperties {
+public final class ClientProperties {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ClientProperties.class);
 

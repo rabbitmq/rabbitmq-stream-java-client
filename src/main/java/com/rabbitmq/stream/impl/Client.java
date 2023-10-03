@@ -1411,7 +1411,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  boolean filteringSupported() {
+  public boolean filteringSupported() {
     return this.filteringSupported;
   }
 
@@ -1590,7 +1590,7 @@ public class Client implements AutoCloseable {
     return Integer.valueOf(this.connectionProperties("advertised_port"));
   }
 
-  String brokerVersion() {
+  public String brokerVersion() {
     return this.serverProperties.get("version");
   }
 
