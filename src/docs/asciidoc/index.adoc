@@ -29,6 +29,4 @@ include::advanced-topics.adoc[]
 
 include::building.adoc[]
 
-include::performance-tool.adoc[]
-
 include::appendixes.adoc[]

@@ -50,21 +50,16 @@
     <spotless.check.skip>true</spotless.check.skip>
     <slf4j.version>1.7.36</slf4j.version>
     <logback.version>1.2.12</logback.version>
-    <slf4j.perftool.version>2.0.9</slf4j.perftool.version>
-    <logback.perftool.version>1.3.11</logback.perftool.version>
     <netty.version>4.1.99.Final</netty.version>
     <proton-j.version>0.34.1</proton-j.version>
     <metrics.version>4.2.20</metrics.version>
     <micrometer.version>1.11.4</micrometer.version>
     <swiftmq-client.version>12.2.2</swiftmq-client.version>
     <picocli.version>4.7.5</picocli.version>
-    <guava.version>32.1.2-jre</guava.version>
     <commons-compress.version>1.24.0</commons-compress.version>
     <zstd-jni.version>1.5.5-6</zstd-jni.version>
     <lz4-java.version>1.8.0</lz4-java.version>
     <snappy-java.version>1.1.10.5</snappy-java.version>
-    <jgroups.version>5.3.0.Final</jgroups.version>
-    <jgroups-kubernetes.version>2.0.1.Final</jgroups-kubernetes.version>
     <junit.jupiter.version>5.10.0</junit.jupiter.version>
     <assertj.version>3.24.2</assertj.version>
     <mockito.version>5.5.0</mockito.version>
@@ -89,7 +84,6 @@
     <build-helper-maven-plugin.version>3.4.0</build-helper-maven-plugin.version>
     <asciidoctor.maven.plugin.version>2.2.4</asciidoctor.maven.plugin.version>
     <asciidoctorj.version>2.5.10</asciidoctorj.version>
-    <asciidoctorj.pdf.version>2.3.9</asciidoctorj.pdf.version>
     <asciidoctorj.diagram.version>2.2.13</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>1.4</buildnumber.plugin.version>
     <jmh.version>1.37</jmh.version>
@@ -102,7 +96,6 @@
     <gpg.keyname>6026DFCA</gpg.keyname>
     <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <finalName>stream-perf-test</finalName>
     <maven.packagecloud.wagon.version>0.0.6</maven.packagecloud.wagon.version>
     <nexus-staging-maven-plugin.version>1.6.13</nexus-staging-maven-plugin.version>
 
@@ -149,79 +142,6 @@
       <version>${proton-j.version}</version>
     </dependency>
 
-    <!-- performance tool -->
-    <dependency>
-      <groupId>info.picocli</groupId>
-      <artifactId>picocli</artifactId>
-      <version>${picocli.version}</version>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-classic</artifactId>
-      <version>${logback.version}</version>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>io.dropwizard.metrics</groupId>
-      <artifactId>metrics-core</artifactId>
-      <version>${metrics.version}</version>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-core</artifactId>
-      <version>${micrometer.version}</version>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-registry-prometheus</artifactId>
-      <version>${micrometer.version}</version>
-      <optional>true</optional>
-    </dependency>
-
-    <!-- for rate limiter -->
-    <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava</artifactId>
-      <version>${guava.version}</version>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>com.rabbitmq</groupId>
-      <artifactId>amqp-client</artifactId>
-      <version>${amqp-client.version}</version>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-transport-native-epoll</artifactId>
-      <version>${netty.version}</version>
-      <classifier>linux-x86_64</classifier>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>org.jgroups</groupId>
-      <artifactId>jgroups</artifactId>
-      <version>${jgroups.version}</version>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.jgroups.kubernetes</groupId>
-      <artifactId>jgroups-kubernetes</artifactId>
-      <version>${jgroups-kubernetes.version}</version>
-      <optional>true</optional>
-    </dependency>
-    <!-- end of dependencies for performance tool -->
-
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-compress</artifactId>
@@ -248,6 +168,20 @@
     </dependency>
 
     <dependency>
+      <groupId>io.dropwizard.metrics</groupId>
+      <artifactId>metrics-core</artifactId>
+      <version>${metrics.version}</version>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-core</artifactId>
+      <version>${micrometer.version}</version>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter-engine</artifactId>
       <scope>test</scope>
@@ -262,6 +196,21 @@
     <dependency>
       <groupId>org.junit.platform</groupId>
       <artifactId>junit-platform-suite-engine</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>com.rabbitmq</groupId>
+      <artifactId>amqp-client</artifactId>
+      <version>${amqp-client.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-epoll</artifactId>
+      <version>${netty.version}</version>
+      <classifier>linux-x86_64</classifier>
       <scope>test</scope>
     </dependency>
 
@@ -369,12 +318,6 @@
       <testResource>
         <directory>${basedir}/src/test/resources</directory>
       </testResource>
-      <testResource>
-        <directory>${basedir}/src/performance-tool/resources</directory>
-        <includes>
-          <include>jgroups-*.xml</include>
-        </includes>
-      </testResource>
     </testResources>
 
     <plugins>
@@ -451,11 +394,6 @@
           </dependency>
           <dependency>
             <groupId>org.asciidoctor</groupId>
-            <artifactId>asciidoctorj-pdf</artifactId>
-            <version>${asciidoctorj.pdf.version}</version>
-          </dependency>
-          <dependency>
-            <groupId>org.asciidoctor</groupId>
             <artifactId>asciidoctorj-diagram</artifactId>
             <version>${asciidoctorj.diagram.version}</version>
           </dependency>
@@ -483,22 +421,6 @@
 
         </configuration>
         <executions>
-          <execution>
-            <id>generate-pdf</id>
-            <phase>pre-site</phase>
-            <goals>
-              <goal>process-asciidoc</goal>
-            </goals>
-            <configuration>
-              <backend>pdf</backend>
-              <attributes>
-                <title-page />
-                <toc />
-                <toclevels>4</toclevels>
-                <pagenums />
-              </attributes>
-            </configuration>
-          </execution>
           <execution>
             <id>generate-html</id>
             <phase>pre-site</phase>
@@ -643,165 +565,6 @@
   <profiles>
 
     <profile>
-      <id>performance-tool</id>
-      <dependencies>
-
-        <dependency>
-          <groupId>info.picocli</groupId>
-          <artifactId>picocli</artifactId>
-          <version>${picocli.version}</version>
-        </dependency>
-
-        <dependency>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-api</artifactId>
-          <version>${slf4j.perftool.version}</version>
-        </dependency>
-
-        <dependency>
-          <groupId>ch.qos.logback</groupId>
-          <artifactId>logback-classic</artifactId>
-          <version>${logback.perftool.version}</version>
-        </dependency>
-
-        <dependency>
-          <groupId>io.dropwizard.metrics</groupId>
-          <artifactId>metrics-core</artifactId>
-          <version>${metrics.version}</version>
-        </dependency>
-
-        <dependency>
-          <groupId>io.micrometer</groupId>
-          <artifactId>micrometer-core</artifactId>
-          <version>${micrometer.version}</version>
-        </dependency>
-
-        <dependency>
-          <groupId>io.micrometer</groupId>
-          <artifactId>micrometer-registry-prometheus</artifactId>
-          <version>${micrometer.version}</version>
-        </dependency>
-
-        <!-- for rate limiter -->
-        <dependency>
-          <groupId>com.google.guava</groupId>
-          <artifactId>guava</artifactId>
-          <version>${guava.version}</version>
-        </dependency>
-
-        <dependency>
-          <groupId>com.rabbitmq</groupId>
-          <artifactId>amqp-client</artifactId>
-          <version>${amqp-client.version}</version>
-        </dependency>
-
-        <dependency>
-          <groupId>io.netty</groupId>
-          <artifactId>netty-transport-native-epoll</artifactId>
-          <version>${netty.version}</version>
-          <classifier>linux-x86_64</classifier>
-        </dependency>
-
-        <dependency>
-          <groupId>org.jgroups</groupId>
-          <artifactId>jgroups</artifactId>
-          <version>${jgroups.version}</version>
-          <optional>true</optional>
-        </dependency>
-        <dependency>
-          <groupId>org.jgroups.kubernetes</groupId>
-          <artifactId>jgroups-kubernetes</artifactId>
-          <version>${jgroups-kubernetes.version}</version>
-          <optional>true</optional>
-        </dependency>
-
-      </dependencies>
-      <build>
-        <finalName>${finalName}</finalName>
-        <resources>
-          <resource>
-            <directory>src/main/resources</directory>
-          </resource>
-          <resource>
-            <directory>src/performance-tool/resources</directory>
-            <filtering>true</filtering>
-          </resource>
-        </resources>
-        <plugins>
-          <plugin>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-maven-plugin</artifactId>
-            <version>${spring-boot-maven-plugin.version}</version>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>repackage</goal>
-                </goals>
-              </execution>
-            </executions>
-            <configuration>
-              <excludeGroupIds>com.swiftmq,org.apache.commons</excludeGroupIds>
-            </configuration>
-          </plugin>
-          <plugin>
-            <groupId>net.nicoulaj.maven.plugins</groupId>
-            <artifactId>checksum-maven-plugin</artifactId>
-            <version>${checksum.maven.plugin.version}</version>
-            <configuration>
-              <fileSets>
-                <fileSet>
-                  <directory>${project.build.directory}</directory>
-                  <includes>
-                    <include>*.jar</include>
-                  </includes>
-                </fileSet>
-              </fileSets>
-              <algorithms>
-                <algorithm>MD5</algorithm>
-                <algorithm>SHA-256</algorithm>
-              </algorithms>
-            </configuration>
-            <executions>
-              <execution>
-                <configuration>
-                  <fileSets>
-                    <fileSet>
-                      <directory>${project.build.directory}</directory>
-                      <includes>
-                        <include>*.jar</include>
-                      </includes>
-                    </fileSet>
-                  </fileSets>
-                  <algorithms>
-                    <algorithm>MD5</algorithm>
-                    <algorithm>SHA-256</algorithm>
-                  </algorithms>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>buildnumber-maven-plugin</artifactId>
-            <version>${buildnumber.plugin.version}</version>
-            <executions>
-              <execution>
-                <phase>validate</phase>
-                <goals>
-                  <goal>create</goal>
-                </goals>
-              </execution>
-            </executions>
-            <configuration>
-              <doCheck>false</doCheck>
-              <doUpdate>false</doUpdate>
-              <revisionOnScmFailure>unknown</revisionOnScmFailure>
-            </configuration>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-    <profile>
       <id>snapshots</id>
       <properties>
         <maven.javadoc.skip>false</maven.javadoc.skip>
@@ -876,37 +639,6 @@
       <properties>
         <test-arguments>-XX:+EnableDynamicAgentLoading</test-arguments>
       </properties>
-    </profile>
-
-    <profile>
-      <id>extensions</id>
-      <activation>
-        <jdk>[11,)</jdk>
-      </activation>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>build-helper-maven-plugin</artifactId>
-            <version>${build-helper-maven-plugin.version}</version>
-            <executions>
-              <execution>
-                <id>add-performance-tool-source</id>
-                <phase>generate-sources</phase>
-                <goals>
-                  <goal>add-source</goal>
-                </goals>
-                <configuration>
-                  <sources>
-                    <source>src/performance-tool/java</source>
-                  </sources>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-
     </profile>
 
     <profile>

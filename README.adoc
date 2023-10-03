@@ -9,12 +9,9 @@ the https://rabbitmq.com/stream.html[RabbitMQ Stream Plugin].
 It allows to create and delete streams, as well as to publish to and consume from
 these streams.
 
-The client ships also with a
-https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#the-performance-tool[performance tool].
+https://github.com/rabbitmq/rabbitmq-stream-perf-test[Stream PerfTest] is a performance testing tool based on this client library.
 
-Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/[documentation]
-(https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/pdf/index.pdf[PDF])
-to find out more.
+Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/[documentation] to find out more.
 
 == Project Maturity
 
@@ -66,18 +63,6 @@ To build the JAR file:
 
 ----
 ./mvnw clean package -DskipITs -DskipTests
-----
-
-To build the https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#the-performance-tool[Stream PerfTest] JAR:
-
-----
-./mvnw clean package -Dmaven.test.skip -P performance-tool
-----
-
-To run the performance tool from the created binary:
-
-----
-java -jar target/stream-perf-test.jar
 ----
 
 === Running Tests with Docker
