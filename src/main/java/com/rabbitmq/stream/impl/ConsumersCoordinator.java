@@ -814,6 +814,10 @@ class ConsumersCoordinator {
         boolean maybeCloseClient) {
       Runnable consumersClosingCallback =
           () -> {
+            LOGGER.debug(
+                "Running consumer closing callback after recovery failure, "
+                    + "closing {} subscription(s)",
+                subscriptions.size());
             for (SubscriptionTracker affectedSubscription : subscriptions) {
               try {
                 affectedSubscription.consumer.closeAfterStreamDeletion();
@@ -1078,7 +1082,13 @@ class ConsumersCoordinator {
       try {
         Client.Response unsubscribeResponse =
             Utils.callAndMaybeRetry(
-                () -> client.unsubscribe(subscriptionIdInClient),
+                () -> {
+                  if (client.isOpen()) {
+                    return client.unsubscribe(subscriptionIdInClient);
+                  } else {
+                    return Client.responseOk();
+                  }
+                },
                 RETRY_ON_TIMEOUT,
                 "Unsubscribe request for consumer %d on stream '%s'",
                 subscriptionTracker.consumer.id(),
