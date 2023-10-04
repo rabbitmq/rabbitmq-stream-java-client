@@ -29,10 +29,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
@@ -457,6 +454,42 @@ public class ConsumersCoordinatorTest {
     messageListener.handle(
         subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(1);
+  }
+
+  @Test
+  void shouldNotUnsubscribeIfClientIsClosed() {
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
+
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    Runnable closingRunnable =
+        coordinator.subscribe(
+            consumer,
+            "stream",
+            OffsetSpecification.first(),
+            null,
+            NO_OP_SUBSCRIPTION_LISTENER,
+            () -> {},
+            (offset, message) -> {},
+            Collections.emptyMap(),
+            flowStrategy());
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    when(client.isOpen()).thenReturn(false);
+    when(client.unsubscribe(subscriptionIdCaptor.getValue()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+
+    closingRunnable.run();
+    verify(client, never()).unsubscribe(subscriptionIdCaptor.getValue());
   }
 
   @Test

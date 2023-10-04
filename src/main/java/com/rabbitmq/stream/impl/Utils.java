@@ -230,6 +230,7 @@ final class Utils {
     while (keepTrying) {
       try {
         attempt++;
+        LOGGER.debug("Starting attempt #{} for operation '{}'", attempt, description);
         T result = operation.call();
         Duration operationDuration = Duration.ofNanos(System.nanoTime() - startTime);
         LOGGER.debug(

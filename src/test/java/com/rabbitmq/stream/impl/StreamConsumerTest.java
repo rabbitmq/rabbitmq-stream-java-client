@@ -357,7 +357,6 @@ public class StreamConsumerTest {
     environment.deleteStream(s);
 
     TestUtils.waitAtMost(10, () -> !consumer.isOpen());
-
     assertThat(consumer.isOpen()).isFalse();
   }
 

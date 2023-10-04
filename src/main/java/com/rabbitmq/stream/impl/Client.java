@@ -2029,7 +2029,13 @@ public class Client implements AutoCloseable {
     }
   }
 
+  static Response responseOk() {
+    return Response.OK;
+  }
+
   public static class Response {
+
+    private static final Response OK = new Response(RESPONSE_CODE_OK);
 
     private final short responseCode;
 
