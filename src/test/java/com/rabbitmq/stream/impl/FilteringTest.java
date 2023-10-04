@@ -15,6 +15,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.*;
 import static java.util.Collections.singletonMap;
+import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -31,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -266,6 +268,102 @@ public class FilteringTest {
             waitAtMost(
                 CONDITION_TIMEOUT, () -> filteredConsumedMessageCount.get() == expectedCount);
             assertThat(receivedMessageCount).hasValueLessThan(messageCount * 2);
+          }
+        });
+  }
+
+  @Test
+  void superStream(TestInfo info) throws Exception {
+    repeatIfFailure(
+        () -> {
+          String superStream = TestUtils.streamName(info);
+          int partitionCount = 3;
+          Connection connection = new ConnectionFactory().newConnection();
+          try {
+            TestUtils.declareSuperStreamTopology(connection, superStream, partitionCount);
+
+            Producer producer =
+                environment
+                    .producerBuilder()
+                    .superStream(superStream)
+                    .routing(msg -> msg.getApplicationProperties().get("customerId").toString())
+                    .producerBuilder()
+                    .filterValue(msg -> msg.getApplicationProperties().get("type").toString())
+                    .build();
+
+            List<String> customers =
+                IntStream.range(0, 10)
+                    .mapToObj(ignored -> UUID.randomUUID().toString())
+                    .collect(toList());
+            Random random = new Random();
+
+            List<String> filterValues = new ArrayList<>(Arrays.asList("invoice", "order", "claim"));
+            Map<String, AtomicInteger> filterValueCount = new HashMap<>();
+            AtomicReference<CountDownLatch> latch =
+                new AtomicReference<>(new CountDownLatch(messageCount));
+            Runnable insert =
+                () -> {
+                  ConfirmationHandler confirmationHandler = ctx -> latch.get().countDown();
+                  IntStream.range(0, messageCount)
+                      .forEach(
+                          ignored -> {
+                            String filterValue =
+                                filterValues.get(random.nextInt(filterValues.size()));
+                            filterValueCount
+                                .computeIfAbsent(filterValue, k -> new AtomicInteger())
+                                .incrementAndGet();
+                            producer.send(
+                                producer
+                                    .messageBuilder()
+                                    .applicationProperties()
+                                    .entry(
+                                        "customerId",
+                                        customers.get(random.nextInt(customers.size())))
+                                    .entry("type", filterValue)
+                                    .messageBuilder()
+                                    .build(),
+                                confirmationHandler);
+                          });
+                  latchAssert(latch).completes(CONDITION_TIMEOUT);
+                };
+
+            insert.run();
+
+            // second wave of messages, with only one, new filter value
+            filterValues.clear();
+            String filterValue = "refund";
+            filterValues.add(filterValue);
+            latch.set(new CountDownLatch(messageCount));
+            insert.run();
+
+            AtomicInteger receivedMessageCount = new AtomicInteger(0);
+            AtomicInteger filteredConsumedMessageCount = new AtomicInteger(0);
+            Consumer consumer =
+                environment
+                    .consumerBuilder()
+                    .superStream(superStream)
+                    .offset(OffsetSpecification.first())
+                    .filter()
+                    .values(filterValue)
+                    .postFilter(
+                        msg -> {
+                          receivedMessageCount.incrementAndGet();
+                          return filterValue.equals(msg.getApplicationProperties().get("type"));
+                        })
+                    .builder()
+                    .messageHandler(
+                        (context, message) -> {
+                          filteredConsumedMessageCount.incrementAndGet();
+                        })
+                    .build();
+
+            int expectedCount = filterValueCount.get(filterValue).get();
+            waitAtMost(
+                CONDITION_TIMEOUT, () -> filteredConsumedMessageCount.get() == expectedCount);
+            assertThat(receivedMessageCount).hasValueLessThan(messageCount * 2);
+          } finally {
+            TestUtils.deleteSuperStreamTopology(connection, superStream, partitionCount);
+            connection.close();
           }
         });
   }
