@@ -13,11 +13,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.*;
-import static com.rabbitmq.stream.impl.TestUtils.b;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -925,52 +922,44 @@ public class ClientTest {
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void streamStatsFirstOffsetShouldChangeAfterRetentionKickedIn(TestInfo info) {
+  void streamStatsFirstOffsetShouldChangeAfterRetentionKickedIn(TestInfo info) throws Exception {
     // this test is flaky in some CI environments, so we have to retry it
-    int attemptCount = 0;
-    int maxAttempts = 3;
-    while (attemptCount <= maxAttempts) {
-      attemptCount++;
-      int messageCount = 1000;
-      int payloadSize = 1000;
-      String s = TestUtils.streamName(info);
-      Client client = cf.get();
-      try {
-        assertThat(
-                client
-                    .create(
-                        s,
-                        new Client.StreamParametersBuilder()
-                            .maxLengthBytes(messageCount * payloadSize / 10)
-                            .maxSegmentSizeBytes(messageCount * payloadSize / 20)
-                            .build())
-                    .isOk())
-            .isTrue();
+    repeatIfFailure(
+        () -> {
+          int messageCount = 1000;
+          int payloadSize = 1000;
+          String s = TestUtils.streamName(info);
+          Client client = cf.get();
+          try {
+            assertThat(
+                    client
+                        .create(
+                            s,
+                            new Client.StreamParametersBuilder()
+                                .maxLengthBytes(messageCount * payloadSize / 10)
+                                .maxSegmentSizeBytes(messageCount * payloadSize / 20)
+                                .build())
+                        .isOk())
+                .isTrue();
 
-        StreamStatsResponse response = client.streamStats(s);
-        assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
-        assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
+            StreamStatsResponse response = client.streamStats(s);
+            assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
+            assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
 
-        byte[] payload = new byte[payloadSize];
-        Function<MessageBuilder, Message> messageCreation = mb -> mb.addData(payload).build();
+            byte[] payload = new byte[payloadSize];
+            Function<MessageBuilder, Message> messageCreation = mb -> mb.addData(payload).build();
 
-        TestUtils.publishAndWaitForConfirms(cf, messageCreation, messageCount, s);
-        // publishing again, to make sure new segments trigger retention strategy
-        TestUtils.publishAndWaitForConfirms(cf, messageCreation, messageCount, s);
-        response = client.streamStats(s);
-        assertThat(response.getInfo().get("first_chunk_id")).isPositive();
-        assertThat(response.getInfo().get("committed_chunk_id")).isPositive();
+            TestUtils.publishAndWaitForConfirms(cf, messageCreation, messageCount, s);
+            // publishing again, to make sure new segments trigger retention strategy
+            TestUtils.publishAndWaitForConfirms(cf, messageCreation, messageCount, s);
+            response = client.streamStats(s);
+            assertThat(response.getInfo().get("first_chunk_id")).isPositive();
+            assertThat(response.getInfo().get("committed_chunk_id")).isPositive();
 
-        attemptCount = Integer.MAX_VALUE;
-      } catch (AssertionError e) {
-        // if too many attempts, fail the test, otherwise, try again
-        if (attemptCount > maxAttempts) {
-          throw e;
-        }
-      } finally {
-        assertThat(client.delete(s).isOk()).isTrue();
-      }
-    }
+          } finally {
+            assertThat(client.delete(s).isOk()).isTrue();
+          }
+        });
   }
 
   @Test

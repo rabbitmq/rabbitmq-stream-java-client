@@ -1066,4 +1066,23 @@ public final class TestUtils {
       }
     }
   }
+
+  static void repeatIfFailure(RunnableWithException test) throws Exception {
+    int executionCount = 0;
+    Throwable lastException = null;
+    while (executionCount < 5) {
+      try {
+        test.run();
+        return;
+      } catch (Exception | AssertionError e) {
+        executionCount++;
+        lastException = e;
+      }
+    }
+    if (lastException instanceof Error) {
+      throw new RuntimeException(lastException);
+    } else {
+      throw (Exception) lastException;
+    }
+  }
 }
