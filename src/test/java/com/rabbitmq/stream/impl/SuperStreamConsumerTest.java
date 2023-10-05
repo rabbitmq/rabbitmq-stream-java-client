@@ -20,6 +20,7 @@ import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static com.rabbitmq.stream.impl.TestUtils.wrap;
+import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.client.Connection;
@@ -254,10 +255,7 @@ public class SuperStreamConsumerTest {
     publishToPartitions(cf, partitions, messageCount);
     ConcurrentMap<String, AtomicInteger> messagesReceived = new ConcurrentHashMap<>(partitionCount);
     ConcurrentMap<String, Long> lastOffsets = new ConcurrentHashMap<>(partitionCount);
-    partitions.forEach(
-        p -> {
-          messagesReceived.put(p, new AtomicInteger(0));
-        });
+    partitions.forEach(p -> messagesReceived.put(p, new AtomicInteger(0)));
     CountDownLatch consumeLatch = new CountDownLatch(messageCount);
     String consumerName = "my-app";
     AtomicInteger totalCount = new AtomicInteger();
@@ -294,9 +292,12 @@ public class SuperStreamConsumerTest {
               waitAtMost(
                   () -> {
                     QueryOffsetResponse response = client.queryOffset(consumerName, p);
-                    return response.isOk()
-                        && response.getOffset() == lastOffsets.get(p).longValue();
-                  });
+                    return response.isOk() && response.getOffset() == lastOffsets.get(p);
+                  },
+                  () ->
+                      format(
+                          "Expecting stored offset %d on stream '%s', but got %d",
+                          lastOffsets.get(p), p, client.queryOffset(consumerName, p).getOffset()));
             }));
   }
 
