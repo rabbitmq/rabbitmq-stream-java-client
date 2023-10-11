@@ -26,6 +26,8 @@ import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
 import com.rabbitmq.stream.impl.StreamProducer.Status;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
@@ -649,6 +651,9 @@ public class StreamProducerTest {
         environmentBuilder()
             .host(localhost.host())
             .port(localhost.port())
+            .netty()
+            .bootstrapCustomizer(b -> b.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1_000))
+            .environmentBuilder()
             .addressResolver(
                 n ->
                     connectionCount.getAndIncrement() == 0
@@ -656,11 +661,12 @@ public class StreamProducerTest {
                         : new Address(UUID.randomUUID().toString(), Client.DEFAULT_PORT));
     try (Environment env = builder.build()) {
       assertThatThrownBy(() -> env.producerBuilder().stream(stream).build())
-          .hasCauseInstanceOf(UnknownHostException.class)
           .hasMessageContaining(
               "https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#understanding-connection-logic")
           .hasMessageContaining(
-              "https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer");
+              "https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer")
+          .cause()
+          .isInstanceOfAny(ConnectTimeoutException.class, UnknownHostException.class);
     }
   }
 }

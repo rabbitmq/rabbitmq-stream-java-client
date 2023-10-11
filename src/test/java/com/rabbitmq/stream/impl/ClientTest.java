@@ -43,6 +43,8 @@ import com.rabbitmq.stream.impl.TestUtils.DisabledIfFilteringNotSupported;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.ConnectTimeoutException;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.net.UnknownHostException;
@@ -88,9 +90,16 @@ public class ClientTest {
 
   @Test
   void connectionErrorShouldReturnStreamExceptionForStackTrace() {
-    assertThatThrownBy(() -> cf.get((new ClientParameters().host(UUID.randomUUID().toString()))))
+    assertThatThrownBy(
+            () ->
+                cf.get(
+                    new ClientParameters()
+                        .host(UUID.randomUUID().toString())
+                        .bootstrapCustomizer(
+                            b -> b.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1_000))))
         .isInstanceOf(StreamException.class)
-        .hasCauseInstanceOf(UnknownHostException.class);
+        .cause()
+        .isInstanceOfAny(ConnectTimeoutException.class, UnknownHostException.class);
   }
 
   @Test

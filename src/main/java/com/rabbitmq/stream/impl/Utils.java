@@ -17,6 +17,7 @@ import static java.lang.String.format;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import io.netty.channel.ConnectTimeoutException;
 import java.net.UnknownHostException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -157,7 +158,9 @@ final class Utils {
                 context.key(), context1 -> new Client(context1.parameters()))
             .client(Utils.ClientFactoryContext.fromParameters(parametersCopy).key(context.key()));
       } catch (StreamException e) {
-        if (e.getCause() != null && e.getCause() instanceof UnknownHostException) {
+        if (e.getCause() != null
+            && (e.getCause() instanceof UnknownHostException
+                || e.getCause() instanceof ConnectTimeoutException)) {
           String message =
               e.getMessage()
                   + ". "
