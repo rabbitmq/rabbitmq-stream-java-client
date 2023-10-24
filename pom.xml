@@ -72,7 +72,7 @@
     <micrometer-tracing-test.version>1.1.6</micrometer-tracing-test.version>
     <micrometer-docs-generator.version>1.0.2</micrometer-docs-generator.version>
     <maven.compiler.plugin.version>3.11.0</maven.compiler.plugin.version>
-    <maven-surefire-plugin.version>3.1.2</maven-surefire-plugin.version>
+    <maven-surefire-plugin.version>3.2.1</maven-surefire-plugin.version>
     <spring-boot-maven-plugin.version>2.7.6</spring-boot-maven-plugin.version>
     <checksum.maven.plugin.version>1.11</checksum.maven.plugin.version>
     <maven.gpg.plugin.version>3.1.0</maven.gpg.plugin.version>
