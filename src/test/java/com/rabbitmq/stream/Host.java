@@ -147,6 +147,34 @@ public class Host {
             + "\">>) of {ok, Pid} -> exit(Pid, kill); Pid -> exit(Pid, kill) end.'");
   }
 
+  public static void addUser(String username, String password) throws IOException {
+    rabbitmqctl(format("add_user %s %s", username, password));
+  }
+
+  public static void setPermissions(String username, String vhost, String permission)
+      throws IOException {
+    rabbitmqctl(
+        format(
+            "set_permissions --vhost %s %s '%s' '%s' '%s'",
+            vhost, username, permission, permission, permission));
+  }
+
+  public static void changePassword(String username, String newPassword) throws IOException {
+    rabbitmqctl(format("change_password %s %s", username, newPassword));
+  }
+
+  public static void deleteUser(String username) throws IOException {
+    rabbitmqctl(format("delete_user %s", username));
+  }
+
+  public static void addVhost(String vhost) throws IOException {
+    rabbitmqctl("add_vhost " + vhost);
+  }
+
+  public static void deleteVhost(String vhost) throws Exception {
+    rabbitmqctl("delete_vhost " + vhost);
+  }
+
   public static void setEnv(String parameter, String value) throws IOException {
     rabbitmqctl(format("eval 'application:set_env(rabbitmq_stream, %s, %s).'", parameter, value));
   }

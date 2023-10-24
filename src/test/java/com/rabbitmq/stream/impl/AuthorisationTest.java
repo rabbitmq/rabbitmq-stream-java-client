@@ -13,13 +13,13 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.Host.*;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -43,21 +43,16 @@ public class AuthorisationTest {
 
   @BeforeAll
   static void init() throws Exception {
-    Host.rabbitmqctl("add_vhost " + VH);
-    Host.rabbitmqctl("add_user " + USERNAME + " " + PASSWORD);
-    Host.rabbitmqctl(
-        "set_permissions --vhost "
-            + VH
-            + " "
-            + USERNAME
-            + " '^stream.*$' '^stream.*$' '^stream.*$'");
-    Host.rabbitmqctl("set_permissions --vhost " + VH + " guest '.*' '.*' '.*'");
+    addVhost(VH);
+    addUser(USERNAME, PASSWORD);
+    setPermissions(USERNAME, VH, "^stream.*$");
+    setPermissions("guest", VH, ".*");
   }
 
   @AfterAll
   static void tearDown() throws Exception {
-    Host.rabbitmqctl("delete_user stream");
-    Host.rabbitmqctl("delete_vhost test_stream");
+    deleteUser(USERNAME);
+    deleteVhost(VH);
   }
 
   static boolean await(CountDownLatch latch) {

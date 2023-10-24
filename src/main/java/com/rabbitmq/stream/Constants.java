@@ -35,6 +35,8 @@ public final class Constants {
   public static final short RESPONSE_CODE_PRECONDITION_FAILED = 17;
   public static final short RESPONSE_CODE_PUBLISHER_DOES_NOT_EXIST = 18;
   public static final short RESPONSE_CODE_NO_OFFSET = 19;
+  public static final short RESPONSE_CODE_SASL_CANNOT_CHANGE_MECHANISM = 20;
+  public static final short RESPONSE_CODE_SASL_CANNOT_CHANGE_USERNAME = 21;
 
   public static final short CODE_MESSAGE_ENQUEUEING_FAILED = 10_001;
   public static final short CODE_PRODUCER_NOT_AVAILABLE = 10_002;

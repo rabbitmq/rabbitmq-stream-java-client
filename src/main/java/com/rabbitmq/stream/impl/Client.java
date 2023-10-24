@@ -190,6 +190,7 @@ public class Client implements AutoCloseable {
   private final Map<String, String> serverProperties;
   private final Map<String, String> connectionProperties;
   private final Duration rpcTimeout;
+  private final List<String> saslMechanisms;
   private volatile ShutdownReason shutdownReason = null;
   private final Runnable exchangeCommandVersionsCheck;
   private final boolean filteringSupported;
@@ -367,7 +368,8 @@ public class Client implements AutoCloseable {
               parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
       this.clientProperties = clientProperties(parameters.clientProperties);
       this.serverProperties = peerProperties();
-      authenticate();
+      this.saslMechanisms = getSaslMechanisms();
+      authenticate(this.credentialsProvider);
       this.tuneState.await(Duration.ofSeconds(10));
       this.maxFrameSize = this.tuneState.getMaxFrameSize();
       this.frameSizeCopped = this.maxFrameSize() > 0;
@@ -483,14 +485,13 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private void authenticate() {
-    List<String> saslMechanisms = getSaslMechanisms();
-    SaslMechanism saslMechanism = this.saslConfiguration.getSaslMechanism(saslMechanisms);
+  void authenticate(CredentialsProvider credentialsProvider) {
+    SaslMechanism saslMechanism = this.saslConfiguration.getSaslMechanism(this.saslMechanisms);
 
     byte[] challenge = null;
     boolean authDone = false;
     while (!authDone) {
-      byte[] saslResponse = saslMechanism.handleChallenge(challenge, this.credentialsProvider);
+      byte[] saslResponse = saslMechanism.handleChallenge(challenge, credentialsProvider);
       SaslAuthenticateResponse saslAuthenticateResponse =
           sendSaslAuthenticate(saslMechanism, saslResponse);
       if (saslAuthenticateResponse.isOk()) {

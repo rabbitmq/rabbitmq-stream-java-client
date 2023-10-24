@@ -13,7 +13,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.Host.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.Constants;
@@ -49,8 +51,8 @@ public class AuthenticationTest {
     try {
       cf.get(new Client.ClientParameters().username("bad").password("bad"));
     } catch (AuthenticationFailureException e) {
-      assertThat(
-          e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE)));
+      assertThat(e.getMessage())
+          .contains(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE));
     }
   }
 
@@ -74,9 +76,8 @@ public class AuthenticationTest {
                         }
                       }));
     } catch (StreamException e) {
-      assertThat(
-          e.getMessage()
-              .contains(String.valueOf(Constants.RESPONSE_CODE_SASL_MECHANISM_NOT_SUPPORTED)));
+      assertThat(e.getMessage())
+          .contains(String.valueOf(Constants.RESPONSE_CODE_SASL_MECHANISM_NOT_SUPPORTED));
     }
   }
 
@@ -100,7 +101,7 @@ public class AuthenticationTest {
                         }
                       }));
     } catch (StreamException e) {
-      assertThat(e.getMessage().contains(String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR)));
+      assertThat(e.getMessage()).contains(String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR));
     }
   }
 
@@ -109,9 +110,40 @@ public class AuthenticationTest {
     try {
       cf.get(new Client.ClientParameters().virtualHost(UUID.randomUUID().toString()));
     } catch (StreamException e) {
-      assertThat(
-          e.getMessage()
-              .contains(String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE)));
+      assertThat(e.getMessage())
+          .contains(String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE));
     }
+  }
+
+  @Test
+  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
+  void updateSecret() throws Exception {
+    String username = "stream";
+    String password = "stream";
+    String newPassword = "new-password";
+    try {
+      addUser(username, password);
+      setPermissions(username, "/", "^stream.*$");
+      Client client = cf.get(new Client.ClientParameters().username("stream").password(username));
+      changePassword(username, newPassword);
+      // OK
+      client.authenticate(credentialsProvider(username, newPassword));
+      // wrong password
+      assertThatThrownBy(() -> client.authenticate(credentialsProvider(username, "dummy")))
+          .isInstanceOf(AuthenticationFailureException.class)
+          .hasMessageContaining(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE));
+      // cannot change username
+      assertThatThrownBy(() -> client.authenticate(credentialsProvider("guest", "guest")))
+          .isInstanceOf(StreamException.class)
+          .hasMessageContaining(
+              String.valueOf(Constants.RESPONSE_CODE_SASL_CANNOT_CHANGE_USERNAME));
+      client.close();
+    } finally {
+      deleteUser(username);
+    }
+  }
+
+  private static CredentialsProvider credentialsProvider(String username, String password) {
+    return new DefaultUsernamePasswordCredentialsProvider(username, password);
   }
 }
