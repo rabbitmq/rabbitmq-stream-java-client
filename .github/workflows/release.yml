@@ -1,4 +1,4 @@
-name: Release Stream Java Client and StreamPerfTest
+name: Release Stream Java Client
 
 on:
   workflow_dispatch:
