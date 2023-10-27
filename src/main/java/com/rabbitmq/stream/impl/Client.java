@@ -752,7 +752,7 @@ public class Client implements AutoCloseable {
   }
 
   private static int arraySize(String... elements) {
-    return 4 + collectionSize(asList(elements));
+    return collectionSize(asList(elements));
   }
 
   private static int mapSize(Map<String, String> elements) {
