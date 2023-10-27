@@ -72,6 +72,8 @@ public final class Constants {
   public static final short COMMAND_CONSUMER_UPDATE = 26;
   public static final short COMMAND_EXCHANGE_COMMAND_VERSIONS = 27;
   public static final short COMMAND_STREAM_STATS = 28;
+  public static final short COMMAND_CREATE_SUPER_STREAM = 29;
+  public static final short COMMAND_DELETE_SUPER_STREAM = 30;
 
   public static final short VERSION_1 = 1;
   public static final short VERSION_2 = 2;
