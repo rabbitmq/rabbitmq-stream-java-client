@@ -13,13 +13,13 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.SuperStreamExchangeType.DIRECT;
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import ch.qos.logback.classic.Level;
-import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.stream.Address;
@@ -283,18 +283,37 @@ public final class TestUtils {
 
   static void declareSuperStreamTopology(Connection connection, String superStream, int partitions)
       throws Exception {
+    declareSuperStreamTopology(connection, superStream, DIRECT, partitions);
+  }
+
+  static void declareSuperStreamTopology(
+      Connection connection,
+      String superStream,
+      SuperStreamExchangeType exchangeType,
+      int partitions)
+      throws Exception {
     declareSuperStreamTopology(
         connection,
         superStream,
+        exchangeType,
         IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
   }
 
   static void declareSuperStreamTopology(Connection connection, String superStream, String... rks)
       throws Exception {
+    declareSuperStreamTopology(connection, superStream, DIRECT, rks);
+  }
+
+  static void declareSuperStreamTopology(
+      Connection connection,
+      String superStream,
+      SuperStreamExchangeType exchangeType,
+      String... rks)
+      throws Exception {
     try (Channel ch = connection.createChannel()) {
       ch.exchangeDeclare(
           superStream,
-          BuiltinExchangeType.DIRECT,
+          exchangeType.value,
           true,
           false,
           Collections.singletonMap("x-super-stream", true));
@@ -317,6 +336,17 @@ public final class TestUtils {
             routingKey,
             Collections.singletonMap("x-stream-partition-order", binding._2()));
       }
+    }
+  }
+
+  public enum SuperStreamExchangeType {
+    DIRECT("direct"),
+    SUPER("x-super-stream");
+
+    final String value;
+
+    SuperStreamExchangeType(String value) {
+      this.value = value;
     }
   }
 
