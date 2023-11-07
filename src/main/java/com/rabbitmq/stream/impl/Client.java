@@ -687,6 +687,7 @@ public class Client implements AutoCloseable {
           "Partitions and routing keys of a super stream must have "
               + "the same number of elements");
     }
+    arguments = arguments == null ? Collections.emptyMap() : arguments;
     int length =
         2
             + 2
@@ -829,6 +830,10 @@ public class Client implements AutoCloseable {
       outstandingRequests.remove(correlationId);
       throw new StreamException(format("Error while deleting stream '%s'", stream), e);
     }
+  }
+
+  Map<String, StreamMetadata> metadata(List<String> streams) {
+    return this.metadata(streams.toArray(new String[] {}));
   }
 
   public Map<String, StreamMetadata> metadata(String... streams) {

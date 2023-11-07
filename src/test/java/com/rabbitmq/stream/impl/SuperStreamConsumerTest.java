@@ -23,8 +23,6 @@ import static com.rabbitmq.stream.impl.TestUtils.wrap;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
@@ -53,7 +51,7 @@ public class SuperStreamConsumerTest {
 
   Environment environment;
 
-  Connection connection;
+  Client configurationClient;
   int partitionCount = 3;
   String superStream;
   String[] routingKeys = null;
@@ -65,18 +63,13 @@ public class SuperStreamConsumerTest {
         Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
     environment = environmentBuilder.build();
     superStream = TestUtils.streamName(info);
-    connection = new ConnectionFactory().newConnection();
+    configurationClient = cf.get();
   }
 
   @AfterEach
   void tearDown() throws Exception {
     environment.close();
-    if (routingKeys == null) {
-      deleteSuperStreamTopology(connection, superStream, partitionCount);
-    } else {
-      deleteSuperStreamTopology(connection, superStream, routingKeys);
-    }
-    connection.close();
+    deleteSuperStreamTopology(configurationClient, superStream);
   }
 
   private static void publishToPartitions(
@@ -101,8 +94,8 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
-  void consumeAllMessagesFromAllPartitions() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+  void consumeAllMessagesFromAllPartitions() {
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     Client client = cf.get();
     List<String> partitions = client.partitions(superStream);
     int messageCount = 10000 * partitionCount;
@@ -133,8 +126,8 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
-  void manualOffsetTrackingShouldStoreOnAllPartitions() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+  void manualOffsetTrackingShouldStoreOnAllPartitions() {
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     Client client = cf.get();
     List<String> partitions = client.partitions(superStream);
     int messageCount = 10000 * partitionCount;
@@ -191,8 +184,8 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
-  void autoOffsetTrackingShouldStoreOnAllPartitions() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+  void autoOffsetTrackingShouldStoreOnAllPartitions() {
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     Client client = cf.get();
     List<String> partitions = client.partitions(superStream);
     int messageCount = 10000 * partitionCount;
@@ -247,8 +240,8 @@ public class SuperStreamConsumerTest {
   }
 
   @Test
-  void autoOffsetTrackingShouldStoreOffsetZero() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+  void autoOffsetTrackingShouldStoreOffsetZero() {
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     Client client = cf.get();
     List<String> partitions = client.partitions(superStream);
     int messageCount = partitionCount;
@@ -305,7 +298,7 @@ public class SuperStreamConsumerTest {
   @BrokerVersionAtLeast(RABBITMQ_3_11_11)
   void rebalancedPartitionShouldGetMessagesWhenItComesBackToOriginalConsumerInstance()
       throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     Client client = cf.get();
     List<String> partitions = client.partitions(superStream);
     int messageCount = 10_000;

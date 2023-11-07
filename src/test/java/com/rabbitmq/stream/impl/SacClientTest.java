@@ -26,8 +26,6 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -230,9 +228,9 @@ public class SacClientTest {
     Map<Byte, AtomicInteger> receivedMessages = receivedMessages(2);
     String superStream = streamName(info);
     String consumerName = "foo";
-    Connection c = new ConnectionFactory().newConnection();
+    Client configurationClient = cf.get();
     try {
-      TestUtils.declareSuperStreamTopology(c, superStream, 3);
+      declareSuperStreamTopology(configurationClient, superStream, 3);
       // working with the second partition
       String partition = superStream + "-1";
 
@@ -330,8 +328,7 @@ public class SacClientTest {
           .isEqualTo(messageCount * 2);
 
     } finally {
-      TestUtils.deleteSuperStreamTopology(c, superStream, 3);
-      c.close();
+      deleteSuperStreamTopology(configurationClient, superStream);
     }
   }
 
@@ -340,11 +337,11 @@ public class SacClientTest {
     Map<Byte, Boolean> consumerStates = consumerStates(3 * 3);
     String superStream = streamName(info);
     String consumerName = "foo";
-    Connection c = new ConnectionFactory().newConnection();
+    Client configurationClient = cf.get();
     // subscription distribution
     // client 1: 0, 1, 2 / client 2: 3, 4, 5, / client 3: 6, 7, 8
     try {
-      declareSuperStreamTopology(c, superStream, 3);
+      declareSuperStreamTopology(configurationClient, superStream, 3);
       List<String> partitions =
           IntStream.range(0, 3).mapToObj(i -> superStream + "-" + i).collect(toList());
       ConsumerUpdateListener consumerUpdateListener =
@@ -422,7 +419,7 @@ public class SacClientTest {
       client.set(client3);
       partitions.forEach(unsubscriptionCallback);
     } finally {
-      deleteSuperStreamTopology(c, superStream, 3);
+      deleteSuperStreamTopology(configurationClient, superStream);
     }
   }
 
@@ -485,10 +482,10 @@ public class SacClientTest {
     Map<Byte, Boolean> consumerStates = consumerStates(3 * 3);
     String superStream = streamName(info);
     String consumerName = "foo";
-    Connection c = new ConnectionFactory().newConnection();
+    Client configurationClient = cf.get();
     AtomicBoolean keepPublishing = new AtomicBoolean(true);
     try {
-      declareSuperStreamTopology(c, superStream, 3);
+      declareSuperStreamTopology(configurationClient, superStream, 3);
       // we use the second partition because a rebalancing occurs
       // when the second consumer joins
       String partitionInUse = superStream + "-1";
@@ -584,8 +581,7 @@ public class SacClientTest {
       assertThat(response).is(ok());
     } finally {
       keepPublishing.set(false);
-      deleteSuperStreamTopology(c, superStream, 3);
-      c.close();
+      deleteSuperStreamTopology(configurationClient, superStream);
     }
   }
 

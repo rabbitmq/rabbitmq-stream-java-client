@@ -19,8 +19,6 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerUpdateListener;
 import com.rabbitmq.stream.Environment;
@@ -56,26 +54,25 @@ public class SacSuperStreamConsumerTest {
 
   Environment environment;
 
-  Connection connection;
+  Client configurationClient;
   int partitionCount = 3;
   String superStream;
   TestUtils.ClientFactory cf;
 
   @BeforeEach
-  void init(TestInfo info) throws Exception {
+  void init(TestInfo info) {
     EnvironmentBuilder environmentBuilder =
         Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
     environment = environmentBuilder.build();
     superStream = TestUtils.streamName(info);
-    connection = new ConnectionFactory().newConnection();
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+    configurationClient = cf.get();
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
   }
 
   @AfterEach
-  void tearDown() throws Exception {
+  void tearDown() {
     environment.close();
-    deleteSuperStreamTopology(connection, superStream, partitionCount);
-    connection.close();
+    deleteSuperStreamTopology(configurationClient, superStream);
   }
 
   @Test
@@ -171,7 +168,7 @@ public class SacSuperStreamConsumerTest {
 
   @Test
   void sacAutoOffsetTrackingShouldStoreOnRelanbancing() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     int messageCount = 5_000;
     AtomicInteger messageWaveCount = new AtomicInteger();
     int superConsumerCount = 3;
@@ -357,7 +354,7 @@ public class SacSuperStreamConsumerTest {
 
   @Test
   void sacManualOffsetTrackingShouldTakeOverOnRelanbancing() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     int messageCount = 5_000;
     int storeEvery = messageCount / 100;
     AtomicInteger messageWaveCount = new AtomicInteger();
@@ -561,7 +558,7 @@ public class SacSuperStreamConsumerTest {
 
   @Test
   void sacExternalOffsetTrackingShouldTakeOverOnRelanbancing() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     int messageCount = 5_000;
     AtomicInteger messageWaveCount = new AtomicInteger();
     int superConsumerCount = 3;
@@ -731,8 +728,8 @@ public class SacSuperStreamConsumerTest {
   }
 
   @Test
-  void consumerGroupsOnSameSuperStreamShouldBeIndependent() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitionCount);
+  void consumerGroupsOnSameSuperStreamShouldBeIndependent() {
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     int messageCount = 20_000;
     int consumerGroupsCount = 3;
     List<String> consumerNames =

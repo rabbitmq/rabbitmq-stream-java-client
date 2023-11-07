@@ -14,6 +14,7 @@
 package com.rabbitmq.stream;
 
 import static java.lang.String.format;
+import static java.util.Arrays.asList;
 
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
@@ -151,12 +152,24 @@ public class Host {
     rabbitmqctl(format("add_user %s %s", username, password));
   }
 
+  public static void setPermissions(String username, List<String> permissions) throws IOException {
+    setPermissions(username, "/", permissions);
+  }
+
   public static void setPermissions(String username, String vhost, String permission)
       throws IOException {
+    setPermissions(username, vhost, asList(permission, permission, permission));
+  }
+
+  public static void setPermissions(String username, String vhost, List<String> permissions)
+      throws IOException {
+    if (permissions.size() != 3) {
+      throw new IllegalArgumentException();
+    }
     rabbitmqctl(
         format(
             "set_permissions --vhost %s %s '%s' '%s' '%s'",
-            vhost, username, permission, permission, permission));
+            vhost, username, permissions.get(0), permissions.get(1), permissions.get(2)));
   }
 
   public static void changePassword(String username, String newPassword) throws IOException {
@@ -180,7 +193,8 @@ public class Host {
   }
 
   public static String rabbitmqctlCommand() {
-    String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
+    String rabbitmqCtl = "/home/acogoluegnes/prog/rabbitmq/rabbitmq-server/sbin/rabbitmqctl";
+    //    String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
     if (rabbitmqCtl == null) {
       throw new IllegalStateException("Please define the rabbitmqctl.bin system property");
     }

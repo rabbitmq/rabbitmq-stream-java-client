@@ -36,21 +36,20 @@ public class RoutePartitionsTest {
 
   TestUtils.ClientFactory cf;
 
-  Connection connection;
+  Client configurationClient;
 
   int partitions = 3;
   String superStream;
 
   @BeforeEach
-  void init(TestInfo info) throws Exception {
-    connection = new ConnectionFactory().newConnection();
+  void init(TestInfo info) {
+    configurationClient = cf.get();
     superStream = TestUtils.streamName(info);
   }
 
   @AfterEach
-  void tearDown() throws Exception {
-    deleteSuperStreamTopology(connection, superStream, partitions);
-    connection.close();
+  void tearDown() {
+    deleteSuperStreamTopology(configurationClient, superStream);
   }
 
   @Test
@@ -64,8 +63,8 @@ public class RoutePartitionsTest {
   }
 
   @Test
-  void routeShouldReturnNullWhenNoStreamForRoutingKey() throws Exception {
-    declareSuperStreamTopology(connection, superStream, partitions);
+  void routeShouldReturnNullWhenNoStreamForRoutingKey() {
+    declareSuperStreamTopology(configurationClient, superStream, partitions);
 
     Client client = cf.get();
     assertThat(client.route("0", superStream)).hasSize(1).contains(superStream + "-0");
@@ -73,16 +72,14 @@ public class RoutePartitionsTest {
   }
 
   @Test
-  void partitionsShouldReturnEmptyListWhenThereIsNoBinding() throws Exception {
-    declareSuperStreamTopology(connection, superStream, 0);
-
+  void partitionsShouldReturnEmptyListWhenSuperStreamDoesNotExist() {
     Client client = cf.get();
     assertThat(client.partitions(superStream)).isEmpty();
   }
 
   @Test
-  void routeTopologyWithPartitionCount() throws Exception {
-    declareSuperStreamTopology(connection, superStream, 3);
+  void routeTopologyWithPartitionCount() {
+    declareSuperStreamTopology(configurationClient, superStream, 3);
 
     Client client = cf.get();
     List<String> streams = client.partitions(superStream);
@@ -97,8 +94,10 @@ public class RoutePartitionsTest {
 
   @Test
   void routeReturnsMultipleStreamsIfMultipleBindingsForSameKey() throws Exception {
-    declareSuperStreamTopology(connection, superStream, 3);
-    connection.createChannel().queueBind(superStream + "-1", superStream, "0");
+    declareSuperStreamTopology(configurationClient, superStream, 3);
+    try (Connection connection = new ConnectionFactory().newConnection()) {
+      connection.createChannel().queueBind(superStream + "-1", superStream, "0");
+    }
     Client client = cf.get();
     List<String> streams = client.partitions(superStream);
     assertThat(streams)
@@ -114,10 +113,12 @@ public class RoutePartitionsTest {
 
   @Test
   void partitionsAndRouteShouldNotReturnNonStreamQueue() throws Exception {
-    declareSuperStreamTopology(connection, superStream, 3);
-    Channel channel = connection.createChannel();
-    String nonStreamQueue = channel.queueDeclare().getQueue();
-    connection.createChannel().queueBind(nonStreamQueue, superStream, "not-a-stream");
+    declareSuperStreamTopology(configurationClient, superStream, 3);
+    try (Connection connection = new ConnectionFactory().newConnection()) {
+      Channel channel = connection.createChannel();
+      String nonStreamQueue = channel.queueDeclare().getQueue();
+      connection.createChannel().queueBind(nonStreamQueue, superStream, "not-a-stream");
+    }
     Client client = cf.get();
     List<String> streams = client.partitions(superStream);
     assertThat(streams)
@@ -131,9 +132,9 @@ public class RoutePartitionsTest {
   }
 
   @Test
-  void partitionsReturnsCorrectOrder() throws Exception {
+  void partitionsReturnsCorrectOrder() {
     String[] partitionNames = {"z", "y", "x"};
-    declareSuperStreamTopology(connection, superStream, partitionNames);
+    declareSuperStreamTopology(configurationClient, superStream, partitionNames);
     try {
       Client client = cf.get();
       List<String> streams = client.partitions(superStream);
@@ -142,7 +143,7 @@ public class RoutePartitionsTest {
           .containsSequence(
               Arrays.stream(partitionNames).map(p -> superStream + "-" + p).toArray(String[]::new));
     } finally {
-      deleteSuperStreamTopology(connection, superStream, partitionNames);
+      deleteSuperStreamTopology(configurationClient, superStream);
     }
   }
 }

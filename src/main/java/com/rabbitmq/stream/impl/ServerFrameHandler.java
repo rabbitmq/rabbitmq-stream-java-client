@@ -13,37 +13,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.COMMAND_CLOSE;
-import static com.rabbitmq.stream.Constants.COMMAND_CONSUMER_UPDATE;
-import static com.rabbitmq.stream.Constants.COMMAND_CREATE_STREAM;
-import static com.rabbitmq.stream.Constants.COMMAND_CREDIT;
-import static com.rabbitmq.stream.Constants.COMMAND_DECLARE_PUBLISHER;
-import static com.rabbitmq.stream.Constants.COMMAND_DELETE_PUBLISHER;
-import static com.rabbitmq.stream.Constants.COMMAND_DELETE_STREAM;
-import static com.rabbitmq.stream.Constants.COMMAND_DELIVER;
-import static com.rabbitmq.stream.Constants.COMMAND_EXCHANGE_COMMAND_VERSIONS;
-import static com.rabbitmq.stream.Constants.COMMAND_HEARTBEAT;
-import static com.rabbitmq.stream.Constants.COMMAND_METADATA;
-import static com.rabbitmq.stream.Constants.COMMAND_METADATA_UPDATE;
-import static com.rabbitmq.stream.Constants.COMMAND_OPEN;
-import static com.rabbitmq.stream.Constants.COMMAND_PARTITIONS;
-import static com.rabbitmq.stream.Constants.COMMAND_PEER_PROPERTIES;
-import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_CONFIRM;
-import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_ERROR;
-import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
-import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
-import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
-import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
-import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
-import static com.rabbitmq.stream.Constants.COMMAND_STREAM_STATS;
-import static com.rabbitmq.stream.Constants.COMMAND_SUBSCRIBE;
-import static com.rabbitmq.stream.Constants.COMMAND_TUNE;
-import static com.rabbitmq.stream.Constants.COMMAND_UNSUBSCRIBE;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SASL_CHALLENGE;
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
-import static com.rabbitmq.stream.Constants.VERSION_1;
-import static com.rabbitmq.stream.Constants.VERSION_2;
+import static com.rabbitmq.stream.Constants.*;
 import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
 
 import com.rabbitmq.stream.ChunkChecksum;
@@ -128,6 +98,8 @@ class ServerFrameHandler {
     handlers.put(COMMAND_CONSUMER_UPDATE, new ConsumerUpdateFrameHandler());
     handlers.put(COMMAND_EXCHANGE_COMMAND_VERSIONS, new ExchangeCommandVersionsFrameHandler());
     handlers.put(COMMAND_STREAM_STATS, new StreamStatsFrameHandler());
+    handlers.put(COMMAND_CREATE_SUPER_STREAM, RESPONSE_FRAME_HANDLER);
+    handlers.put(COMMAND_DELETE_SUPER_STREAM, RESPONSE_FRAME_HANDLER);
     HANDLERS = new FrameHandler[maxCommandKey + 1][];
     handlers
         .entrySet()

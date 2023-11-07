@@ -20,8 +20,6 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
@@ -50,30 +48,25 @@ public class SuperStreamProducerTest {
 
   Environment environment;
 
-  Connection connection;
+  Client configurationClient;
   int partitions = 3;
   String superStream;
   String[] routingKeys = null;
   TestUtils.ClientFactory cf;
 
   @BeforeEach
-  void init(TestInfo info) throws Exception {
+  void init(TestInfo info) {
     EnvironmentBuilder environmentBuilder =
         Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
     environment = environmentBuilder.build();
-    connection = new ConnectionFactory().newConnection();
     superStream = TestUtils.streamName(info);
+    configurationClient = cf.get();
   }
 
   @AfterEach
   void tearDown() throws Exception {
     environment.close();
-    if (routingKeys == null) {
-      deleteSuperStreamTopology(connection, superStream, partitions);
-    } else {
-      deleteSuperStreamTopology(connection, superStream, routingKeys);
-    }
-    connection.close();
+    deleteSuperStreamTopology(configurationClient, superStream);
   }
 
   @Test
@@ -85,7 +78,7 @@ public class SuperStreamProducerTest {
   @Test
   void allMessagesSentToSuperStreamWithHashRoutingShouldBeThenConsumed() throws Exception {
     int messageCount = 10_000;
-    declareSuperStreamTopology(connection, superStream, partitions);
+    declareSuperStreamTopology(configurationClient, superStream, partitions);
     Producer producer =
         environment
             .producerBuilder()
@@ -140,7 +133,7 @@ public class SuperStreamProducerTest {
   void allMessagesSentToSuperStreamWithRoutingKeyRoutingShouldBeThenConsumed() throws Exception {
     int messageCount = 10_000;
     routingKeys = new String[] {"amer", "emea", "apac"};
-    declareSuperStreamTopology(connection, superStream, routingKeys);
+    declareSuperStreamTopology(configurationClient, superStream, routingKeys);
     Producer producer =
         environment
             .producerBuilder()
@@ -190,9 +183,9 @@ public class SuperStreamProducerTest {
   }
 
   @Test
-  void messageIsNackedIfNoRouteFound() throws Exception {
+  void messageIsNackedIfNoRouteFound() {
     routingKeys = new String[] {"amer", "emea", "apac"};
-    declareSuperStreamTopology(connection, superStream, routingKeys);
+    declareSuperStreamTopology(configurationClient, superStream, routingKeys);
     Producer producer =
         environment
             .producerBuilder()
@@ -226,7 +219,7 @@ public class SuperStreamProducerTest {
   @Test
   void getLastPublishingIdShouldReturnLowestValue() throws Exception {
     int messageCount = 10_000;
-    declareSuperStreamTopology(connection, superStream, partitions);
+    declareSuperStreamTopology(configurationClient, superStream, partitions);
     String producerName = "super-stream-application";
     Producer producer =
         environment
@@ -292,9 +285,9 @@ public class SuperStreamProducerTest {
   }
 
   @Test
-  void producerShouldNotPublishMessagesOnceClosed() throws Exception {
+  void producerShouldNotPublishMessagesOnceClosed() {
     int messageCount = 100;
-    declareSuperStreamTopology(connection, superStream, partitions);
+    declareSuperStreamTopology(configurationClient, superStream, partitions);
     String producerName = "super-stream-application";
     Producer producer =
         environment
@@ -331,8 +324,7 @@ public class SuperStreamProducerTest {
   }
 
   @Test
-  void producerCreationShouldFailIfNoPartition() throws Exception {
-    declareSuperStreamTopology(connection, superStream, 0);
+  void producerCreationShouldFailIfNoPartition() {
     String producerName = "super-stream-application";
     assertThatThrownBy(
             () -> {

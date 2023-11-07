@@ -15,13 +15,11 @@ package com.rabbitmq.stream.impl;
 
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import ch.qos.logback.classic.Level;
-import com.rabbitmq.client.BuiltinExchangeType;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
@@ -34,8 +32,6 @@ import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.vavr.Tuple;
-import io.vavr.Tuple2;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -49,13 +45,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -281,62 +271,21 @@ public final class TestUtils {
     }
   }
 
-  static void declareSuperStreamTopology(Connection connection, String superStream, int partitions)
-      throws Exception {
+  static void declareSuperStreamTopology(Client client, String superStream, int partitions) {
     declareSuperStreamTopology(
-        connection,
+        client,
         superStream,
         IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
   }
 
-  static void declareSuperStreamTopology(Connection connection, String superStream, String... rks)
-      throws Exception {
-    try (Channel ch = connection.createChannel()) {
-      ch.exchangeDeclare(
-          superStream,
-          BuiltinExchangeType.DIRECT,
-          true,
-          false,
-          Collections.singletonMap("x-super-stream", true));
-
-      List<Tuple2<String, Integer>> bindings = new ArrayList<>(rks.length);
-      for (int i = 0; i < rks.length; i++) {
-        bindings.add(Tuple.of(rks[i], i));
-      }
-      // shuffle the order to make sure we get in the correct order from the server
-      Collections.shuffle(bindings);
-
-      for (Tuple2<String, Integer> binding : bindings) {
-        String routingKey = binding._1();
-        String partitionName = superStream + "-" + routingKey;
-        ch.queueDeclare(
-            partitionName, true, false, false, Collections.singletonMap("x-queue-type", "stream"));
-        ch.queueBind(
-            partitionName,
-            superStream,
-            routingKey,
-            Collections.singletonMap("x-stream-partition-order", binding._2()));
-      }
-    }
+  static void declareSuperStreamTopology(Client client, String superStream, String... rks) {
+    List<String> partitions =
+        Arrays.stream(rks).map(rk -> superStream + "-" + rk).collect(toList());
+    client.createSuperStream(superStream, partitions, Arrays.asList(rks), null);
   }
 
-  static void deleteSuperStreamTopology(Connection connection, String superStream, int partitions)
-      throws Exception {
-    deleteSuperStreamTopology(
-        connection,
-        superStream,
-        IntStream.range(0, partitions).mapToObj(String::valueOf).toArray(String[]::new));
-  }
-
-  static void deleteSuperStreamTopology(
-      Connection connection, String superStream, String... routingKeys) throws Exception {
-    try (Channel ch = connection.createChannel()) {
-      ch.exchangeDelete(superStream);
-      for (String routingKey : routingKeys) {
-        String partitionName = superStream + "-" + routingKey;
-        ch.queueDelete(partitionName);
-      }
-    }
+  static void deleteSuperStreamTopology(Client client, String superStream) {
+    client.deleteSuperStream(superStream);
   }
 
   public static String streamName(TestInfo info) {
