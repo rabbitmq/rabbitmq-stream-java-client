@@ -52,6 +52,7 @@ public class SuperStreamManagementTest {
   }
 
   @Test
+  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
   void createDelete() {
     Client c = cf.get();
     Client.Response response = c.createSuperStream(s, partitions, routingKeys, null);
@@ -81,6 +82,7 @@ public class SuperStreamManagementTest {
   }
 
   @Test
+  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
   void clientWithSubscriptionShouldReceiveNotificationOnDeletion() throws Exception {
     Client c = cf.get();
     Client.Response response = c.createSuperStream(s, partitions, routingKeys, null);
@@ -109,6 +111,7 @@ public class SuperStreamManagementTest {
   }
 
   @Test
+  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
   void authorisation() throws Exception {
     String user = "stream";
     // routing keys do not matter for authorisation

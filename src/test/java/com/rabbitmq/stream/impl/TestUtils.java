@@ -13,13 +13,19 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static io.vavr.Tuple.*;
 import static java.lang.String.format;
+import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import ch.qos.logback.classic.Level;
+import com.rabbitmq.client.BuiltinExchangeType;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Host;
@@ -32,6 +38,7 @@ import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.vavr.Tuple2;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -46,11 +53,7 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.*;
@@ -80,6 +83,8 @@ public final class TestUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(TestUtils.class);
 
   private static final Duration DEFAULT_CONDITION_TIMEOUT = Duration.ofSeconds(10);
+
+  private static final ConnectionFactory AMQP_CF = new ConnectionFactory();
 
   private TestUtils() {}
 
@@ -281,11 +286,59 @@ public final class TestUtils {
   static void declareSuperStreamTopology(Client client, String superStream, String... rks) {
     List<String> partitions =
         Arrays.stream(rks).map(rk -> superStream + "-" + rk).collect(toList());
-    client.createSuperStream(superStream, partitions, Arrays.asList(rks), null);
+    if (atLeastVersion("3.13.0", client.brokerVersion())) {
+      client.createSuperStream(superStream, partitions, asList(rks), null);
+    } else {
+      try (Connection connection = connection();
+          Channel ch = connection.createChannel()) {
+        ch.exchangeDeclare(
+            superStream,
+            BuiltinExchangeType.DIRECT,
+            true,
+            false,
+            Collections.singletonMap("x-super-stream", true));
+        List<Tuple2<String, Integer>> bindings = new ArrayList<>(rks.length);
+        for (int i = 0; i < rks.length; i++) {
+          bindings.add(of(rks[i], i));
+        }
+        // shuffle the order to make sure we get in the correct order from the server
+        Collections.shuffle(bindings);
+
+        for (Tuple2<String, Integer> binding : bindings) {
+          String routingKey = binding._1();
+          String partitionName = superStream + "-" + routingKey;
+          ch.queueDeclare(
+              partitionName,
+              true,
+              false,
+              false,
+              Collections.singletonMap("x-queue-type", "stream"));
+          ch.queueBind(
+              partitionName,
+              superStream,
+              routingKey,
+              Collections.singletonMap("x-stream-partition-order", binding._2()));
+        }
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
   }
 
   static void deleteSuperStreamTopology(Client client, String superStream) {
-    client.deleteSuperStream(superStream);
+    if (atLeastVersion("3.13.0", client.brokerVersion())) {
+      client.deleteSuperStream(superStream);
+    } else {
+      try (Connection connection = connection();
+          Channel ch = connection.createChannel()) {
+        ch.exchangeDelete(superStream);
+        for (String partition : client.partitions(superStream)) {
+          ch.queueDelete(partition);
+        }
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
   }
 
   public static String streamName(TestInfo info) {
@@ -1033,5 +1086,9 @@ public final class TestUtils {
     } else {
       throw (Exception) lastException;
     }
+  }
+
+  private static Connection connection() throws IOException, TimeoutException {
+    return AMQP_CF.newConnection();
   }
 }
