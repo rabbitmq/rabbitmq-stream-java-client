@@ -1018,7 +1018,7 @@ public final class TestUtils {
   public @interface SingleActiveConsumer {}
 
   public enum BrokerVersion {
-    RABBITMQ_3_11("3.11.0"),
+    RABBITMQ_3_11_0("3.11.0"),
     RABBITMQ_3_11_7("3.11.7"),
     RABBITMQ_3_11_9("3.11.9"),
     RABBITMQ_3_11_11("3.11.11"),

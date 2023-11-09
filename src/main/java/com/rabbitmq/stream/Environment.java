@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -58,8 +58,18 @@ public interface Environment extends AutoCloseable {
    * Delete a stream
    *
    * @param stream the stream to delete
+   * @since 0.15.0
    */
   void deleteStream(String stream);
+
+  /**
+   * Delete a super stream.
+   *
+   * <p>Requires RabbitMQ 3.13.0 or more.
+   *
+   * @param superStream the super stream to delete
+   */
+  void deleteSuperStream(String superStream);
 
   /**
    * Query statistics on a stream.

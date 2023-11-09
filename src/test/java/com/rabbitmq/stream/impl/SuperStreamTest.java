@@ -163,7 +163,7 @@ public class SuperStreamTest {
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void allMessagesForSameUserShouldEndUpInSamePartition() {
     int messageCount = 10_000 * partitions;
     int userCount = 10;

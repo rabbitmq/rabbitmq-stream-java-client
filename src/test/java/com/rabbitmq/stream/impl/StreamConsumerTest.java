@@ -132,7 +132,7 @@ public class StreamConsumerTest {
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void committedOffsetShouldBeSet() throws Exception {
     int messageCount = 20_000;
     publishAndWaitForConfirms(cf, messageCount, this.stream);

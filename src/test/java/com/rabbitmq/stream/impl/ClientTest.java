@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -844,7 +844,7 @@ public class ClientTest {
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void exchangeCommandVersions() {
     Client client = cf.get();
     List<FrameHandlerInfo> infos = client.exchangeCommandVersions();
@@ -853,7 +853,7 @@ public class ClientTest {
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void deliverVersion2LastCommittedOffsetShouldBeSet() throws Exception {
     int publishCount = 20_000;
     byte correlationId = 42;
@@ -887,7 +887,7 @@ public class ClientTest {
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void streamStatsShouldReturnFirstOffsetAndCommittedOffset() throws Exception {
     int publishCount = 20_000;
     CountDownLatch latch = new CountDownLatch(publishCount);
@@ -923,14 +923,14 @@ public class ClientTest {
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void streamStatsShouldReturnErrorWhenStreamDoesNotExist() {
     assertThat(cf.get().streamStats("does not exist").getResponseCode())
         .isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void streamStatsFirstOffsetShouldChangeAfterRetentionKickedIn(TestInfo info) throws Exception {
     // this test is flaky in some CI environments, so we have to retry it
     repeatIfFailure(
