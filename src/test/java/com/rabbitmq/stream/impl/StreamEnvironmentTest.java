@@ -527,8 +527,8 @@ public class StreamEnvironmentTest {
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_13_0)
-  void superStreamCreationSetRoutingKeys(TestInfo info) {
-    List<String> routingKeys = Arrays.asList("a", "b", "c", "d", "e");
+  void superStreamCreationSetBindingKeys(TestInfo info) {
+    List<String> bindingKeys = Arrays.asList("a", "b", "c", "d", "e");
     String s = streamName(info);
     Client client = cf.get();
     Environment env = environmentBuilder.build();
@@ -536,14 +536,14 @@ public class StreamEnvironmentTest {
       env.streamCreator()
           .name(s)
           .superStream()
-          .routingKeys(routingKeys.toArray(new String[] {}))
+          .bindingKeys(bindingKeys.toArray(new String[] {}))
           .creator()
           .create();
 
       assertThat(client.partitions(s))
-          .hasSize(routingKeys.size())
-          .containsAll(routingKeys.stream().map(rk -> s + "-" + rk).collect(toList()));
-      routingKeys.forEach(rk -> assertThat(client.route(rk, s)).hasSize(1).contains(s + "-" + rk));
+          .hasSize(bindingKeys.size())
+          .containsAll(bindingKeys.stream().map(rk -> s + "-" + rk).collect(toList()));
+      bindingKeys.forEach(bk -> assertThat(client.route(bk, s)).hasSize(1).contains(s + "-" + bk));
     } finally {
       env.deleteSuperStream(s);
       env.close();

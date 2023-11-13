@@ -42,28 +42,28 @@ public class SuperStreamManagementTest {
   static final int partitionCount = 3;
   String s;
   List<String> partitions;
-  List<String> routingKeys;
+  List<String> bindingKeys;
 
   @BeforeEach
   void init(TestInfo info) {
     s = streamName(info);
     partitions = partitions(s);
-    routingKeys = routingKeys();
+    bindingKeys = bindingKeys();
   }
 
   @Test
   @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
   void createDelete() {
     Client c = cf.get();
-    Client.Response response = c.createSuperStream(s, partitions, routingKeys, null);
+    Client.Response response = c.createSuperStream(s, partitions, bindingKeys, null);
     assertThat(response).is(ok());
     assertThat(c.metadata(partitions))
         .hasSameSizeAs(partitions)
         .allSatisfy((s, streamMetadata) -> assertThat(streamMetadata.isResponseOk()).isTrue());
     assertThat(c.partitions(s)).isEqualTo(partitions);
-    routingKeys.forEach(rk -> assertThat(c.route(rk, s)).hasSize(1).contains(s + "-" + rk));
+    bindingKeys.forEach(bk -> assertThat(c.route(bk, s)).hasSize(1).contains(s + "-" + bk));
 
-    response = c.createSuperStream(s, partitions, routingKeys, null);
+    response = c.createSuperStream(s, partitions, bindingKeys, null);
     assertThat(response).is(ko()).is(responseCode(RESPONSE_CODE_STREAM_ALREADY_EXISTS));
 
     response = c.deleteSuperStream(s);
@@ -75,7 +75,7 @@ public class SuperStreamManagementTest {
                 assertThat(streamMetadata.getResponseCode())
                     .isEqualTo(RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
     assertThat(c.partitions(s)).isEmpty();
-    routingKeys.forEach(rk -> assertThat(c.route(rk, s)).isEmpty());
+    bindingKeys.forEach(bk -> assertThat(c.route(bk, s)).isEmpty());
 
     response = c.deleteSuperStream(s);
     assertThat(response).is(responseCode(RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
@@ -85,7 +85,7 @@ public class SuperStreamManagementTest {
   @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
   void clientWithSubscriptionShouldReceiveNotificationOnDeletion() throws Exception {
     Client c = cf.get();
-    Client.Response response = c.createSuperStream(s, partitions, routingKeys, null);
+    Client.Response response = c.createSuperStream(s, partitions, bindingKeys, null);
     assertThat(response).is(ok());
     Map<String, Short> notifications = new ConcurrentHashMap<>(partitions.size());
     AtomicInteger notificationCount = new AtomicInteger();
@@ -114,37 +114,37 @@ public class SuperStreamManagementTest {
   @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
   void authorisation() throws Exception {
     String user = "stream";
-    // routing keys do not matter for authorisation
-    routingKeys = asList("1", "2", "3");
+    // binding keys do not matter for authorisation
+    bindingKeys = asList("1", "2", "3");
     try {
       addUser(user, user);
       setPermissions(user, asList("stream|partition.*$", "partition.*$", "stream.*$"));
       Client c = cf.get(new Client.ClientParameters().username(user).password(user));
-      Client.Response response = c.createSuperStream("not-allowed", partitions, routingKeys, null);
+      Client.Response response = c.createSuperStream("not-allowed", partitions, bindingKeys, null);
       assertThat(response).is(ko()).is(responseCode(RESPONSE_CODE_ACCESS_REFUSED));
 
       s = name("stream");
-      response = c.createSuperStream(s, asList("1", "2", "3"), routingKeys, null);
+      response = c.createSuperStream(s, asList("1", "2", "3"), bindingKeys, null);
       assertThat(response).is(ko()).is(responseCode(RESPONSE_CODE_ACCESS_REFUSED));
 
       partitions = range(0, partitionCount).mapToObj(i -> s + "-" + i).collect(toList());
       // we can create the queues, but can't bind them, as it requires write permission
-      response = c.createSuperStream(s, partitions, routingKeys, null);
+      response = c.createSuperStream(s, partitions, bindingKeys, null);
       assertThat(response).is(ko()).is(responseCode(RESPONSE_CODE_ACCESS_REFUSED));
 
       String partitionName = name("partition");
       partitions =
           range(0, partitionCount).mapToObj(i -> partitionName + "-" + i).collect(toList());
-      response = c.createSuperStream(s, partitions, routingKeys, null);
+      response = c.createSuperStream(s, partitions, bindingKeys, null);
       assertThat(response).is(ok());
 
       assertThat(c.metadata(partitions))
           .hasSameSizeAs(partitions)
           .allSatisfy((s, streamMetadata) -> assertThat(streamMetadata.isResponseOk()).isTrue());
       assertThat(c.partitions(s)).isEqualTo(partitions);
-      for (int i = 0; i < routingKeys.size(); i++) {
-        String rk = routingKeys.get(i);
-        assertThat(c.route(rk, s)).hasSize(1).contains(partitions.get(i));
+      for (int i = 0; i < bindingKeys.size(); i++) {
+        String bk = bindingKeys.get(i);
+        assertThat(c.route(bk, s)).hasSize(1).contains(partitions.get(i));
       }
 
       response = c.deleteSuperStream(s);
@@ -154,11 +154,11 @@ public class SuperStreamManagementTest {
     }
   }
 
-  private static List<String> routingKeys() {
-    return routingKeys(partitionCount);
+  private static List<String> bindingKeys() {
+    return bindingKeys(partitionCount);
   }
 
-  private static List<String> routingKeys(int partitions) {
+  private static List<String> bindingKeys(int partitions) {
     return range(0, partitions).mapToObj(String::valueOf).collect(toList());
   }
 

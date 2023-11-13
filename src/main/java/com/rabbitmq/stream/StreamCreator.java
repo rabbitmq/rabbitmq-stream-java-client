@@ -174,7 +174,7 @@ public interface StreamCreator {
     /**
      * The number of partitions of the super stream.
      *
-     * <p>Mutually exclusive with {@link #routingKeys(String...)}. Default is 3.
+     * <p>Mutually exclusive with {@link #bindingKeys(String...)}. Default is 3.
      *
      * @param partitions
      * @return this super stream configuration instance
@@ -182,14 +182,14 @@ public interface StreamCreator {
     SuperStreamConfiguration partitions(int partitions);
 
     /**
-     * The routing keys to use when declaring the super stream partitions.
+     * The binding keys to use when declaring the super stream partitions.
      *
      * <p>Mutually exclusive with {@link #partitions(int)}. Default is null.
      *
-     * @param routingKeys
+     * @param bindingKeys
      * @return this super stream configuration instance
      */
-    SuperStreamConfiguration routingKeys(String... routingKeys);
+    SuperStreamConfiguration bindingKeys(String... bindingKeys);
 
     /**
      * Go back to the creator.

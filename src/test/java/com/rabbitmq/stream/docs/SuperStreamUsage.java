@@ -34,12 +34,12 @@ public class SuperStreamUsage {
         .partitions(5).creator()
         .create();
     // end::creation-partitions[]
-    // tag::creation-routing-keys[]
+    // tag::creation-binding-keys[]
     environment.streamCreator().name("invoices")
         .superStream()
-        .routingKeys("amer", "emea", "apac").creator()
+        .bindingKeys("amer", "emea", "apac").creator()
         .create();
-    // end::creation-routing-keys[]
+    // end::creation-binding-keys[]
   }
 
     void producerSimple() {

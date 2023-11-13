@@ -688,14 +688,14 @@ public class Client implements AutoCloseable {
   Response createSuperStream(
       String superStream,
       List<String> partitions,
-      List<String> routingKeys,
+      List<String> bindingKeys,
       Map<String, String> arguments) {
     this.superStreamManagementCommandVersionsCheck.run();
-    if (partitions.isEmpty() || routingKeys.isEmpty()) {
+    if (partitions.isEmpty() || bindingKeys.isEmpty()) {
       throw new IllegalArgumentException(
           "Partitions and routing keys of a super stream cannot be empty");
     }
-    if (partitions.size() != routingKeys.size()) {
+    if (partitions.size() != bindingKeys.size()) {
       throw new IllegalArgumentException(
           "Partitions and routing keys of a super stream must have "
               + "the same number of elements");
@@ -708,7 +708,7 @@ public class Client implements AutoCloseable {
             + 2
             + superStream.length()
             + collectionSize(partitions)
-            + collectionSize(routingKeys)
+            + collectionSize(bindingKeys)
             + mapSize(arguments);
     int correlationId = correlationSequence.incrementAndGet();
     try {
@@ -720,7 +720,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(superStream.length());
       bb.writeBytes(superStream.getBytes(CHARSET));
       writeCollection(bb, partitions);
-      writeCollection(bb, routingKeys);
+      writeCollection(bb, bindingKeys);
       writeMap(bb, arguments);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);

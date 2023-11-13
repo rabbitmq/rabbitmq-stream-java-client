@@ -83,12 +83,12 @@ The super stream partitions will be `invoices-0`, `invoices-1`, ..., `invoices-5
 We use this kind of topology when routing keys of outbound messages are hashed to pick the partition to publish them to.
 This way, if the routing key is the customer ID of the invoice, all the invoices for a given customer end up in the same partition, and they can be processed in the publishing order.
 
-It is also possible to specify routing keys when creating a super stream:
+It is also possible to specify binding keys when creating a super stream:
 
-.Creating a super stream by specifying the routing keys
+.Creating a super stream by specifying the binding keys
 [source,java,indent=0]
 --------
-include::{test-examples}/SuperStreamUsage.java[tag=creation-routing-keys]
+include::{test-examples}/SuperStreamUsage.java[tag=creation-binding-keys]
 --------
 
 The super stream partitions will be `invoices-amer`, `invoices-emea` and `invoices-apac` in this case.

@@ -101,28 +101,28 @@ class StreamStreamCreator implements StreamCreator {
     Function<Client, Client.Response> function;
     boolean superStream = this.superStreamConfiguration != null;
     if (superStream) {
-      List<String> partitions, routingKeys;
-      if (this.superStreamConfiguration.routingKeys == null) {
+      List<String> partitions, bindingKeys;
+      if (this.superStreamConfiguration.bindingKeys == null) {
         partitions =
             IntStream.range(0, this.superStreamConfiguration.partitions)
                 .mapToObj(i -> this.name + "-" + i)
                 .collect(toList());
-        routingKeys =
+        bindingKeys =
             IntStream.range(0, this.superStreamConfiguration.partitions)
                 .mapToObj(String::valueOf)
                 .collect(toList());
       } else {
         partitions =
-            this.superStreamConfiguration.routingKeys.stream()
+            this.superStreamConfiguration.bindingKeys.stream()
                 .map(rk -> this.name + "-" + rk)
                 .collect(toList());
-        routingKeys = this.superStreamConfiguration.routingKeys;
+        bindingKeys = this.superStreamConfiguration.bindingKeys;
       }
       function =
           namedFunction(
               c ->
                   c.createSuperStream(
-                      this.name, partitions, routingKeys, streamParametersBuilder.build()),
+                      this.name, partitions, bindingKeys, streamParametersBuilder.build()),
               "Creation of super stream '%s'",
               this.name);
     } else {
@@ -154,7 +154,7 @@ class StreamStreamCreator implements StreamCreator {
     private final StreamCreator creator;
 
     private int partitions = 3;
-    private List<String> routingKeys = null;
+    private List<String> bindingKeys = null;
 
     private DefaultSuperStreamConfiguration(StreamCreator creator) {
       this.creator = creator;
@@ -166,16 +166,16 @@ class StreamStreamCreator implements StreamCreator {
         throw new IllegalArgumentException("The number of partitions must be greater than 0");
       }
       this.partitions = partitions;
-      this.routingKeys = null;
+      this.bindingKeys = null;
       return this;
     }
 
     @Override
-    public SuperStreamConfiguration routingKeys(String... routingKeys) {
-      if (routingKeys == null || routingKeys.length == 0) {
-        throw new IllegalArgumentException("There must be at least 1 routing key");
+    public SuperStreamConfiguration bindingKeys(String... bindingKeys) {
+      if (bindingKeys == null || bindingKeys.length == 0) {
+        throw new IllegalArgumentException("There must be at least 1 binding key");
       }
-      this.routingKeys = Arrays.asList(routingKeys);
+      this.bindingKeys = Arrays.asList(bindingKeys);
       this.partitions = -1;
       return this;
     }
