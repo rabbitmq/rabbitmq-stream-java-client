@@ -495,6 +495,62 @@ public class StreamEnvironmentTest {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(ints = {3, 5})
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_13_0)
+  void superStreamCreationSetPartitions(int partitionCount, TestInfo info) {
+    int defaultPartitionCount = 3;
+    String s = streamName(info);
+    Client client = cf.get();
+    Environment env = environmentBuilder.build();
+    try {
+      StreamCreator.SuperStreamConfiguration configuration =
+          env.streamCreator().name(s).superStream();
+      if (partitionCount != defaultPartitionCount) {
+        configuration.partitions(partitionCount);
+      }
+      configuration.creator().create();
+
+      assertThat(client.partitions(s))
+          .hasSize(partitionCount)
+          .containsAll(
+              IntStream.range(0, partitionCount).mapToObj(i -> s + "-" + i).collect(toList()));
+      IntStream.range(0, partitionCount)
+          .forEach(
+              i -> assertThat(client.route(String.valueOf(i), s)).hasSize(1).contains(s + "-" + i));
+    } finally {
+      env.deleteSuperStream(s);
+      env.close();
+      assertThat(client.partitions(s)).isEmpty();
+    }
+  }
+
+  @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_13_0)
+  void superStreamCreationSetBindingKeys(TestInfo info) {
+    List<String> bindingKeys = Arrays.asList("a", "b", "c", "d", "e");
+    String s = streamName(info);
+    Client client = cf.get();
+    Environment env = environmentBuilder.build();
+    try {
+      env.streamCreator()
+          .name(s)
+          .superStream()
+          .bindingKeys(bindingKeys.toArray(new String[] {}))
+          .creator()
+          .create();
+
+      assertThat(client.partitions(s))
+          .hasSize(bindingKeys.size())
+          .containsAll(bindingKeys.stream().map(rk -> s + "-" + rk).collect(toList()));
+      bindingKeys.forEach(bk -> assertThat(client.route(bk, s)).hasSize(1).contains(s + "-" + bk));
+    } finally {
+      env.deleteSuperStream(s);
+      env.close();
+      assertThat(client.partitions(s)).isEmpty();
+    }
+  }
+
   @Test
   void instanciationShouldSucceedWhenLazyInitIsEnabledAndHostIsNotKnown() {
     String dummyHost = UUID.randomUUID().toString();
@@ -556,7 +612,7 @@ public class StreamEnvironmentTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void queryStreamStatsShouldReturnFirstOffsetAndCommittedOffset(boolean lazyInit)
       throws Exception {
     try (Environment env = environmentBuilder.lazyInitialization(lazyInit).build()) {
@@ -589,7 +645,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void queryStreamStatsShouldThrowExceptionWhenStreamDoesNotExist() {
     try (Environment env = environmentBuilder.build()) {
       assertThatThrownBy(() -> env.queryStreamStats("does not exist"))
@@ -599,7 +655,7 @@ public class StreamEnvironmentTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void streamExists(boolean lazyInit) {
     AtomicBoolean metadataCalled = new AtomicBoolean(false);
     Function<Client.ClientParameters, Client> clientFactory =
@@ -623,7 +679,7 @@ public class StreamEnvironmentTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
   void streamExistsMetadataDataFallback(boolean lazyInit) {
     AtomicInteger metadataCallCount = new AtomicInteger(0);
     Function<Client.ClientParameters, Client> clientFactory =

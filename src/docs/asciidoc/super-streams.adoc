@@ -58,14 +58,51 @@ When a super stream is in use, the stream Java client queries this information t
 From the application code point of view, using a super stream is mostly configuration-based.
 Some logic must also be provided to extract routing information from messages.
 
-==== Super Stream Creation
+==== Super Stream Creation and Deletion
 
-It is possible to create the topology of a super stream with any AMQP 0.9.1 library or with the https://www.rabbitmq.com/management.html[management plugin], but the `rabbitmq-streams add_super_stream` command is a handy shortcut.
-Here is how to create an invoices super stream with 3 partitions:
+It is possible to manage super streams with
+
+* the stream Java client, by using `Environment#streamCreator()` and `Environment#deleteSuperStream(String)`
+* the `add_super_stream` and `delete_super_stream` commands in `rabbitmq-streams` (CLI)
+* any AMQP 0.9.1 client library
+* the https://www.rabbitmq.com/management.html[management plugin]
+
+The stream Java client and the dedicated CLI commands are easier to use as they take care of the topology details (exchange, streams, and bindings).
+
+===== With the Client Library
+
+Here is how to create an `invoices` super stream with 5 partitions:
+
+.Creating a super stream by specifying the number of partitions
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=creation-partitions]
+--------
+
+The super stream partitions will be `invoices-0`, `invoices-1`, ..., `invoices-5`.
+We use this kind of topology when routing keys of outbound messages are hashed to pick the partition to publish them to.
+This way, if the routing key is the customer ID of the invoice, all the invoices for a given customer end up in the same partition, and they can be processed in the publishing order.
+
+It is also possible to specify binding keys when creating a super stream:
+
+.Creating a super stream by specifying the binding keys
+[source,java,indent=0]
+--------
+include::{test-examples}/SuperStreamUsage.java[tag=creation-binding-keys]
+--------
+
+The super stream partitions will be `invoices-amer`, `invoices-emea` and `invoices-apac` in this case.
+
+Using one type of topology or the other depends on the use cases, especially how messages are processed.
+See the next sections on publishing and consuming to find out more.
+
+===== With the CLI
+
+Here is how to create an `invoices` super stream with 5 partitions:
 
 .Creating a super stream from the CLI
 ----
-rabbitmq-streams add_super_stream invoices --partitions 3
+rabbitmq-streams add_super_stream invoices --partitions 5
 ----
 
 Use `rabbitmq-streams add_super_stream --help` to learn more about the command.

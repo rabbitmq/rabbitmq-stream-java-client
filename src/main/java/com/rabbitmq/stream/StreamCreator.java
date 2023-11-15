@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -23,12 +23,23 @@ public interface StreamCreator {
   ByteCapacity MAX_SEGMENT_SIZE = ByteCapacity.from("3GB");
 
   /**
-   * The name of the stream
+   * The name of the stream.
+   *
+   * <p>Alias for {@link #name(String)}.
    *
    * @param stream
    * @return this creator instance
    */
   StreamCreator stream(String stream);
+
+  /**
+   * The name of the (super) stream.
+   *
+   * @param name
+   * @return this creator instance
+   * @since 0.15.0
+   */
+  StreamCreator name(String name);
 
   /**
    * The maximum size of the stream before it gets truncated.
@@ -79,6 +90,16 @@ public interface StreamCreator {
    * @see ConsumerBuilder#filter()
    */
   StreamCreator filterSize(int size);
+
+  /**
+   * Configure the super stream to create.
+   *
+   * <p>Requires RabbitMQ 3.13.0 or more.
+   *
+   * @return the super stream configuration
+   * @since 0.15.0
+   */
+  SuperStreamConfiguration superStream();
 
   /**
    * Create the stream.
@@ -141,5 +162,40 @@ public interface StreamCreator {
     public String value() {
       return this.value;
     }
+  }
+
+  /**
+   * Super stream configuration.
+   *
+   * @since 0.15.0
+   */
+  interface SuperStreamConfiguration {
+
+    /**
+     * The number of partitions of the super stream.
+     *
+     * <p>Mutually exclusive with {@link #bindingKeys(String...)}. Default is 3.
+     *
+     * @param partitions
+     * @return this super stream configuration instance
+     */
+    SuperStreamConfiguration partitions(int partitions);
+
+    /**
+     * The binding keys to use when declaring the super stream partitions.
+     *
+     * <p>Mutually exclusive with {@link #partitions(int)}. Default is null.
+     *
+     * @param bindingKeys
+     * @return this super stream configuration instance
+     */
+    SuperStreamConfiguration bindingKeys(String... bindingKeys);
+
+    /**
+     * Go back to the creator.
+     *
+     * @return the stream creator
+     */
+    StreamCreator creator();
   }
 }

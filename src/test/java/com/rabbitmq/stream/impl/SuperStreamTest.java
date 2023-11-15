@@ -18,8 +18,6 @@ import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -53,35 +51,31 @@ public class SuperStreamTest {
 
   Environment environment;
 
-  Connection connection;
+  TestUtils.ClientFactory cf;
+  Client configurationClient;
   int partitions = 3;
   String superStream;
   String[] routingKeys = null;
 
   @BeforeEach
-  void init(TestInfo info) throws Exception {
+  void init(TestInfo info) {
     EnvironmentBuilder environmentBuilder =
         Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
     environment = environmentBuilder.build();
-    connection = new ConnectionFactory().newConnection();
+    configurationClient = cf.get();
     superStream = TestUtils.streamName(info);
   }
 
   @AfterEach
-  void tearDown() throws Exception {
+  void tearDown() {
     environment.close();
-    if (routingKeys == null) {
-      deleteSuperStreamTopology(connection, superStream, partitions);
-    } else {
-      deleteSuperStreamTopology(connection, superStream, routingKeys);
-    }
-    connection.close();
+    deleteSuperStreamTopology(configurationClient, superStream);
   }
 
   @Test
-  void allMessagesSentWithHashRoutingShouldBeThenConsumed() throws Exception {
+  void allMessagesSentWithHashRoutingShouldBeThenConsumed() {
     int messageCount = 10_000 * partitions;
-    declareSuperStreamTopology(connection, superStream, partitions);
+    declareSuperStreamTopology(configurationClient, superStream, partitions);
     Producer producer =
         environment
             .producerBuilder()
@@ -123,10 +117,10 @@ public class SuperStreamTest {
   }
 
   @Test
-  void allMessagesSentWithRoutingKeyRoutingShouldBeThenConsumed() throws Exception {
+  void allMessagesSentWithRoutingKeyRoutingShouldBeThenConsumed() {
     int messageCount = 10_000 * partitions;
     routingKeys = new String[] {"amer", "emea", "apac"};
-    declareSuperStreamTopology(connection, superStream, routingKeys);
+    declareSuperStreamTopology(configurationClient, superStream, routingKeys);
     Producer producer =
         environment
             .producerBuilder()
@@ -169,11 +163,11 @@ public class SuperStreamTest {
   }
 
   @Test
-  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11)
-  void allMessagesForSameUserShouldEndUpInSamePartition() throws Exception {
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
+  void allMessagesForSameUserShouldEndUpInSamePartition() {
     int messageCount = 10_000 * partitions;
     int userCount = 10;
-    declareSuperStreamTopology(connection, superStream, partitions);
+    declareSuperStreamTopology(configurationClient, superStream, partitions);
 
     AtomicInteger totalReceivedCount = new AtomicInteger(0);
     // <partition>.<user> => count

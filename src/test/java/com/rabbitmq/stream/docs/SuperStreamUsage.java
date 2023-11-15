@@ -26,6 +26,22 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class SuperStreamUsage {
 
+  void creation() {
+    Environment environment = Environment.builder().build();
+    // tag::creation-partitions[]
+    environment.streamCreator().name("invoices")
+        .superStream()
+        .partitions(5).creator()
+        .create();
+    // end::creation-partitions[]
+    // tag::creation-binding-keys[]
+    environment.streamCreator().name("invoices")
+        .superStream()
+        .bindingKeys("amer", "emea", "apac").creator()
+        .create();
+    // end::creation-binding-keys[]
+  }
+
     void producerSimple() {
         Environment environment = Environment.builder().build();
         // tag::producer-simple[]

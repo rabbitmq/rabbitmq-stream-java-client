@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -14,6 +14,7 @@
 package com.rabbitmq.stream;
 
 import static java.lang.String.format;
+import static java.util.Arrays.asList;
 
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
@@ -151,12 +152,24 @@ public class Host {
     rabbitmqctl(format("add_user %s %s", username, password));
   }
 
+  public static void setPermissions(String username, List<String> permissions) throws IOException {
+    setPermissions(username, "/", permissions);
+  }
+
   public static void setPermissions(String username, String vhost, String permission)
       throws IOException {
+    setPermissions(username, vhost, asList(permission, permission, permission));
+  }
+
+  public static void setPermissions(String username, String vhost, List<String> permissions)
+      throws IOException {
+    if (permissions.size() != 3) {
+      throw new IllegalArgumentException();
+    }
     rabbitmqctl(
         format(
             "set_permissions --vhost %s %s '%s' '%s' '%s'",
-            vhost, username, permission, permission, permission));
+            vhost, username, permissions.get(0), permissions.get(1), permissions.get(2)));
   }
 
   public static void changePassword(String username, String newPassword) throws IOException {

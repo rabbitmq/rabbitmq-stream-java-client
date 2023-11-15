@@ -58,6 +58,7 @@ public class FilteringTest {
   Environment environment;
 
   String stream;
+  ClientFactory cf;
 
   @BeforeEach
   void init() throws Exception {
@@ -278,9 +279,9 @@ public class FilteringTest {
         () -> {
           String superStream = TestUtils.streamName(info);
           int partitionCount = 3;
-          Connection connection = new ConnectionFactory().newConnection();
+          Client configurationClient = cf.get();
           try {
-            TestUtils.declareSuperStreamTopology(connection, superStream, partitionCount);
+            declareSuperStreamTopology(configurationClient, superStream, partitionCount);
 
             Producer producer =
                 environment
@@ -362,8 +363,7 @@ public class FilteringTest {
                 CONDITION_TIMEOUT, () -> filteredConsumedMessageCount.get() == expectedCount);
             assertThat(receivedMessageCount).hasValueLessThan(messageCount * 2);
           } finally {
-            TestUtils.deleteSuperStreamTopology(connection, superStream, partitionCount);
-            connection.close();
+            deleteSuperStreamTopology(configurationClient, superStream);
           }
         });
   }

@@ -461,6 +461,22 @@ class StreamEnvironment implements Environment {
   }
 
   @Override
+  public void deleteSuperStream(String superStream) {
+    checkNotClosed();
+    this.maybeInitializeLocator();
+    Client.Response response = this.locator().deleteSuperStream(superStream);
+    if (!response.isOk()) {
+      throw new StreamException(
+          "Error while deleting super stream "
+              + superStream
+              + " ("
+              + formatConstant(response.getResponseCode())
+              + ")",
+          response.getResponseCode());
+    }
+  }
+
+  @Override
   public StreamStats queryStreamStats(String stream) {
     checkNotClosed();
     this.maybeInitializeLocator();
