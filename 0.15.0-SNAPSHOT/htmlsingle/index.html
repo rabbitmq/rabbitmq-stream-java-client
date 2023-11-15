@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.15.0-SNAPSHOT</span>
-<br><span id="revremark">(0425a4c)</span>
+<br><span id="revremark">(07be29a)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -613,7 +613,12 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#super-streams">Super Streams (Partitioned Streams)</a>
 <ul class="sectlevel3">
 <li><a href="#topology">Topology</a></li>
-<li><a href="#super-stream-creation">Super Stream Creation</a></li>
+<li><a href="#super-stream-creation-and-deletion">Super Stream Creation and Deletion</a>
+<ul class="sectlevel4">
+<li><a href="#with-the-client-library">With the Client Library</a></li>
+<li><a href="#with-the-cli">With the CLI</a></li>
+</ul>
+</li>
 <li><a href="#super-stream-producer">Publishing to a Super Stream</a>
 <ul class="sectlevel4">
 <li><a href="#resolving-routes-with-bindings">Resolving Routes with Bindings</a></li>
@@ -3651,19 +3656,82 @@ Some logic must also be provided to extract routing information from messages.</
 </div>
 </div>
 <div class="sect3">
-<h4 id="super-stream-creation"><a class="anchor" href="#super-stream-creation"></a>Super Stream Creation</h4>
+<h4 id="super-stream-creation-and-deletion"><a class="anchor" href="#super-stream-creation-and-deletion"></a>Super Stream Creation and Deletion</h4>
 <div class="paragraph">
-<p>It is possible to create the topology of a super stream with any AMQP 0.9.1 library or with the <a href="https://www.rabbitmq.com/management.html">management plugin</a>, but the <code>rabbitmq-streams add_super_stream</code> command is a handy shortcut.
-Here is how to create an invoices super stream with 3 partitions:</p>
+<p>It is possible to manage super streams with</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>the stream Java client, by using <code>Environment#streamCreator()</code> and <code>Environment#deleteSuperStream(String)</code></p>
+</li>
+<li>
+<p>the <code>add_super_stream</code> and <code>delete_super_stream</code> commands in <code>rabbitmq-streams</code> (CLI)</p>
+</li>
+<li>
+<p>any AMQP 0.9.1 client library</p>
+</li>
+<li>
+<p>the <a href="https://www.rabbitmq.com/management.html">management plugin</a></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The stream Java client and the dedicated CLI commands are easier to use as they take care of the topology details (exchange, streams, and bindings).</p>
+</div>
+<div class="sect4">
+<h5 id="with-the-client-library"><a class="anchor" href="#with-the-client-library"></a>With the Client Library</h5>
+<div class="paragraph">
+<p>Here is how to create an <code>invoices</code> super stream with 5 partitions:</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating a super stream by specifying the number of partitions</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">environment.streamCreator().name(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+    .superStream()
+    .partitions(<span class="integer">5</span>).creator()
+    .create();</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The super stream partitions will be <code>invoices-0</code>, <code>invoices-1</code>, &#8230;&#8203;, <code>invoices-5</code>.
+We use this kind of topology when routing keys of outbound messages are hashed to pick the partition to publish them to.
+This way, if the routing key is the customer ID of the invoice, all the invoices for a given customer end up in the same partition, and they can be processed in the publishing order.</p>
+</div>
+<div class="paragraph">
+<p>It is also possible to specify binding keys when creating a super stream:</p>
+</div>
+<div class="listingblock">
+<div class="title">Creating a super stream by specifying the binding keys</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">environment.streamCreator().name(<span class="string"><span class="delimiter">&quot;</span><span class="content">invoices</span><span class="delimiter">&quot;</span></span>)
+    .superStream()
+    .bindingKeys(<span class="string"><span class="delimiter">&quot;</span><span class="content">amer</span><span class="delimiter">&quot;</span></span>, <span class="string"><span class="delimiter">&quot;</span><span class="content">emea</span><span class="delimiter">&quot;</span></span>, <span class="string"><span class="delimiter">&quot;</span><span class="content">apac</span><span class="delimiter">&quot;</span></span>).creator()
+    .create();</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The super stream partitions will be <code>invoices-amer</code>, <code>invoices-emea</code> and <code>invoices-apac</code> in this case.</p>
+</div>
+<div class="paragraph">
+<p>Using one type of topology or the other depends on the use cases, especially how messages are processed.
+See the next sections on publishing and consuming to find out more.</p>
+</div>
+</div>
+<div class="sect4">
+<h5 id="with-the-cli"><a class="anchor" href="#with-the-cli"></a>With the CLI</h5>
+<div class="paragraph">
+<p>Here is how to create an <code>invoices</code> super stream with 5 partitions:</p>
 </div>
 <div class="listingblock">
 <div class="title">Creating a super stream from the CLI</div>
 <div class="content">
-<pre>rabbitmq-streams add_super_stream invoices --partitions 3</pre>
+<pre>rabbitmq-streams add_super_stream invoices --partitions 5</pre>
 </div>
 </div>
 <div class="paragraph">
 <p>Use <code>rabbitmq-streams add_super_stream --help</code> to learn more about the command.</p>
+</div>
 </div>
 </div>
 <div class="sect3">
@@ -4900,7 +4968,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.15.0-SNAPSHOT<br>
-Last updated 2023-11-14 07:07:35 UTC
+Last updated 2023-11-15 08:20:46 UTC
 </div>
 </div>
 </body>
