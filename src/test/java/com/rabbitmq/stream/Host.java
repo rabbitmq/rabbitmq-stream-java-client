@@ -22,11 +22,15 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Host {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Host.class);
 
   private static final String DOCKER_PREFIX = "DOCKER:";
 
@@ -130,11 +134,54 @@ public class Host {
   public static List<ConnectionInfo> listConnections() {
     try {
       Process process =
-          rabbitmqctl("list_stream_connections --formatter json conn_name,client_properties");
-      return toConnectionInfoList(capture(process.getInputStream()));
+          rabbitmqctl("list_stream_connections -q --formatter table conn_name,client_properties");
+      List<ConnectionInfo> connectionInfoList = Collections.emptyList();
+      if (process.exitValue() != 0) {
+        LOGGER.warn(
+            "Error while trying to list stream connections. Standard output: {}, error output: {}",
+            capture(process.getInputStream()),
+            capture(process.getErrorStream()));
+        return connectionInfoList;
+      }
+      String content = capture(process.getInputStream());
+      String[] lines = content.split(System.getProperty("line.separator"));
+      if (lines.length > 1) {
+        connectionInfoList = new ArrayList<>(lines.length - 1);
+        for (int i = 1; i < lines.length; i++) {
+          String line = lines[i];
+          String[] fields = line.split("\t");
+          String connectionName = fields[0];
+          Map<String, String> clientProperties = Collections.emptyMap();
+          if (fields.length > 1 && fields[1].length() > 1) {
+            clientProperties = buildClientProperties(fields);
+          }
+          connectionInfoList.add(new ConnectionInfo(connectionName, clientProperties));
+        }
+      }
+      return connectionInfoList;
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private static Map<String, String> buildClientProperties(String[] fields) {
+    String clientPropertiesString = fields[1];
+    clientPropertiesString =
+        clientPropertiesString
+            .replace("[", "")
+            .replace("]", "")
+            .replace("},{", "|")
+            .replace("{", "")
+            .replace("}", "");
+    Map<String, String> clientProperties = new LinkedHashMap<>();
+    String[] clientPropertyEntries = clientPropertiesString.split("\\|");
+    for (String clientPropertyEntry : clientPropertyEntries) {
+      String[] clientProperty = clientPropertyEntry.split("\",\"");
+      clientProperties.put(
+          clientProperty[0].substring(1),
+          clientProperty[1].substring(0, clientProperty[1].length() - 1));
+    }
+    return clientProperties;
   }
 
   static List<ConnectionInfo> toConnectionInfoList(String json) {
@@ -278,29 +325,30 @@ public class Host {
 
   public static class ConnectionInfo {
 
-    private String conn_name;
-    private List<List<String>> client_properties;
+    private final String name;
+    private final Map<String, String> clientProperties;
+
+    public ConnectionInfo(String name, Map<String, String> clientProperties) {
+      this.name = name;
+      this.clientProperties = clientProperties;
+    }
 
     public String name() {
-      return this.conn_name;
+      return this.name;
     }
 
     public String clientProvidedName() {
-      return client_properties.stream()
-          .filter(p -> "connection_name".equals(p.get(0)))
-          .findFirst()
-          .get()
-          .get(2);
+      return this.clientProperties.get("connection_name");
     }
 
     @Override
     public String toString() {
       return "ConnectionInfo{"
-          + "conn_name='"
-          + conn_name
+          + "name='"
+          + name
           + '\''
-          + ", client_properties="
-          + client_properties
+          + ", clientProperties="
+          + clientProperties
           + '}';
     }
   }
