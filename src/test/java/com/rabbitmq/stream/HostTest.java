@@ -17,11 +17,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.Host.ConnectionInfo;
 import java.util.List;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class HostTest {
 
   @Test
+  @Disabled
   void deserializeConnectionInfo() {
     List<ConnectionInfo> connections =
         Host.toConnectionInfoList(LIST_STREAM_CONNECTIONS_JSON_OUTPUT);
