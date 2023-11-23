@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2020-2023 Broadcom. All Rights Reserved. The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -44,7 +44,7 @@ public final class ClientProperties {
               put("product", "RabbitMQ Stream");
               put("version", ClientProperties.VERSION);
               put("platform", "Java");
-              put("copyright", "Copyright (c) 2020-2023 VMware, Inc. or its affiliates.");
+              put("copyright", "Copyright (c) 2020-2023 Broadcom Inc. and/or its subsidiaries.");
               put("information", "Licensed under the MPL 2.0. See https://www.rabbitmq.com/");
             }
           });

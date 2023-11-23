@@ -1,4 +1,4 @@
-// Copyright (c) 2022 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2023 Broadcom. All Rights Reserved. The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -35,8 +35,8 @@ public class HostTest {
 
   private static final String LIST_STREAM_CONNECTIONS_JSON_OUTPUT =
       "[\n"
-          + "{\"conn_name\":\"127.0.0.1:49214 -> 127.0.1.1:5552\",\"client_properties\":[[\"connection_name\",\"longstr\",\"rabbitmq-stream-consumer-0\"],[\"copyright\",\"longstr\",\"Copyright (c) 2020-2021 VMware, Inc. or its affiliates.\"],[\"information\",\"longstr\",\"Licensed under the MPL 2.0. See https://www.rabbitmq.com/\"],[\"platform\",\"longstr\",\"Java\"],[\"product\",\"longstr\",\"RabbitMQ Stream\"],[\"version\",\"longstr\",\"0.5.0-SNAPSHOT\"]]}\n"
-          + ",{\"conn_name\":\"127.0.0.1:49212 -> 127.0.1.1:5552\",\"client_properties\":[[\"connection_name\",\"longstr\",\"rabbitmq-stream-producer-0\"],[\"copyright\",\"longstr\",\"Copyright (c) 2020-2021 VMware, Inc. or its affiliates.\"],[\"information\",\"longstr\",\"Licensed under the MPL 2.0. See https://www.rabbitmq.com/\"],[\"platform\",\"longstr\",\"Java\"],[\"product\",\"longstr\",\"RabbitMQ Stream\"],[\"version\",\"longstr\",\"0.5.0-SNAPSHOT\"]]}\n"
-          + ",{\"conn_name\":\"127.0.0.1:58118 -> 127.0.0.1:5552\",\"client_properties\":[[\"connection_name\",\"longstr\",\"rabbitmq-stream-locator-0\"],[\"copyright\",\"longstr\",\"Copyright (c) 2020-2021 VMware, Inc. or its affiliates.\"],[\"information\",\"longstr\",\"Licensed under the MPL 2.0. See https://www.rabbitmq.com/\"],[\"platform\",\"longstr\",\"Java\"],[\"product\",\"longstr\",\"RabbitMQ Stream\"],[\"version\",\"longstr\",\"0.5.0-SNAPSHOT\"]]}\n"
+          + "{\"conn_name\":\"127.0.0.1:49214 -> 127.0.1.1:5552\",\"client_properties\":[[\"connection_name\",\"longstr\",\"rabbitmq-stream-consumer-0\"],[\"copyright\",\"longstr\",\"Copyright (c) 2020-2023 Broadcom Inc. and/or its subsidiaries.\"],[\"information\",\"longstr\",\"Licensed under the MPL 2.0. See https://www.rabbitmq.com/\"],[\"platform\",\"longstr\",\"Java\"],[\"product\",\"longstr\",\"RabbitMQ Stream\"],[\"version\",\"longstr\",\"0.5.0-SNAPSHOT\"]]}\n"
+          + ",{\"conn_name\":\"127.0.0.1:49212 -> 127.0.1.1:5552\",\"client_properties\":[[\"connection_name\",\"longstr\",\"rabbitmq-stream-producer-0\"],[\"copyright\",\"longstr\",\"Copyright (c) 2020-2023 Broadcom Inc. and/or its subsidiaries.\"],[\"information\",\"longstr\",\"Licensed under the MPL 2.0. See https://www.rabbitmq.com/\"],[\"platform\",\"longstr\",\"Java\"],[\"product\",\"longstr\",\"RabbitMQ Stream\"],[\"version\",\"longstr\",\"0.5.0-SNAPSHOT\"]]}\n"
+          + ",{\"conn_name\":\"127.0.0.1:58118 -> 127.0.0.1:5552\",\"client_properties\":[[\"connection_name\",\"longstr\",\"rabbitmq-stream-locator-0\"],[\"copyright\",\"longstr\",\"Copyright (c) 2020-2023 Broadcom Inc. and/or its subsidiaries.\"],[\"information\",\"longstr\",\"Licensed under the MPL 2.0. See https://www.rabbitmq.com/\"],[\"platform\",\"longstr\",\"Java\"],[\"product\",\"longstr\",\"RabbitMQ Stream\"],[\"version\",\"longstr\",\"0.5.0-SNAPSHOT\"]]}\n"
           + "]";
 }
