@@ -29,13 +29,13 @@
     <developer>
       <email>info@rabbitmq.com</email>
       <name>Team RabbitMQ</name>
-      <organization>VMware by Broadcom</organization>
+      <organization>Broadcom Inc. and its subsidiaries</organization>
       <organizationUrl>https://rabbitmq.com</organizationUrl>
     </developer>
   </developers>
 
   <organization>
-    <name>VMware by Broadcom</name>
+    <name>Broadcom Inc. and/or its subsidiaries</name>
     <url>https://www.rabbitmq.com</url>
   </organization>
 
