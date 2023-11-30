@@ -1,4 +1,5 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved. The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
+// Copyright (c) 2020-2023 Broadcom. All Rights Reserved. The term "Broadcom" refers to Broadcom
+// Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
 // Mozilla Public License 2.0 ("MPL"), and the Apache License version 2 ("ASL").
@@ -416,22 +417,13 @@ public class AmqpInteroperabilityTest {
                     d -> {
                       assertThat(d.getProperties().getMessageId()).isNull();
                       assertThat(d.getProperties().getCorrelationId()).isNull();
-                      assertThat(
-                              d.getProperties()
-                                  .getHeaders()
-                                  .get("x-message-id")
-                                  .toString()
-                                  .getBytes(UTF8))
+                      assertThat(d.getProperties().getHeaders().get("x-message-id"))
                           .isEqualTo("the message ID".getBytes(UTF8));
-                      assertThat(
-                              d.getProperties()
-                                  .getHeaders()
-                                  .get("x-correlation-id")
-                                  .toString()
-                                  .getBytes(UTF8))
+                      assertThat(d.getProperties().getHeaders().get("x-correlation-id"))
                           .isEqualTo("the correlation ID".getBytes(UTF8));
                     }),
                 mo(
+                    BEFORE_MESSAGE_CONTAINERS,
                     mb -> {
                       mb.properties()
                           .messageId(
@@ -454,6 +446,27 @@ public class AmqpInteroperabilityTest {
                               "x-correlation-id",
                               LongStringHelper.asLongString(
                                   StringUtils.repeat("b", 300).getBytes(UTF8)));
+                    }),
+                mo(
+                    AFTER_MESSAGE_CONTAINERS,
+                    mb -> {
+                      mb.properties()
+                          .messageId(
+                              StringUtils.repeat("a", 300)
+                                  .getBytes(UTF8)); // larger than 091 shortstr
+                      mb.properties()
+                          .correlationId(
+                              StringUtils.repeat("b", 300)
+                                  .getBytes(UTF8)); // larger than 091 shortstr
+                    },
+                    d -> {
+                      assertThat(d.getProperties().getMessageId()).isNull();
+                      assertThat(d.getProperties().getCorrelationId()).isNull();
+                      assertThat(d.getProperties().getHeaders())
+                          .containsEntry(
+                              "x-message-id", StringUtils.repeat("a", 300).getBytes(UTF8))
+                          .containsEntry(
+                              "x-correlation-id", StringUtils.repeat("b", 300).getBytes(UTF8));
                     }));
 
     testMessageOperations
