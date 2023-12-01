@@ -247,6 +247,8 @@ public interface EnvironmentBuilder {
    *
    * <p>Default is 256, which is the maximum value.
    *
+   * <p>The limit may not be strictly enforced in case of too many concurrent creations.
+   *
    * @param maxProducersByConnection
    * @return this builder instance
    */
@@ -257,6 +259,8 @@ public interface EnvironmentBuilder {
    *
    * <p>Default is 50, which is the maximum value.
    *
+   * <p>The limit may not be strictly enforced in case of too many concurrent creations.
+   *
    * @param maxTrackingConsumersByConnection
    * @return this builder instance
    */
@@ -266,6 +270,8 @@ public interface EnvironmentBuilder {
    * The maximum number of consumers allocated to a single connection.
    *
    * <p>Default is 256, which is the maximum value.
+   *
+   * <p>The limit may not be strictly enforced in case of too many concurrent creations.
    *
    * @param maxConsumersByConnection
    * @return this builder instance
