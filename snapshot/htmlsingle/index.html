@@ -528,7 +528,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.15.0-SNAPSHOT</span>
-<br><span id="revremark">(15f83ff)</span>
+<br><span id="revremark">(5b745be)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1621,20 +1621,26 @@ it is the developer&#8217;s responsibility to close it once it is no longer nece
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxProducersByConnection</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of <code>Producer</code> instances a single connection can maintain before
-a new connection is open. The value must be between 1 and 255.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">255</p></td>
+a new connection is open.
+The value must be between 1 and 256.
+The limit may not be strictly enforced in case of too many concurrent creations.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">256</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxTrackingConsumersByConnection</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of <code>Consumer</code> instances that store their offset a single connection
-can maintain before a new connection is open. The value must be between 1 and 255.</p></td>
+can maintain before a new connection is open.
+The value must be between 1 and 256.
+The limit may not be strictly enforced in case of too many concurrent creations.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">50</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxConsumersByConnection</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The maximum number of <code>Consumer</code> instances a single connection can maintain before
-a new connection is open. The value must be between 1 and 255.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">255</p></td>
+a new connection is open.
+The value must be between 1 and 256.
+The limit may not be strictly enforced in case of too many concurrent creations.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">256</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>lazyInitialization</code></p></td>
@@ -4968,7 +4974,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.15.0-SNAPSHOT<br>
-Last updated 2023-11-30 08:54:07 UTC
+Last updated 2023-12-01 08:45:58 UTC
 </div>
 </div>
 </body>
