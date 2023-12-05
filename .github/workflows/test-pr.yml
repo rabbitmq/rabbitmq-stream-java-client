@@ -24,8 +24,6 @@ jobs:
           cache: 'maven'
       - name: Start broker
         run: ci/start-broker.sh
-        env:
-          RABBITMQ_IMAGE: 'pivotalrabbitmq/rabbitmq:super-stream-frames-otp-max-bazel'
       - name: Test
         run: |
           ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
