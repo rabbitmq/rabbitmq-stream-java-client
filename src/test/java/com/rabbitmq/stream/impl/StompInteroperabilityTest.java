@@ -20,11 +20,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.EnvironmentBuilder;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.OffsetSpecification;
-import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import java.io.BufferedReader;
@@ -34,28 +30,15 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -64,6 +47,8 @@ public class StompInteroperabilityTest {
 
   public static final String MESSAGE_ID = "message-id";
   public static final String X_STREAM_OFFSET = "x-stream-offset";
+  public static final String X_STREAM_FILTER_SIZE_BYTES = "x-stream-filter-size-bytes";
+  public static final String X_STREAM_FILTER_VALUE = "x-stream-filter-value";
   public static final String MESSAGE_COMMAND = "MESSAGE";
   public static final String ACK_COMMAND = "ACK";
   private static final String NEW_LINE = "\n";
@@ -109,20 +94,19 @@ public class StompInteroperabilityTest {
   void init() throws Exception {
     environmentBuilder = Environment.builder();
     env = environmentBuilder.netty().eventLoopGroup(eventLoopGroup).environmentBuilder().build();
-    socket = new Socket("localhost", 61613);
-    out = socket.getOutputStream();
-    in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
     executorService = Executors.newSingleThreadExecutor();
   }
 
   @AfterEach
   void tearDown() throws Exception {
     env.close();
-    socket.close();
     executorService.shutdownNow();
   }
 
   void stompConnect() throws Exception {
+    socket = new Socket("localhost", 61613);
+    out = socket.getOutputStream();
+    in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
     byte[] connect =
         frameBuilder()
             .command("CONNECT")
@@ -137,6 +121,28 @@ public class StompInteroperabilityTest {
         break;
       }
     }
+  }
+
+  void stompDisconnect() throws Exception {
+    String receipt = UUID.randomUUID().toString();
+    byte[] connect =
+        frameBuilder()
+            .command("DISCONNECT")
+            .header("receipt", receipt)
+            .header("passcode", "guest")
+            .build();
+    out.write(connect);
+    waitForReceipt(receipt);
+    socket.close();
+  }
+
+  void waitForReceipt(String receipt) throws Exception {
+    AtomicBoolean gotReceipt = new AtomicBoolean(false);
+    read(
+        line -> {
+          gotReceipt.compareAndSet(false, line.contains(receipt));
+          return line.equals(NULL) && gotReceipt.get();
+        });
   }
 
   void read(Predicate<String> condition) throws Exception {
@@ -181,13 +187,7 @@ public class StompInteroperabilityTest {
             .build();
 
     out.write(frame);
-
-    AtomicBoolean gotReceipt = new AtomicBoolean(false);
-    read(
-        line -> {
-          gotReceipt.compareAndSet(false, line.contains(receipt));
-          return line.equals(NULL) && gotReceipt.get();
-        });
+    waitForReceipt(receipt);
 
     CountDownLatch latch = new CountDownLatch(1);
     AtomicReference<Message> messageReference = new AtomicReference<>();
@@ -215,34 +215,39 @@ public class StompInteroperabilityTest {
 
     assertThat(message.getMessageAnnotations().get("x-routing-key")).isEqualTo(stream);
     assertThat(message.getMessageAnnotations().get("x-exchange")).isEqualTo("");
+    stompDisconnect();
   }
 
   void stompSubscribe(String stream, String ack, int prefetchCount) throws Exception {
-    stompSubscribe(stream, ack, prefetchCount, null);
+    stompSubscribe(stream, ack, prefetchCount, null, Collections.emptyMap());
   }
 
   void stompSubscribe(String stream, String ack, int prefetchCount, String offset)
       throws Exception {
-    String receipt = UUID.randomUUID().toString();
-    FrameBuilder builder =
-        frameBuilder()
-            .command("SUBSCRIBE")
-            .header("id", "0")
-            .header("destination", "/amq/queue/" + stream)
-            .header("ack", ack)
-            .header("prefetch-count", String.valueOf(prefetchCount))
-            .header("receipt", receipt);
+    stompSubscribe(stream, ack, prefetchCount, offset, Collections.emptyMap());
+  }
 
+  void stompSubscribe(
+      String stream, String ack, int prefetchCount, String offset, Map<String, String> headers)
+      throws Exception {
+    String receipt = UUID.randomUUID().toString();
+    Map<String, String> defaultHeaders = new LinkedHashMap<>();
+    defaultHeaders.put("id", "0");
+    defaultHeaders.put("destination", "/amq/queue/" + stream);
+    defaultHeaders.put("ack", ack);
+    defaultHeaders.put("prefetch-count", String.valueOf(prefetchCount));
+    defaultHeaders.put("receipt", receipt);
     if (offset != null) {
-      builder.header("x-stream-offset", offset);
+      defaultHeaders.put("x-stream-offset", offset);
     }
+    defaultHeaders.putAll(headers);
+
+    FrameBuilder builder = frameBuilder().command("SUBSCRIBE");
+
+    defaultHeaders.forEach(builder::header);
+
     out.write(builder.build());
-    AtomicBoolean gotReceipt = new AtomicBoolean(false);
-    read(
-        line -> {
-          gotReceipt.compareAndSet(false, line.contains(receipt));
-          return line.equals(NULL) && gotReceipt.get();
-        });
+    waitForReceipt(receipt);
   }
 
   @Test
@@ -309,6 +314,8 @@ public class StompInteroperabilityTest {
     assertThat(headers.get("timestamp")).isEqualTo("1000"); // in seconds
     assertThat(headers.get("some-header")).isEqualTo("some header value");
     assertThat(headers.get("x-stream-offset")).isNotNull().isEqualTo("0");
+
+    stompDisconnect();
   }
 
   @Test
@@ -350,6 +357,122 @@ public class StompInteroperabilityTest {
 
     assertThat(first.get()).isEqualTo(0);
     assertThat(last.get()).isEqualTo(messageCount - 1);
+    stompDisconnect();
+  }
+
+  @Test
+  @DisabledIfFilteringNotSupported
+  void filtering(TestInfo info) throws Exception {
+    int messageCount = 1000;
+    repeatIfFailure(
+        () -> {
+          String s = TestUtils.streamName(info);
+
+          stompConnect();
+          Map<String, String> headers = new LinkedHashMap<>();
+          headers.put("destination", "/topic/stream-queue-test");
+          headers.put("x-queue-name", s);
+          headers.put("x-queue-type", "stream");
+          headers.put(X_STREAM_FILTER_SIZE_BYTES, "32");
+          headers.put("durable", "true");
+          headers.put("auto-delete", "false");
+          stompSubscribe("does not matter", "client", 10, "first", headers);
+          stompDisconnect();
+
+          List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
+          Map<String, AtomicInteger> filterValueCount = new HashMap<>();
+          Random random = new Random();
+
+          Callable<Void> insert =
+              () -> {
+                stompConnect();
+                publishStomp(
+                    messageCount,
+                    "/amq/queue/" + s,
+                    () -> {
+                      String filterValue = filterValues.get(random.nextInt(filterValues.size()));
+                      filterValueCount
+                          .computeIfAbsent(filterValue, k -> new AtomicInteger())
+                          .incrementAndGet();
+                      return filterValue;
+                    });
+                stompDisconnect();
+                return null;
+              };
+          insert.call();
+
+          // second wave of messages, with only one, new filter value
+          String newFilterValue = "orange";
+          filterValues.clear();
+          filterValues.add(newFilterValue);
+          insert.call();
+
+          try {
+            stompConnect();
+            int prefetchCount = 10;
+            headers.clear();
+            headers.put("destination", "/amq/queue/" + s);
+            headers.put("x-stream-filter", newFilterValue);
+            headers.put("x-stream-match-unfiltered", "true");
+            stompSubscribe("does not matter", "client", prefetchCount, "first", headers);
+
+            int expectedCount = filterValueCount.get(newFilterValue).get();
+
+            AtomicInteger receivedMessageCount = new AtomicInteger(0);
+            AtomicInteger filteredConsumedMessageCount = new AtomicInteger(0);
+            AtomicReference<String> lastMessageId = new AtomicReference<>();
+            read(
+                line -> {
+                  if (line.contains(MESSAGE_COMMAND)) {
+                    receivedMessageCount.incrementAndGet();
+                  }
+                  if (hasHeader(line, MESSAGE_ID)) {
+                    lastMessageId.set(header(line));
+                  }
+                  if (hasHeader(line, X_STREAM_FILTER_VALUE)) {
+                    String filterValue = header(line);
+                    if (newFilterValue.equals(filterValue)) {
+                      filteredConsumedMessageCount.incrementAndGet();
+                    }
+                  }
+                  if (line.contains(NULL) && receivedMessageCount.get() % prefetchCount == 0) {
+                    write(
+                        frameBuilder()
+                            .command(ACK_COMMAND)
+                            .header(MESSAGE_ID, lastMessageId.get())
+                            .build());
+                  }
+
+                  return line.contains(NULL) && filteredConsumedMessageCount.get() == expectedCount;
+                });
+            assertThat(filteredConsumedMessageCount).hasValue(expectedCount);
+            assertThat(receivedMessageCount).hasValueLessThan(messageCount * 2);
+          } finally {
+            stompDisconnect();
+            env.deleteStream(s);
+          }
+        });
+  }
+
+  private void publishStomp(
+      int messageCount, String destination, Supplier<String> filterValueSupplier) throws Exception {
+    String messageBody = UUID.randomUUID().toString();
+    for (int i = 0; i < messageCount; i++) {
+      String receipt = UUID.randomUUID().toString();
+      byte[] frame =
+          frameBuilder()
+              .command("SEND")
+              .header("destination", destination)
+              .header("content-type", "text/plain")
+              .header("content-length", String.valueOf(messageBody.length()))
+              .header("some-header", "some header value")
+              .header("receipt", receipt)
+              .header(X_STREAM_FILTER_VALUE, filterValueSupplier.get())
+              .body(messageBody)
+              .build();
+      out.write(frame);
+      waitForReceipt(receipt);
+    }
   }
 
   void write(byte[] content) {
@@ -413,6 +536,7 @@ public class StompInteroperabilityTest {
 
     assertThat(first.get()).isEqualTo(chunkOffset.get());
     assertThat(last.get()).isEqualTo(lastOffset);
+    stompDisconnect();
   }
 
   @Test
@@ -470,6 +594,7 @@ public class StompInteroperabilityTest {
 
     assertThat(first.get()).isEqualTo(firstWaveMessageCount);
     assertThat(last.get()).isEqualTo(lastOffset);
+    stompDisconnect();
   }
 
   @Test
@@ -512,6 +637,7 @@ public class StompInteroperabilityTest {
 
     assertThat(first.get()).isEqualTo(offset);
     assertThat(last.get()).isEqualTo(messageCount - 1);
+    stompDisconnect();
   }
 
   @Test
@@ -570,6 +696,7 @@ public class StompInteroperabilityTest {
     assertThat(last.get()).isEqualTo(lastOffset);
     consumed.stream()
         .forEach(v -> assertThat(v).startsWith("second wave").doesNotStartWith("first wave"));
+    stompDisconnect();
   }
 
   private static class FrameBuilder {

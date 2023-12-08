@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.*;
+import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchReferenceConditions.completed;
 import static java.util.Collections.singletonMap;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -326,7 +327,7 @@ public class FilteringTest {
                                     .build(),
                                 confirmationHandler);
                           });
-                  latchAssert(latch).completes(CONDITION_TIMEOUT);
+                  assertThat(latch).is(completed());
                 };
 
             insert.run();
@@ -363,6 +364,7 @@ public class FilteringTest {
             waitAtMost(
                 CONDITION_TIMEOUT, () -> filteredConsumedMessageCount.get() == expectedCount);
             assertThat(receivedMessageCount).hasValueLessThan(messageCount * 2);
+            consumer.close();
           } finally {
             deleteSuperStreamTopology(configurationClient, superStream);
           }

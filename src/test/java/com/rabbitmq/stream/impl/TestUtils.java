@@ -566,6 +566,16 @@ public final class TestUtils {
     void run() throws Exception;
   }
 
+  public static class CountDownLatchReferenceConditions {
+
+    public static Condition<AtomicReference<CountDownLatch>> completed() {
+      return new Condition<>(
+          latch -> CountDownLatchConditions.latchCondition(latch.get(), DEFAULT_CONDITION_TIMEOUT),
+          "completed in %d ms",
+          DEFAULT_CONDITION_TIMEOUT.toMillis());
+    }
+  }
+
   public static class CountDownLatchConditions {
 
     public static Condition<CountDownLatch> completed() {
@@ -578,16 +588,16 @@ public final class TestUtils {
 
     static Condition<CountDownLatch> completed(Duration timeout) {
       return new Condition<>(
-          latch -> {
-            try {
-              return latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-              Thread.interrupted();
-              throw new RuntimeException(e);
-            }
-          },
-          "completed in %d ms",
-          timeout.toMillis());
+          latch -> latchCondition(latch, timeout), "completed in %d ms", timeout.toMillis());
+    }
+
+    private static boolean latchCondition(CountDownLatch latch, Duration timeout) {
+      try {
+        return latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+      } catch (InterruptedException e) {
+        Thread.interrupted();
+        throw new RuntimeException(e);
+      }
     }
   }
 
