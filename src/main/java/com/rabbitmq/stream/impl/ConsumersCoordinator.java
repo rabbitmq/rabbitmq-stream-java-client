@@ -576,8 +576,9 @@ class ConsumersCoordinator {
         new ConcurrentHashMap<>();
     // trackers and tracker count must be kept in sync
     private volatile List<SubscriptionTracker> subscriptionTrackers =
-        new ArrayList<>(maxConsumersByConnection);
-    private volatile int trackerCount = 0;
+        createSubscriptionTrackerList();
+    private final AtomicInteger consumerIndexSequence = new AtomicInteger(0);
+    private volatile int trackerCount;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private ClientSubscriptionsManager(Broker node, Client.ClientParameters clientParameters) {
@@ -585,7 +586,6 @@ class ConsumersCoordinator {
       this.node = node;
       this.name = keyForClientSubscription(node);
       LOGGER.debug("creating subscription manager on {}", name);
-      IntStream.range(0, maxConsumersByConnection).forEach(i -> subscriptionTrackers.add(null));
       this.trackerCount = 0;
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       ChunkListener chunkListener =
@@ -729,10 +729,9 @@ class ConsumersCoordinator {
             synchronized (this) {
               Set<SubscriptionTracker> subscriptions = streamToStreamSubscriptions.remove(stream);
               if (subscriptions != null && !subscriptions.isEmpty()) {
-                List<SubscriptionTracker> newSubscriptions =
-                    new ArrayList<>(maxConsumersByConnection);
-                for (int i = 0; i < maxConsumersByConnection; i++) {
-                  newSubscriptions.add(subscriptionTrackers.get(i));
+                List<SubscriptionTracker> newSubscriptions = createSubscriptionTrackerList();
+                for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                  newSubscriptions.set(i, subscriptionTrackers.get(i));
                 }
                 for (SubscriptionTracker subscription : subscriptions) {
                   LOGGER.debug(
@@ -864,6 +863,12 @@ class ConsumersCoordinator {
               });
     }
 
+    private List<SubscriptionTracker> createSubscriptionTrackerList() {
+      List<SubscriptionTracker> newSubscriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
+      IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> newSubscriptions.add(null));
+      return newSubscriptions;
+    }
+
     private void maybeRecoverSubscription(List<Broker> candidates, SubscriptionTracker tracker) {
       if (tracker.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
         try {
@@ -958,13 +963,7 @@ class ConsumersCoordinator {
 
       checkNotClosed();
 
-      byte subscriptionId = 0;
-      for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-        if (subscriptionTrackers.get(i) == null) {
-          subscriptionId = (byte) i;
-          break;
-        }
-      }
+      byte subscriptionId = (byte) pickSlot(this.subscriptionTrackers, this.consumerIndexSequence);
 
       List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
 
@@ -1121,15 +1120,14 @@ class ConsumersCoordinator {
             }
           });
       closeIfEmpty();
-      //      this.owner.maybeDisposeManager(this);
     }
 
     private List<SubscriptionTracker> update(
         List<SubscriptionTracker> original, byte index, SubscriptionTracker newValue) {
-      List<SubscriptionTracker> newSubcriptions = new ArrayList<>(maxConsumersByConnection);
+      List<SubscriptionTracker> newSubcriptions = createSubscriptionTrackerList();
       int intIndex = index & 0xFF;
-      for (int i = 0; i < maxConsumersByConnection; i++) {
-        newSubcriptions.add(i == intIndex ? newValue : original.get(i));
+      for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+        newSubcriptions.set(i, i == intIndex ? newValue : original.get(i));
       }
       return newSubcriptions;
     }
@@ -1279,5 +1277,13 @@ class ConsumersCoordinator {
     public long messageCount() {
       return messageCount;
     }
+  }
+
+  static <T> int pickSlot(List<T> list, AtomicInteger sequence) {
+    int index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
+    while (list.get(index) != null) {
+      index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
+    }
+    return index;
   }
 }
