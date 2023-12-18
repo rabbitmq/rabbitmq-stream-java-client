@@ -49,6 +49,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -564,6 +565,7 @@ class ProducersCoordinator {
     private final Broker node;
     private final ConcurrentMap<Byte, ProducerTracker> producers =
         new ConcurrentHashMap<>(maxProducersByClient);
+    private final AtomicInteger producerIndexSequence = new AtomicInteger(0);
     private final Set<AgentTracker> trackingConsumerTrackers =
         ConcurrentHashMap.newKeySet(maxTrackingConsumersByClient);
     private final Map<String, Set<AgentTracker>> streamToTrackers = new ConcurrentHashMap<>();
@@ -802,33 +804,26 @@ class ProducersCoordinator {
       checkNotClosed();
       if (tracker.identifiable()) {
         ProducerTracker producerTracker = (ProducerTracker) tracker;
-        // using the next available slot
-        for (int i = 0; i < maxProducersByClient; i++) {
-          ProducerTracker previousValue = producers.putIfAbsent((byte) i, producerTracker);
-          if (previousValue == null) {
-            this.checkNotClosed();
-            int index = i;
-            Response response =
-                callAndMaybeRetry(
-                    () ->
-                        this.client.declarePublisher(
-                            (byte) index, tracker.reference(), tracker.stream()),
-                    RETRY_ON_TIMEOUT,
-                    "Declare publisher request for publisher %d on stream '%s'",
-                    producerTracker.uniqueId(),
-                    producerTracker.stream());
-            if (response.isOk()) {
-              tracker.assign((byte) i, this.client, this);
-            } else {
-              String message =
-                  "Error while declaring publisher: "
-                      + formatConstant(response.getResponseCode())
-                      + ". Could not assign producer to client.";
-              LOGGER.info(message);
-              throw new StreamException(message, response.getResponseCode());
-            }
-            break;
-          }
+        int index = pickSlot(this.producers, producerTracker, this.producerIndexSequence);
+        this.checkNotClosed();
+        Response response =
+            callAndMaybeRetry(
+                () ->
+                    this.client.declarePublisher(
+                        (byte) index, tracker.reference(), tracker.stream()),
+                RETRY_ON_TIMEOUT,
+                "Declare publisher request for publisher %d on stream '%s'",
+                producerTracker.uniqueId(),
+                producerTracker.stream());
+        if (response.isOk()) {
+          tracker.assign((byte) index, this.client, this);
+        } else {
+          String message =
+              "Error while declaring publisher: "
+                  + formatConstant(response.getResponseCode())
+                  + ". Could not assign producer to client.";
+          LOGGER.info(message);
+          throw new StreamException(message, response.getResponseCode());
         }
         producers.put(tracker.id(), producerTracker);
       } else {
@@ -943,5 +938,15 @@ class ProducersCoordinator {
     public ClientClosedException() {
       super("Client already closed");
     }
+  }
+
+  static <T> int pickSlot(ConcurrentMap<Byte, T> map, T tracker, AtomicInteger sequence) {
+    int index = -1;
+    T previousValue = tracker;
+    while (previousValue != null) {
+      index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_PRODUCERS_PER_CLIENT);
+      previousValue = map.putIfAbsent((byte) index, tracker);
+    }
+    return index;
   }
 }

@@ -15,6 +15,8 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
+import static com.rabbitmq.stream.impl.ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
+import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickSlot;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
@@ -45,12 +47,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -62,6 +59,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
@@ -1074,8 +1072,10 @@ public class ConsumersCoordinatorTest {
     assertThat(coordinator.managerCount()).isZero();
   }
 
-  @Test
-  void shouldUseNewClientsForMoreThanMaxSubscriptionsAndCloseClientAfterUnsubscriptions() {
+  @ParameterizedTest
+  @ValueSource(ints = {50, ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT})
+  void shouldUseNewClientsForMoreThanMaxSubscriptionsAndCloseClientAfterUnsubscriptions(
+      int maxConsumersByConnection) {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
 
     when(clientFactory.client(any())).thenReturn(client);
@@ -1089,9 +1089,16 @@ public class ConsumersCoordinatorTest {
         .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
     when(client.isOpen()).thenReturn(true);
 
-    int extraSubscriptionCount = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
-    int subscriptionCount =
-        ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
+    int extraSubscriptionCount = maxConsumersByConnection / 5;
+    int subscriptionCount = maxConsumersByConnection + extraSubscriptionCount;
+
+    coordinator =
+        new ConsumersCoordinator(
+            environment,
+            maxConsumersByConnection,
+            type -> "consumer-connection",
+            clientFactory,
+            false);
 
     List<Runnable> closingRunnables =
         IntStream.range(0, subscriptionCount)
@@ -1129,7 +1136,7 @@ public class ConsumersCoordinatorTest {
 
     verify(client, times(1)).close();
 
-    closingRunnables.forEach(closingRunnable -> closingRunnable.run());
+    closingRunnables.forEach(Runnable::run);
 
     verify(client, times(2)).close();
   }
@@ -1925,6 +1932,47 @@ public class ConsumersCoordinatorTest {
     messageListener.handle(
         subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
+  }
+
+  @Test
+  void pickSlotTest() {
+    List<String> list = new ArrayList<>(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
+    IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(ignored -> list.add(null));
+    AtomicInteger sequence = new AtomicInteger(0);
+    int index = pickSlot(list, sequence);
+    assertThat(index).isZero();
+    list.set(index, "0");
+
+    index = pickSlot(list, sequence);
+    assertThat(index).isEqualTo(1);
+    list.set(index, "1");
+    index = pickSlot(list, sequence);
+    assertThat(index).isEqualTo(2);
+    list.set(index, "2");
+    index = pickSlot(list, sequence);
+    assertThat(index).isEqualTo(3);
+    list.set(index, "3");
+
+    list.set(1, null);
+    index = pickSlot(list, sequence);
+    assertThat(index).isEqualTo(4);
+    list.set(index, "4");
+
+    sequence.set(MAX_SUBSCRIPTIONS_PER_CLIENT - 2);
+
+    index = pickSlot(list, sequence);
+    assertThat(index).isEqualTo(254);
+    list.set(index, "254");
+    index = pickSlot(list, sequence);
+    assertThat(index).isEqualTo(255);
+    list.set(index, "255");
+
+    // 0 is already taken, so we should get index 1 when we overflow
+    index = pickSlot(list, sequence);
+    assertThat(index).isEqualTo(1);
+    list.set(index, "256");
+    index = pickSlot(list, sequence);
+    assertThat(index).isEqualTo(5);
   }
 
   Client.Broker leader() {
