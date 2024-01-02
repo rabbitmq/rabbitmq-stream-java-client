@@ -11,6 +11,8 @@ updates:
       - dependency-name: "com.swiftmq:swiftmq-client"
       - dependency-name: "org.springframework.boot:spring-boot-maven-plugin"
         versions: ["[2.7,)"]
+      - dependency-name: "org.slf4j:slf4j-api"
+        versions: [ "[2.0,)" ]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
