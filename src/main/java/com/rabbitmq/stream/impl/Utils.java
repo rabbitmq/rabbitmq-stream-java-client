@@ -39,6 +39,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
@@ -660,6 +661,15 @@ final class Utils {
 
     boolean get() {
       return this.value;
+    }
+  }
+
+  static <T> T lock(Lock lock, Supplier<T> action) {
+    lock.lock();
+    try {
+      return action.get();
+    } finally {
+      lock.unlock();
     }
   }
 }

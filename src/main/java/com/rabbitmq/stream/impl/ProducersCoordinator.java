@@ -14,12 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.Utils.callAndMaybeRetry;
-import static com.rabbitmq.stream.impl.Utils.formatConstant;
-import static com.rabbitmq.stream.impl.Utils.jsonField;
-import static com.rabbitmq.stream.impl.Utils.namedFunction;
-import static com.rabbitmq.stream.impl.Utils.namedRunnable;
-import static com.rabbitmq.stream.impl.Utils.quote;
+import static com.rabbitmq.stream.impl.Utils.*;
 import static java.util.stream.Collectors.toSet;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
@@ -52,6 +47,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -75,6 +72,7 @@ class ProducersCoordinator {
   private final ExecutorServiceFactory executorServiceFactory =
       new DefaultExecutorServiceFactory(
           Runtime.getRuntime().availableProcessors(), 10, "rabbitmq-stream-producer-connection-");
+  private final Lock coordinatorLock = new ReentrantLock();
 
   ProducersCoordinator(
       StreamEnvironment environment,
@@ -94,19 +92,26 @@ class ProducersCoordinator {
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {
-    ProducerTracker tracker =
-        new ProducerTracker(trackerIdSequence.getAndIncrement(), reference, stream, producer);
-    if (debug) {
-      this.producerTrackers.add(tracker);
-    }
-    return registerAgentTracker(tracker, stream);
+    return lock(
+        this.coordinatorLock,
+        () -> {
+          ProducerTracker tracker =
+              new ProducerTracker(trackerIdSequence.getAndIncrement(), reference, stream, producer);
+          if (debug) {
+            this.producerTrackers.add(tracker);
+          }
+          return registerAgentTracker(tracker, stream);
+        });
   }
 
   Runnable registerTrackingConsumer(StreamConsumer consumer) {
-    return registerAgentTracker(
-        new TrackingConsumerTracker(
-            trackerIdSequence.getAndIncrement(), consumer.stream(), consumer),
-        consumer.stream());
+    return lock(
+        this.coordinatorLock,
+        () ->
+            registerAgentTracker(
+                new TrackingConsumerTracker(
+                    trackerIdSequence.getAndIncrement(), consumer.stream(), consumer),
+                consumer.stream()));
   }
 
   private Runnable registerAgentTracker(AgentTracker tracker, String stream) {
