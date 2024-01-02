@@ -14,13 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
-import static com.rabbitmq.stream.impl.Utils.formatConstant;
-import static com.rabbitmq.stream.impl.Utils.isSac;
-import static com.rabbitmq.stream.impl.Utils.jsonField;
-import static com.rabbitmq.stream.impl.Utils.namedFunction;
-import static com.rabbitmq.stream.impl.Utils.namedRunnable;
-import static com.rabbitmq.stream.impl.Utils.quote;
+import static com.rabbitmq.stream.impl.Utils.*;
 import static java.lang.String.format;
 
 import com.rabbitmq.stream.*;
@@ -51,6 +45,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -80,6 +76,7 @@ class ConsumersCoordinator {
       new DefaultExecutorServiceFactory(
           Runtime.getRuntime().availableProcessors(), 10, "rabbitmq-stream-consumer-connection-");
   private final boolean forceReplica;
+  private final Lock coordinatorLock = new ReentrantLock();
 
   ConsumersCoordinator(
       StreamEnvironment environment,
@@ -116,47 +113,51 @@ class ConsumersCoordinator {
       MessageHandler messageHandler,
       Map<String, String> subscriptionProperties,
       ConsumerFlowStrategy flowStrategy) {
-    List<Client.Broker> candidates = findBrokersForStream(stream, forceReplica);
-    Client.Broker newNode = pickBroker(candidates);
-    if (newNode == null) {
-      throw new IllegalStateException("No available node to subscribe to");
-    }
+    return lock(
+        this.coordinatorLock,
+        () -> {
+          List<Client.Broker> candidates = findBrokersForStream(stream, forceReplica);
+          Client.Broker newNode = pickBroker(candidates);
+          if (newNode == null) {
+            throw new IllegalStateException("No available node to subscribe to");
+          }
 
-    // create stream subscription to track final and changing state of this very subscription
-    // we keep this instance when we move the subscription from a client to another one
-    SubscriptionTracker subscriptionTracker =
-        new SubscriptionTracker(
-            this.trackerIdSequence.getAndIncrement(),
-            consumer,
-            stream,
-            offsetSpecification,
-            trackingReference,
-            subscriptionListener,
-            trackingClosingCallback,
-            messageHandler,
-            subscriptionProperties,
-            flowStrategy);
+          // create stream subscription to track final and changing state of this very subscription
+          // we keep this instance when we move the subscription from a client to another one
+          SubscriptionTracker subscriptionTracker =
+              new SubscriptionTracker(
+                  this.trackerIdSequence.getAndIncrement(),
+                  consumer,
+                  stream,
+                  offsetSpecification,
+                  trackingReference,
+                  subscriptionListener,
+                  trackingClosingCallback,
+                  messageHandler,
+                  subscriptionProperties,
+                  flowStrategy);
 
-    try {
-      addToManager(newNode, subscriptionTracker, offsetSpecification, true);
-    } catch (ConnectionStreamException e) {
-      // these exceptions are not public
-      throw new StreamException(e.getMessage());
-    }
+          try {
+            addToManager(newNode, subscriptionTracker, offsetSpecification, true);
+          } catch (ConnectionStreamException e) {
+            // these exceptions are not public
+            throw new StreamException(e.getMessage());
+          }
 
-    if (debug) {
-      this.trackers.add(subscriptionTracker);
-      return () -> {
-        try {
-          this.trackers.remove(subscriptionTracker);
-        } catch (Exception e) {
-          LOGGER.debug("Error while removing subscription tracker from list");
-        }
-        subscriptionTracker.cancel();
-      };
-    } else {
-      return subscriptionTracker::cancel;
-    }
+          if (debug) {
+            this.trackers.add(subscriptionTracker);
+            return () -> {
+              try {
+                this.trackers.remove(subscriptionTracker);
+              } catch (Exception e) {
+                LOGGER.debug("Error while removing subscription tracker from list");
+              }
+              subscriptionTracker.cancel();
+            };
+          } else {
+            return subscriptionTracker::cancel;
+          }
+        });
   }
 
   private void addToManager(

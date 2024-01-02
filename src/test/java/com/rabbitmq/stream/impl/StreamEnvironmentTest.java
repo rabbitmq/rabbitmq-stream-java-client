@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
@@ -69,9 +70,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -82,11 +81,7 @@ import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLParameters;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -776,6 +771,46 @@ public class StreamEnvironmentTest {
       assertThat(channels).isNotEmpty().allMatch(ch -> ch instanceof EpollSocketChannel);
     } finally {
       epollEventLoopGroup.shutdownGracefully(0, 0, SECONDS);
+    }
+  }
+
+  @Test
+  void enforceEntityPerConnectionLimits() {
+    int entityCount = 10;
+    int limit = 3;
+    ExecutorService executor = Executors.newCachedThreadPool();
+    try (Environment env =
+        environmentBuilder
+            .maxProducersByConnection(limit)
+            .maxConsumersByConnection(limit)
+            .maxTrackingConsumersByConnection(limit)
+            .build()) {
+      CountDownLatch latch = new CountDownLatch(entityCount * 2);
+      IntStream.range(0, entityCount)
+          .forEach(
+              i -> {
+                executor.execute(
+                    () -> {
+                      env.producerBuilder().stream(stream).name(String.valueOf(i)).build();
+                      latch.countDown();
+                    });
+              });
+      IntStream.range(0, entityCount)
+          .forEach(
+              i -> {
+                executor.execute(
+                    () -> {
+                      env.consumerBuilder().stream(stream).messageHandler((ctx, msg) -> {}).build();
+                      latch.countDown();
+                    });
+              });
+      assertThat(latch).is(completed());
+      EnvironmentInfo envInfo = MonitoringTestUtils.extract(env);
+      int expectedConnectionCount = entityCount / limit + 1;
+      assertThat(envInfo.getProducers().clientCount()).isEqualTo(expectedConnectionCount);
+      assertThat(envInfo.getConsumers().clients()).hasSize(expectedConnectionCount);
+    } finally {
+      executor.shutdownNow();
     }
   }
 }
