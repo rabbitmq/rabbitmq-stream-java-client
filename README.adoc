@@ -29,6 +29,11 @@ Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-
 
 The library requires Java 8 or later. Java 11 is recommended.
 
+=== Dependencies
+
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#dependencies[Release]
+* https://rabbitmq.github.io/rabbitmq-stream-java-client/snapshot/htmlsingle/#dependencies[Snapshot]
+
 === Documentation
 
 ==== Release
