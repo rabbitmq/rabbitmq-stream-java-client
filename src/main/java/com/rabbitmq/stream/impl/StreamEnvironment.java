@@ -974,7 +974,12 @@ class StreamEnvironment implements Environment {
     }
 
     private String label() {
-      return address.host() + ":" + address.port();
+      Client c = this.nullableClient();
+      if (c == null) {
+        return address.host() + ":" + address.port();
+      } else {
+        return c.getHost() + ":" + c.getPort();
+      }
     }
 
     @Override
