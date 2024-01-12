@@ -8,6 +8,7 @@ The RabbitMQ Stream Java Client is a Java library to communicate with
 the https://rabbitmq.com/stream.html[RabbitMQ Stream Plugin].
 It allows to create and delete streams, as well as to publish to and consume from
 these streams.
+This library requires at least Java 8, but Java 11 or more is recommended.
 
 https://github.com/rabbitmq/rabbitmq-stream-perf-test[Stream PerfTest] is a performance testing tool based on this client library.
 
@@ -29,7 +30,7 @@ See the https://www.rabbitmq.com/java-versions.html[RabbitMQ Java libraries supp
 
 === Pre-requisites
 
-The library requires Java 8 or later. Java 11 is recommended.
+This library requires at least Java 8, but Java 11 or more is recommended.
 
 === Dependencies
 

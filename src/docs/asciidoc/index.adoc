@@ -11,6 +11,8 @@ the https://rabbitmq.com/stream.html[RabbitMQ Stream Plugin].
 It allows creating and deleting streams, as well as publishing to and consuming from
 these streams. Learn more in the <<overview.adoc#stream-client-overview,client overview>>.
 
+This library requires at least Java 8, but Java 11 or more is recommended.
+
 https://github.com/rabbitmq/rabbitmq-stream-perf-test[Stream PerfTest] is a performance testing tool based on this client library.
 
 

@@ -99,4 +99,4 @@ The client contains 2 sets of programming interfaces whose stability are of inte
 
 == Pre-requisites
 
-The library requires Java 8 or later. Java 11 is recommended (CRC calculation uses methods available as of Java 9.)
+This library requires at least Java 8, but Java 11 or more is recommended (CRC calculation uses methods available as of Java 9).
