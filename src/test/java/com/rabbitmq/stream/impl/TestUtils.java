@@ -465,11 +465,6 @@ public final class TestUtils {
     return Utils.versionCompare(currentVersion(currentVersion), "3.13.0") >= 0;
   }
 
-  static boolean afterNativeAmqp(String currentVersion) {
-    return Utils.versionCompare(currentVersion(currentVersion), BrokerVersion.RABBITMQ_4_0_0.value)
-        >= 0;
-  }
-
   static boolean atLeastVersion(String expectedVersion, String currentVersion) {
     if (currentVersion.contains("alpha-stream")) {
       return true;
@@ -1039,8 +1034,7 @@ public final class TestUtils {
     RABBITMQ_3_11_9("3.11.9"),
     RABBITMQ_3_11_11("3.11.11"),
     RABBITMQ_3_11_14("3.11.14"),
-    RABBITMQ_3_13_0("3.13.0"),
-    RABBITMQ_4_0_0("4.0.0");
+    RABBITMQ_3_13_0("3.13.0");
 
     final String value;
 
