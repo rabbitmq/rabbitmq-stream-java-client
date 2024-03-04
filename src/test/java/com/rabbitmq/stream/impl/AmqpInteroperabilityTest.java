@@ -302,6 +302,7 @@ public class AmqpInteroperabilityTest {
     int messageCount = 1_000;
     ConnectionFactory connectionFactory = new ConnectionFactory();
     Date timestamp = new Date();
+    String subject = "the subject";
 
     UUID messageIdUuid = UUID.randomUUID();
     UUID correlationIdUuid = UUID.randomUUID();
@@ -496,7 +497,7 @@ public class AmqpInteroperabilityTest {
                                   assertThat(d.getProperties().getUserId())
                                       .isEqualTo("the user ID")),
                           mo(mb -> mb.properties().to("the to address"), d -> {}),
-                          mo(mb -> mb.properties().subject("the subject"), d -> {}),
+                          mo(mb -> mb.properties().subject(subject), d -> {}),
                           mo(
                               mb -> mb.properties().replyTo("the reply to address"),
                               d ->
@@ -631,7 +632,8 @@ public class AmqpInteroperabilityTest {
                 Delivery message = messages.iterator().next();
 
                 assertThat(message.getEnvelope().getExchange()).isEmpty();
-                assertThat(message.getEnvelope().getRoutingKey()).isEqualTo(s);
+                String expectedRoutingKey = afterNativeAmqp(brokerVersion) ? subject : s;
+                assertThat(message.getEnvelope().getRoutingKey()).isEqualTo(expectedRoutingKey);
                 assertThat(message.getProperties().getHeaders()).containsKey("x-stream-offset");
 
                 testMessageOperation.deliveryConsumer.accept(message);
