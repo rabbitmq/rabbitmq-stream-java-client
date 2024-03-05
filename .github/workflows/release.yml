@@ -42,6 +42,12 @@ jobs:
           MAVEN_USERNAME: ''
           MAVEN_PASSWORD: ${{ secrets.PACKAGECLOUD_TOKEN }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      - name: Set up JDK to generate documentation
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
       - name: Publish Documentation
         run: |
           git config user.name "rabbitmq-ci"
