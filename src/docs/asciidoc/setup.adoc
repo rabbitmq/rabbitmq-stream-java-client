@@ -129,7 +129,7 @@ Snapshots require to declare the <<snapshots,appropriate repository>>.
 === Snapshots
 
 Releases are available from Maven Central, which does not require specific declaration.
-Snapshots are available from a repositoriy which must be declared in the dependency management configuration.
+Snapshots are available from a repository which must be declared in the dependency management configuration.
 
 With Maven:
 
