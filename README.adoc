@@ -24,7 +24,7 @@ Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-
 * For questions: https://groups.google.com/forum/#!forum/rabbitmq-users[RabbitMQ Users]
 * For bugs and feature requests: https://github.com/rabbitmq/rabbitmq-stream-java-client/issues[GitHub Issues]
 
-See the https://www.rabbitmq.com/java-versions.html[RabbitMQ Java libraries support page] for the support timeline of this library.
+See the https://www.rabbitmq.com/client-libraries/java-versions[RabbitMQ Java libraries support page] for the support timeline of this library.
 
 == How to Use
 
