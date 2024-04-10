@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.16.0-SNAPSHOT</span>
-<br><span id="revremark">(28bd54d)</span>
+<br><span id="revremark">(61c9296)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2274,6 +2274,34 @@ message will be persisted twice.</p>
 <p>Luckily RabbitMQ Stream can detect and filter out duplicated messages, based
 on 2 client-side elements: the <em>producer name</em> and the <em>message publishing ID</em>.</p>
 </div>
+<div id="deduplication-multithreading" class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="title">Only one publisher instance with a given name and no multithreading to guarantee deduplication</div>
+<div class="paragraph">
+<p>We&#8217;ll see below that deduplication works using a strictly increasing sequence for messages.
+This means messages must be published in order, so there must be only <em>one publisher instance with a given name</em> and this instance must publish messages <em>within a single thread</em>.</p>
+</div>
+<div class="paragraph">
+<p>With several publisher instances with the same name, one instance can be "ahead" of the others for the sequence ID: if it publishes a message with sequence ID 100, any message from any instance with a smaller lower sequence ID will be filtered out.</p>
+</div>
+<div class="paragraph">
+<p>If there is only one publisher instance with a given name, it should publish messages in a single thread.
+Even if messages are <em>created</em> in order, with the proper sequence ID, they can get out of order if they are published in several threads, e.g. message 5 can be <em>published</em> before message 2.
+The deduplication mechanism will then filter out message 2 in this case.</p>
+</div>
+<div class="paragraph">
+<p>You have to be very careful about the way your applications publish messages when deduplication is in use: make sure publisher instances do not share the same name and use only a single thread.
+If you worry about performance, note it is possible to publish hundreds of thousands of messages in a single thread with RabbitMQ Stream.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
 <div class="admonitionblock warning">
 <table>
 <tr>
@@ -2288,28 +2316,6 @@ on 2 client-side elements: the <em>producer name</em> and the <em>message publis
 Sub-entry batching is disabled by default and it does not prevent from
 batching messages in a single publish frame, which can already provide
 very high throughput.</p>
-</div>
-</td>
-</tr>
-</table>
-</div>
-<div id="deduplication-multithreading" class="admonitionblock warning">
-<table>
-<tr>
-<td class="icon">
-<i class="fa icon-warning" title="Warning"></i>
-</td>
-<td class="content">
-<div class="title">Deduplication is not guaranteed when publishing on several threads</div>
-<div class="paragraph">
-<p>We&#8217;ll see below that deduplication works using a strictly increasing sequence for messages.
-This means messages must be published in order and the preferred way to do this is usually <em>within a single thread</em>.
-Even if messages are <em>created</em> in order, with the proper sequence ID, if they are published in several threads, they can get out of order, e.g. message 5 can be <em>published</em> before message 2.
-The deduplication mechanism will then filter out message 2 in this case.</p>
-</div>
-<div class="paragraph">
-<p>So you have to be very careful about the way your applications publish messages when deduplication is in use.
-If you worry about performance, note it is possible to publish hundreds of thousands of messages in a single thread with RabbitMQ Stream.</p>
 </div>
 </td>
 </tr>
@@ -4978,7 +4984,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.16.0-SNAPSHOT<br>
-Last updated 2024-04-09 06:40:05 UTC
+Last updated 2024-04-10 16:40:59 UTC
 </div>
 </div>
 </body>
