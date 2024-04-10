@@ -575,6 +575,23 @@ message will be persisted twice.
 Luckily RabbitMQ Stream can detect and filter out duplicated messages, based
 on 2 client-side elements: the _producer name_ and the _message publishing ID_.
 
+[[deduplication-multithreading]]
+[WARNING]
+.Only one publisher instance with a given name and no multithreading to guarantee deduplication
+====
+We'll see below that deduplication works using a strictly increasing sequence for messages.
+This means messages must be published in order, so there must be only _one publisher instance with a given name_ and this instance must publish messages _within a single thread_.
+
+With several publisher instances with the same name, one instance can be "ahead" of the others for the sequence ID: if it publishes a message with sequence ID 100, any message from any instance with a smaller lower sequence ID will be filtered out.
+
+If there is only one publisher instance with a given name, it should publish messages in a single thread.
+Even if messages are _created_ in order, with the proper sequence ID, they can get out of order if they are published in several threads, e.g. message 5 can be _published_ before message 2.
+The deduplication mechanism will then filter out message 2 in this case.
+
+You have to be very careful about the way your applications publish messages when deduplication is in use: make sure publisher instances do not share the same name and use only a single thread.
+If you worry about performance, note it is possible to publish hundreds of thousands of messages in a single thread with RabbitMQ Stream.
+====
+
 [WARNING]
 .Deduplication is not guaranteed when using sub-entries batching
 ====
@@ -583,19 +600,6 @@ It is not possible to guarantee deduplication when
 Sub-entry batching is disabled by default and it does not prevent from
 batching messages in a single publish frame, which can already provide
 very high throughput.
-====
-
-[[deduplication-multithreading]]
-[WARNING]
-.Deduplication is not guaranteed when publishing on several threads
-====
-We'll see below that deduplication works using a strictly increasing sequence for messages.
-This means messages must be published in order and the preferred way to do this is usually _within a single thread_.
-Even if messages are _created_ in order, with the proper sequence ID, if they are published in several threads, they can get out of order, e.g. message 5 can be _published_ before message 2.
-The deduplication mechanism will then filter out message 2 in this case.
-
-So you have to be very careful about the way your applications publish messages when deduplication is in use.
-If you worry about performance, note it is possible to publish hundreds of thousands of messages in a single thread with RabbitMQ Stream.
 ====
 
 ===== Setting the Name of a Producer
