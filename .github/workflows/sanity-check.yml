@@ -35,7 +35,7 @@ jobs:
       - name: Start broker
         run: ci/start-broker.sh
       - name: Sanity Check
-        uses: jbangdev/jbang-action@v0.116.0
+        uses: jbangdev/jbang-action@v0.115.0
         with:
           script: src/test/java/SanityCheck.java
         env:
