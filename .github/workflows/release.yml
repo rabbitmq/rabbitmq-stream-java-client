@@ -42,12 +42,27 @@ jobs:
           MAVEN_USERNAME: ''
           MAVEN_PASSWORD: ${{ secrets.PACKAGECLOUD_TOKEN }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-      - name: Set up JDK to generate documentation
+      - name: Checkout tls-gen
+        uses: actions/checkout@v4
+        with:
+          repository: rabbitmq/tls-gen
+          path: './tls-gen'
+      - name: Start broker
+        run: ci/start-broker.sh
+      - name: Set up JDK for sanity check and documentation generation
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
           cache: 'maven'
+      - name: Sanity Check
+        run: |
+          source ./release-versions.txt
+          curl -Ls https://sh.jbang.dev | bash -s - src/test/java/SanityCheck.java
+        env:
+          RABBITMQ_LIBRARY_VERSION: ${{ inputs.library_version }}
+      - name: Stop broker
+        run: docker stop rabbitmq && docker rm rabbitmq
       - name: Publish Documentation
         run: |
           git config user.name "rabbitmq-ci"
