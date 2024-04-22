@@ -58,9 +58,8 @@ jobs:
       - name: Sanity Check
         run: |
           source ./release-versions.txt
+          export RABBITMQ_LIBRARY_VERSION=$RELEASE_VERSION
           curl -Ls https://sh.jbang.dev | bash -s - src/test/java/SanityCheck.java
-        env:
-          RABBITMQ_LIBRARY_VERSION: ${{ inputs.library_version }}
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
       - name: Publish Documentation
