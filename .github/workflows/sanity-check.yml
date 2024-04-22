@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       library_version:
-        description: 'Library version (e.g. 5.21.0)'
+        description: 'Library version (e.g. 0.15.0)'
         required: true
         type: string
-        default: '5.21.0'
+        default: '0.15.0'
 
 jobs:
   build:
@@ -26,18 +26,11 @@ jobs:
           distribution: 'zulu'
           java-version: '21'
           cache: 'maven'
-      - uses: actions/cache@v4
-        with:
-          path: /root/.jbang
-          key: $-jbang-$
-          restore-keys: |
-            $-jbang-
       - name: Start broker
         run: ci/start-broker.sh
       - name: Sanity Check
-        uses: jbangdev/jbang-action@v0.115.0
-        with:
-          script: src/test/java/SanityCheck.java
+        run: |
+          curl -Ls https://sh.jbang.dev | bash -s - src/test/java/SanityCheck.java
         env:
           RABBITMQ_LIBRARY_VERSION: ${{ inputs.library_version }}
       - name: Stop broker
