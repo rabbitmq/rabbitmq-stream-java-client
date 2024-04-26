@@ -1021,7 +1021,7 @@ class ConsumersCoordinator {
         // TODO consider using/emulating ConsumerUpdateListener, to have only one API, not 2
         // even when the consumer is not a SAC.
         SubscriptionContext subscriptionContext =
-            new DefaultSubscriptionContext(offsetSpecification);
+            new DefaultSubscriptionContext(offsetSpecification, subscriptionTracker.stream);
         subscriptionTracker.subscriptionListener.preSubscribe(subscriptionContext);
         LOGGER.info(
             "Computed offset specification {}, offset specification used after subscription listener {}",
@@ -1217,9 +1217,12 @@ class ConsumersCoordinator {
   private static final class DefaultSubscriptionContext implements SubscriptionContext {
 
     private volatile OffsetSpecification offsetSpecification;
+    private final String name;
 
-    private DefaultSubscriptionContext(OffsetSpecification computedOffsetSpecification) {
+    private DefaultSubscriptionContext(
+        OffsetSpecification computedOffsetSpecification, String name) {
       this.offsetSpecification = computedOffsetSpecification;
+      this.name = name;
     }
 
     @Override
@@ -1230,6 +1233,11 @@ class ConsumersCoordinator {
     @Override
     public void offsetSpecification(OffsetSpecification offsetSpecification) {
       this.offsetSpecification = offsetSpecification;
+    }
+
+    @Override
+    public String stream() {
+      return this.name;
     }
 
     @Override

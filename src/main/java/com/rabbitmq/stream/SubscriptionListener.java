@@ -64,5 +64,12 @@ public interface SubscriptionListener {
      * @param offsetSpecification the offset specification to use
      */
     void offsetSpecification(OffsetSpecification offsetSpecification);
+
+    /**
+     * The stream involved.
+     *
+     * @return the stream
+     */
+    String stream();
   }
 }
