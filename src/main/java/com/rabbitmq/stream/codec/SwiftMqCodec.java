@@ -32,6 +32,8 @@ import java.util.UUID;
 
 public class SwiftMqCodec implements Codec {
 
+  static final Data EMPTY_BODY = new Data(new byte[0]);
+
   private static Object convertAmqpMapValue(AMQPType value) {
     if (value instanceof AMQPBoolean) {
       return ((AMQPBoolean) value).getValue() ? Boolean.TRUE : Boolean.FALSE;
@@ -260,7 +262,9 @@ public class SwiftMqCodec implements Codec {
         }
       }
 
-      if (message.getBodyAsBinary() != null) {
+      if (message.getBodyAsBinary() == null) {
+        outboundMessage.addData(EMPTY_BODY);
+      } else {
         outboundMessage.addData(new Data(message.getBodyAsBinary()));
       }
     }

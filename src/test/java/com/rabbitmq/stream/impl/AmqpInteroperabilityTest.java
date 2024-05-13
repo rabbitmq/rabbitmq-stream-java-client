@@ -31,8 +31,6 @@ import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
-import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
-import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.*;

@@ -42,7 +42,7 @@ public class WrapperMessageBuilder implements MessageBuilder {
       return new SimpleMessage(
           this.hasPublishingId,
           this.publishingId,
-          body,
+          body == null ? SimpleCodec.EMPTY_BODY : body,
           this.messageAnnotationsBuilder == null
               ? null
               : this.messageAnnotationsBuilder.messageAnnotations,

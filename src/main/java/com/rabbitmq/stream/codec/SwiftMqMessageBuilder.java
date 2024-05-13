@@ -66,6 +66,9 @@ class SwiftMqMessageBuilder implements MessageBuilder {
           throw new StreamException("Error while setting application properties", e);
         }
       }
+      if (outboundMessage.getData() == null) {
+        outboundMessage.addData(SwiftMqCodec.EMPTY_BODY);
+      }
       return new SwiftMqCodec.SwiftMqAmqpMessageWrapper(
           hasPublishingId, publishingId, outboundMessage);
     } else {

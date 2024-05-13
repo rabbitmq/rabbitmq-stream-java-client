@@ -23,9 +23,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SimpleCodec implements Codec {
 
+  static final byte[] EMPTY_BODY = new byte[0];
+
   @Override
   public EncodedMessage encode(Message message) {
-    return new EncodedMessage(message.getBodyAsBinary().length, message.getBodyAsBinary());
+    byte[] body = message.getBodyAsBinary() == null ? EMPTY_BODY : message.getBodyAsBinary();
+    return new EncodedMessage(body.length, body);
   }
 
   @Override

@@ -25,14 +25,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import org.apache.qpid.proton.amqp.*;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
+import org.apache.qpid.proton.amqp.messaging.*;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
 public class QpidProtonCodec implements Codec {
+
+  static final Section EMPTY_BODY = new Data(new Binary(new byte[0]));
 
   private static final Function<String, String> MESSAGE_ANNOTATIONS_STRING_KEY_EXTRACTOR = k -> k;
   private static final Function<Symbol, String> MESSAGE_ANNOTATIONS_SYMBOL_KEY_EXTRACTOR =
@@ -233,13 +232,16 @@ public class QpidProtonCodec implements Codec {
         qpidMessage.setMessageAnnotations(new MessageAnnotations(messageAnnotations));
       }
 
-      if (message.getBodyAsBinary() != null) {
+      if (message.getBodyAsBinary() == null) {
+        qpidMessage.setBody(EMPTY_BODY);
+      } else {
         qpidMessage.setBody(new Data(new Binary(message.getBodyAsBinary())));
       }
     }
     int bufferSize;
     if (qpidMessage.getBody() instanceof Data) {
       bufferSize = (int) (((Data) qpidMessage.getBody()).getValue().getLength() * 1.5);
+      bufferSize = bufferSize == 0 ? 128 : bufferSize;
     } else {
       bufferSize = 8192;
     }

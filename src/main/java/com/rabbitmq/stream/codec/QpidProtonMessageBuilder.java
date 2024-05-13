@@ -14,6 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.codec;
 
+import static com.rabbitmq.stream.codec.QpidProtonCodec.EMPTY_BODY;
+
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import java.math.BigDecimal;
@@ -56,6 +58,9 @@ class QpidProtonMessageBuilder implements MessageBuilder {
       if (messageAnnotationsBuilder != null) {
         message.setMessageAnnotations(
             new MessageAnnotations(messageAnnotationsBuilder.messageAnnotations));
+      }
+      if (message.getBody() == null) {
+        message.setBody(EMPTY_BODY);
       }
       return new QpidProtonCodec.QpidProtonAmqpMessageWrapper(
           hasPublishingId, publishingId, message);
