@@ -98,7 +98,7 @@ public interface BackOffDelayPolicy {
     }
   }
 
-  class FixedWithInitialDelayAndTimeoutBackOffPolicy implements BackOffDelayPolicy {
+  final class FixedWithInitialDelayAndTimeoutBackOffPolicy implements BackOffDelayPolicy {
 
     private final int attemptLimitBeforeTimeout;
     private final BackOffDelayPolicy delegate;

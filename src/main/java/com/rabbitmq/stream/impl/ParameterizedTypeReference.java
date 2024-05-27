@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
@@ -26,10 +27,11 @@ import java.lang.reflect.Type;
  *
  * @param <T>
  */
-public abstract class ParameterizedTypeReference<T> {
+abstract class ParameterizedTypeReference<T> {
 
   private final Type type;
 
+  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   protected ParameterizedTypeReference() {
     Class<?> parameterizedTypeReferenceSubclass =
         findParameterizedTypeReferenceSubclass(getClass());

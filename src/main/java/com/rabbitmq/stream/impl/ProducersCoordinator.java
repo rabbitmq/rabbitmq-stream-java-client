@@ -59,6 +59,7 @@ class ProducersCoordinator {
 
   static final int MAX_PRODUCERS_PER_CLIENT = 256;
   static final int MAX_TRACKING_CONSUMERS_PER_CLIENT = 50;
+  private static final boolean DEBUG = false;
   private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
   private final StreamEnvironment environment;
   private final ClientFactory clientFactory;
@@ -67,7 +68,6 @@ class ProducersCoordinator {
   private final AtomicLong managerIdSequence = new AtomicLong(0);
   private final NavigableSet<ClientProducersManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
-  private final boolean debug = false;
   private final List<ProducerTracker> producerTrackers = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory =
       new DefaultExecutorServiceFactory(
@@ -97,7 +97,7 @@ class ProducersCoordinator {
         () -> {
           ProducerTracker tracker =
               new ProducerTracker(trackerIdSequence.getAndIncrement(), reference, stream, producer);
-          if (debug) {
+          if (DEBUG) {
             this.producerTrackers.add(tracker);
           }
           return registerAgentTracker(tracker, stream);
@@ -119,7 +119,7 @@ class ProducersCoordinator {
 
     addToManager(broker, tracker);
 
-    if (debug) {
+    if (DEBUG) {
       return () -> {
         if (tracker instanceof ProducerTracker) {
           try {
@@ -275,7 +275,7 @@ class ProducersCoordinator {
                 "tracking_consumer_count",
                 this.managers.stream().mapToInt(m -> m.trackingConsumerTrackers.size()).sum()))
         .append(",");
-    if (debug) {
+    if (DEBUG) {
       builder.append(jsonField("producer_tracker_count", this.producerTrackers.size())).append(",");
     }
     builder.append(quote("clients")).append(" : [");
@@ -321,7 +321,7 @@ class ProducersCoordinator {
                 })
             .collect(Collectors.joining(",")));
     builder.append("]");
-    if (debug) {
+    if (DEBUG) {
       builder.append(",");
       builder.append("\"producer_trackers\" : [");
       builder.append(

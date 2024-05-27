@@ -29,6 +29,7 @@ import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.MessageAccumulator.AccumulatedEntity;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBuf;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -83,6 +84,7 @@ class StreamProducer implements Producer {
   private volatile ScheduledFuture<?> confirmTimeoutFuture;
   private final short publishVersion;
 
+  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamProducer(
       String name,
       String stream,

@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 /** {@link SaslConfiguration} that supports our built-in mechanisms. */
-public class DefaultSaslConfiguration implements SaslConfiguration {
+public final class DefaultSaslConfiguration implements SaslConfiguration {
 
   public static final SaslConfiguration PLAIN =
       new DefaultSaslConfiguration(PlainSaslMechanism.INSTANCE.getName());

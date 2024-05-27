@@ -31,6 +31,7 @@ import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -87,6 +88,7 @@ class StreamEnvironment implements Environment {
   private final ExecutorServiceFactory executorServiceFactory;
   private final ObservationCollector<?> observationCollector;
 
+  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
       Client.ClientParameters clientParametersPrototype,

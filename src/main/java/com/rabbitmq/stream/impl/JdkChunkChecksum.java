@@ -79,7 +79,7 @@ class JdkChunkChecksum implements ChunkChecksum {
     }
   }
 
-  private static class ByteBufferDirectByteBufChecksum implements ChunkChecksum {
+  private static final class ByteBufferDirectByteBufChecksum implements ChunkChecksum {
 
     private final Supplier<Checksum> checksumSupplier;
     private final Method updateMethod;
@@ -105,9 +105,7 @@ class JdkChunkChecksum implements ChunkChecksum {
         try {
           this.updateMethod.invoke(
               checksum, byteBuf.nioBuffer(byteBuf.readerIndex(), byteBuf.readableBytes()));
-        } catch (IllegalAccessException e) {
-          throw new StreamException("Error while calculating CRC", e);
-        } catch (InvocationTargetException e) {
+        } catch (IllegalAccessException | InvocationTargetException e) {
           throw new StreamException("Error while calculating CRC", e);
         }
       }

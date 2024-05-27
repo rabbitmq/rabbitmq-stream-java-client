@@ -14,6 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 /**
  * Codec to encode and decode messages.
  *
@@ -34,11 +36,13 @@ public interface Codec {
     private final int size;
     private final byte[] data;
 
+    @SuppressFBWarnings("EI_EXPOSE_REP2")
     public EncodedMessage(int size, byte[] data) {
       this.size = size;
       this.data = data;
     }
 
+    @SuppressFBWarnings("EI_EXPOSE_REP")
     public byte[] getData() {
       return data;
     }

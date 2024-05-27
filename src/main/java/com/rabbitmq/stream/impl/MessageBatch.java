@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.compression.Compression;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,18 +25,11 @@ public final class MessageBatch {
   final Compression compression;
   final List<Message> messages;
 
-  public MessageBatch() {
-    this(Compression.NONE, new ArrayList<>());
-  }
-
   public MessageBatch(Compression compression) {
     this(compression, new ArrayList<>());
   }
 
-  public MessageBatch(List<Message> messages) {
-    this(Compression.NONE, messages);
-  }
-
+  @SuppressFBWarnings("EI_EXPOSE_REP2")
   public MessageBatch(Compression compression, List<Message> messages) {
     this.compression = compression;
     this.messages = messages;
@@ -45,20 +39,4 @@ public final class MessageBatch {
     this.messages.add(message);
     return this;
   }
-
-  public List<Message> getMessages() {
-    return messages;
-  }
-
-  /*
-      0 = no compression
-  1 = gzip
-  2 = snappy
-  3 = lz4
-  4 = zstd
-  5 = reserved
-  6 = reserved
-  7 = user
-       */
-
 }

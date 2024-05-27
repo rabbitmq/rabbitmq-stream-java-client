@@ -57,6 +57,7 @@ class ConsumersCoordinator {
 
   static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
   static final int MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER = 5;
+  private static final boolean DEBUG = false;
 
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
@@ -70,7 +71,6 @@ class ConsumersCoordinator {
   private final NavigableSet<ClientSubscriptionsManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
 
-  private final boolean debug = false;
   private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory =
       new DefaultExecutorServiceFactory(
@@ -144,7 +144,7 @@ class ConsumersCoordinator {
             throw new StreamException(e.getMessage());
           }
 
-          if (debug) {
+          if (DEBUG) {
             this.trackers.add(subscriptionTracker);
             return () -> {
               try {
@@ -366,7 +366,7 @@ class ConsumersCoordinator {
                 })
             .collect(Collectors.joining(",")));
     builder.append("]");
-    if (debug) {
+    if (DEBUG) {
       builder.append(",");
       builder.append("\"subscription_count\" : ").append(this.trackers.size()).append(",");
       builder.append("\"subscriptions\" : [");
@@ -1168,7 +1168,7 @@ class ConsumersCoordinator {
             SubscriptionTracker tracker = this.subscriptionTrackers.get(i);
             if (tracker != null) {
               try {
-                if (this.client != null && this.client.isOpen() && tracker.consumer.isOpen()) {
+                if (this.client.isOpen() && tracker.consumer.isOpen()) {
                   this.client.unsubscribe(tracker.subscriptionIdInClient);
                 }
               } catch (Exception e) {
@@ -1184,7 +1184,7 @@ class ConsumersCoordinator {
 
           streamToStreamSubscriptions.clear();
 
-          if (this.client != null && this.client.isOpen()) {
+          if (this.client.isOpen()) {
             this.client.close();
           }
         }

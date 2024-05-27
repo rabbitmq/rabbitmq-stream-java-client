@@ -320,7 +320,7 @@ public class SwiftMqCodec implements Codec {
       return new AMQPSymbol(value.toString());
     } else if (value instanceof UUID) {
       return new AMQPUuid((UUID) value);
-    } else if (value == value) {
+    } else if (value == null) {
       return AMQPNull.NULL;
     } else {
       throw new IllegalArgumentException(

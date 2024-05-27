@@ -160,7 +160,7 @@ class SuperStreamProducer implements Producer {
     }
   }
 
-  private static class DefaultSuperStreamMetadata implements Metadata {
+  private static final class DefaultSuperStreamMetadata implements Metadata {
 
     private final String superStream;
     private final StreamEnvironment environment;

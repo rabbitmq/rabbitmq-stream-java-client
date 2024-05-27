@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.observation.micrometer;
 
 import com.rabbitmq.stream.ObservationCollector;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationConvention;
 import io.micrometer.observation.ObservationRegistry;
@@ -44,6 +45,7 @@ public class MicrometerObservationCollectorBuilder {
    * @param registry the registry
    * @return this builder instance
    */
+  @SuppressFBWarnings("EI_EXPOSE_REP2")
   public MicrometerObservationCollectorBuilder registry(ObservationRegistry registry) {
     this.registry = registry;
     return this;

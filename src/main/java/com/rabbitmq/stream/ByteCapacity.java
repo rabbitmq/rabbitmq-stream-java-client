@@ -105,7 +105,7 @@ public class ByteCapacity implements Comparable<ByteCapacity> {
   public static ByteCapacity from(String value) {
     Matcher matcher = PATTERN.matcher(value);
     if (matcher.matches()) {
-      long size = Long.valueOf(matcher.group(GROUP_SIZE));
+      long size = Long.parseLong(matcher.group(GROUP_SIZE));
       String unit = matcher.group(GROUP_UNIT);
       ByteCapacity result;
       if (unit == null) {

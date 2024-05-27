@@ -55,6 +55,7 @@ import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
 import com.rabbitmq.stream.sasl.SaslMechanism;
 import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -194,10 +195,12 @@ public class Client implements AutoCloseable {
   private final boolean filteringSupported;
   private final Runnable superStreamManagementCommandVersionsCheck;
 
+  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   public Client() {
     this(new ClientParameters());
   }
 
+  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   public Client(ClientParameters parameters) {
     this.publishConfirmListener = parameters.publishConfirmListener;
     this.publishErrorListener = parameters.publishErrorListener;
@@ -1678,7 +1681,7 @@ public class Client implements AutoCloseable {
   }
 
   int serverAdvertisedPort() {
-    return Integer.valueOf(this.connectionProperties("advertised_port"));
+    return Integer.parseInt(this.connectionProperties("advertised_port"));
   }
 
   public String brokerVersion() {
@@ -2233,7 +2236,7 @@ public class Client implements AutoCloseable {
       this.stream = stream;
       this.responseCode = responseCode;
       this.leader = leader;
-      this.replicas = replicas;
+      this.replicas = replicas == null ? null : Collections.unmodifiableList(replicas);
     }
 
     public short getResponseCode() {
@@ -2679,12 +2682,16 @@ public class Client implements AutoCloseable {
     }
 
     public StreamParametersBuilder maxSegmentSizeBytes(long bytes) {
-      this.parameters.put("stream-max-segment-size-bytes", String.valueOf(bytes));
+      if (bytes <= 0) {
+        this.parameters.remove("stream-max-segment-size-bytes");
+      } else {
+        this.parameters.put("stream-max-segment-size-bytes", String.valueOf(bytes));
+      }
       return this;
     }
 
     public StreamParametersBuilder maxSegmentSizeBytes(ByteCapacity bytes) {
-      return maxSegmentSizeBytes(bytes.toBytes());
+      return maxSegmentSizeBytes(bytes == null ? 0L : bytes.toBytes());
     }
 
     public StreamParametersBuilder maxSegmentSizeKb(long kiloBytes) {
@@ -2733,7 +2740,7 @@ public class Client implements AutoCloseable {
     }
 
     public Map<String, String> build() {
-      return parameters;
+      return new HashMap<>(parameters);
     }
   }
 

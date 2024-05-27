@@ -25,6 +25,7 @@ import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
@@ -64,6 +65,7 @@ class StreamConsumer implements Consumer {
   private final boolean sac;
   private final OffsetSpecification initialOffsetSpecification;
 
+  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamConsumer(
       String stream,
       OffsetSpecification offsetSpecification,
@@ -188,7 +190,8 @@ class StreamConsumer implements Consumer {
                   return result;
                 };
             // just a trick for testing
-            if (consumerUpdateListener instanceof CompositeConsumerUpdateListener) {
+            // we know the update listener is either null or a composite one
+            if (consumerUpdateListener != null) {
               ((CompositeConsumerUpdateListener) consumerUpdateListener).add(defaultListener);
               this.consumerUpdateListener = consumerUpdateListener;
             } else {

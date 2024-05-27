@@ -72,7 +72,7 @@ public class JdkSaslConfiguration implements SaslConfiguration {
     return null;
   }
 
-  private class JdkSaslMechanism implements SaslMechanism {
+  private static class JdkSaslMechanism implements SaslMechanism {
     private final SaslClient client;
 
     public JdkSaslMechanism(SaslClient client) {
@@ -94,13 +94,12 @@ public class JdkSaslConfiguration implements SaslConfiguration {
     }
   }
 
-  private class UsernamePasswordCallbackHandler implements CallbackHandler {
+  private static final class UsernamePasswordCallbackHandler implements CallbackHandler {
 
     private final UsernamePasswordCredentialsProvider credentialsProvider;
 
     public UsernamePasswordCallbackHandler(CredentialsProvider credentialsProvider) {
-      if (credentialsProvider == null
-          || !(credentialsProvider instanceof UsernamePasswordCredentialsProvider)) {
+      if (!(credentialsProvider instanceof UsernamePasswordCredentialsProvider)) {
         throw new IllegalArgumentException(
             "Only username/password credentials provider is supported, not "
                 + CredentialsProvider.class.getSimpleName());
