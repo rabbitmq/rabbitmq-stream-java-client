@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
 import java.util.function.ToIntFunction;
 
@@ -25,6 +26,7 @@ final class HashUtils {
 
   // from
   // https://github.com/apache/commons-codec/blob/rel/commons-codec-1.15/src/main/java/org/apache/commons/codec/digest/MurmurHash3.java
+  // hash32x86 method
   static class Murmur3 implements ToIntFunction<String> {
 
     private static final int DEFAULT_SEED = 104729;
@@ -37,10 +39,10 @@ final class HashUtils {
     private static final int N_32 = 0xe6546b64;
 
     private static int getLittleEndianInt(final byte[] data, final int index) {
-      return ((data[index] & 0xff))
-          | ((data[index + 1] & 0xff) << 8)
-          | ((data[index + 2] & 0xff) << 16)
-          | ((data[index + 3] & 0xff) << 24);
+      return data[index] & 0xff
+          | (data[index + 1] & 0xff) << 8
+          | (data[index + 2] & 0xff) << 16
+          | (data[index + 3] & 0xff) << 24;
     }
 
     private static int mix32(int k, int hash) {
@@ -70,6 +72,7 @@ final class HashUtils {
       this.seed = seed;
     }
 
+    @SuppressFBWarnings({"SF_SWITCH_FALLTHROUGH", "SF_SWITCH_NO_DEFAULT"})
     @Override
     public int applyAsInt(String value) {
       byte[] data = value.getBytes(StandardCharsets.UTF_8);
@@ -94,7 +97,7 @@ final class HashUtils {
         case 2:
           k1 ^= (data[index + 1] & 0xff) << 8;
         case 1:
-          k1 ^= (data[index] & 0xff);
+          k1 ^= data[index] & 0xff;
 
           // mix functions
           k1 *= C1_32;
