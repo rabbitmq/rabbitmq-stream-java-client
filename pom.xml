@@ -671,6 +671,7 @@
       </activation>
       <properties>
         <mockito.version>4.11.0</mockito.version>
+        <test-arguments>-Xshare:off</test-arguments>
       </properties>
     </profile>
     <profile>
