@@ -98,7 +98,7 @@
     <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.packagecloud.wagon.version>0.0.6</maven.packagecloud.wagon.version>
-    <nexus-staging-maven-plugin.version>1.6.13</nexus-staging-maven-plugin.version>
+    <nexus-staging-maven-plugin.version>1.7.0</nexus-staging-maven-plugin.version>
 
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <gpg.skip>true</gpg.skip>
