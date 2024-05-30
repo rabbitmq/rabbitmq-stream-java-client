@@ -71,6 +71,7 @@ automatic or manual offset tracking.
 connections depending on the number of publishers and consumers.
 * _let the client handle network failure_ thanks to automatic connection
 recovery and automatic re-subscription for consumers.
+* _publish metrics_ to monitoring systems like https://prometheus.io/[Prometheus] and _ship spans_ to distributed tracing backends like https://zipkin.io/[OpenZipkin] or https://tanzu.vmware.com/observability[Wavefront] thanks to built-in support for https://micrometer.io/[Micrometer].
 
 == Versioning
 
