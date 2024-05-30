@@ -66,7 +66,7 @@ can also be useful for development and testing.
 * _avoid publishing duplicate messages_ thanks to message deduplication.
 * _consume asynchronously from streams and resume where left off_ thanks to
 automatic or manual offset tracking.
-* _enforce https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/[best practices] to create client connections_ – to stream leaders for publishers to minimize inter-node traffic and to stream replicas for consumers to offload leaders.
+* _enforce https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams/#client-workaround-with-a-load-balancer[best practices] to create client connections_ – to stream leaders for publishers to minimize inter-node traffic and to stream replicas for consumers to offload leaders.
 * _optimize resources_ thanks to automatic growing and shrinking of
 connections depending on the number of publishers and consumers.
 * _let the client handle network failure_ thanks to automatic connection
