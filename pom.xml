@@ -70,7 +70,7 @@
     <vavr.version>0.10.4</vavr.version>
     <paho.version>1.2.5</paho.version>
     <micrometer-tracing-test.version>1.3.1</micrometer-tracing-test.version>
-    <micrometer-docs-generator.version>1.0.2</micrometer-docs-generator.version>
+    <micrometer-docs-generator.version>1.0.3</micrometer-docs-generator.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <maven-surefire-plugin.version>3.3.0</maven-surefire-plugin.version>
     <checksum.maven.plugin.version>1.11</checksum.maven.plugin.version>
