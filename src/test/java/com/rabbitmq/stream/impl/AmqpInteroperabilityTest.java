@@ -576,9 +576,19 @@ public class AmqpInteroperabilityTest {
                               mb ->
                                   mb.applicationProperties()
                                       .entry("binary", "hello".getBytes(UTF8)),
-                              d ->
-                                  assertThat(d.getProperties().getHeaders())
-                                      .containsEntry("binary", "hello".getBytes(UTF8))));
+                              d -> {
+                                // TODO leave only LongString expectation once 3.13.5 is out
+                                Object binary = d.getProperties().getHeaders().get("binary");
+                                Object expected;
+                                if (binary instanceof LongString) {
+                                  // 3.13.5+
+                                  expected = LongStringHelper.asLongString("hello");
+                                } else {
+                                  expected = "hello".getBytes(UTF8);
+                                }
+                                assertThat(d.getProperties().getHeaders())
+                                    .containsEntry("binary", expected);
+                              }));
 
               client.declarePublisher(b(1), null, s);
               IntStream.range(0, messageCount)
