@@ -45,7 +45,7 @@ public final class ClientProperties {
               put("product", "RabbitMQ Stream");
               put("version", ClientProperties.VERSION);
               put("platform", "Java");
-              put("copyright", "Copyright (c) 2020-2023 Broadcom Inc. and/or its subsidiaries.");
+              put("copyright", "Copyright (c) 2020-2024 Broadcom Inc. and/or its subsidiaries.");
               put("information", "Licensed under the MPL 2.0. See https://www.rabbitmq.com/");
             }
           });
