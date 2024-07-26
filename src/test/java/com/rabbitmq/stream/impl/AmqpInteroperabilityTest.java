@@ -577,15 +577,7 @@ public class AmqpInteroperabilityTest {
                                   mb.applicationProperties()
                                       .entry("binary", "hello".getBytes(UTF8)),
                               d -> {
-                                // TODO leave only LongString expectation once 3.13.5 is out
-                                Object binary = d.getProperties().getHeaders().get("binary");
-                                Object expected;
-                                if (binary instanceof LongString) {
-                                  // 3.13.5+
-                                  expected = LongStringHelper.asLongString("hello");
-                                } else {
-                                  expected = "hello".getBytes(UTF8);
-                                }
+                                LongString expected = LongStringHelper.asLongString("hello");
                                 assertThat(d.getProperties().getHeaders())
                                     .containsEntry("binary", expected);
                               }));
