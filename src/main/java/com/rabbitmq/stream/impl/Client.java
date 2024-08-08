@@ -2778,7 +2778,6 @@ public class Client implements AutoCloseable {
         }
       } else {
         FrameHandler frameHandler = ServerFrameHandler.lookup(commandId, version, m);
-        //        task = () -> frameHandler.handle(Client.this, frameSize, ctx, m);
         task = new FrameHandlerTask(frameHandler, Client.this, frameSize, ctx, m, closing);
       }
 
