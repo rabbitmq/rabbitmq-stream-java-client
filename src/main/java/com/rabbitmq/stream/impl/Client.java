@@ -2877,7 +2877,7 @@ public class Client implements AutoCloseable {
         try {
           this.message.release();
         } catch (Exception e) {
-          e.printStackTrace();
+          LOGGER.info("Error while releasing buffer after connection closing: {}", e.getMessage());
         }
       } else {
         this.frameHandler.handle(this.client, this.frameSize, this.ctx, this.message);

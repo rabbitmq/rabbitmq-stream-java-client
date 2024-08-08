@@ -23,6 +23,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.sasl.*;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -87,6 +88,7 @@ public class AuthenticationTest {
     try {
       cf.get(
           new Client.ClientParameters()
+              .rpcTimeout(Duration.ofSeconds(1))
               .saslConfiguration(
                   mechanisms ->
                       new SaslMechanism() {
@@ -102,7 +104,10 @@ public class AuthenticationTest {
                         }
                       }));
     } catch (StreamException e) {
-      assertThat(e.getMessage()).contains(String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR));
+      // there can be a timeout because the connection gets closed before returning the error
+      assertThat(e.getMessage())
+          .containsAnyOf(
+              String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR), "Could not get response in");
     }
   }
 
