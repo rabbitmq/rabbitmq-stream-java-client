@@ -105,9 +105,7 @@ public class AuthenticationTest {
                       }));
     } catch (StreamException e) {
       // there can be a timeout because the connection gets closed before returning the error
-      assertThat(e.getMessage())
-          .containsAnyOf(
-              String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR), "Could not get response in");
+      assertThat(e).hasMessageContaining(String.valueOf(Constants.RESPONSE_CODE_SASL_ERROR));
     }
   }
 

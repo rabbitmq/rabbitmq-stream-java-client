@@ -158,6 +158,7 @@ public class Client implements AutoCloseable {
   final ExecutorService dispatchingExecutorService;
   final TuneState tuneState;
   final AtomicBoolean closing = new AtomicBoolean(false);
+  final AtomicBoolean shuttingDownDispatching = new AtomicBoolean(false);
   final ChunkChecksum chunkChecksum;
   final MetricsCollector metricsCollector;
   final CompressionCodecFactory compressionCodecFactory;
@@ -354,6 +355,7 @@ public class Client implements AutoCloseable {
             () -> {
               if (dispatchingExecutorServiceFactory == null) {
                 List<Runnable> outstandingTasks = this.dispatchingExecutorService.shutdownNow();
+                this.shuttingDownDispatching.set(true);
                 for (Runnable outstandingTask : outstandingTasks) {
                   try {
                     outstandingTask.run();
@@ -2778,7 +2780,9 @@ public class Client implements AutoCloseable {
         }
       } else {
         FrameHandler frameHandler = ServerFrameHandler.lookup(commandId, version, m);
-        task = new FrameHandlerTask(frameHandler, Client.this, frameSize, ctx, m, closing);
+        task =
+            new FrameHandlerTask(
+                frameHandler, Client.this, frameSize, ctx, m, shuttingDownDispatching);
       }
 
       if (task != null) {
@@ -2854,7 +2858,7 @@ public class Client implements AutoCloseable {
     private final int frameSize;
     private final ChannelHandlerContext ctx;
     private final ByteBuf message;
-    private final AtomicBoolean closing;
+    private final AtomicBoolean shouldRelease;
 
     private FrameHandlerTask(
         FrameHandler frameHandler,
@@ -2862,18 +2866,18 @@ public class Client implements AutoCloseable {
         int frameSize,
         ChannelHandlerContext ctx,
         ByteBuf message,
-        AtomicBoolean closing) {
+        AtomicBoolean shouldRelease) {
       this.frameHandler = frameHandler;
       this.client = client;
       this.frameSize = frameSize;
       this.ctx = ctx;
       this.message = message;
-      this.closing = closing;
+      this.shouldRelease = shouldRelease;
     }
 
     @Override
     public void run() {
-      if (this.closing.get()) {
+      if (this.shouldRelease.get()) {
         try {
           this.message.release();
         } catch (Exception e) {
