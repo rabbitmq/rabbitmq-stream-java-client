@@ -352,9 +352,17 @@ public class Client implements AutoCloseable {
     this.executorServiceClosing =
         Utils.makeIdempotent(
             () -> {
-              this.dispatchingExecutorService.shutdownNow();
               if (dispatchingExecutorServiceFactory == null) {
-                this.dispatchingExecutorService.shutdownNow();
+                List<Runnable> outstandingTasks = this.dispatchingExecutorService.shutdownNow();
+                for (Runnable outstandingTask : outstandingTasks) {
+                  try {
+                    outstandingTask.run();
+                  } catch (Exception e) {
+                    LOGGER.info(
+                        "Error while releasing buffer in outstanding connection tasks: {}",
+                        e.getMessage());
+                  }
+                }
               } else {
                 dispatchingExecutorServiceFactory.clientClosed(this.dispatchingExecutorService);
               }
@@ -2770,7 +2778,8 @@ public class Client implements AutoCloseable {
         }
       } else {
         FrameHandler frameHandler = ServerFrameHandler.lookup(commandId, version, m);
-        task = () -> frameHandler.handle(Client.this, frameSize, ctx, m);
+        //        task = () -> frameHandler.handle(Client.this, frameSize, ctx, m);
+        task = new FrameHandlerTask(frameHandler, Client.this, frameSize, ctx, m, closing);
       }
 
       if (task != null) {
@@ -2836,6 +2845,44 @@ public class Client implements AutoCloseable {
       }
       LOGGER.warn("Error in stream handler", cause);
       ctx.close();
+    }
+  }
+
+  private static class FrameHandlerTask implements Runnable {
+
+    private final FrameHandler frameHandler;
+    private final Client client;
+    private final int frameSize;
+    private final ChannelHandlerContext ctx;
+    private final ByteBuf message;
+    private final AtomicBoolean closing;
+
+    private FrameHandlerTask(
+        FrameHandler frameHandler,
+        Client client,
+        int frameSize,
+        ChannelHandlerContext ctx,
+        ByteBuf message,
+        AtomicBoolean closing) {
+      this.frameHandler = frameHandler;
+      this.client = client;
+      this.frameSize = frameSize;
+      this.ctx = ctx;
+      this.message = message;
+      this.closing = closing;
+    }
+
+    @Override
+    public void run() {
+      if (this.closing.get()) {
+        try {
+          this.message.release();
+        } catch (Exception e) {
+          e.printStackTrace();
+        }
+      } else {
+        this.frameHandler.handle(this.client, this.frameSize, this.ctx, this.message);
+      }
     }
   }
 
