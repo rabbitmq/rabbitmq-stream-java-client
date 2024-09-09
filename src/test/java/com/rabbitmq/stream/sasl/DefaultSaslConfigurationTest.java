@@ -58,6 +58,6 @@ public class DefaultSaslConfigurationTest {
     assertThatThrownBy(() -> configuration.getSaslMechanism(asList("FOO", "BAR")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage(
-            "Unable to agree on a SASL mechanism. Client: PLAIN, EXTERNAL / server FOO, BAR.");
+            "Unable to agree on a SASL mechanism. Client: PLAIN, ANONYMOUS, EXTERNAL / server FOO, BAR.");
   }
 }
