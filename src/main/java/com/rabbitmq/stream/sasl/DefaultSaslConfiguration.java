@@ -28,6 +28,8 @@ public final class DefaultSaslConfiguration implements SaslConfiguration {
       new DefaultSaslConfiguration(PlainSaslMechanism.INSTANCE.getName());
   public static final SaslConfiguration EXTERNAL =
       new DefaultSaslConfiguration(ExternalSaslMechanism.INSTANCE.getName());
+  public static final SaslConfiguration ANONYMOUS =
+      new DefaultSaslConfiguration(AnonymousSaslMechanism.INSTANCE.getName());
 
   private final Map<String, SaslMechanism> mechanisms =
       Collections.unmodifiableMap(
@@ -35,6 +37,7 @@ public final class DefaultSaslConfiguration implements SaslConfiguration {
             {
               put(PlainSaslMechanism.INSTANCE.getName(), PlainSaslMechanism.INSTANCE);
               put(ExternalSaslMechanism.INSTANCE.getName(), ExternalSaslMechanism.INSTANCE);
+              put(AnonymousSaslMechanism.INSTANCE.getName(), AnonymousSaslMechanism.INSTANCE);
             }
           });
   private final String mechanism;

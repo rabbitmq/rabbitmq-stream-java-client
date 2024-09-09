@@ -147,6 +147,14 @@ public class AuthenticationTest {
     }
   }
 
+  @Test
+  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_4_0_0)
+  void anonymousAuthenticationShouldWork() {
+    try (Client ignored =
+        cf.get(
+            new Client.ClientParameters().saslConfiguration(DefaultSaslConfiguration.ANONYMOUS))) {}
+  }
+
   private static CredentialsProvider credentialsProvider(String username, String password) {
     return new DefaultUsernamePasswordCredentialsProvider(username, password);
   }
