@@ -255,7 +255,7 @@ final class Utils {
             try {
               Thread.sleep(delay.toMillis());
             } catch (InterruptedException ex) {
-              Thread.interrupted();
+              Thread.currentThread().interrupt();
               lastException = ex;
               keepTrying = false;
             }
