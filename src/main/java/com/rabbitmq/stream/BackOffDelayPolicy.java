@@ -72,7 +72,7 @@ public interface BackOffDelayPolicy {
    */
   Duration delay(int recoveryAttempt);
 
-  class FixedWithInitialDelayBackOffPolicy implements BackOffDelayPolicy {
+  final class FixedWithInitialDelayBackOffPolicy implements BackOffDelayPolicy {
 
     private final Duration initialDelay;
     private final Duration delay;
