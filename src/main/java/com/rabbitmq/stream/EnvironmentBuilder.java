@@ -240,6 +240,12 @@ public interface EnvironmentBuilder {
    */
   EnvironmentBuilder metricsCollector(MetricsCollector metricsCollector);
 
+  /**
+   * Set up an {@link ObservationCollector}.
+   *
+   * @param observationCollector
+   * @return this builder instance
+   */
   EnvironmentBuilder observationCollector(ObservationCollector<?> observationCollector);
 
   /**
