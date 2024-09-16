@@ -15,7 +15,7 @@
 package com.rabbitmq.stream;
 
 /**
- * API to send message to a RabbitMQ Stream.
+ * API to send messages to a RabbitMQ Stream.
  *
  * <p>Instances are created and configured with a {@link ProducerBuilder}.
  *
