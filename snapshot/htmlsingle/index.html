@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.18.0-SNAPSHOT</span>
-<br><span id="revremark">(141266c)</span>
+<br><span id="revremark">(fad1631)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -852,7 +852,8 @@ The next section provides more details about the evolution of programming interf
 <h2 id="stability-of-programming-interfaces"><a class="anchor" href="#stability-of-programming-interfaces"></a>Stability of Programming Interfaces</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>The RabbitMQ Stream Java Client is in active development but its programming interfaces will remain as stable as possible. There is no guarantee though that they will remain completely stable, at least until it reaches version 1.0.0.</p>
+<p>The RabbitMQ Stream Java Client is in active development but its programming interfaces will remain as stable as possible.
+There is no guarantee though that they will remain completely stable, at least until it reaches version 1.0.0.</p>
 </div>
 <div class="paragraph">
 <p>The client contains 2 sets of programming interfaces whose stability are of interest for application developers:</p>
@@ -860,10 +861,16 @@ The next section provides more details about the evolution of programming interf
 <div class="ulist">
 <ul>
 <li>
-<p>Application Programming Interfaces (API): those are the ones used to write application logic. They include the interfaces and classes in the <code>com.rabbitmq.stream</code> package (e.g. <code>Producer</code>, <code>Consumer</code>, <code>Message</code>). These API constitute the main programming model of the client and will be kept as stable as possible.</p>
+<p>Application Programming Interfaces (API): those are the ones used to write application logic.
+They include the interfaces and classes in the <code>com.rabbitmq.stream</code> package (e.g. <code>Producer</code>, <code>Consumer</code>, <code>Message</code>).
+These API constitute the main programming model of the client and will be kept as stable as possible.</p>
 </li>
 <li>
-<p>Service Provider Interfaces (SPI): those are interfaces to implement mainly technical behavior in the client. They are not meant to be used to implement application logic. Application developers may have to refer to them in the configuration phase and if they want to custom some internal behavior in the client. SPI include interfaces and classes in the <code>com.rabbitmq.stream.codec</code>, <code>com.rabbitmq.stream.compression</code>, <code>com.rabbitmq.stream.metrics</code> packages, among others. <em>These SPI are susceptible to change, but this should not impact the majority of applications</em>, as the changes would typically stay intern to the client.</p>
+<p>Service Provider Interfaces (SPI): those are interfaces to implement mainly technical behavior in the client.
+They are not meant to be used to implement application logic.
+Application developers may have to refer to them in the configuration phase and if they want to customize some internal behavior of the client.
+SPI include interfaces and classes in the <code>com.rabbitmq.stream.codec</code>, <code>com.rabbitmq.stream.compression</code>, <code>com.rabbitmq.stream.metrics</code> packages, among others.
+<em>These SPI are susceptible to change, but this should have no impact on most applications</em>, as the changes are likely to be limited to the client internals.</p>
 </li>
 </ul>
 </div>
@@ -4987,7 +4994,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.18.0-SNAPSHOT<br>
-Last updated 2024-09-17 08:17:44 UTC
+Last updated 2024-09-18 14:01:43 UTC
 </div>
 </div>
 </body>
