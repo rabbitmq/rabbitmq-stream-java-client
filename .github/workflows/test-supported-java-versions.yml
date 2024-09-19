@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         distribution: [ 'temurin' ]
-        version: [ '8', '11', '17', '21', '22', '23' ]
+        version: [ '8', '11', '17', '21', '22', '23', '24-ea' ]
         include:
           - distribution: 'semeru'
             version: '17'
@@ -39,6 +39,6 @@ jobs:
             -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem \
-            -Dnet.bytebuddy.experimental=true -Djacoco.skip=true
+            -Dnet.bytebuddy.experimental=true -Djacoco.skip=true -Dspotbugs.skip=true
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
