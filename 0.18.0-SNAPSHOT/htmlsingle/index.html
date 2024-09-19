@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.18.0-SNAPSHOT</span>
-<br><span id="revremark">(9413d65)</span>
+<br><span id="revremark">(d9d071d)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -780,7 +780,7 @@ is also supported on the publisher side.</p>
 <div class="sectionbody">
 <div class="paragraph">
 <p>The RabbitMQ Stream Java Client implements the
-<a href="https://github.com/rabbitmq/rabbitmq-server/blob/v3.13.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
+<a href="https://github.com/rabbitmq/rabbitmq-server/blob/v4.0.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
 and avoids dealing with low-level concerns by providing high-level functionalities
 to build fast, efficient, and robust client applications.</p>
 </div>
@@ -928,7 +928,7 @@ same host).</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq -p 5552:5552 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.13</code></pre>
+    rabbitmq:4.0</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -940,7 +940,7 @@ ports for other protocols:</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:3.13-management</code></pre>
+    rabbitmq:4.0-management</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -967,7 +967,7 @@ this is perfect for experimenting locally.</p>
 <div class="listingblock">
 <div class="title">Running RabbitMQ Stream with the host network driver</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq --network host rabbitmq:3.13</code></pre>
+<pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq --network host rabbitmq:4.0</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -4994,7 +4994,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.18.0-SNAPSHOT<br>
-Last updated 2024-09-19 08:36:20 UTC
+Last updated 2024-09-19 09:35:18 UTC
 </div>
 </div>
 </body>
