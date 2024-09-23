@@ -481,6 +481,7 @@ class StreamConsumer implements Consumer {
   }
 
   void closeFromEnvironment() {
+    this.maybeNotifyActiveToInactiveSac();
     LOGGER.debug("Calling consumer {} closing callback (stream {})", this.id, this.stream);
     this.closingCallback.run();
     closed.set(true);
@@ -490,6 +491,7 @@ class StreamConsumer implements Consumer {
 
   void closeAfterStreamDeletion() {
     if (closed.compareAndSet(false, true)) {
+      this.maybeNotifyActiveToInactiveSac();
       this.environment.removeConsumer(this);
       this.status = Status.CLOSED;
     }
@@ -506,8 +508,20 @@ class StreamConsumer implements Consumer {
   void setSubscriptionClient(Client client) {
     this.subscriptionClient = client;
     if (client == null && this.isSac()) {
+      maybeNotifyActiveToInactiveSac();
       // we lost the connection
       this.sacActive = false;
+    }
+  }
+
+  private void maybeNotifyActiveToInactiveSac() {
+    if (this.isSac() && this.sacActive) {
+      LOGGER.debug(
+          "Single active consumer {} from stream {} with name {} is unavailable, calling consumer update listener",
+          this.id,
+          this.stream,
+          this.name);
+      this.consumerUpdate(false);
     }
   }
 
@@ -622,5 +636,14 @@ class StreamConsumer implements Consumer {
 
   long id() {
     return this.id;
+  }
+
+  String subscriptionConnectionName() {
+    Client client = this.subscriptionClient;
+    if (client == null) {
+      return "<no-connection>";
+    } else {
+      return client.clientConnectionName();
+    }
   }
 }

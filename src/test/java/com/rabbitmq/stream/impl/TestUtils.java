@@ -83,7 +83,7 @@ public final class TestUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TestUtils.class);
 
-  private static final Duration DEFAULT_CONDITION_TIMEOUT = Duration.ofSeconds(10);
+  static final Duration DEFAULT_CONDITION_TIMEOUT = Duration.ofSeconds(10);
 
   private static final ConnectionFactory AMQP_CF = new ConnectionFactory();
 
@@ -248,6 +248,20 @@ public final class TestUtils {
       @Override
       public void accept(T t) {
         delegate.accept(t);
+      }
+
+      @Override
+      public String toString() {
+        return description;
+      }
+    };
+  }
+
+  static <T, U> BiConsumer<T, U> namedBiConsumer(BiConsumer<T, U> delegate, String description) {
+    return new BiConsumer<T, U>() {
+      @Override
+      public void accept(T t, U s) {
+        delegate.accept(t, s);
       }
 
       @Override
@@ -1102,5 +1116,47 @@ public final class TestUtils {
 
   private static Connection connection() throws IOException, TimeoutException {
     return AMQP_CF.newConnection();
+  }
+
+  static Sync sync() {
+    return sync(1);
+  }
+
+  static Sync sync(int count) {
+    return new Sync(count);
+  }
+
+  static class Sync {
+
+    private final AtomicReference<CountDownLatch> latch = new AtomicReference<>();
+
+    private Sync(int count) {
+      this.latch.set(new CountDownLatch(count));
+    }
+
+    void down() {
+      this.latch.get().countDown();
+    }
+
+    boolean await(Duration timeout) {
+      try {
+        return this.latch.get().await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+      } catch (InterruptedException ie) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException(ie);
+      }
+    }
+
+    void reset(int count) {
+      this.latch.set(new CountDownLatch(count));
+    }
+
+    void reset() {
+      this.reset(1);
+    }
+
+    boolean hasCompleted() {
+      return this.latch.get().getCount() == 0;
+    }
   }
 }
