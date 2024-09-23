@@ -14,18 +14,12 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
-import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.ConsumerUpdateListener;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.EnvironmentBuilder;
-import com.rabbitmq.stream.NoOffsetException;
-import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
 import com.rabbitmq.stream.impl.TestUtils.CallableBooleanSupplier;
 import com.rabbitmq.stream.impl.TestUtils.SingleActiveConsumer;
@@ -39,11 +33,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 @ExtendWith({
   TestUtils.StreamTestInfrastructureExtension.class,
@@ -287,7 +284,8 @@ public class SacSuperStreamConsumerTest {
                 && consumerStates.get("1" + partitions.get(2)));
 
     assertThat(consumerStates)
-        .containsEntry("0" + partitions.get(0), true) // not changed after closing
+        .containsEntry(
+            "0" + partitions.get(0), false) // client library notifies the listener on closing
         .containsEntry("0" + partitions.get(1), false) // not changed after closing
         .containsEntry("0" + partitions.get(2), false) // not changed after closing
         .containsEntry("1" + partitions.get(0), true) // now active
@@ -314,12 +312,15 @@ public class SacSuperStreamConsumerTest {
                 && consumerStates.get("2" + partitions.get(2)));
 
     assertThat(consumerStates)
-        .containsEntry("0" + partitions.get(0), true) // not changed after closing
+        .containsEntry(
+            "0" + partitions.get(0), false) // client library notifies the listener on closing
         .containsEntry("0" + partitions.get(1), false) // not changed after closing
         .containsEntry("0" + partitions.get(2), false) // not changed after closing
-        .containsEntry("1" + partitions.get(0), true) // not changed after closing
+        .containsEntry(
+            "1" + partitions.get(0), false) // client library notifies the listener on closing
         .containsEntry("1" + partitions.get(1), false) // not changed after closing
-        .containsEntry("1" + partitions.get(2), true) // not changed after closing
+        .containsEntry(
+            "1" + partitions.get(2), false) // client library notifies the listener on closing
         .containsEntry("2" + partitions.get(0), true) // now active
         .containsEntry("2" + partitions.get(1), true) // now active
         .containsEntry("2" + partitions.get(2), true); // now active
@@ -809,11 +810,95 @@ public class SacSuperStreamConsumerTest {
         });
   }
 
+  public static Stream<java.util.function.BiConsumer<String, Consumer>>
+      activeConsumerShouldGetUpdateNotificationAfterDisruption() {
+    return Stream.of(
+        namedBiConsumer((s, c) -> Host.killConnection(connectionName(s, c)), "kill connection"),
+        namedBiConsumer((s, c) -> Host.restartStream(s), "restart stream"),
+        namedBiConsumer((s, c) -> c.close(), "close consumer"));
+  }
+
+  @ParameterizedTest
+  @MethodSource
+  @TestUtils.DisabledIfRabbitMqCtlNotSet
+  void activeConsumerShouldGetUpdateNotificationAfterDisruption(
+      java.util.function.BiConsumer<String, Consumer> disruption) {
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
+    String partition = superStream + "-0";
+
+    String consumerName = "foo";
+    Function<java.util.function.Consumer<ConsumerUpdateListener.Context>, ConsumerUpdateListener>
+        filteringListener =
+            action ->
+                (ConsumerUpdateListener)
+                    context -> {
+                      if (partition.equals(context.stream())) {
+                        action.accept(context);
+                      }
+                      return OffsetSpecification.next();
+                    };
+
+    Sync consumer1Active = sync();
+    Sync consumer1Inactive = sync();
+
+    Consumer consumer1 =
+        environment
+            .consumerBuilder()
+            .singleActiveConsumer()
+            .superStream(superStream)
+            .name(consumerName)
+            .noTrackingStrategy()
+            .consumerUpdateListener(
+                filteringListener.apply(
+                    context -> {
+                      if (context.isActive()) {
+                        consumer1Active.down();
+                      } else {
+                        consumer1Inactive.down();
+                      }
+                    }))
+            .messageHandler((context, message) -> {})
+            .build();
+
+    Sync consumer2Active = sync();
+    Sync consumer2Inactive = sync();
+    environment
+        .consumerBuilder()
+        .singleActiveConsumer()
+        .superStream(superStream)
+        .name(consumerName)
+        .noTrackingStrategy()
+        .consumerUpdateListener(
+            filteringListener.apply(
+                context -> {
+                  if (!context.isActive()) {
+                    consumer2Inactive.down();
+                  }
+                }))
+        .messageHandler((context, message) -> {})
+        .build();
+
+    assertThat(consumer1Active).completes();
+    assertThat(consumer2Inactive).hasNotCompleted();
+    assertThat(consumer1Inactive).hasNotCompleted();
+    assertThat(consumer2Active).hasNotCompleted();
+
+    disruption.accept(partition, consumer1);
+
+    assertThat(consumer2Inactive).hasNotCompleted();
+    assertThat(consumer1Inactive).completes();
+  }
+
   private static void waitUntil(CallableBooleanSupplier action) {
     try {
       waitAtMost(action);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private static String connectionName(String partition, Consumer consumer) {
+    return ((StreamConsumer) ((SuperStreamConsumer) consumer).consumer(partition))
+        .subscriptionConnectionName();
   }
 }

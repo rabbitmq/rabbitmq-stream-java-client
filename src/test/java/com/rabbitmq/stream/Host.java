@@ -47,30 +47,34 @@ public class Host {
     return buff.toString();
   }
 
-  private static Process executeCommand(String command) throws IOException {
+  private static Process executeCommand(String command) {
     return executeCommand(command, false);
   }
 
-  private static Process executeCommand(String command, boolean ignoreError) throws IOException {
-    Process pr = executeCommandProcess(command);
+  private static Process executeCommand(String command, boolean ignoreError) {
+    try {
+      Process pr = executeCommandProcess(command);
 
-    int ev = waitForExitValue(pr);
-    if (ev != 0 && !ignoreError) {
-      String stdout = capture(pr.getInputStream());
-      String stderr = capture(pr.getErrorStream());
-      throw new IOException(
-          "unexpected command exit value: "
-              + ev
-              + "\ncommand: "
-              + command
-              + "\n"
-              + "\nstdout:\n"
-              + stdout
-              + "\nstderr:\n"
-              + stderr
-              + "\n");
+      int ev = waitForExitValue(pr);
+      if (ev != 0 && !ignoreError) {
+        String stdout = capture(pr.getInputStream());
+        String stderr = capture(pr.getErrorStream());
+        throw new IOException(
+            "unexpected command exit value: "
+                + ev
+                + "\ncommand: "
+                + command
+                + "\n"
+                + "\nstdout:\n"
+                + stdout
+                + "\nstderr:\n"
+                + stderr
+                + "\n");
+      }
+      return pr;
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
-    return pr;
   }
 
   public static String hostname() throws IOException {
@@ -108,6 +112,10 @@ public class Host {
 
   public static Process rabbitmqctl(String command) throws IOException {
     return executeCommand(rabbitmqctlCommand() + " " + command);
+  }
+
+  static Process rabbitmqStreams(String command) {
+    return executeCommand(rabbitmqStreamsCommand() + " " + command);
   }
 
   public static Process rabbitmqctlIgnoreError(String command) throws IOException {
@@ -189,11 +197,19 @@ public class Host {
     return GSON.fromJson(json, new TypeToken<List<ConnectionInfo>>() {}.getType());
   }
 
-  public static Process killStreamLeaderProcess(String stream) throws IOException {
-    return rabbitmqctl(
-        "eval 'case rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\""
-            + stream
-            + "\">>) of {ok, Pid} -> exit(Pid, kill); Pid -> exit(Pid, kill) end.'");
+  public static void restartStream(String stream) {
+    rabbitmqStreams(" restart_stream " + stream);
+  }
+
+  public static Process killStreamLeaderProcess(String stream) {
+    try {
+      return rabbitmqctl(
+          "eval 'case rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\""
+              + stream
+              + "\">>) of {ok, Pid} -> exit(Pid, kill); Pid -> exit(Pid, kill) end.'");
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   public static void addUser(String username, String password) throws IOException {
@@ -243,7 +259,7 @@ public class Host {
   public static String rabbitmqctlCommand() {
     String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
     if (rabbitmqCtl == null) {
-      throw new IllegalStateException("Please define the rabbitmqctl.bin system property");
+      rabbitmqCtl = DOCKER_PREFIX + "rabbitmq";
     }
     if (rabbitmqCtl.startsWith(DOCKER_PREFIX)) {
       String containerId = rabbitmqCtl.split(":")[1];
@@ -251,6 +267,15 @@ public class Host {
     } else {
       return rabbitmqCtl;
     }
+  }
+
+  private static String rabbitmqStreamsCommand() {
+    String rabbitmqctl = rabbitmqctlCommand();
+    int lastIndex = rabbitmqctl.lastIndexOf("rabbitmqctl");
+    if (lastIndex == -1) {
+      throw new IllegalArgumentException("Not a valid rabbitqmctl command: " + rabbitmqctl);
+    }
+    return rabbitmqctl.substring(0, lastIndex) + "rabbitmq-streams";
   }
 
   public static AutoCloseable diskAlarm() throws Exception {

@@ -187,6 +187,10 @@ class SuperStreamConsumer implements Consumer {
         "Consumer#store(long) does not work for super streams, use MessageHandler.Context#storeOffset() instead");
   }
 
+  Consumer consumer(String partition) {
+    return this.consumers.get(partition);
+  }
+
   @Override
   public long storedOffset() {
     throw new UnsupportedOperationException(

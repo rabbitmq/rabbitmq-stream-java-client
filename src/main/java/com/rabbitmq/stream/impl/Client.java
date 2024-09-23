@@ -303,12 +303,7 @@ public class Client implements AutoCloseable {
         });
 
     ChannelFuture f;
-    String clientConnectionName =
-        parameters.clientProperties == null
-            ? ""
-            : (parameters.clientProperties.containsKey("connection_name")
-                ? parameters.clientProperties.get("connection_name")
-                : "");
+    String clientConnectionName = parameters.clientProperties.getOrDefault("connection_name", "");
     try {
       LOGGER.debug(
           "Trying to create stream connection to {}:{}, with client connection name '{}'",
@@ -1503,6 +1498,10 @@ public class Client implements AutoCloseable {
     }
     builder.append(" -> ");
     return builder.append(serverAddress()).toString();
+  }
+
+  String clientConnectionName() {
+    return this.clientConnectionName;
   }
 
   private String serverAddress() {

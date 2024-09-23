@@ -14,24 +14,24 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.publishAndWaitForConfirms;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.Consumer;
-import com.rabbitmq.stream.Environment;
-import com.rabbitmq.stream.EnvironmentBuilder;
-import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
 import io.netty.channel.EventLoopGroup;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 @ExtendWith({
   TestUtils.StreamTestInfrastructureExtension.class,
@@ -236,5 +236,73 @@ public class SacStreamConsumerTest {
 
     // nothing stored on the server side
     assertThat(cf.get().queryOffset(consumerName, stream).getOffset()).isZero();
+  }
+
+  public static Stream<java.util.function.Consumer<Consumer>>
+      activeConsumerShouldGetUpdateNotificationAfterDisruption() {
+    return Stream.of(
+        namedConsumer(consumer -> Host.killConnection(connectionName(consumer)), "kill connection"),
+        namedConsumer(consumer -> Host.restartStream(stream(consumer)), "restart stream"),
+        namedConsumer(Consumer::close, "close consumer"));
+  }
+
+  @ParameterizedTest
+  @MethodSource
+  @TestUtils.DisabledIfRabbitMqCtlNotSet
+  void activeConsumerShouldGetUpdateNotificationAfterDisruption(
+      java.util.function.Consumer<Consumer> disruption) {
+    String consumerName = "foo";
+    Sync consumer1Active = sync();
+    Sync consumer1Inactive = sync();
+    Consumer consumer1 =
+        environment.consumerBuilder().stream(stream)
+            .name(consumerName)
+            .noTrackingStrategy()
+            .singleActiveConsumer()
+            .consumerUpdateListener(
+                context -> {
+                  if (context.isActive()) {
+                    consumer1Active.down();
+                  } else {
+                    consumer1Inactive.down();
+                  }
+                  return OffsetSpecification.next();
+                })
+            .messageHandler((context, message) -> {})
+            .build();
+
+    Sync consumer2Active = sync();
+    Sync consumer2Inactive = sync();
+    environment.consumerBuilder().stream(stream)
+        .name(consumerName)
+        .noTrackingStrategy()
+        .singleActiveConsumer()
+        .consumerUpdateListener(
+            context -> {
+              if (!context.isActive()) {
+                consumer2Inactive.down();
+              }
+              return OffsetSpecification.next();
+            })
+        .messageHandler((context, message) -> {})
+        .build();
+
+    assertThat(consumer1Active).completes();
+    assertThat(consumer2Inactive).hasNotCompleted();
+    assertThat(consumer1Inactive).hasNotCompleted();
+    assertThat(consumer2Active).hasNotCompleted();
+
+    disruption.accept(consumer1);
+
+    assertThat(consumer2Inactive).hasNotCompleted();
+    assertThat(consumer1Inactive).completes();
+  }
+
+  private static String connectionName(Consumer consumer) {
+    return ((StreamConsumer) consumer).subscriptionConnectionName();
+  }
+
+  private static String stream(Consumer consumer) {
+    return ((StreamConsumer) consumer).stream();
   }
 }
