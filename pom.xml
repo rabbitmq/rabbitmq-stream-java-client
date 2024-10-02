@@ -73,6 +73,7 @@
     <micrometer-docs-generator.version>1.0.4</micrometer-docs-generator.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <maven-surefire-plugin.version>3.5.0</maven-surefire-plugin.version>
+    <maven-dependency-plugin.version>3.8.0</maven-dependency-plugin.version>
     <checksum.maven.plugin.version>1.11</checksum.maven.plugin.version>
     <maven.gpg.plugin.version>3.2.7</maven.gpg.plugin.version>
     <buildnumber.plugin.version>3.2.1</buildnumber.plugin.version>
@@ -354,6 +355,19 @@
             <arg>-Xlint:unchecked</arg>
           </compilerArgs>
         </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>${maven-dependency-plugin.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>properties</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
 
       <plugin>
@@ -689,7 +703,7 @@
         <jdk>[21,)</jdk>
       </activation>
       <properties>
-        <test-arguments>-Xshare:off -XX:+EnableDynamicAgentLoading</test-arguments>
+        <test-arguments>-Xshare:off -javaagent:${org.mockito:mockito-core:jar}</test-arguments>
       </properties>
     </profile>
 
