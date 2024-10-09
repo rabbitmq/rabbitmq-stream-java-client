@@ -892,7 +892,7 @@ public class Client implements AutoCloseable {
         (publisherReference == null || publisherReference.isEmpty()
             ? 0
             : publisherReference.length());
-    if (publisherReferenceSize > 256) {
+    if (publisherReferenceSize >= 256) {
       throw new IllegalArgumentException(
           "If specified, publisher reference must less than 256 characters");
     }
