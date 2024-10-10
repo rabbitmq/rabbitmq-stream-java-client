@@ -82,9 +82,9 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
   @Override
   public ConsumerBuilder name(String name) {
-    if (name == null || name.length() > NAME_MAX_SIZE) {
+    if (name == null || name.length() >= NAME_MAX_SIZE) {
       throw new IllegalArgumentException(
-          "The consumer name must be non-null and under 256 characters");
+          "The consumer name must be non-null and less than 256 characters");
     }
     this.name = name;
     return this;
