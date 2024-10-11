@@ -128,6 +128,7 @@ public class Client implements AutoCloseable {
   private static final Charset CHARSET = StandardCharsets.UTF_8;
   public static final int DEFAULT_PORT = 5552;
   public static final int DEFAULT_TLS_PORT = 5551;
+  static final int MAX_REFERENCE_SIZE = 256;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
@@ -892,7 +893,7 @@ public class Client implements AutoCloseable {
         (publisherReference == null || publisherReference.isEmpty()
             ? 0
             : publisherReference.length());
-    if (publisherReferenceSize >= 256) {
+    if (publisherReferenceSize >= MAX_REFERENCE_SIZE) {
       throw new IllegalArgumentException(
           "If specified, publisher reference must less than 256 characters");
     }
@@ -1290,7 +1291,7 @@ public class Client implements AutoCloseable {
   }
 
   public void storeOffset(String reference, String stream, long offset) {
-    if (reference == null || reference.isEmpty() || reference.length() > 256) {
+    if (reference == null || reference.isEmpty() || reference.length() >= MAX_REFERENCE_SIZE) {
       throw new IllegalArgumentException(
           "Reference must a non-empty string of less than 256 characters");
     }
