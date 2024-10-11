@@ -30,7 +30,7 @@ import java.util.function.Predicate;
 
 class StreamConsumerBuilder implements ConsumerBuilder {
 
-  private static final int NAME_MAX_SIZE = 256; // server-side limitation
+  private static final int NAME_MAX_SIZE = Client.MAX_REFERENCE_SIZE; // server-side limitation
   private static final TrackingConfiguration DISABLED_TRACKING_CONFIGURATION =
       new TrackingConfiguration(false, false, -1, Duration.ZERO, Duration.ZERO);
   private final StreamEnvironment environment;
