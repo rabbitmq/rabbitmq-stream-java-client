@@ -2744,6 +2744,14 @@ public class Client implements AutoCloseable {
       return this;
     }
 
+    public StreamParametersBuilder initialMemberCount(int initialMemberCount) {
+      if (initialMemberCount <= 0) {
+        throw new IllegalArgumentException("The initial member count must be greater than 0");
+      }
+      this.parameters.put("initial-cluster-size", String.valueOf(initialMemberCount));
+      return this;
+    }
+
     public StreamParametersBuilder put(String key, String value) {
       parameters.put(key, value);
       return this;
