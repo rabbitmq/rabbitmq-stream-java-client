@@ -87,6 +87,12 @@ class StreamStreamCreator implements StreamCreator {
   }
 
   @Override
+  public StreamCreator initialMemberCount(int initialMemberCount) {
+    streamParametersBuilder.initialMemberCount(initialMemberCount);
+    return this;
+  }
+
+  @Override
   public SuperStreamConfiguration superStream() {
     if (this.superStreamConfiguration == null) {
       this.superStreamConfiguration = new DefaultSuperStreamConfiguration(this);

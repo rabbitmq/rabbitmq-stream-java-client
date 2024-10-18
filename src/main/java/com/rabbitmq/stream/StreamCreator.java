@@ -93,6 +93,16 @@ public interface StreamCreator {
   StreamCreator filterSize(int size);
 
   /**
+   * Set the number of initial members the stream should have.
+   *
+   * @param initialMemberCount initial number of nodes
+   * @return this creator instance
+   * @see <a href="https://www.rabbitmq.com/docs/streams#replication-factor">Initial Replication
+   *     Factor</a>
+   */
+  StreamCreator initialMemberCount(int initialMemberCount);
+
+  /**
    * Configure the super stream to create.
    *
    * <p>Requires RabbitMQ 3.13.0 or more.

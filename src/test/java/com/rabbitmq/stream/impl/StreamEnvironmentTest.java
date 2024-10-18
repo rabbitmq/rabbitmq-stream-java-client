@@ -813,4 +813,17 @@ public class StreamEnvironmentTest {
       executor.shutdownNow();
     }
   }
+
+  @Test
+  void brokerShouldAcceptInitialMemberCountArgument(TestInfo info) {
+    String s = streamName(info);
+    Environment env = environmentBuilder.build();
+    try {
+      env.streamCreator().name(s).initialMemberCount(1).create();
+      assertThat(env.streamExists(s)).isTrue();
+    } finally {
+      env.deleteStream(s);
+      env.close();
+    }
+  }
 }
