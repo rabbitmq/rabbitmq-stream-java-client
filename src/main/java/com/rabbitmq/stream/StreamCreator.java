@@ -103,6 +103,15 @@ public interface StreamCreator {
   StreamCreator initialMemberCount(int initialMemberCount);
 
   /**
+   * Set an argument for the stream creation.
+   *
+   * @param key argument key
+   * @param value argument value
+   * @return this creator instance
+   */
+  StreamCreator argument(String key, String value);
+
+  /**
    * Configure the super stream to create.
    *
    * <p>Requires RabbitMQ 3.13.0 or more.

@@ -93,6 +93,12 @@ class StreamStreamCreator implements StreamCreator {
   }
 
   @Override
+  public StreamCreator argument(String key, String value) {
+    streamParametersBuilder.put(key, value);
+    return this;
+  }
+
+  @Override
   public SuperStreamConfiguration superStream() {
     if (this.superStreamConfiguration == null) {
       this.superStreamConfiguration = new DefaultSuperStreamConfiguration(this);

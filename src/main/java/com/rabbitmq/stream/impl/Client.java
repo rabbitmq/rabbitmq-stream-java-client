@@ -2753,7 +2753,11 @@ public class Client implements AutoCloseable {
     }
 
     public StreamParametersBuilder put(String key, String value) {
-      parameters.put(key, value);
+      if (value == null) {
+        parameters.remove(key);
+      } else {
+        parameters.put(key, value);
+      }
       return this;
     }
 
