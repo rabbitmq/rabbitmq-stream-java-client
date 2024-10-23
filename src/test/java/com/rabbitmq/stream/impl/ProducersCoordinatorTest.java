@@ -46,6 +46,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
+
+import io.netty.channel.ConnectTimeoutException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -299,6 +301,40 @@ public class ProducersCoordinatorTest {
     verify(producerClosedAfterDisconnection, never()).running();
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
+  }
+
+  @Test
+  void shouldRecoverOnConnectionTimeout() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(50);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(leader(), replicas()));
+
+    when(clientFactory.client(any()))
+        .thenReturn(client)
+        .thenThrow(new TimeoutStreamException("", new ConnectTimeoutException()))
+        .thenReturn(client);
+
+    when(producer.isOpen()).thenReturn(true);
+
+    StreamProducer producer = mock(StreamProducer.class);
+    when(producer.isOpen()).thenReturn(true);
+
+    CountDownLatch runningLatch = new CountDownLatch(1);
+    doAnswer(answer(runningLatch::countDown)).when(this.producer).running();
+
+    coordinator.registerProducer(this.producer, null, "stream");
+
+    verify(this.producer, times(1)).setClient(client);
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    assertThat(runningLatch.await(5, TimeUnit.SECONDS)).isTrue();
+    verify(this.producer, times(1)).unavailable();
+    verify(this.producer, times(2)).setClient(client);
   }
 
   @Test
