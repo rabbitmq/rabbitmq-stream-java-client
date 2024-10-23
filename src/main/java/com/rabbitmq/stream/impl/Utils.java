@@ -145,6 +145,12 @@ final class Utils {
   }
 
   static ClientFactory coordinatorClientFactory(StreamEnvironment environment) {
+    String messageFormat =
+        "%s. %s. "
+            + "This may be due to the usage of a load balancer that makes topology discovery fail. "
+            + "Use a custom AddressResolver or the --load-balancer flag if using StreamPerfTest. "
+            + "See https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#understanding-connection-logic "
+            + "and https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer.";
     return context -> {
       ClientParameters parametersCopy = context.parameters().duplicate();
       Address address = new Address(parametersCopy.host(), parametersCopy.port());
@@ -159,20 +165,15 @@ final class Utils {
         return Utils.connectToAdvertisedNodeClientFactory(
                 context.key(), context1 -> new Client(context1.parameters()))
             .client(Utils.ClientFactoryContext.fromParameters(parametersCopy).key(context.key()));
+      } catch (TimeoutStreamException e) {
+        throw new TimeoutStreamException(
+            format(messageFormat, e.getMessage(), e.getCause().getMessage(), e.getCause()));
       } catch (StreamException e) {
         if (e.getCause() != null
             && (e.getCause() instanceof UnknownHostException
                 || e.getCause() instanceof ConnectTimeoutException)) {
-          String message =
-              e.getMessage()
-                  + ". "
-                  + e.getCause().getMessage()
-                  + ". "
-                  + "This may be due to the usage of a load balancer that makes topology discovery fail. "
-                  + "Use a custom AddressResolver or the --load-balancer flag if using StreamPerfTest. "
-                  + "See https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#understanding-connection-logic "
-                  + "and https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/#with-a-load-balancer.";
-          throw new StreamException(message, e.getCause());
+          throw new StreamException(
+              format(messageFormat, e.getMessage(), e.getCause().getMessage()), e.getCause());
         } else {
           throw e;
         }
@@ -204,11 +205,11 @@ final class Utils {
   }
 
   static Runnable namedRunnable(Runnable task, String format, Object... args) {
-    return new NamedRunnable(String.format(format, args), task);
+    return new NamedRunnable(format(format, args), task);
   }
 
   static <T, R> Function<T, R> namedFunction(Function<T, R> task, String format, Object... args) {
-    return new NamedFunction<>(String.format(format, args), task);
+    return new NamedFunction<>(format(format, args), task);
   }
 
   static <T> T callAndMaybeRetry(
@@ -325,7 +326,7 @@ final class Utils {
         try {
           Thread.sleep(this.retryInterval.toMillis());
         } catch (InterruptedException e) {
-          Thread.interrupted();
+          Thread.currentThread().interrupt();
           return null;
         }
       }
