@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.19.0-SNAPSHOT</span>
-<br><span id="revremark">(9293501)</span>
+<br><span id="revremark">(48f58c2)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2071,7 +2071,13 @@ outstanding unconfirmed messages timed out.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Time before enqueueing of a message fail when the maximum number of unconfirmed
 is reached. The callback of the message will be called with a negative status.
 Set the value to <code>Duration.ZERO</code> if there should be no timeout.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">10 seconds.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10 seconds</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>retryOnRecovery</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Re-publish unconfirmed messages after recovering a connection.
+Set to false if do not want to re-publish unconfirmed messages after recovering a connection.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">true</p></td>
 </tr>
 </tbody>
 </table>
@@ -4994,7 +5000,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.19.0-SNAPSHOT<br>
-Last updated 2024-10-23 09:21:57 UTC
+Last updated 2024-10-24 13:01:11 UTC
 </div>
 </div>
 </body>
