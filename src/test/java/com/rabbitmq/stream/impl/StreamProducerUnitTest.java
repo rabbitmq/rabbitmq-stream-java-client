@@ -177,6 +177,7 @@ public class StreamProducerUnitTest {
             messageCount * 10,
             confirmTimeout,
             Duration.ofSeconds(10),
+            true,
             null,
             env);
 
@@ -219,6 +220,7 @@ public class StreamProducerUnitTest {
             2,
             Duration.ofMinutes(1),
             enqueueTimeout,
+            true,
             null,
             env);
 
@@ -258,6 +260,7 @@ public class StreamProducerUnitTest {
             2,
             Duration.ofMinutes(1),
             enqueueTimeout,
+            true,
             null,
             env);
 

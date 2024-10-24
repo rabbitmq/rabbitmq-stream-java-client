@@ -134,6 +134,18 @@ public interface ProducerBuilder {
   ProducerBuilder enqueueTimeout(Duration timeout);
 
   /**
+   * Re-publish unconfirmed messages when restoring a connection.
+   *
+   * <p>Default is true.</p>
+   *
+   * <p>Set to false if do not want to re-publish unconfirmed messages when restoring a connection.</p>
+   *
+   * @param retryOnRecovery
+   * @return this builder instance
+   */
+  ProducerBuilder retryOnRecovery(boolean retryOnRecovery);
+
+  /**
    * Logic to extract a filter value from a message.
    *
    * <p>RabbitMQ 3.13 or more is required.

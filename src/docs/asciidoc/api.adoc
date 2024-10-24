@@ -464,7 +464,12 @@ outstanding unconfirmed messages timed out.
 |Time before enqueueing of a message fail when the maximum number of unconfirmed
 is reached. The callback of the message will be called with a negative status.
 Set the value to `Duration.ZERO` if there should be no timeout.
-|10 seconds.
+|10 seconds
+
+|`retryOnRecovery`
+|Re-publish unconfirmed messages when restoring a connection.
+Set to false if do not want to re-publish unconfirmed messages when restoring a connection.
+|true
 |===
 
 ==== Sending Messages
