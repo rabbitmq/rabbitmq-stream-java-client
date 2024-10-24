@@ -47,6 +47,8 @@ class StreamProducerBuilder implements ProducerBuilder {
 
   private Duration enqueueTimeout = Duration.ofSeconds(10);
 
+  private boolean retryOnRecovery = true;
+
   private DefaultRoutingConfiguration routingConfiguration;
 
   private Function<Message, String> filterValueExtractor;
@@ -132,6 +134,12 @@ class StreamProducerBuilder implements ProducerBuilder {
   }
 
   @Override
+  public ProducerBuilder retryOnRecovery(boolean retryOnRecovery) {
+    this.retryOnRecovery = retryOnRecovery;
+    return this;
+  }
+
+  @Override
   public ProducerBuilder filterValue(Function<Message, String> filterValueExtractor) {
     this.filterValueExtractor = filterValueExtractor;
     return this;
@@ -195,6 +203,7 @@ class StreamProducerBuilder implements ProducerBuilder {
               maxUnconfirmedMessages,
               confirmTimeout,
               enqueueTimeout,
+              retryOnRecovery,
               filterValueExtractor,
               environment);
       this.environment.addProducer((StreamProducer) producer);

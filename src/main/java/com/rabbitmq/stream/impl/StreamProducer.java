@@ -78,6 +78,7 @@ class StreamProducer implements Producer {
       entity -> ((AccumulatedEntity) entity).publishingId();
   private final long enqueueTimeoutMs;
   private final boolean blockOnMaxUnconfirmed;
+  private final boolean retryOnRecovery;
   private volatile Client client;
   private volatile byte publisherId;
   private volatile Status status;
@@ -95,6 +96,7 @@ class StreamProducer implements Producer {
       int maxUnconfirmedMessages,
       Duration confirmTimeout,
       Duration enqueueTimeout,
+      boolean retryOnRecovery,
       Function<Message, String> filterValueExtractor,
       StreamEnvironment environment) {
     if (filterValueExtractor != null && !environment.filteringSupported()) {
@@ -107,6 +109,7 @@ class StreamProducer implements Producer {
     this.name = name;
     this.stream = stream;
     this.enqueueTimeoutMs = enqueueTimeout.toMillis();
+    this.retryOnRecovery = retryOnRecovery;
     this.blockOnMaxUnconfirmed = enqueueTimeout.isZero();
     this.closingCallback = environment.registerProducer(this, name, this.stream);
     final Client.OutboundEntityWriteCallback delegateWriteCallback;
@@ -504,43 +507,58 @@ class StreamProducer implements Producer {
 
   void running() {
     synchronized (this) {
-      LOGGER.debug(
-          "Re-publishing {} unconfirmed message(s) and {} accumulated message(s)",
-          this.unconfirmedMessages.size(),
-          this.accumulator.size());
-      if (!this.unconfirmedMessages.isEmpty()) {
-        Map<Long, AccumulatedEntity> messagesToResend = new TreeMap<>(this.unconfirmedMessages);
-        this.unconfirmedMessages.clear();
-        Iterator<Entry<Long, AccumulatedEntity>> resendIterator =
-            messagesToResend.entrySet().iterator();
-        while (resendIterator.hasNext()) {
-          List<Object> messages = new ArrayList<>(this.batchSize);
-          int batchCount = 0;
-          while (batchCount != this.batchSize) {
-            Object accMessage = resendIterator.hasNext() ? resendIterator.next().getValue() : null;
-            if (accMessage == null) {
-              break;
-            }
-            messages.add(accMessage);
-            batchCount++;
-          }
-          client.publishInternal(
-              this.publishVersion,
-              this.publisherId,
-              messages,
-              this.writeCallback,
-              this.publishSequenceFunction);
-        }
-      }
-      publishBatch(false);
+      if (!this.retryOnRecovery) {
+        LOGGER.debug(
+            "Skip to republish {} unconfirmed message(s) and re-publishing {} accumulated message(s)",
+            this.unconfirmedMessages.size(),
+            this.accumulator.size());
 
-      int toRelease = maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits();
-      if (toRelease > 0) {
-        unconfirmedMessagesSemaphore.release(toRelease);
-        if (!unconfirmedMessagesSemaphore.tryAcquire(this.unconfirmedMessages.size())) {
-          LOGGER.debug(
-              "Could not acquire {} permit(s) for message republishing",
-              this.unconfirmedMessages.size());
+        this.unconfirmedMessages.clear();
+        int toRelease = maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits();
+        if (toRelease > 0) {
+          unconfirmedMessagesSemaphore.release(toRelease);
+        }
+
+        publishBatch(false);
+      } else {
+        LOGGER.debug(
+            "Re-publishing {} unconfirmed message(s) and {} accumulated message(s)",
+            this.unconfirmedMessages.size(),
+            this.accumulator.size());
+        if (!this.unconfirmedMessages.isEmpty()) {
+          Map<Long, AccumulatedEntity> messagesToResend = new TreeMap<>(this.unconfirmedMessages);
+          this.unconfirmedMessages.clear();
+          Iterator<Entry<Long, AccumulatedEntity>> resendIterator =
+            messagesToResend.entrySet().iterator();
+          while (resendIterator.hasNext()) {
+            List<Object> messages = new ArrayList<>(this.batchSize);
+            int batchCount = 0;
+            while (batchCount != this.batchSize) {
+              Object accMessage = resendIterator.hasNext() ? resendIterator.next().getValue() : null;
+              if (accMessage == null) {
+                break;
+              }
+              messages.add(accMessage);
+              batchCount++;
+            }
+            client.publishInternal(
+                this.publishVersion,
+                this.publisherId,
+                messages,
+                this.writeCallback,
+                this.publishSequenceFunction);
+          }
+        }
+        publishBatch(false);
+
+        int toRelease = maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits();
+        if (toRelease > 0) {
+          unconfirmedMessagesSemaphore.release(toRelease);
+          if (!unconfirmedMessagesSemaphore.tryAcquire(this.unconfirmedMessages.size())) {
+            LOGGER.debug(
+                "Could not acquire {} permit(s) for message republishing",
+                this.unconfirmedMessages.size());
+          }
         }
       }
     }
