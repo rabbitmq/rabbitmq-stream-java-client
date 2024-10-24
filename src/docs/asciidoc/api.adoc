@@ -467,8 +467,8 @@ Set the value to `Duration.ZERO` if there should be no timeout.
 |10 seconds
 
 |`retryOnRecovery`
-|Re-publish unconfirmed messages when restoring a connection.
-Set to false if do not want to re-publish unconfirmed messages when restoring a connection.
+|Re-publish unconfirmed messages after recovering a connection.
+Set to false if do not want to re-publish unconfirmed messages after recovering a connection.
 |true
 |===
 

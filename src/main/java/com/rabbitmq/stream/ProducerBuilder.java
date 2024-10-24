@@ -134,11 +134,11 @@ public interface ProducerBuilder {
   ProducerBuilder enqueueTimeout(Duration timeout);
 
   /**
-   * Re-publish unconfirmed messages when restoring a connection.
+   * Re-publish unconfirmed messages after recovering a connection.
    *
    * <p>Default is true.</p>
    *
-   * <p>Set to false if do not want to re-publish unconfirmed messages when restoring a connection.</p>
+   * <p>Set to false if do not want to re-publish unconfirmed messages after recovering a connection.</p>
    *
    * @param retryOnRecovery
    * @return this builder instance
