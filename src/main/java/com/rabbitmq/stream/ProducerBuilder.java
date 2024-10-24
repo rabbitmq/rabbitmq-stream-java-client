@@ -134,13 +134,17 @@ public interface ProducerBuilder {
   ProducerBuilder enqueueTimeout(Duration timeout);
 
   /**
-   * Re-publish unconfirmed messages after recovering a connection.
+   * Whether to republish unconfirmed messages after recovery.
    *
-   * <p>Default is true.</p>
+   * <p>Default is <code>true</code> (unconfirmed messages are republished after recovery).
    *
-   * <p>Set to false if do not want to re-publish unconfirmed messages after recovering a connection.</p>
+   * <p>Set to <code>false</code> to not republish unconfirmed messages and get a negative {@link
+   * ConfirmationStatus} for unconfirmed messages.
    *
-   * @param retryOnRecovery
+   * <p>Note setting this flag to <code>false</code> translates to at-most-once semantics, that is
+   * published messages may be lost, unless the publishing application retries publishing them.
+   *
+   * @param retryOnRecovery retry flag
    * @return this builder instance
    */
   ProducerBuilder retryOnRecovery(boolean retryOnRecovery);

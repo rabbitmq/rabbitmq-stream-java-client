@@ -37,6 +37,7 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
+import io.netty.channel.ConnectTimeoutException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,8 +47,6 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
-
-import io.netty.channel.ConnectTimeoutException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -309,8 +308,7 @@ public class ProducersCoordinatorTest {
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
-    when(locator.metadata("stream"))
-        .thenReturn(metadata(leader(), replicas()));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
 
     when(clientFactory.client(any()))
         .thenReturn(client)

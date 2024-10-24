@@ -243,7 +243,7 @@ public class StreamProducerTest {
   @TestUtils.DisabledIfRabbitMqCtlNotSet
   void shouldRecoverAfterConnectionIsKilled(int subEntrySize) throws Exception {
     Producer producer =
-        environment.producerBuilder().subEntrySize(subEntrySize).retryOnRecovery(true).stream(stream).build();
+        environment.producerBuilder().subEntrySize(subEntrySize).stream(stream).build();
 
     AtomicInteger published = new AtomicInteger(0);
     AtomicInteger confirmed = new AtomicInteger(0);
