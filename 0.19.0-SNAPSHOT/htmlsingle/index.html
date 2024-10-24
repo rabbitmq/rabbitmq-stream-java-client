@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.19.0-SNAPSHOT</span>
-<br><span id="revremark">(48f58c2)</span>
+<br><span id="revremark">(6df1e05)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2075,8 +2075,8 @@ Set the value to <code>Duration.ZERO</code> if there should be no timeout.</p></
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>retryOnRecovery</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Re-publish unconfirmed messages after recovering a connection.
-Set to false if do not want to re-publish unconfirmed messages after recovering a connection.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Whether to republish unconfirmed messages after recovery.
+Set to <code>false</code> to not republish unconfirmed messages and get a negative <code>ConfirmationStatus</code> for unconfirmed messages.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">true</p></td>
 </tr>
 </tbody>
@@ -5000,7 +5000,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.19.0-SNAPSHOT<br>
-Last updated 2024-10-24 13:01:11 UTC
+Last updated 2024-10-24 14:08:15 UTC
 </div>
 </div>
 </body>
