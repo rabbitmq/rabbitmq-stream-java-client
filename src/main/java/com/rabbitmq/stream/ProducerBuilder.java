@@ -146,6 +146,7 @@ public interface ProducerBuilder {
    *
    * @param retryOnRecovery retry flag
    * @return this builder instance
+   * @since 0.19.0
    */
   ProducerBuilder retryOnRecovery(boolean retryOnRecovery);
 
