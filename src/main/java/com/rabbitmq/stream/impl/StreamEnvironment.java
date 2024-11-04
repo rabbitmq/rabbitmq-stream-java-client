@@ -42,10 +42,7 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -159,7 +156,16 @@ class StreamEnvironment implements Environment {
         String username = ((UsernamePasswordCredentialsProvider) credentialsProvider).getUsername();
         if (DEFAULT_USERNAME.equals(username)) {
           Address address = new Address("localhost", clientParametersPrototype.port());
-          addressResolverToUse = ignored -> address;
+          Set<Address> passedInAddresses = ConcurrentHashMap.newKeySet();
+          addressResolverToUse =
+              addr -> {
+                passedInAddresses.add(addr);
+                if (passedInAddresses.size() > 1) {
+                  LOGGER.warn("Assumed development environment but it seems incorrect.");
+                  passedInAddresses.clear();
+                }
+                return address;
+              };
           LOGGER.info(
               "Connecting to localhost with {} user, assuming development environment",
               DEFAULT_USERNAME);
