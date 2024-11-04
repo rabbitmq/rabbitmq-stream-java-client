@@ -79,7 +79,7 @@
     <buildnumber.plugin.version>3.2.1</buildnumber.plugin.version>
     <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
     <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
-    <maven-javadoc-plugin.version>3.10.1</maven-javadoc-plugin.version>
+    <maven-javadoc-plugin.version>3.11.1</maven-javadoc-plugin.version>
     <maven.jar.plugin.version>3.4.2</maven.jar.plugin.version>
     <build-helper-maven-plugin.version>3.4.0</build-helper-maven-plugin.version>
     <asciidoctor.maven.plugin.version>3.1.0</asciidoctor.maven.plugin.version>
