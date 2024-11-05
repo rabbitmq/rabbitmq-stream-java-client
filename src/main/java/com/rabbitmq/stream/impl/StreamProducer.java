@@ -56,8 +56,6 @@ class StreamProducer implements Producer {
   private static final ConfirmationHandler NO_OP_CONFIRMATION_HANDLER = confirmationStatus -> {};
   private final long id;
   private final MessageAccumulator accumulator;
-  //  private final DynamicBatch<Object> dynamicBatch;
-  private final Clock clock;
   private final ToLongFunction<Message> accumulatorPublishSequenceFunction;
   // FIXME investigate a more optimized data structure to handle pending messages
   private final ConcurrentMap<Long, AccumulatedEntity> unconfirmedMessages;
@@ -119,41 +117,14 @@ class StreamProducer implements Producer {
             return publishingSequence.getAndIncrement();
           }
         };
-    this.clock = environment.clock();
 
     if (subEntrySize <= 1) {
-      //      this.accumulator =
-      //          new SimpleMessageAccumulator(
-      //              batchSize,
-      //              environment.codec(),
-      //              client.maxFrameSize(),
-      //              accumulatorPublishSequenceFunction,
-      //              filterValueExtractor,
-      //              this.environment.clock(),
-      //              stream,
-      //              this.environment.observationCollector(),
-      //              this);
       if (filterValueExtractor == null) {
         delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
       } else {
         delegateWriteCallback = OUTBOUND_MSG_FILTER_VALUE_WRITE_CALLBACK;
       }
     } else {
-      //      this.accumulator =
-      //          new SubEntryMessageAccumulator(
-      //              subEntrySize,
-      //              batchSize,
-      //              compression == Compression.NONE
-      //                  ? null
-      //                  : environment.compressionCodecFactory().get(compression),
-      //              environment.codec(),
-      //              this.environment.byteBufAllocator(),
-      //              client.maxFrameSize(),
-      //              accumulatorPublishSequenceFunction,
-      //              this.environment.clock(),
-      //              stream,
-      //              environment.observationCollector(),
-      //              this);
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
 
@@ -216,88 +187,6 @@ class StreamProducer implements Producer {
             stream,
             environment.observationCollector(),
             this);
-
-    /*
-    if (subEntrySize <= 1) {
-      this.dynamicBatch =
-          new DynamicBatch<>(
-              items -> {
-                client.publishInternal(
-                    this.publishVersion,
-                    this.publisherId,
-                    items,
-                    this.writeCallback,
-                    this.publishSequenceFunction);
-              },
-              batchSize);
-    } else {
-      CompressionCodec compressionCodec =
-          compression == Compression.NONE
-              ? null
-              : environment.compressionCodecFactory().get(compression);
-      byte compressionCode =
-          compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
-      this.dynamicBatch =
-          new DynamicBatch<>(
-              items -> {
-                List<Object> subBatches = new ArrayList<>();
-                int count = 0;
-                ProducerUtils.Batch batch =
-                    new ProducerUtils.Batch(
-                        Client.EncodedMessageBatch.create(
-                            this.environment.byteBufAllocator(),
-                            compressionCode,
-                            compressionCodec,
-                            subEntrySize),
-                        new ProducerUtils.CompositeConfirmationCallback(
-                            new ArrayList<>(subEntrySize)));
-                AccumulatedEntity lastMessageInBatch = null;
-                for (Object msg : items) {
-                  AccumulatedEntity message = (AccumulatedEntity) msg;
-                  this.observationCollector.published(
-                      message.observationContext(), message.confirmationCallback().message());
-                  lastMessageInBatch = message;
-                  batch.add(
-                      (Codec.EncodedMessage) message.encodedEntity(),
-                      message.confirmationCallback());
-                  count++;
-                  if (count == subEntrySize) {
-                    batch.time = lastMessageInBatch.time();
-                    batch.publishingId = lastMessageInBatch.publishingId();
-                    batch.encodedMessageBatch.close();
-                    subBatches.add(batch);
-                    lastMessageInBatch = null;
-                    batch =
-                        new ProducerUtils.Batch(
-                            Client.EncodedMessageBatch.create(
-                                this.environment.byteBufAllocator(),
-                                compressionCode,
-                                compressionCodec,
-                                subEntrySize),
-                            new ProducerUtils.CompositeConfirmationCallback(
-                                new ArrayList<>(subEntrySize)));
-                    count = 0;
-                  }
-                }
-
-                if (!batch.isEmpty() && count < subEntrySize) {
-                  batch.time = lastMessageInBatch.time();
-                  batch.publishingId = lastMessageInBatch.publishingId();
-                  batch.encodedMessageBatch.close();
-                  subBatches.add(batch);
-                }
-
-                client.publishInternal(
-                    this.publishVersion,
-                    this.publisherId,
-                    subBatches,
-                    this.writeCallback,
-                    this.publishSequenceFunction);
-
-              },
-              batchSize * subEntrySize);
-    }
-    */
 
     if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
       AtomicReference<Runnable> taskReference = new AtomicReference<>();
@@ -388,7 +277,7 @@ class StreamProducer implements Producer {
           error(unconfirmedEntry.getKey(), Constants.CODE_PUBLISH_CONFIRM_TIMEOUT);
           count++;
         } else {
-          // everything else is after, so we can stop
+          // everything else is after, we can stop
           break;
         }
       }
@@ -570,30 +459,6 @@ class StreamProducer implements Producer {
       this.confirmTimeoutFuture.cancel(true);
     }
   }
-
-  /*
-  private void publishBatch(boolean stateCheck) {
-    if ((!stateCheck || canSend()) && !accumulator.isEmpty()) {
-      List<Object> messages = new ArrayList<>(this.batchSize);
-      int batchCount = 0;
-      while (batchCount != this.batchSize) {
-        AccumulatedEntity accMessage = accumulator.get();
-        if (accMessage == null) {
-          break;
-        }
-        messages.add(accMessage);
-        batchCount++;
-      }
-      client.publishInternal(
-          this.publishVersion,
-          this.publisherId,
-          messages,
-          this.writeCallback,
-          this.publishSequenceFunction);
-    }
-  }
-
-   */
 
   void publishInternal(List<Object> messages) {
     client.publishInternal(
