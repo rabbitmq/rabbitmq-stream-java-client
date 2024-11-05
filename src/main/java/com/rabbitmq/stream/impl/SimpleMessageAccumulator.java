@@ -15,12 +15,12 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.impl.ProducerUtils.AccumulatedEntity;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
 
@@ -28,7 +28,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
 
   private static final Function<Message, String> NULL_FILTER_VALUE_EXTRACTOR = m -> null;
 
-  protected final BlockingQueue<ProducerUtils.AccumulatedEntity> messages;
+  protected final BlockingQueue<AccumulatedEntity> messages;
   protected final Clock clock;
   private final int capacity;
   protected final Codec codec;
@@ -93,8 +93,8 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     }
   }
 
-  ProducerUtils.AccumulatedEntity get() {
-    ProducerUtils.AccumulatedEntity entity = this.messages.poll();
+  AccumulatedEntity get() {
+    AccumulatedEntity entity = this.messages.poll();
     if (entity != null) {
       this.observationCollector.published(
           entity.observationContext(), entity.confirmationCallback().message());
@@ -113,24 +113,20 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     synchronized (this.producer) {
       publishBatch(stateCheck);
     }
-    //    System.out.println(sent.get());
   }
-
-  AtomicInteger sent = new AtomicInteger();
 
   private void publishBatch(boolean stateCheck) {
     if ((!stateCheck || this.producer.canSend()) && !this.messages.isEmpty()) {
       List<Object> entities = new ArrayList<>(this.capacity);
       int batchCount = 0;
       while (batchCount != this.capacity) {
-        ProducerUtils.AccumulatedEntity entity = this.get();
+        AccumulatedEntity entity = this.get();
         if (entity == null) {
           break;
         }
         entities.add(entity);
         batchCount++;
       }
-      this.sent.addAndGet(entities.size());
       producer.publishInternal(entities);
     }
   }

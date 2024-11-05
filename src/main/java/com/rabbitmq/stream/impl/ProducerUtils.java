@@ -14,15 +14,73 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.ConfirmationStatus;
-import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.compression.CompressionCodec;
+import io.netty.buffer.ByteBufAllocator;
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.ToLongFunction;
 
 final class ProducerUtils {
 
   private ProducerUtils() {}
+
+  static MessageAccumulator createMessageAccumulator(
+      boolean dynamicBatch,
+      int subEntrySize,
+      int batchSize,
+      CompressionCodec compressionCodec,
+      Codec codec,
+      ByteBufAllocator byteBufAllocator,
+      int maxFrameSize,
+      ToLongFunction<Message> publishSequenceFunction,
+      Function<Message, String> filterValueExtractor,
+      Clock clock,
+      String stream,
+      ObservationCollector<?> observationCollector,
+      StreamProducer producer) {
+    if (dynamicBatch) {
+      return new DynamicBatchMessageAccumulator(
+          subEntrySize,
+          batchSize,
+          codec,
+          maxFrameSize,
+          publishSequenceFunction,
+          filterValueExtractor,
+          clock,
+          stream,
+          compressionCodec,
+          byteBufAllocator,
+          observationCollector,
+          producer);
+    } else {
+      if (subEntrySize <= 1) {
+        return new SimpleMessageAccumulator(
+            batchSize,
+            codec,
+            maxFrameSize,
+            publishSequenceFunction,
+            filterValueExtractor,
+            clock,
+            stream,
+            observationCollector,
+            producer);
+      } else {
+        return new SubEntryMessageAccumulator(
+            subEntrySize,
+            batchSize,
+            compressionCodec,
+            codec,
+            byteBufAllocator,
+            maxFrameSize,
+            publishSequenceFunction,
+            clock,
+            stream,
+            observationCollector,
+            producer);
+      }
+    }
+  }
 
   interface ConfirmationCallback {
 

@@ -20,6 +20,7 @@ import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.ProducerUtils.AccumulatedEntity;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -72,8 +73,6 @@ class StreamProducer implements Producer {
   private final Codec codec;
   private final ToLongFunction<Object> publishSequenceFunction =
       entity -> ((AccumulatedEntity) entity).publishingId();
-  private final Function<Message, String> filterValueExtractor;
-  private final ObservationCollector<Object> observationCollector;
   private final long enqueueTimeoutMs;
   private final boolean blockOnMaxUnconfirmed;
   private final boolean retryOnRecovery;
@@ -120,44 +119,41 @@ class StreamProducer implements Producer {
             return publishingSequence.getAndIncrement();
           }
         };
-    this.filterValueExtractor = filterValueExtractor == null ? m -> null : filterValueExtractor;
     this.clock = environment.clock();
-    this.observationCollector =
-        (ObservationCollector<Object>) this.environment.observationCollector();
 
     if (subEntrySize <= 1) {
-      this.accumulator =
-          new SimpleMessageAccumulator(
-              batchSize,
-              environment.codec(),
-              client.maxFrameSize(),
-              accumulatorPublishSequenceFunction,
-              filterValueExtractor,
-              this.environment.clock(),
-              stream,
-              this.environment.observationCollector(),
-              this);
+      //      this.accumulator =
+      //          new SimpleMessageAccumulator(
+      //              batchSize,
+      //              environment.codec(),
+      //              client.maxFrameSize(),
+      //              accumulatorPublishSequenceFunction,
+      //              filterValueExtractor,
+      //              this.environment.clock(),
+      //              stream,
+      //              this.environment.observationCollector(),
+      //              this);
       if (filterValueExtractor == null) {
         delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
       } else {
         delegateWriteCallback = OUTBOUND_MSG_FILTER_VALUE_WRITE_CALLBACK;
       }
     } else {
-      this.accumulator =
-          new SubEntryMessageAccumulator(
-              subEntrySize,
-              batchSize,
-              compression == Compression.NONE
-                  ? null
-                  : environment.compressionCodecFactory().get(compression),
-              environment.codec(),
-              this.environment.byteBufAllocator(),
-              client.maxFrameSize(),
-              accumulatorPublishSequenceFunction,
-              this.environment.clock(),
-              stream,
-              environment.observationCollector(),
-              this);
+      //      this.accumulator =
+      //          new SubEntryMessageAccumulator(
+      //              subEntrySize,
+      //              batchSize,
+      //              compression == Compression.NONE
+      //                  ? null
+      //                  : environment.compressionCodecFactory().get(compression),
+      //              environment.codec(),
+      //              this.environment.byteBufAllocator(),
+      //              client.maxFrameSize(),
+      //              accumulatorPublishSequenceFunction,
+      //              this.environment.clock(),
+      //              stream,
+      //              environment.observationCollector(),
+      //              this);
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
 
@@ -200,6 +196,26 @@ class StreamProducer implements Producer {
             }
           };
     }
+
+    CompressionCodec compressionCodec = null;
+    if (compression != null) {
+      compressionCodec = environment.compressionCodecFactory().get(compression);
+    }
+    this.accumulator =
+        ProducerUtils.createMessageAccumulator(
+            false,
+            subEntrySize,
+            batchSize,
+            compressionCodec,
+            environment.codec(),
+            environment.byteBufAllocator(),
+            client.maxFrameSize(),
+            accumulatorPublishSequenceFunction,
+            filterValueExtractor,
+            environment.clock(),
+            stream,
+            environment.observationCollector(),
+            this);
 
     /*
     if (subEntrySize <= 1) {
@@ -480,17 +496,6 @@ class StreamProducer implements Producer {
 
   private void doSend(Message message, ConfirmationHandler confirmationHandler) {
     if (canSend()) {
-      //      long publishingId = this.accumulatorPublishSequenceFunction.applyAsLong(message);
-      //      Object observationContext = this.observationCollector.prePublish(this.stream,
-      // message);
-      //      this.dynamicBatch.add(
-      //          new ProducerUtils.SimpleAccumulatedEntity(
-      //              this.clock.time(),
-      //              publishingId,
-      //              this.filterValueExtractor.apply(message),
-      //              this.codec.encode(message),
-      //              new ProducerUtils.SimpleConfirmationCallback(message, confirmationHandler),
-      //              observationContext));
       this.accumulator.add(message, confirmationHandler);
     } else {
       failPublishing(message, confirmationHandler);

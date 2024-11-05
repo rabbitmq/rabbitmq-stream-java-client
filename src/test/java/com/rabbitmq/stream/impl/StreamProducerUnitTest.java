@@ -27,6 +27,7 @@ import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.DefaultCompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.OutboundEntityWriteCallback;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -115,6 +116,8 @@ public class StreamProducerUnitTest {
     when(env.clock()).thenReturn(clock);
     when(env.codec()).thenReturn(new SimpleCodec());
     when(env.observationCollector()).thenAnswer(invocation -> ObservationCollector.NO_OP);
+    DefaultCompressionCodecFactory ccf = new DefaultCompressionCodecFactory();
+    when(env.compressionCodecFactory()).thenReturn(ccf);
     doAnswer(
             (Answer<Runnable>)
                 invocationOnMock -> {

@@ -22,20 +22,21 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
+import java.util.function.Predicate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class DynamicBatch<T> {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(DynamicBatch.class);
   private static final int MIN_BATCH_SIZE = 32;
   private static final int MAX_BATCH_SIZE = 8192;
 
-  final BlockingQueue<T> requests = new LinkedBlockingQueue<>();
-  final Consumer<List<T>> consumer;
-  final int configuredBatchSize;
-  private final AtomicLong count = new AtomicLong(0);
+  private final BlockingQueue<T> requests = new LinkedBlockingQueue<>();
+  private final Predicate<List<T>> consumer;
+  private final int configuredBatchSize;
 
-  DynamicBatch(Consumer<List<T>> consumer, int batchSize) {
+  DynamicBatch(Predicate<List<T>> consumer, int batchSize) {
     this.consumer = consumer;
     this.configuredBatchSize = min(max(batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
     new Thread(this::loop).start();
@@ -44,7 +45,6 @@ class DynamicBatch<T> {
   void add(T item) {
     try {
       requests.put(item);
-      this.count.incrementAndGet();
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
@@ -65,33 +65,42 @@ class DynamicBatch<T> {
       if (item != null) {
         batch.add(item);
         if (batch.size() >= batchSize) {
-          this.completeBatch(batch);
-          batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
-          batch = new ArrayList<>(batchSize);
+          if (this.completeBatch(batch)) {
+            batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
+            batch = new ArrayList<>(batchSize);
+          }
         } else {
           item = this.requests.poll();
           if (item == null) {
-            this.completeBatch(batch);
-            batchSize = max(batchSize / 2, MIN_BATCH_SIZE);
-            batch = new ArrayList<>(batchSize);
+            if (this.completeBatch(batch)) {
+              batchSize = max(batchSize / 2, MIN_BATCH_SIZE);
+              batch = new ArrayList<>(batchSize);
+            }
           } else {
             batch.add(item);
             if (batch.size() >= batchSize) {
-              this.completeBatch(batch);
-              batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
-              batch = new ArrayList<>(batchSize);
+              if (this.completeBatch(batch)) {
+                batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
+                batch = new ArrayList<>(batchSize);
+              }
             }
           }
         }
       } else {
-        this.completeBatch(batch);
-        batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
-        batch = new ArrayList<>(batchSize);
+        if (this.completeBatch(batch)) {
+          batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
+          batch = new ArrayList<>(batchSize);
+        }
       }
     }
   }
 
-  private void completeBatch(List<T> items) {
-    this.consumer.accept(items);
+  private boolean completeBatch(List<T> items) {
+    try {
+      return this.consumer.test(items);
+    } catch (Exception e) {
+      LOGGER.warn("Error during dynamic batch completion: {}", e.getMessage());
+      return false;
+    }
   }
 }

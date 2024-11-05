@@ -42,7 +42,7 @@ final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       ToLongFunction<Message> publishSequenceFunction,
       Clock clock,
       String stream,
-      ObservationCollector observationCollector,
+      ObservationCollector<?> observationCollector,
       StreamProducer producer) {
     super(
         subEntrySize * batchSize,

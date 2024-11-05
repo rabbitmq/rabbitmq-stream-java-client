@@ -42,8 +42,6 @@ public class DynamicBatchTest {
     DynamicBatch<String> batch =
         new DynamicBatch<>(
             items -> {
-              //              System.out.println(System.currentTimeMillis());
-              //              System.out.println(items.size());
               batchSizeMetrics.update(items.size());
               sync.down(items.size());
               try {
@@ -51,6 +49,7 @@ public class DynamicBatchTest {
               } catch (InterruptedException e) {
                 throw new RuntimeException(e);
               }
+              return true;
             },
             100);
     RateLimiter rateLimiter = RateLimiter.create(3000);
