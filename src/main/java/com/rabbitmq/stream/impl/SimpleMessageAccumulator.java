@@ -15,9 +15,12 @@
 package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
 
@@ -25,7 +28,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
 
   private static final Function<Message, String> NULL_FILTER_VALUE_EXTRACTOR = m -> null;
 
-  protected final BlockingQueue<AccumulatedEntity> messages;
+  protected final BlockingQueue<ProducerUtils.AccumulatedEntity> messages;
   protected final Clock clock;
   private final int capacity;
   protected final Codec codec;
@@ -34,6 +37,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   private final Function<Message, String> filterValueExtractor;
   final String stream;
   final ObservationCollector<Object> observationCollector;
+  private final StreamProducer producer;
 
   @SuppressWarnings("unchecked")
   SimpleMessageAccumulator(
@@ -44,7 +48,8 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       Function<Message, String> filterValueExtractor,
       Clock clock,
       String stream,
-      ObservationCollector<?> observationCollector) {
+      ObservationCollector<?> observationCollector,
+      StreamProducer producer) {
     this.capacity = capacity;
     this.messages = new LinkedBlockingQueue<>(capacity);
     this.codec = codec;
@@ -55,9 +60,10 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     this.clock = clock;
     this.stream = stream;
     this.observationCollector = (ObservationCollector<Object>) observationCollector;
+    this.producer = producer;
   }
 
-  public boolean add(Message message, ConfirmationHandler confirmationHandler) {
+  public void add(Message message, ConfirmationHandler confirmationHandler) {
     Object observationContext = this.observationCollector.prePublish(this.stream, message);
     Codec.EncodedMessage encodedMessage = this.codec.encode(message);
     Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
@@ -65,12 +71,12 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     try {
       boolean offered =
           messages.offer(
-              new SimpleAccumulatedEntity(
+              new ProducerUtils.SimpleAccumulatedEntity(
                   clock.time(),
                   publishingId,
                   this.filterValueExtractor.apply(message),
                   encodedMessage,
-                  new SimpleConfirmationCallback(message, confirmationHandler),
+                  new ProducerUtils.SimpleConfirmationCallback(message, confirmationHandler),
                   observationContext),
               60,
               TimeUnit.SECONDS);
@@ -80,12 +86,15 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     } catch (InterruptedException e) {
       throw new StreamException("Error while accumulating outbound message", e);
     }
-    return this.messages.size() == this.capacity;
+    if (this.messages.size() == this.capacity) {
+      synchronized (this.producer) {
+        publishBatch(true);
+      }
+    }
   }
 
-  @Override
-  public AccumulatedEntity get() {
-    AccumulatedEntity entity = this.messages.poll();
+  ProducerUtils.AccumulatedEntity get() {
+    ProducerUtils.AccumulatedEntity entity = this.messages.poll();
     if (entity != null) {
       this.observationCollector.published(
           entity.observationContext(), entity.confirmationCallback().message());
@@ -94,89 +103,35 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   }
 
   @Override
-  public boolean isEmpty() {
-    return messages.isEmpty();
-  }
-
-  @Override
   public int size() {
     return messages.size();
   }
 
-  static final class SimpleAccumulatedEntity implements AccumulatedEntity {
-
-    private final long time;
-    private final long publishingId;
-    private final String filterValue;
-    private final Codec.EncodedMessage encodedMessage;
-    private final StreamProducer.ConfirmationCallback confirmationCallback;
-    private final Object observationContext;
-
-    SimpleAccumulatedEntity(
-        long time,
-        long publishingId,
-        String filterValue,
-        Codec.EncodedMessage encodedMessage,
-        StreamProducer.ConfirmationCallback confirmationCallback,
-        Object observationContext) {
-      this.time = time;
-      this.publishingId = publishingId;
-      this.encodedMessage = encodedMessage;
-      this.filterValue = filterValue;
-      this.confirmationCallback = confirmationCallback;
-      this.observationContext = observationContext;
+  @Override
+  public void flush(boolean force) {
+    boolean stateCheck = !force;
+    synchronized (this.producer) {
+      publishBatch(stateCheck);
     }
-
-    @Override
-    public long publishingId() {
-      return publishingId;
-    }
-
-    @Override
-    public String filterValue() {
-      return filterValue;
-    }
-
-    @Override
-    public Object encodedEntity() {
-      return encodedMessage;
-    }
-
-    @Override
-    public long time() {
-      return time;
-    }
-
-    @Override
-    public StreamProducer.ConfirmationCallback confirmationCallback() {
-      return confirmationCallback;
-    }
-
-    @Override
-    public Object observationContext() {
-      return this.observationContext;
-    }
+    //    System.out.println(sent.get());
   }
 
-  static final class SimpleConfirmationCallback implements StreamProducer.ConfirmationCallback {
+  AtomicInteger sent = new AtomicInteger();
 
-    private final Message message;
-    private final ConfirmationHandler confirmationHandler;
-
-    SimpleConfirmationCallback(Message message, ConfirmationHandler confirmationHandler) {
-      this.message = message;
-      this.confirmationHandler = confirmationHandler;
-    }
-
-    @Override
-    public int handle(boolean confirmed, short code) {
-      confirmationHandler.handle(new ConfirmationStatus(message, confirmed, code));
-      return 1;
-    }
-
-    @Override
-    public Message message() {
-      return this.message;
+  private void publishBatch(boolean stateCheck) {
+    if ((!stateCheck || this.producer.canSend()) && !this.messages.isEmpty()) {
+      List<Object> entities = new ArrayList<>(this.capacity);
+      int batchCount = 0;
+      while (batchCount != this.capacity) {
+        ProducerUtils.AccumulatedEntity entity = this.get();
+        if (entity == null) {
+          break;
+        }
+        entities.add(entity);
+        batchCount++;
+      }
+      this.sent.addAndGet(entities.size());
+      producer.publishInternal(entities);
     }
   }
 }

@@ -20,9 +20,8 @@ import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
-import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.Response;
-import com.rabbitmq.stream.impl.MessageAccumulator.AccumulatedEntity;
+import com.rabbitmq.stream.impl.ProducerUtils.AccumulatedEntity;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBuf;
 import java.nio.charset.StandardCharsets;
@@ -55,8 +54,8 @@ class StreamProducer implements Producer {
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamProducer.class);
   private static final ConfirmationHandler NO_OP_CONFIRMATION_HANDLER = confirmationStatus -> {};
   private final long id;
-  //  private final MessageAccumulator accumulator;
-  private final DynamicBatch<Object> dynamicBatch;
+  private final MessageAccumulator accumulator;
+  //  private final DynamicBatch<Object> dynamicBatch;
   private final Clock clock;
   private final ToLongFunction<Message> accumulatorPublishSequenceFunction;
   // FIXME investigate a more optimized data structure to handle pending messages
@@ -127,36 +126,38 @@ class StreamProducer implements Producer {
         (ObservationCollector<Object>) this.environment.observationCollector();
 
     if (subEntrySize <= 1) {
-      //      this.accumulator =
-      //          new SimpleMessageAccumulator(
-      //              batchSize,
-      //              environment.codec(),
-      //              client.maxFrameSize(),
-      //              accumulatorPublishSequenceFunction,
-      //              filterValueExtractor,
-      //              this.environment.clock(),
-      //              stream,
-      //              this.environment.observationCollector());
+      this.accumulator =
+          new SimpleMessageAccumulator(
+              batchSize,
+              environment.codec(),
+              client.maxFrameSize(),
+              accumulatorPublishSequenceFunction,
+              filterValueExtractor,
+              this.environment.clock(),
+              stream,
+              this.environment.observationCollector(),
+              this);
       if (filterValueExtractor == null) {
         delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
       } else {
         delegateWriteCallback = OUTBOUND_MSG_FILTER_VALUE_WRITE_CALLBACK;
       }
     } else {
-      //      this.accumulator =
-      //          new SubEntryMessageAccumulator(
-      //              subEntrySize,
-      //              batchSize,
-      //              compression == Compression.NONE
-      //                  ? null
-      //                  : environment.compressionCodecFactory().get(compression),
-      //              environment.codec(),
-      //              this.environment.byteBufAllocator(),
-      //              client.maxFrameSize(),
-      //              accumulatorPublishSequenceFunction,
-      //              this.environment.clock(),
-      //              stream,
-      //              environment.observationCollector());
+      this.accumulator =
+          new SubEntryMessageAccumulator(
+              subEntrySize,
+              batchSize,
+              compression == Compression.NONE
+                  ? null
+                  : environment.compressionCodecFactory().get(compression),
+              environment.codec(),
+              this.environment.byteBufAllocator(),
+              client.maxFrameSize(),
+              accumulatorPublishSequenceFunction,
+              this.environment.clock(),
+              stream,
+              environment.observationCollector(),
+              this);
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
 
@@ -170,8 +171,7 @@ class StreamProducer implements Producer {
           new Client.OutboundEntityWriteCallback() {
             @Override
             public int write(ByteBuf bb, Object entity, long publishingId) {
-              MessageAccumulator.AccumulatedEntity accumulatedEntity =
-                  (MessageAccumulator.AccumulatedEntity) entity;
+              AccumulatedEntity accumulatedEntity = (AccumulatedEntity) entity;
               unconfirmedMessages.put(publishingId, accumulatedEntity);
               return delegateWriteCallback.write(
                   bb, accumulatedEntity.encodedEntity(), publishingId);
@@ -180,7 +180,7 @@ class StreamProducer implements Producer {
             @Override
             public int fragmentLength(Object entity) {
               return delegateWriteCallback.fragmentLength(
-                  ((MessageAccumulator.AccumulatedEntity) entity).encodedEntity());
+                  ((AccumulatedEntity) entity).encodedEntity());
             }
           };
     } else {
@@ -189,8 +189,7 @@ class StreamProducer implements Producer {
           new Client.OutboundEntityWriteCallback() {
             @Override
             public int write(ByteBuf bb, Object entity, long publishingId) {
-              MessageAccumulator.AccumulatedEntity accumulatedEntity =
-                  (MessageAccumulator.AccumulatedEntity) entity;
+              AccumulatedEntity accumulatedEntity = (AccumulatedEntity) entity;
               unconfirmedMessages.put(publishingId, accumulatedEntity);
               return delegateWriteCallback.write(bb, accumulatedEntity, publishingId);
             }
@@ -202,6 +201,7 @@ class StreamProducer implements Producer {
           };
     }
 
+    /*
     if (subEntrySize <= 1) {
       this.dynamicBatch =
           new DynamicBatch<>(
@@ -226,14 +226,14 @@ class StreamProducer implements Producer {
               items -> {
                 List<Object> subBatches = new ArrayList<>();
                 int count = 0;
-                SubEntryMessageAccumulator.Batch batch =
-                    new SubEntryMessageAccumulator.Batch(
+                ProducerUtils.Batch batch =
+                    new ProducerUtils.Batch(
                         Client.EncodedMessageBatch.create(
                             this.environment.byteBufAllocator(),
                             compressionCode,
                             compressionCodec,
                             subEntrySize),
-                        new SubEntryMessageAccumulator.CompositeConfirmationCallback(
+                        new ProducerUtils.CompositeConfirmationCallback(
                             new ArrayList<>(subEntrySize)));
                 AccumulatedEntity lastMessageInBatch = null;
                 for (Object msg : items) {
@@ -252,13 +252,13 @@ class StreamProducer implements Producer {
                     subBatches.add(batch);
                     lastMessageInBatch = null;
                     batch =
-                        new SubEntryMessageAccumulator.Batch(
+                        new ProducerUtils.Batch(
                             Client.EncodedMessageBatch.create(
                                 this.environment.byteBufAllocator(),
                                 compressionCode,
                                 compressionCodec,
                                 subEntrySize),
-                            new SubEntryMessageAccumulator.CompositeConfirmationCallback(
+                            new ProducerUtils.CompositeConfirmationCallback(
                                 new ArrayList<>(subEntrySize)));
                     count = 0;
                   }
@@ -278,46 +278,17 @@ class StreamProducer implements Producer {
                     this.writeCallback,
                     this.publishSequenceFunction);
 
-                /*
-                while (count != subEntrySize) {
-                  AccumulatedEntity message = items.poll();
-                  if (message == null) {
-                    break;
-                  }
-                  this.observationCollector.published(
-                      message.observationContext(), message.confirmationCallback().message());
-                  lastMessageInBatch = message;
-                  batch.add((Codec.EncodedMessage) message.encodedEntity(), message.confirmationCallback());
-                  count++;
-                }
-                if (batch.isEmpty()) {
-                  return null;
-                } else {
-                  batch.time = lastMessageInBatch.time();
-                  batch.publishingId = lastMessageInBatch.publishingId();
-                  batch.encodedMessageBatch.close();
-                  return batch;
-                }
-                client.publishInternal(
-                    this.publishVersion,
-                    this.publisherId,
-                    subBatches,
-                    this.writeCallback,
-                    this.publishSequenceFunction);
-
-                 */
               },
               batchSize * subEntrySize);
     }
+    */
 
     if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
       AtomicReference<Runnable> taskReference = new AtomicReference<>();
       Runnable task =
           () -> {
             if (canSend()) {
-              //              synchronized (StreamProducer.this) {
-              //                publishBatch(true);
-              //              }
+              this.accumulator.flush(false);
             }
             if (status != Status.CLOSED) {
               environment
@@ -509,22 +480,18 @@ class StreamProducer implements Producer {
 
   private void doSend(Message message, ConfirmationHandler confirmationHandler) {
     if (canSend()) {
-      long publishingId = this.accumulatorPublishSequenceFunction.applyAsLong(message);
-      Object observationContext = this.observationCollector.prePublish(this.stream, message);
-      this.dynamicBatch.add(
-          new SimpleMessageAccumulator.SimpleAccumulatedEntity(
-              this.clock.time(),
-              publishingId,
-              this.filterValueExtractor.apply(message),
-              this.codec.encode(message),
-              new SimpleMessageAccumulator.SimpleConfirmationCallback(message, confirmationHandler),
-              observationContext));
-
-      //      if (accumulator.add(message, confirmationHandler)) {
-      //        synchronized (this) {
-      //          publishBatch(true);
-      //        }
-      //      }
+      //      long publishingId = this.accumulatorPublishSequenceFunction.applyAsLong(message);
+      //      Object observationContext = this.observationCollector.prePublish(this.stream,
+      // message);
+      //      this.dynamicBatch.add(
+      //          new ProducerUtils.SimpleAccumulatedEntity(
+      //              this.clock.time(),
+      //              publishingId,
+      //              this.filterValueExtractor.apply(message),
+      //              this.codec.encode(message),
+      //              new ProducerUtils.SimpleConfirmationCallback(message, confirmationHandler),
+      //              observationContext));
+      this.accumulator.add(message, confirmationHandler);
     } else {
       failPublishing(message, confirmationHandler);
     }
@@ -542,7 +509,7 @@ class StreamProducer implements Producer {
     }
   }
 
-  private boolean canSend() {
+  boolean canSend() {
     return this.status == Status.RUNNING;
   }
 
@@ -623,6 +590,15 @@ class StreamProducer implements Producer {
 
    */
 
+  void publishInternal(List<Object> messages) {
+    client.publishInternal(
+        this.publishVersion,
+        this.publisherId,
+        messages,
+        this.writeCallback,
+        this.publishSequenceFunction);
+  }
+
   boolean isOpen() {
     return !this.closed.get();
   }
@@ -636,8 +612,7 @@ class StreamProducer implements Producer {
       LOGGER.debug(
           "Recovering producer with {} unconfirmed message(s) and {} accumulated message(s)",
           this.unconfirmedMessages.size(),
-          0);
-      //          this.accumulator.size());
+          this.accumulator.size());
       if (this.retryOnRecovery) {
         LOGGER.debug("Re-publishing {} unconfirmed message(s)", this.unconfirmedMessages.size());
         if (!this.unconfirmedMessages.isEmpty()) {
@@ -683,7 +658,7 @@ class StreamProducer implements Producer {
           }
         }
       }
-      //      publishBatch(false);
+      this.accumulator.flush(true);
       int toRelease = maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits();
       if (toRelease > 0) {
         unconfirmedMessagesSemaphore.release(toRelease);
@@ -713,13 +688,6 @@ class StreamProducer implements Producer {
     RUNNING,
     NOT_AVAILABLE,
     CLOSED
-  }
-
-  interface ConfirmationCallback {
-
-    int handle(boolean confirmed, short code);
-
-    Message message();
   }
 
   @Override

@@ -23,10 +23,9 @@ import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.EncodedMessageBatch;
 import io.netty.buffer.ByteBufAllocator;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.function.ToLongFunction;
 
-class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
+final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
 
   private final int subEntrySize;
   private final CompressionCodec compressionCodec;
@@ -43,7 +42,8 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       ToLongFunction<Message> publishSequenceFunction,
       Clock clock,
       String stream,
-      ObservationCollector observationCollector) {
+      ObservationCollector observationCollector,
+      StreamProducer producer) {
     super(
         subEntrySize * batchSize,
         codec,
@@ -52,30 +52,31 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
         null,
         clock,
         stream,
-        observationCollector);
+        observationCollector,
+        producer);
     this.subEntrySize = subEntrySize;
     this.compressionCodec = compressionCodec;
     this.compression = compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
     this.byteBufAllocator = byteBufAllocator;
   }
 
-  private Batch createBatch() {
-    return new Batch(
+  private ProducerUtils.Batch createBatch() {
+    return new ProducerUtils.Batch(
         EncodedMessageBatch.create(
             byteBufAllocator, compression, compressionCodec, this.subEntrySize),
-        new CompositeConfirmationCallback(new ArrayList<>(this.subEntrySize)));
+        new ProducerUtils.CompositeConfirmationCallback(new ArrayList<>(this.subEntrySize)));
   }
 
   @Override
-  public AccumulatedEntity get() {
+  protected ProducerUtils.AccumulatedEntity get() {
     if (this.messages.isEmpty()) {
       return null;
     }
     int count = 0;
-    Batch batch = createBatch();
-    AccumulatedEntity lastMessageInBatch = null;
+    ProducerUtils.Batch batch = createBatch();
+    ProducerUtils.AccumulatedEntity lastMessageInBatch = null;
     while (count != this.subEntrySize) {
-      AccumulatedEntity message = messages.poll();
+      ProducerUtils.AccumulatedEntity message = messages.poll();
       if (message == null) {
         break;
       }
@@ -92,90 +93,6 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       batch.publishingId = lastMessageInBatch.publishingId();
       batch.encodedMessageBatch.close();
       return batch;
-    }
-  }
-
-  static class Batch implements AccumulatedEntity {
-
-    final EncodedMessageBatch encodedMessageBatch;
-    private final CompositeConfirmationCallback confirmationCallback;
-    volatile long publishingId;
-    volatile long time;
-
-    Batch(
-        EncodedMessageBatch encodedMessageBatch,
-        CompositeConfirmationCallback confirmationCallback) {
-      this.encodedMessageBatch = encodedMessageBatch;
-      this.confirmationCallback = confirmationCallback;
-    }
-
-    void add(
-        Codec.EncodedMessage encodedMessage,
-        StreamProducer.ConfirmationCallback confirmationCallback) {
-      this.encodedMessageBatch.add(encodedMessage);
-      this.confirmationCallback.add(confirmationCallback);
-    }
-
-    boolean isEmpty() {
-      return this.confirmationCallback.callbacks.isEmpty();
-    }
-
-    @Override
-    public long publishingId() {
-      return publishingId;
-    }
-
-    @Override
-    public String filterValue() {
-      return null;
-    }
-
-    @Override
-    public Object encodedEntity() {
-      return encodedMessageBatch;
-    }
-
-    @Override
-    public long time() {
-      return time;
-    }
-
-    @Override
-    public StreamProducer.ConfirmationCallback confirmationCallback() {
-      return confirmationCallback;
-    }
-
-    @Override
-    public Object observationContext() {
-      throw new UnsupportedOperationException(
-          "batch entity does not contain only one observation context");
-    }
-  }
-
-  static class CompositeConfirmationCallback implements StreamProducer.ConfirmationCallback {
-
-    private final List<StreamProducer.ConfirmationCallback> callbacks;
-
-    CompositeConfirmationCallback(List<StreamProducer.ConfirmationCallback> callbacks) {
-      this.callbacks = callbacks;
-    }
-
-    private void add(StreamProducer.ConfirmationCallback confirmationCallback) {
-      this.callbacks.add(confirmationCallback);
-    }
-
-    @Override
-    public int handle(boolean confirmed, short code) {
-      for (StreamProducer.ConfirmationCallback callback : callbacks) {
-        callback.handle(confirmed, code);
-      }
-      return callbacks.size();
-    }
-
-    @Override
-    public Message message() {
-      throw new UnsupportedOperationException(
-          "composite confirmation callback does not contain just one message");
     }
   }
 }

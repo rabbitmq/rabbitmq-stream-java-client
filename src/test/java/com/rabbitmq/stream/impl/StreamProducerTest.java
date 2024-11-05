@@ -413,15 +413,14 @@ public class StreamProducerTest {
     int firstWaveLineCount = lineCount / 5;
     int backwardCount = firstWaveLineCount / 10;
     SortedSet<Integer> document = new TreeSet<>();
-    IntStream.range(0, lineCount).forEach(i -> document.add(i));
+    IntStream.range(0, lineCount).forEach(document::add);
     Producer producer =
         environment.producerBuilder().name("producer-1").stream(stream)
             .subEntrySize(subEntrySize)
             .build();
 
-    AtomicReference<CountDownLatch> latch =
-        new AtomicReference<>(new CountDownLatch(firstWaveLineCount));
-    ConfirmationHandler confirmationHandler = confirmationStatus -> latch.get().countDown();
+    Sync confirmSync = sync(firstWaveLineCount);
+    ConfirmationHandler confirmationHandler = confirmationStatus -> confirmSync.down();
     Consumer<Integer> publishMessage =
         i ->
             producer.send(
@@ -431,15 +430,17 @@ public class StreamProducerTest {
                     .addData(String.valueOf(i).getBytes())
                     .build(),
                 confirmationHandler);
+    // publish the first wave
     document.headSet(firstWaveLineCount).forEach(publishMessage);
 
-    assertThat(latch.get().await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(confirmSync).completes();
 
-    latch.set(new CountDownLatch(lineCount - firstWaveLineCount + backwardCount));
+    confirmSync.reset(lineCount - firstWaveLineCount + backwardCount);
 
+    // publish the rest, but with some overlap from the first wave
     document.tailSet(firstWaveLineCount - backwardCount).forEach(publishMessage);
 
-    assertThat(latch.get().await(5, TimeUnit.SECONDS)).isTrue();
+    assertThat(confirmSync).completes();
 
     CountDownLatch consumeLatch = new CountDownLatch(lineCount);
     AtomicInteger consumed = new AtomicInteger();
@@ -451,8 +452,7 @@ public class StreamProducerTest {
               consumeLatch.countDown();
             })
         .build();
-    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
-    Thread.sleep(1000);
+    assertThat(consumeLatch.await(5, TimeUnit.SECONDS)).isTrue();
     if (subEntrySize == 1) {
       assertThat(consumed.get()).isEqualTo(lineCount);
     } else {
@@ -641,8 +641,7 @@ public class StreamProducerTest {
   void methodsShouldThrowExceptionWhenProducerIsClosed() {
     Producer producer = environment.producerBuilder().stream(stream).build();
     producer.close();
-    assertThatThrownBy(() -> producer.getLastPublishingId())
-        .isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(producer::getLastPublishingId).isInstanceOf(IllegalStateException.class);
   }
 
   @Test

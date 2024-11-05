@@ -19,26 +19,9 @@ import com.rabbitmq.stream.Message;
 
 interface MessageAccumulator {
 
-  boolean add(Message message, ConfirmationHandler confirmationHandler);
-
-  AccumulatedEntity get();
-
-  boolean isEmpty();
+  void add(Message message, ConfirmationHandler confirmationHandler);
 
   int size();
 
-  interface AccumulatedEntity {
-
-    long time();
-
-    long publishingId();
-
-    String filterValue();
-
-    Object encodedEntity();
-
-    StreamProducer.ConfirmationCallback confirmationCallback();
-
-    Object observationContext();
-  }
+  void flush(boolean force);
 }
