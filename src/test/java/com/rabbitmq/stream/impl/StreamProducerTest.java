@@ -14,10 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,6 +25,7 @@ import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
 import com.rabbitmq.stream.impl.StreamProducer.Status;
+import com.rabbitmq.stream.impl.TestUtils.Sync;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
@@ -94,7 +93,7 @@ public class StreamProducerTest {
   void send() throws Exception {
     int batchSize = 10;
     int messageCount = 10 * batchSize + 1; // don't want a multiple of batch size
-    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    Sync confirmSync = sync(messageCount);
     Producer producer = environment.producerBuilder().stream(stream).batchSize(batchSize).build();
     AtomicLong count = new AtomicLong(0);
     AtomicLong sequence = new AtomicLong(0);
@@ -117,13 +116,12 @@ public class StreamProducerTest {
                     idsConfirmed.add(
                         confirmationStatus.getMessage().getProperties().getMessageIdAsLong());
                     count.incrementAndGet();
-                    publishLatch.countDown();
+                    confirmSync.down();
                   });
             });
-    boolean completed = publishLatch.await(10, TimeUnit.SECONDS);
+    assertThat(confirmSync).completes();
     assertThat(idsSent).hasSameSizeAs(idsConfirmed);
     idsSent.forEach(idSent -> assertThat(idsConfirmed).contains(idSent));
-    assertThat(completed).isTrue();
 
     ProducerInfo info = MonitoringTestUtils.extract(producer);
     assertThat(info.getId()).isGreaterThanOrEqualTo(0);
@@ -455,12 +453,16 @@ public class StreamProducerTest {
         .build();
     assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     Thread.sleep(1000);
-    // if we are using sub-entries, we cannot avoid duplicates.
-    // here, a sub-entry in the second wave, right at the end of the re-submitted
-    // values will contain those duplicates, because its publishing ID will be
-    // the one of its last message, so the server will accept the whole sub-entry,
-    // including the duplicates.
-    assertThat(consumed.get()).isEqualTo(lineCount + backwardCount % subEntrySize);
+    if (subEntrySize == 1) {
+      assertThat(consumed.get()).isEqualTo(lineCount);
+    } else {
+      // if we are using sub-entries, we cannot avoid duplicates.
+      // here, a sub-entry in the second wave, right at the end of the re-submitted
+      // values will contain those duplicates, because its publishing ID will be
+      // the one of its last message, so the server will accept the whole sub-entry,
+      // including the duplicates.
+      assertThat(consumed.get()).isBetween(lineCount, lineCount + subEntrySize);
+    }
   }
 
   @ParameterizedTest
@@ -636,7 +638,7 @@ public class StreamProducerTest {
   }
 
   @Test
-  void methodsShouldThrowExceptionWhenProducerIsClosed() throws InterruptedException {
+  void methodsShouldThrowExceptionWhenProducerIsClosed() {
     Producer producer = environment.producerBuilder().stream(stream).build();
     producer.close();
     assertThatThrownBy(() -> producer.getLastPublishingId())

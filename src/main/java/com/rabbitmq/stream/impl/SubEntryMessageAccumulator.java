@@ -95,14 +95,14 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     }
   }
 
-  private static class Batch implements AccumulatedEntity {
+  static class Batch implements AccumulatedEntity {
 
-    private final EncodedMessageBatch encodedMessageBatch;
+    final EncodedMessageBatch encodedMessageBatch;
     private final CompositeConfirmationCallback confirmationCallback;
-    private volatile long publishingId;
-    private volatile long time;
+    volatile long publishingId;
+    volatile long time;
 
-    private Batch(
+    Batch(
         EncodedMessageBatch encodedMessageBatch,
         CompositeConfirmationCallback confirmationCallback) {
       this.encodedMessageBatch = encodedMessageBatch;
@@ -152,12 +152,11 @@ class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
     }
   }
 
-  private static class CompositeConfirmationCallback
-      implements StreamProducer.ConfirmationCallback {
+  static class CompositeConfirmationCallback implements StreamProducer.ConfirmationCallback {
 
     private final List<StreamProducer.ConfirmationCallback> callbacks;
 
-    private CompositeConfirmationCallback(List<StreamProducer.ConfirmationCallback> callbacks) {
+    CompositeConfirmationCallback(List<StreamProducer.ConfirmationCallback> callbacks) {
       this.callbacks = callbacks;
     }
 

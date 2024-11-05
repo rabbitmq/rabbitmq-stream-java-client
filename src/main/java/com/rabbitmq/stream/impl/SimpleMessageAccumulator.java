@@ -103,7 +103,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     return messages.size();
   }
 
-  private static final class SimpleAccumulatedEntity implements AccumulatedEntity {
+  static final class SimpleAccumulatedEntity implements AccumulatedEntity {
 
     private final long time;
     private final long publishingId;
@@ -112,7 +112,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     private final StreamProducer.ConfirmationCallback confirmationCallback;
     private final Object observationContext;
 
-    private SimpleAccumulatedEntity(
+    SimpleAccumulatedEntity(
         long time,
         long publishingId,
         String filterValue,
@@ -158,13 +158,12 @@ class SimpleMessageAccumulator implements MessageAccumulator {
     }
   }
 
-  private static final class SimpleConfirmationCallback
-      implements StreamProducer.ConfirmationCallback {
+  static final class SimpleConfirmationCallback implements StreamProducer.ConfirmationCallback {
 
     private final Message message;
     private final ConfirmationHandler confirmationHandler;
 
-    private SimpleConfirmationCallback(Message message, ConfirmationHandler confirmationHandler) {
+    SimpleConfirmationCallback(Message message, ConfirmationHandler confirmationHandler) {
       this.message = message;
       this.confirmationHandler = confirmationHandler;
     }

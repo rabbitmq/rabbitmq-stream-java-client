@@ -1138,6 +1138,10 @@ public final class TestUtils {
       this.latch.get().countDown();
     }
 
+    void down(int count) {
+      IntStream.range(0, count).forEach(ignored -> this.latch.get().countDown());
+    }
+
     boolean await(Duration timeout) {
       try {
         return this.latch.get().await(timeout.toMillis(), TimeUnit.MILLISECONDS);
