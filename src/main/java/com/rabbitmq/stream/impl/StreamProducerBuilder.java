@@ -21,6 +21,7 @@ import com.rabbitmq.stream.RoutingStrategy;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.time.Duration;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
@@ -242,11 +243,13 @@ class StreamProducerBuilder implements ProducerBuilder {
   StreamProducerBuilder duplicate() {
     StreamProducerBuilder duplicate = new StreamProducerBuilder(this.environment);
     for (Field field : StreamProducerBuilder.class.getDeclaredFields()) {
-      field.setAccessible(true);
-      try {
-        field.set(duplicate, field.get(this));
-      } catch (IllegalAccessException e) {
-        throw new StreamException("Error while duplicating stream producer builder", e);
+      if (!Modifier.isStatic(field.getModifiers())) {
+        field.setAccessible(true);
+        try {
+          field.set(duplicate, field.get(this));
+        } catch (IllegalAccessException e) {
+          throw new StreamException("Error while duplicating stream producer builder", e);
+        }
       }
     }
     return duplicate;
