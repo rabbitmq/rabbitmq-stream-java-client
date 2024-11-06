@@ -102,8 +102,15 @@ class StreamProducerBuilder implements ProducerBuilder {
     return this;
   }
 
+  @Override
   public StreamProducerBuilder batchPublishingDelay(Duration batchPublishingDelay) {
     this.batchPublishingDelay = batchPublishingDelay;
+    return this;
+  }
+
+  @Override
+  public ProducerBuilder dynamicBatch(boolean dynamicBatch) {
+    this.dynamicBatch = dynamicBatch;
     return this;
   }
 
