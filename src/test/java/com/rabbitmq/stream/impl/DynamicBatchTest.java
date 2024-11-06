@@ -40,28 +40,32 @@ public class DynamicBatchTest {
     Random random = new Random();
     DynamicBatch<String> batch =
         new DynamicBatch<>(
-            items -> {
+            (items, replay) -> {
               batchSizeMetrics.update(items.size());
-              sync.down(items.size());
               try {
                 Thread.sleep(random.nextInt(10) + 1);
               } catch (InterruptedException e) {
                 throw new RuntimeException(e);
               }
+              sync.down(items.size());
               return true;
             },
             100);
-    RateLimiter rateLimiter = RateLimiter.create(3000);
-    long start = System.nanoTime();
-    IntStream.range(0, itemCount)
-        .forEach(
-            i -> {
-              rateLimiter.acquire();
-              batch.add(String.valueOf(i));
-            });
-    Assertions.assertThat(sync).completes();
-    long end = System.nanoTime();
-    //    System.out.println("Done in " + Duration.ofNanos(end - start));
-    //    reporter.report();
+    try {
+      RateLimiter rateLimiter = RateLimiter.create(3000);
+      long start = System.nanoTime();
+      IntStream.range(0, itemCount)
+          .forEach(
+              i -> {
+                rateLimiter.acquire();
+                batch.add(String.valueOf(i));
+              });
+      Assertions.assertThat(sync).completes();
+      long end = System.nanoTime();
+      //    System.out.println("Done in " + Duration.ofNanos(end - start));
+      //    reporter.report();
+    } finally {
+      batch.close();
+    }
   }
 }

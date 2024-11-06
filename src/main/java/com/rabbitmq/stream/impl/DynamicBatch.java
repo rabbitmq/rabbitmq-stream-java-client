@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
+import java.util.function.BiPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,11 +33,11 @@ final class DynamicBatch<T> implements AutoCloseable {
   private static final int MAX_BATCH_SIZE = 8192;
 
   private final BlockingQueue<T> requests = new LinkedBlockingQueue<>();
-  private final Predicate<List<T>> consumer;
+  private final BiPredicate<List<T>, Boolean> consumer;
   private final int configuredBatchSize;
   private final Thread thread;
 
-  DynamicBatch(Predicate<List<T>> consumer, int batchSize) {
+  DynamicBatch(BiPredicate<List<T>, Boolean> consumer, int batchSize) {
     this.consumer = consumer;
     this.configuredBatchSize = min(max(batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
     this.thread = ConcurrencyUtils.defaultThreadFactory().newThread(this::loop);
@@ -53,8 +53,10 @@ final class DynamicBatch<T> implements AutoCloseable {
   }
 
   private void loop() {
-    int batchSize = this.configuredBatchSize;
-    List<T> batch = new ArrayList<>(batchSize);
+    State<T> state = new State<>();
+    state.batchSize = this.configuredBatchSize;
+    state.items = new ArrayList<>(state.batchSize);
+    state.retry = false;
     Thread currentThread = Thread.currentThread();
     T item;
     while (!currentThread.isInterrupted()) {
@@ -65,44 +67,50 @@ final class DynamicBatch<T> implements AutoCloseable {
         return;
       }
       if (item != null) {
-        batch.add(item);
-        if (batch.size() >= batchSize) {
-          if (this.completeBatch(batch)) {
-            batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
-            batch = new ArrayList<>(batchSize);
-          }
+        state.items.add(item);
+        if (state.items.size() >= state.batchSize) {
+          this.maybeCompleteBatch(state, true);
         } else {
           item = this.requests.poll();
           if (item == null) {
-            if (this.completeBatch(batch)) {
-              batchSize = max(batchSize / 2, MIN_BATCH_SIZE);
-              batch = new ArrayList<>(batchSize);
-            }
+            this.maybeCompleteBatch(state, false);
           } else {
-            batch.add(item);
-            if (batch.size() >= batchSize) {
-              if (this.completeBatch(batch)) {
-                batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
-                batch = new ArrayList<>(batchSize);
-              }
+            state.items.add(item);
+            if (state.items.size() >= state.batchSize) {
+              this.maybeCompleteBatch(state, true);
             }
           }
         }
       } else {
-        if (this.completeBatch(batch)) {
-          batchSize = min(batchSize * 2, MAX_BATCH_SIZE);
-          batch = new ArrayList<>(batchSize);
-        }
+        this.maybeCompleteBatch(state, false);
       }
     }
   }
 
-  private boolean completeBatch(List<T> items) {
+  private static final class State<T> {
+
+    int batchSize;
+    List<T> items;
+    boolean retry;
+  }
+
+  private void maybeCompleteBatch(State<T> state, boolean increaseIfCompleted) {
     try {
-      return this.consumer.test(items);
+      boolean completed = this.consumer.test(state.items, state.retry);
+      if (completed) {
+        if (increaseIfCompleted) {
+          state.batchSize = min(state.batchSize * 2, MAX_BATCH_SIZE);
+        } else {
+          state.batchSize = max(state.batchSize / 2, MIN_BATCH_SIZE);
+        }
+        state.items = new ArrayList<>(state.batchSize);
+        state.retry = false;
+      } else {
+        state.retry = true;
+      }
     } catch (Exception e) {
       LOGGER.warn("Error during dynamic batch completion: {}", e.getMessage());
-      return false;
+      state.retry = true;
     }
   }
 

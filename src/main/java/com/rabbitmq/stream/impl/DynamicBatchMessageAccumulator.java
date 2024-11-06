@@ -62,20 +62,16 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
     if (subEntrySize <= 1) {
       this.dynamicBatch =
           new DynamicBatch<>(
-              items -> {
-                // TODO add a "replay" flag to DynamicBatch to avoid checking the producer status
-                // the status check helps to avoid collecting the observation another time
-                if (producer.canSend()) {
+              (items, replay) -> {
+                if (!replay) {
                   items.forEach(
                       i -> {
                         AccumulatedEntity entity = (AccumulatedEntity) i;
                         this.observationCollector.published(
                             entity.observationContext(), entity.confirmationCallback().message());
                       });
-                  return this.publish(items);
-                } else {
-                  return false;
                 }
+                return this.publish(items);
               },
               batchSize);
     } else {
@@ -83,46 +79,44 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
           compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
       this.dynamicBatch =
           new DynamicBatch<>(
-              items -> {
-                if (this.producer.canSend()) {
-                  List<Object> subBatches = new ArrayList<>();
-                  int count = 0;
-                  ProducerUtils.Batch batch =
-                      this.helper.batch(
-                          byteBufAllocator, compressionCode, compressionCodec, subEntrySize);
-                  AccumulatedEntity lastMessageInBatch = null;
-                  for (Object msg : items) {
-                    AccumulatedEntity message = (AccumulatedEntity) msg;
+              (items, replay) -> {
+                List<Object> subBatches = new ArrayList<>();
+                int count = 0;
+                ProducerUtils.Batch batch =
+                    this.helper.batch(
+                        byteBufAllocator, compressionCode, compressionCodec, subEntrySize);
+                AccumulatedEntity lastMessageInBatch = null;
+                for (Object msg : items) {
+                  AccumulatedEntity message = (AccumulatedEntity) msg;
+                  if (!replay) {
                     this.observationCollector.published(
                         message.observationContext(), message.confirmationCallback().message());
-                    lastMessageInBatch = message;
-                    batch.add(
-                        (Codec.EncodedMessage) message.encodedEntity(),
-                        message.confirmationCallback());
-                    count++;
-                    if (count == subEntrySize) {
-                      batch.time = lastMessageInBatch.time();
-                      batch.publishingId = lastMessageInBatch.publishingId();
-                      batch.encodedMessageBatch.close();
-                      subBatches.add(batch);
-                      lastMessageInBatch = null;
-                      batch =
-                          this.helper.batch(
-                              byteBufAllocator, compressionCode, compressionCodec, subEntrySize);
-                      count = 0;
-                    }
                   }
-
-                  if (!batch.isEmpty() && count < subEntrySize) {
+                  lastMessageInBatch = message;
+                  batch.add(
+                      (Codec.EncodedMessage) message.encodedEntity(),
+                      message.confirmationCallback());
+                  count++;
+                  if (count == subEntrySize) {
                     batch.time = lastMessageInBatch.time();
                     batch.publishingId = lastMessageInBatch.publishingId();
                     batch.encodedMessageBatch.close();
                     subBatches.add(batch);
+                    lastMessageInBatch = null;
+                    batch =
+                        this.helper.batch(
+                            byteBufAllocator, compressionCode, compressionCodec, subEntrySize);
+                    count = 0;
                   }
-                  return this.publish(subBatches);
-                } else {
-                  return false;
                 }
+
+                if (!batch.isEmpty() && count < subEntrySize) {
+                  batch.time = lastMessageInBatch.time();
+                  batch.publishingId = lastMessageInBatch.publishingId();
+                  batch.encodedMessageBatch.close();
+                  subBatches.add(batch);
+                }
+                return this.publish(subBatches);
               },
               batchSize * subEntrySize);
     }
