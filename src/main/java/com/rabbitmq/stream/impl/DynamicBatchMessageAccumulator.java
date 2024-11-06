@@ -65,7 +65,24 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
     this.filterValueExtractor =
         filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
     if (subEntrySize <= 1) {
-      this.dynamicBatch = new DynamicBatch<>(this::publish, batchSize);
+      this.dynamicBatch =
+          new DynamicBatch<>(
+              items -> {
+                // TODO add a "replay" flag to DynamicBatch to avoid checking the producer status
+                // the status check helps to avoid collecting the observation another time
+                if (producer.canSend()) {
+                  items.forEach(
+                      i -> {
+                        AccumulatedEntity entity = (AccumulatedEntity) i;
+                        this.observationCollector.published(
+                            entity.observationContext(), entity.confirmationCallback().message());
+                      });
+                  return this.publish(items);
+                } else {
+                  return false;
+                }
+              },
+              batchSize);
     } else {
       byte compressionCode =
           compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();

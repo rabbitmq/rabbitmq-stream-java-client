@@ -174,7 +174,7 @@ class StreamProducer implements Producer {
     }
     this.accumulator =
         ProducerUtils.createMessageAccumulator(
-            false,
+            true,
             subEntrySize,
             batchSize,
             compressionCodec,
@@ -306,8 +306,10 @@ class StreamProducer implements Producer {
     }
   }
 
+  // visible for testing
   void confirm(long publishingId) {
     AccumulatedEntity accumulatedEntity = this.unconfirmedMessages.remove(publishingId);
+
     if (accumulatedEntity != null) {
       int confirmedCount =
           accumulatedEntity.confirmationCallback().handle(true, Constants.RESPONSE_CODE_OK);
@@ -315,6 +317,11 @@ class StreamProducer implements Producer {
     } else {
       this.unconfirmedMessagesSemaphore.release();
     }
+  }
+
+  // for testing
+  int unconfirmedCount() {
+    return this.unconfirmedMessages.size();
   }
 
   void error(long publishingId, short errorCode) {

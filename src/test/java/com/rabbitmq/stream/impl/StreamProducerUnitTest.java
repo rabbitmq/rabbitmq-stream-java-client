@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
@@ -43,8 +44,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.ToLongFunction;
-import java.util.stream.IntStream;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -184,26 +185,33 @@ public class StreamProducerUnitTest {
             null,
             env);
 
-    IntStream.range(0, messageCount)
+    range(0, messageCount)
         .forEach(
             i ->
                 producer.send(
                     producer.messageBuilder().addData("".getBytes()).build(), confirmationHandler));
 
-    IntStream.range(0, confirmedPart).forEach(publishingId -> producer.confirm(publishingId));
-    assertThat(confirmedCount.get()).isEqualTo(expectedConfirmed);
+    waitAtMost(() -> producer.unconfirmedCount() >= messageCount / subEntrySize);
+    range(0, confirmedPart).forEach(producer::confirm);
+    if (subEntrySize == 1) {
+      assertThat(confirmedCount.get()).isEqualTo(expectedConfirmed);
+    } else {
+      assertThat(confirmedCount.get()).isCloseTo(confirmedCount.get(), Offset.offset(subEntrySize));
+    }
     assertThat(erroredCount.get()).isZero();
+    int confirmedPreviously = confirmedCount.get();
 
     executorService.scheduleAtFixedRate(() -> clock.refresh(), 100, 100, TimeUnit.MILLISECONDS);
 
     Thread.sleep(waitTime.toMillis());
-    assertThat(confirmedCount.get()).isEqualTo(expectedConfirmed);
+    assertThat(confirmedCount.get()).isEqualTo(confirmedPreviously);
     if (confirmTimeout.isZero()) {
       assertThat(erroredCount.get()).isZero();
       assertThat(responseCodes).isEmpty();
     } else {
       waitAtMost(
-          waitTime.multipliedBy(2), () -> erroredCount.get() == (messageCount - expectedConfirmed));
+          waitTime.multipliedBy(2),
+          () -> erroredCount.get() == (messageCount - confirmedPreviously));
       assertThat(responseCodes).hasSize(1).contains(Constants.CODE_PUBLISH_CONFIRM_TIMEOUT);
     }
   }

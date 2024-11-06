@@ -18,7 +18,6 @@ import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.util.concurrent.RateLimiter;
-import java.time.Duration;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -62,7 +61,7 @@ public class DynamicBatchTest {
             });
     Assertions.assertThat(sync).completes();
     long end = System.nanoTime();
-    System.out.println("Done in " + Duration.ofNanos(end - start));
-    reporter.report();
+    //    System.out.println("Done in " + Duration.ofNanos(end - start));
+    //    reporter.report();
   }
 }
