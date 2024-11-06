@@ -29,17 +29,10 @@ import java.util.function.ToLongFunction;
 
 final class DynamicBatchMessageAccumulator implements MessageAccumulator {
 
-  private static final Function<Message, String> NULL_FILTER_VALUE_EXTRACTOR = m -> null;
-
   private final DynamicBatch<Object> dynamicBatch;
   private final ObservationCollector<Object> observationCollector;
-  private final ToLongFunction<Message> publishSequenceFunction;
-  private final String stream;
   private final StreamProducer producer;
-  private final Codec codec;
-  private final int maxFrameSize;
-  private final Clock clock;
-  private final Function<Message, String> filterValueExtractor;
+  private final ProducerUtils.MessageAccumulatorHelper helper;
 
   @SuppressWarnings("unchecked")
   DynamicBatchMessageAccumulator(
@@ -55,15 +48,17 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
       ByteBufAllocator byteBufAllocator,
       ObservationCollector<?> observationCollector,
       StreamProducer producer) {
+    this.helper =
+        new ProducerUtils.MessageAccumulatorHelper(
+            codec,
+            maxFrameSize,
+            publishSequenceFunction,
+            filterValueExtractor,
+            clock,
+            stream,
+            observationCollector);
     this.producer = producer;
-    this.stream = stream;
-    this.publishSequenceFunction = publishSequenceFunction;
     this.observationCollector = (ObservationCollector<Object>) observationCollector;
-    this.codec = codec;
-    this.clock = clock;
-    this.maxFrameSize = maxFrameSize;
-    this.filterValueExtractor =
-        filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
     if (subEntrySize <= 1) {
       this.dynamicBatch =
           new DynamicBatch<>(
@@ -93,11 +88,8 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                   List<Object> subBatches = new ArrayList<>();
                   int count = 0;
                   ProducerUtils.Batch batch =
-                      new ProducerUtils.Batch(
-                          Client.EncodedMessageBatch.create(
-                              byteBufAllocator, compressionCode, compressionCodec, subEntrySize),
-                          new ProducerUtils.CompositeConfirmationCallback(
-                              new ArrayList<>(subEntrySize)));
+                      this.helper.batch(
+                          byteBufAllocator, compressionCode, compressionCodec, subEntrySize);
                   AccumulatedEntity lastMessageInBatch = null;
                   for (Object msg : items) {
                     AccumulatedEntity message = (AccumulatedEntity) msg;
@@ -115,14 +107,8 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                       subBatches.add(batch);
                       lastMessageInBatch = null;
                       batch =
-                          new ProducerUtils.Batch(
-                              Client.EncodedMessageBatch.create(
-                                  byteBufAllocator,
-                                  compressionCode,
-                                  compressionCodec,
-                                  subEntrySize),
-                              new ProducerUtils.CompositeConfirmationCallback(
-                                  new ArrayList<>(subEntrySize)));
+                          this.helper.batch(
+                              byteBufAllocator, compressionCode, compressionCodec, subEntrySize);
                       count = 0;
                     }
                   }
@@ -145,18 +131,7 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
 
   @Override
   public void add(Message message, ConfirmationHandler confirmationHandler) {
-    Object observationContext = this.observationCollector.prePublish(this.stream, message);
-    Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-    Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
-    long publishingId = this.publishSequenceFunction.applyAsLong(message);
-    this.dynamicBatch.add(
-        new ProducerUtils.SimpleAccumulatedEntity(
-            this.clock.time(),
-            publishingId,
-            this.filterValueExtractor.apply(message),
-            this.codec.encode(message),
-            new ProducerUtils.SimpleConfirmationCallback(message, confirmationHandler),
-            observationContext));
+    this.dynamicBatch.add(helper.entity(message, confirmationHandler));
   }
 
   @Override

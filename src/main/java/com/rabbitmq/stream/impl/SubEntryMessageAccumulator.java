@@ -20,9 +20,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
-import com.rabbitmq.stream.impl.Client.EncodedMessageBatch;
 import io.netty.buffer.ByteBufAllocator;
-import java.util.ArrayList;
 import java.util.function.ToLongFunction;
 
 final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
@@ -30,7 +28,7 @@ final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
   private final int subEntrySize;
   private final CompressionCodec compressionCodec;
   private final ByteBufAllocator byteBufAllocator;
-  private final byte compression;
+  private final byte compressionCode;
 
   public SubEntryMessageAccumulator(
       int subEntrySize,
@@ -56,15 +54,14 @@ final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
         producer);
     this.subEntrySize = subEntrySize;
     this.compressionCodec = compressionCodec;
-    this.compression = compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
+    this.compressionCode =
+        compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
     this.byteBufAllocator = byteBufAllocator;
   }
 
   private ProducerUtils.Batch createBatch() {
-    return new ProducerUtils.Batch(
-        EncodedMessageBatch.create(
-            byteBufAllocator, compression, compressionCodec, this.subEntrySize),
-        new ProducerUtils.CompositeConfirmationCallback(new ArrayList<>(this.subEntrySize)));
+    return this.helper.batch(
+        this.byteBufAllocator, this.compressionCode, this.compressionCodec, this.subEntrySize);
   }
 
   @Override
@@ -73,7 +70,7 @@ final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
       return null;
     }
     int count = 0;
-    ProducerUtils.Batch batch = createBatch();
+    ProducerUtils.Batch batch = this.createBatch();
     ProducerUtils.AccumulatedEntity lastMessageInBatch = null;
     while (count != this.subEntrySize) {
       ProducerUtils.AccumulatedEntity message = messages.poll();

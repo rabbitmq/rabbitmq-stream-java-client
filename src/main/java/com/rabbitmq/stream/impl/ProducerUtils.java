@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import io.netty.buffer.ByteBufAllocator;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
@@ -260,6 +261,62 @@ final class ProducerUtils {
     public Object observationContext() {
       throw new UnsupportedOperationException(
           "batch entity does not contain only one observation context");
+    }
+  }
+
+  static final class MessageAccumulatorHelper {
+
+    private static final Function<Message, String> NULL_FILTER_VALUE_EXTRACTOR = m -> null;
+
+    private final ObservationCollector<Object> observationCollector;
+    private final ToLongFunction<Message> publishSequenceFunction;
+    private final String stream;
+    private final Codec codec;
+    private final int maxFrameSize;
+    private final Clock clock;
+    private final Function<Message, String> filterValueExtractor;
+
+    @SuppressWarnings("unchecked")
+    MessageAccumulatorHelper(
+        Codec codec,
+        int maxFrameSize,
+        ToLongFunction<Message> publishSequenceFunction,
+        Function<Message, String> filterValueExtractor,
+        Clock clock,
+        String stream,
+        ObservationCollector<?> observationCollector) {
+      this.publishSequenceFunction = publishSequenceFunction;
+      this.codec = codec;
+      this.clock = clock;
+      this.maxFrameSize = maxFrameSize;
+      this.filterValueExtractor =
+          filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
+      this.observationCollector = (ObservationCollector<Object>) observationCollector;
+      this.stream = stream;
+    }
+
+    AccumulatedEntity entity(Message message, ConfirmationHandler confirmationHandler) {
+      Object observationContext = this.observationCollector.prePublish(this.stream, message);
+      Codec.EncodedMessage encodedMessage = this.codec.encode(message);
+      Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
+      long publishingId = this.publishSequenceFunction.applyAsLong(message);
+      return new ProducerUtils.SimpleAccumulatedEntity(
+          this.clock.time(),
+          publishingId,
+          this.filterValueExtractor.apply(message),
+          this.codec.encode(message),
+          new ProducerUtils.SimpleConfirmationCallback(message, confirmationHandler),
+          observationContext);
+    }
+
+    Batch batch(
+        ByteBufAllocator bba,
+        byte compressionCode,
+        CompressionCodec compressionCodec,
+        int subEntrySize) {
+      return new ProducerUtils.Batch(
+          Client.EncodedMessageBatch.create(bba, compressionCode, compressionCodec, subEntrySize),
+          new ProducerUtils.CompositeConfirmationCallback(new ArrayList<>(subEntrySize)));
     }
   }
 }

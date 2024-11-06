@@ -172,9 +172,10 @@ class StreamProducer implements Producer {
     if (compression != null) {
       compressionCodec = environment.compressionCodecFactory().get(compression);
     }
+    boolean dynamicBatch = true;
     this.accumulator =
         ProducerUtils.createMessageAccumulator(
-            true,
+            dynamicBatch,
             subEntrySize,
             batchSize,
             compressionCodec,
@@ -188,7 +189,11 @@ class StreamProducer implements Producer {
             environment.observationCollector(),
             this);
 
-    if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
+    boolean backgroundBatchPublishingTaskRequired =
+        !dynamicBatch && batchPublishingDelay.toMillis() > 0;
+    LOGGER.debug(
+        "Background batch publishing task required? {}", backgroundBatchPublishingTaskRequired);
+    if (backgroundBatchPublishingTaskRequired) {
       AtomicReference<Runnable> taskReference = new AtomicReference<>();
       Runnable task =
           () -> {

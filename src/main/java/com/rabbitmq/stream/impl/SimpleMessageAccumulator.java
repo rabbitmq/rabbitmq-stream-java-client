@@ -26,18 +26,11 @@ import java.util.function.ToLongFunction;
 
 class SimpleMessageAccumulator implements MessageAccumulator {
 
-  private static final Function<Message, String> NULL_FILTER_VALUE_EXTRACTOR = m -> null;
-
   protected final BlockingQueue<AccumulatedEntity> messages;
-  protected final Clock clock;
   private final int capacity;
-  protected final Codec codec;
-  private final int maxFrameSize;
-  private final ToLongFunction<Message> publishSequenceFunction;
-  private final Function<Message, String> filterValueExtractor;
-  final String stream;
   final ObservationCollector<Object> observationCollector;
   private final StreamProducer producer;
+  final ProducerUtils.MessageAccumulatorHelper helper;
 
   @SuppressWarnings("unchecked")
   SimpleMessageAccumulator(
@@ -50,36 +43,25 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       String stream,
       ObservationCollector<?> observationCollector,
       StreamProducer producer) {
+    this.helper =
+        new ProducerUtils.MessageAccumulatorHelper(
+            codec,
+            maxFrameSize,
+            publishSequenceFunction,
+            filterValueExtractor,
+            clock,
+            stream,
+            observationCollector);
     this.capacity = capacity;
-    this.messages = new LinkedBlockingQueue<>(capacity);
-    this.codec = codec;
-    this.maxFrameSize = maxFrameSize;
-    this.publishSequenceFunction = publishSequenceFunction;
-    this.filterValueExtractor =
-        filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
-    this.clock = clock;
-    this.stream = stream;
+    this.messages = new LinkedBlockingQueue<>(this.capacity);
     this.observationCollector = (ObservationCollector<Object>) observationCollector;
     this.producer = producer;
   }
 
   public void add(Message message, ConfirmationHandler confirmationHandler) {
-    Object observationContext = this.observationCollector.prePublish(this.stream, message);
-    Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-    Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
-    long publishingId = this.publishSequenceFunction.applyAsLong(message);
+    AccumulatedEntity entity = this.helper.entity(message, confirmationHandler);
     try {
-      boolean offered =
-          messages.offer(
-              new ProducerUtils.SimpleAccumulatedEntity(
-                  clock.time(),
-                  publishingId,
-                  this.filterValueExtractor.apply(message),
-                  encodedMessage,
-                  new ProducerUtils.SimpleConfirmationCallback(message, confirmationHandler),
-                  observationContext),
-              60,
-              TimeUnit.SECONDS);
+      boolean offered = messages.offer(entity, 60, TimeUnit.SECONDS);
       if (!offered) {
         throw new StreamException("Could not accumulate outbound message");
       }

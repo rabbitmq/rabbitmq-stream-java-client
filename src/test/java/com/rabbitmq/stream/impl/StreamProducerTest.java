@@ -20,7 +20,6 @@ import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import ch.qos.logback.classic.Level;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
@@ -347,63 +346,59 @@ public class StreamProducerTest {
   @ParameterizedTest
   @ValueSource(ints = {1, 7})
   void producerShouldBeClosedWhenStreamIsDeleted(int subEntrySize, TestInfo info) throws Exception {
-    Level initialLogLevel = TestUtils.newLoggerLevel(ProducersCoordinator.class, Level.DEBUG);
-    try {
-      String s = streamName(info);
-      environment.streamCreator().stream(s).create();
+    String s = streamName(info);
+    environment.streamCreator().stream(s).create();
 
-      StreamProducer producer =
-          (StreamProducer)
-              environment.producerBuilder().subEntrySize(subEntrySize).stream(s).build();
+    StreamProducer producer =
+        (StreamProducer) environment.producerBuilder().subEntrySize(subEntrySize).stream(s).build();
 
-      AtomicInteger published = new AtomicInteger(0);
-      AtomicInteger confirmed = new AtomicInteger(0);
-      AtomicInteger errored = new AtomicInteger(0);
-      Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
+    AtomicInteger published = new AtomicInteger(0);
+    AtomicInteger confirmed = new AtomicInteger(0);
+    AtomicInteger errored = new AtomicInteger(0);
+    Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
 
-      AtomicBoolean continuePublishing = new AtomicBoolean(true);
-      Thread publishThread =
-          new Thread(
-              () -> {
-                ConfirmationHandler confirmationHandler =
-                    confirmationStatus -> {
-                      if (confirmationStatus.isConfirmed()) {
-                        confirmed.incrementAndGet();
-                      } else {
-                        errored.incrementAndGet();
-                        errorCodes.add(confirmationStatus.getCode());
-                      }
-                    };
-                while (continuePublishing.get()) {
-                  try {
-                    producer.send(
-                        producer
-                            .messageBuilder()
-                            .addData("".getBytes(StandardCharsets.UTF_8))
-                            .build(),
-                        confirmationHandler);
-                    published.incrementAndGet();
-                  } catch (StreamException e) {
-                    // OK
-                  }
+    AtomicBoolean continuePublishing = new AtomicBoolean(true);
+    Thread publishThread =
+        new Thread(
+            () -> {
+              ConfirmationHandler confirmationHandler =
+                  confirmationStatus -> {
+                    if (confirmationStatus.isConfirmed()) {
+                      confirmed.incrementAndGet();
+                    } else {
+                      errored.incrementAndGet();
+                      errorCodes.add(confirmationStatus.getCode());
+                    }
+                  };
+              while (continuePublishing.get()) {
+                try {
+                  producer.send(
+                      producer
+                          .messageBuilder()
+                          .addData("".getBytes(StandardCharsets.UTF_8))
+                          .build(),
+                      confirmationHandler);
+                  published.incrementAndGet();
+                } catch (StreamException e) {
+                  // OK
                 }
-              });
-      publishThread.start();
+              }
+            });
+    publishThread.start();
 
-      Thread.sleep(1000L);
+    waitAtMost(() -> confirmed.get() > 100);
+    int confirmedNow = confirmed.get();
+    waitAtMost(() -> confirmed.get() > confirmedNow + 1000);
 
-      assertThat(producer.isOpen()).isTrue();
+    assertThat(producer.isOpen()).isTrue();
 
-      environment.deleteStream(s);
+    environment.deleteStream(s);
 
-      waitAtMost(() -> !producer.isOpen());
-      continuePublishing.set(false);
-      waitAtMost(
-          () -> !errorCodes.isEmpty(),
-          () -> "The producer should have received negative publish confirms");
-    } finally {
-      TestUtils.newLoggerLevel(ProducersCoordinator.class, initialLogLevel);
-    }
+    waitAtMost(() -> !producer.isOpen());
+    continuePublishing.set(false);
+    waitAtMost(
+        () -> !errorCodes.isEmpty(),
+        () -> "The producer should have received negative publish confirms");
   }
 
   @ParameterizedTest
