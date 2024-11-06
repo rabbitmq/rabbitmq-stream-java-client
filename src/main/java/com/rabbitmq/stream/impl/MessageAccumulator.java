@@ -17,11 +17,14 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Message;
 
-interface MessageAccumulator {
+interface MessageAccumulator extends AutoCloseable {
 
   void add(Message message, ConfirmationHandler confirmationHandler);
 
   int size();
 
   void flush(boolean force);
+
+  @Override
+  void close();
 }

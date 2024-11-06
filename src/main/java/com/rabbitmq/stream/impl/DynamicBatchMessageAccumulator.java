@@ -151,4 +151,9 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
       return false;
     }
   }
+
+  @Override
+  public void close() {
+    this.dynamicBatch.close();
+  }
 }

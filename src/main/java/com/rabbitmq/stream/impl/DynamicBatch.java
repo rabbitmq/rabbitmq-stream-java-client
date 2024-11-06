@@ -26,7 +26,7 @@ import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class DynamicBatch<T> {
+final class DynamicBatch<T> implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DynamicBatch.class);
   private static final int MIN_BATCH_SIZE = 32;
@@ -35,11 +35,13 @@ class DynamicBatch<T> {
   private final BlockingQueue<T> requests = new LinkedBlockingQueue<>();
   private final Predicate<List<T>> consumer;
   private final int configuredBatchSize;
+  private final Thread thread;
 
   DynamicBatch(Predicate<List<T>> consumer, int batchSize) {
     this.consumer = consumer;
     this.configuredBatchSize = min(max(batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
-    new Thread(this::loop).start();
+    this.thread = new Thread(this::loop);
+    this.thread.start();
   }
 
   void add(T item) {
@@ -102,5 +104,10 @@ class DynamicBatch<T> {
       LOGGER.warn("Error during dynamic batch completion: {}", e.getMessage());
       return false;
     }
+  }
+
+  @Override
+  public void close() {
+    this.thread.interrupt();
   }
 }

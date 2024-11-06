@@ -112,4 +112,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       producer.publishInternal(entities);
     }
   }
+
+  @Override
+  public void close() {}
 }

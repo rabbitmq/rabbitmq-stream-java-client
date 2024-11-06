@@ -441,6 +441,7 @@ class StreamProducer implements Producer {
   }
 
   void closeFromEnvironment() {
+    this.accumulator.close();
     this.closingCallback.run();
     cancelConfirmTimeoutTask();
     this.closed.set(true);
