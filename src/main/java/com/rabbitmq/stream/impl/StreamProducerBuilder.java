@@ -27,6 +27,9 @@ import java.util.function.ToIntFunction;
 
 class StreamProducerBuilder implements ProducerBuilder {
 
+  static final boolean DEFAULT_DYNAMIC_BATCH =
+      Boolean.parseBoolean(System.getProperty("rabbitmq.stream.producer.dynamic.batch", "false"));
+
   private final StreamEnvironment environment;
 
   private String name;
@@ -52,6 +55,8 @@ class StreamProducerBuilder implements ProducerBuilder {
   private DefaultRoutingConfiguration routingConfiguration;
 
   private Function<Message, String> filterValueExtractor;
+
+  private boolean dynamicBatch = DEFAULT_DYNAMIC_BATCH;
 
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -198,6 +203,7 @@ class StreamProducerBuilder implements ProducerBuilder {
               stream,
               subEntrySize,
               batchSize,
+              dynamicBatch,
               compression,
               batchPublishingDelay,
               maxUnconfirmedMessages,

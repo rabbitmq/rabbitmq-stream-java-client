@@ -86,6 +86,7 @@ class StreamProducer implements Producer {
       String stream,
       int subEntrySize,
       int batchSize,
+      boolean dynamicBatch,
       Compression compression,
       Duration batchPublishingDelay,
       int maxUnconfirmedMessages,
@@ -172,7 +173,6 @@ class StreamProducer implements Producer {
     if (compression != null) {
       compressionCodec = environment.compressionCodecFactory().get(compression);
     }
-    boolean dynamicBatch = true;
     this.accumulator =
         ProducerUtils.createMessageAccumulator(
             dynamicBatch,
