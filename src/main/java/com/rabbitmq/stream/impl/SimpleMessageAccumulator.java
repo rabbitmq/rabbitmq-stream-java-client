@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -69,9 +69,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       throw new StreamException("Error while accumulating outbound message", e);
     }
     if (this.messages.size() == this.capacity) {
-      synchronized (this.producer) {
-        publishBatch(true);
-      }
+      publishBatch(true);
     }
   }
 
@@ -92,24 +90,27 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   @Override
   public void flush(boolean force) {
     boolean stateCheck = !force;
-    synchronized (this.producer) {
-      publishBatch(stateCheck);
-    }
+    publishBatch(stateCheck);
   }
 
   private void publishBatch(boolean stateCheck) {
-    if ((!stateCheck || this.producer.canSend()) && !this.messages.isEmpty()) {
-      List<Object> entities = new ArrayList<>(this.capacity);
-      int batchCount = 0;
-      while (batchCount != this.capacity) {
-        AccumulatedEntity entity = this.get();
-        if (entity == null) {
-          break;
+    this.producer.lock();
+    try {
+      if ((!stateCheck || this.producer.canSend()) && !this.messages.isEmpty()) {
+        List<Object> entities = new ArrayList<>(this.capacity);
+        int batchCount = 0;
+        while (batchCount != this.capacity) {
+          AccumulatedEntity entity = this.get();
+          if (entity == null) {
+            break;
+          }
+          entities.add(entity);
+          batchCount++;
         }
-        entities.add(entity);
-        batchCount++;
+        producer.publishInternal(entities);
       }
-      producer.publishInternal(entities);
+    } finally {
+      this.producer.unlock();
     }
   }
 

@@ -119,7 +119,6 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                     batch.encodedMessageBatch.close();
                     subBatches.add(batch);
                   }
-
                   return this.publish(subBatches);
                 } else {
                   return false;

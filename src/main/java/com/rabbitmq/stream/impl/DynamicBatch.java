@@ -40,7 +40,7 @@ final class DynamicBatch<T> implements AutoCloseable {
   DynamicBatch(Predicate<List<T>> consumer, int batchSize) {
     this.consumer = consumer;
     this.configuredBatchSize = min(max(batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
-    this.thread = new Thread(this::loop);
+    this.thread = ConcurrencyUtils.defaultThreadFactory().newThread(this::loop);
     this.thread.start();
   }
 
