@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,19 +14,17 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import ch.qos.logback.classic.Level;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
 import com.rabbitmq.stream.impl.StreamProducer.Status;
+import com.rabbitmq.stream.impl.TestUtils.Sync;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
@@ -94,7 +92,7 @@ public class StreamProducerTest {
   void send() throws Exception {
     int batchSize = 10;
     int messageCount = 10 * batchSize + 1; // don't want a multiple of batch size
-    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    Sync confirmSync = sync(messageCount);
     Producer producer = environment.producerBuilder().stream(stream).batchSize(batchSize).build();
     AtomicLong count = new AtomicLong(0);
     AtomicLong sequence = new AtomicLong(0);
@@ -117,13 +115,12 @@ public class StreamProducerTest {
                     idsConfirmed.add(
                         confirmationStatus.getMessage().getProperties().getMessageIdAsLong());
                     count.incrementAndGet();
-                    publishLatch.countDown();
+                    confirmSync.down();
                   });
             });
-    boolean completed = publishLatch.await(10, TimeUnit.SECONDS);
+    assertThat(confirmSync).completes();
     assertThat(idsSent).hasSameSizeAs(idsConfirmed);
     idsSent.forEach(idSent -> assertThat(idsConfirmed).contains(idSent));
-    assertThat(completed).isTrue();
 
     ProducerInfo info = MonitoringTestUtils.extract(producer);
     assertThat(info.getId()).isGreaterThanOrEqualTo(0);
@@ -349,63 +346,59 @@ public class StreamProducerTest {
   @ParameterizedTest
   @ValueSource(ints = {1, 7})
   void producerShouldBeClosedWhenStreamIsDeleted(int subEntrySize, TestInfo info) throws Exception {
-    Level initialLogLevel = TestUtils.newLoggerLevel(ProducersCoordinator.class, Level.DEBUG);
-    try {
-      String s = streamName(info);
-      environment.streamCreator().stream(s).create();
+    String s = streamName(info);
+    environment.streamCreator().stream(s).create();
 
-      StreamProducer producer =
-          (StreamProducer)
-              environment.producerBuilder().subEntrySize(subEntrySize).stream(s).build();
+    StreamProducer producer =
+        (StreamProducer) environment.producerBuilder().subEntrySize(subEntrySize).stream(s).build();
 
-      AtomicInteger published = new AtomicInteger(0);
-      AtomicInteger confirmed = new AtomicInteger(0);
-      AtomicInteger errored = new AtomicInteger(0);
-      Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
+    AtomicInteger published = new AtomicInteger(0);
+    AtomicInteger confirmed = new AtomicInteger(0);
+    AtomicInteger errored = new AtomicInteger(0);
+    Set<Number> errorCodes = ConcurrentHashMap.newKeySet();
 
-      AtomicBoolean continuePublishing = new AtomicBoolean(true);
-      Thread publishThread =
-          new Thread(
-              () -> {
-                ConfirmationHandler confirmationHandler =
-                    confirmationStatus -> {
-                      if (confirmationStatus.isConfirmed()) {
-                        confirmed.incrementAndGet();
-                      } else {
-                        errored.incrementAndGet();
-                        errorCodes.add(confirmationStatus.getCode());
-                      }
-                    };
-                while (continuePublishing.get()) {
-                  try {
-                    producer.send(
-                        producer
-                            .messageBuilder()
-                            .addData("".getBytes(StandardCharsets.UTF_8))
-                            .build(),
-                        confirmationHandler);
-                    published.incrementAndGet();
-                  } catch (StreamException e) {
-                    // OK
-                  }
+    AtomicBoolean continuePublishing = new AtomicBoolean(true);
+    Thread publishThread =
+        new Thread(
+            () -> {
+              ConfirmationHandler confirmationHandler =
+                  confirmationStatus -> {
+                    if (confirmationStatus.isConfirmed()) {
+                      confirmed.incrementAndGet();
+                    } else {
+                      errored.incrementAndGet();
+                      errorCodes.add(confirmationStatus.getCode());
+                    }
+                  };
+              while (continuePublishing.get()) {
+                try {
+                  producer.send(
+                      producer
+                          .messageBuilder()
+                          .addData("".getBytes(StandardCharsets.UTF_8))
+                          .build(),
+                      confirmationHandler);
+                  published.incrementAndGet();
+                } catch (StreamException e) {
+                  // OK
                 }
-              });
-      publishThread.start();
+              }
+            });
+    publishThread.start();
 
-      Thread.sleep(1000L);
+    waitAtMost(() -> confirmed.get() > 100);
+    int confirmedNow = confirmed.get();
+    waitAtMost(() -> confirmed.get() > confirmedNow + 1000);
 
-      assertThat(producer.isOpen()).isTrue();
+    assertThat(producer.isOpen()).isTrue();
 
-      environment.deleteStream(s);
+    environment.deleteStream(s);
 
-      waitAtMost(() -> !producer.isOpen());
-      continuePublishing.set(false);
-      waitAtMost(
-          () -> !errorCodes.isEmpty(),
-          () -> "The producer should have received negative publish confirms");
-    } finally {
-      TestUtils.newLoggerLevel(ProducersCoordinator.class, initialLogLevel);
-    }
+    waitAtMost(() -> !producer.isOpen());
+    continuePublishing.set(false);
+    waitAtMost(
+        () -> !errorCodes.isEmpty(),
+        () -> "The producer should have received negative publish confirms");
   }
 
   @ParameterizedTest
@@ -415,15 +408,14 @@ public class StreamProducerTest {
     int firstWaveLineCount = lineCount / 5;
     int backwardCount = firstWaveLineCount / 10;
     SortedSet<Integer> document = new TreeSet<>();
-    IntStream.range(0, lineCount).forEach(i -> document.add(i));
+    IntStream.range(0, lineCount).forEach(document::add);
     Producer producer =
         environment.producerBuilder().name("producer-1").stream(stream)
             .subEntrySize(subEntrySize)
             .build();
 
-    AtomicReference<CountDownLatch> latch =
-        new AtomicReference<>(new CountDownLatch(firstWaveLineCount));
-    ConfirmationHandler confirmationHandler = confirmationStatus -> latch.get().countDown();
+    Sync confirmSync = sync(firstWaveLineCount);
+    ConfirmationHandler confirmationHandler = confirmationStatus -> confirmSync.down();
     Consumer<Integer> publishMessage =
         i ->
             producer.send(
@@ -433,15 +425,17 @@ public class StreamProducerTest {
                     .addData(String.valueOf(i).getBytes())
                     .build(),
                 confirmationHandler);
+    // publish the first wave
     document.headSet(firstWaveLineCount).forEach(publishMessage);
 
-    assertThat(latch.get().await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(confirmSync).completes();
 
-    latch.set(new CountDownLatch(lineCount - firstWaveLineCount + backwardCount));
+    confirmSync.reset(lineCount - firstWaveLineCount + backwardCount);
 
+    // publish the rest, but with some overlap from the first wave
     document.tailSet(firstWaveLineCount - backwardCount).forEach(publishMessage);
 
-    assertThat(latch.get().await(5, TimeUnit.SECONDS)).isTrue();
+    assertThat(confirmSync).completes();
 
     CountDownLatch consumeLatch = new CountDownLatch(lineCount);
     AtomicInteger consumed = new AtomicInteger();
@@ -453,14 +447,17 @@ public class StreamProducerTest {
               consumeLatch.countDown();
             })
         .build();
-    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
-    Thread.sleep(1000);
-    // if we are using sub-entries, we cannot avoid duplicates.
-    // here, a sub-entry in the second wave, right at the end of the re-submitted
-    // values will contain those duplicates, because its publishing ID will be
-    // the one of its last message, so the server will accept the whole sub-entry,
-    // including the duplicates.
-    assertThat(consumed.get()).isEqualTo(lineCount + backwardCount % subEntrySize);
+    assertThat(consumeLatch.await(5, TimeUnit.SECONDS)).isTrue();
+    if (subEntrySize == 1) {
+      assertThat(consumed.get()).isEqualTo(lineCount);
+    } else {
+      // if we are using sub-entries, we cannot avoid duplicates.
+      // here, a sub-entry in the second wave, right at the end of the re-submitted
+      // values will contain those duplicates, because its publishing ID will be
+      // the one of its last message, so the server will accept the whole sub-entry,
+      // including the duplicates.
+      assertThat(consumed.get()).isBetween(lineCount, lineCount + subEntrySize);
+    }
   }
 
   @ParameterizedTest
@@ -636,11 +633,10 @@ public class StreamProducerTest {
   }
 
   @Test
-  void methodsShouldThrowExceptionWhenProducerIsClosed() throws InterruptedException {
+  void methodsShouldThrowExceptionWhenProducerIsClosed() {
     Producer producer = environment.producerBuilder().stream(stream).build();
     producer.close();
-    assertThatThrownBy(() -> producer.getLastPublishingId())
-        .isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(producer::getLastPublishingId).isInstanceOf(IllegalStateException.class);
   }
 
   @Test

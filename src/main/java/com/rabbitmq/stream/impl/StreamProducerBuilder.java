@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -21,11 +21,15 @@ import com.rabbitmq.stream.RoutingStrategy;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.time.Duration;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
 class StreamProducerBuilder implements ProducerBuilder {
+
+  static final boolean DEFAULT_DYNAMIC_BATCH =
+      Boolean.parseBoolean(System.getProperty("rabbitmq.stream.producer.dynamic.batch", "false"));
 
   private final StreamEnvironment environment;
 
@@ -52,6 +56,8 @@ class StreamProducerBuilder implements ProducerBuilder {
   private DefaultRoutingConfiguration routingConfiguration;
 
   private Function<Message, String> filterValueExtractor;
+
+  private boolean dynamicBatch = DEFAULT_DYNAMIC_BATCH;
 
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -97,8 +103,15 @@ class StreamProducerBuilder implements ProducerBuilder {
     return this;
   }
 
+  @Override
   public StreamProducerBuilder batchPublishingDelay(Duration batchPublishingDelay) {
     this.batchPublishingDelay = batchPublishingDelay;
+    return this;
+  }
+
+  @Override
+  public ProducerBuilder dynamicBatch(boolean dynamicBatch) {
+    this.dynamicBatch = dynamicBatch;
     return this;
   }
 
@@ -198,6 +211,7 @@ class StreamProducerBuilder implements ProducerBuilder {
               stream,
               subEntrySize,
               batchSize,
+              dynamicBatch,
               compression,
               batchPublishingDelay,
               maxUnconfirmedMessages,
@@ -229,11 +243,13 @@ class StreamProducerBuilder implements ProducerBuilder {
   StreamProducerBuilder duplicate() {
     StreamProducerBuilder duplicate = new StreamProducerBuilder(this.environment);
     for (Field field : StreamProducerBuilder.class.getDeclaredFields()) {
-      field.setAccessible(true);
-      try {
-        field.set(duplicate, field.get(this));
-      } catch (IllegalAccessException e) {
-        throw new StreamException("Error while duplicating stream producer builder", e);
+      if (!Modifier.isStatic(field.getModifiers())) {
+        field.setAccessible(true);
+        try {
+          field.set(duplicate, field.get(this));
+        } catch (IllegalAccessException e) {
+          throw new StreamException("Error while duplicating stream producer builder", e);
+        }
       }
     }
     return duplicate;

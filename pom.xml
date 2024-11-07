@@ -533,7 +533,7 @@
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
-<!--          <ratchetFrom>origin/main</ratchetFrom>-->
+          <ratchetFrom>origin/main</ratchetFrom>
           <licenseHeader> <!-- specify either content or file, but not both -->
               <content>// Copyright (c) $YEAR Broadcom. All Rights Reserved.
               // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.

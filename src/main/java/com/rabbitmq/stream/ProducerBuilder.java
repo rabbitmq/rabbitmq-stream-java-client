@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -96,6 +96,28 @@ public interface ProducerBuilder {
    * @return this builder instance
    */
   ProducerBuilder batchPublishingDelay(Duration batchPublishingDelay);
+
+  /**
+   * Adapt batch size depending on ingress rate.
+   *
+   * <p>A dynamic-batch approach improves latency for low ingress rates. It can be counterproductive
+   * for sustained high ingress rates.
+   *
+   * <p>Set this flag to <code>true</code> if you want as little delay as possible before calling
+   * {@link Producer#send(Message, ConfirmationHandler)} and the message being sent to the broker.
+   *
+   * <p>Set this flag to <code>false</code> if latency is not critical for your use case and you
+   * want the highest throughput possible for both publishing and consuming.
+   *
+   * <p>Dynamic batch is not activated by default (<code>dynamicBatch = false</code>).
+   *
+   * <p>Dynamic batch is experimental.
+   *
+   * @param dynamicBatch
+   * @return this builder instance
+   * @since 0.20.0
+   */
+  ProducerBuilder dynamicBatch(boolean dynamicBatch);
 
   /**
    * The maximum number of unconfirmed outbound messages.

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2021-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
@@ -27,6 +28,7 @@ import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.DefaultCompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.OutboundEntityWriteCallback;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -42,8 +44,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.ToLongFunction;
-import java.util.stream.IntStream;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -115,6 +117,8 @@ public class StreamProducerUnitTest {
     when(env.clock()).thenReturn(clock);
     when(env.codec()).thenReturn(new SimpleCodec());
     when(env.observationCollector()).thenAnswer(invocation -> ObservationCollector.NO_OP);
+    DefaultCompressionCodecFactory ccf = new DefaultCompressionCodecFactory();
+    when(env.compressionCodecFactory()).thenReturn(ccf);
     doAnswer(
             (Answer<Runnable>)
                 invocationOnMock -> {
@@ -172,6 +176,7 @@ public class StreamProducerUnitTest {
             "stream",
             subEntrySize,
             10,
+            StreamProducerBuilder.DEFAULT_DYNAMIC_BATCH,
             Compression.NONE,
             Duration.ofMillis(100),
             messageCount * 10,
@@ -181,26 +186,33 @@ public class StreamProducerUnitTest {
             null,
             env);
 
-    IntStream.range(0, messageCount)
+    range(0, messageCount)
         .forEach(
             i ->
                 producer.send(
                     producer.messageBuilder().addData("".getBytes()).build(), confirmationHandler));
 
-    IntStream.range(0, confirmedPart).forEach(publishingId -> producer.confirm(publishingId));
-    assertThat(confirmedCount.get()).isEqualTo(expectedConfirmed);
+    waitAtMost(() -> producer.unconfirmedCount() >= messageCount / subEntrySize);
+    range(0, confirmedPart).forEach(producer::confirm);
+    if (subEntrySize == 1) {
+      assertThat(confirmedCount.get()).isEqualTo(expectedConfirmed);
+    } else {
+      assertThat(confirmedCount.get()).isCloseTo(confirmedCount.get(), Offset.offset(subEntrySize));
+    }
     assertThat(erroredCount.get()).isZero();
+    int confirmedPreviously = confirmedCount.get();
 
     executorService.scheduleAtFixedRate(() -> clock.refresh(), 100, 100, TimeUnit.MILLISECONDS);
 
     Thread.sleep(waitTime.toMillis());
-    assertThat(confirmedCount.get()).isEqualTo(expectedConfirmed);
+    assertThat(confirmedCount.get()).isEqualTo(confirmedPreviously);
     if (confirmTimeout.isZero()) {
       assertThat(erroredCount.get()).isZero();
       assertThat(responseCodes).isEmpty();
     } else {
       waitAtMost(
-          waitTime.multipliedBy(2), () -> erroredCount.get() == (messageCount - expectedConfirmed));
+          waitTime.multipliedBy(2),
+          () -> erroredCount.get() == (messageCount - confirmedPreviously));
       assertThat(responseCodes).hasSize(1).contains(Constants.CODE_PUBLISH_CONFIRM_TIMEOUT);
     }
   }
@@ -215,6 +227,7 @@ public class StreamProducerUnitTest {
             "stream",
             subEntrySize,
             10,
+            StreamProducerBuilder.DEFAULT_DYNAMIC_BATCH,
             Compression.NONE,
             Duration.ZERO,
             2,
@@ -255,6 +268,7 @@ public class StreamProducerUnitTest {
             "stream",
             subEntrySize,
             10,
+            StreamProducerBuilder.DEFAULT_DYNAMIC_BATCH,
             Compression.NONE,
             Duration.ZERO,
             2,

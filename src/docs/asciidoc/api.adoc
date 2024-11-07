@@ -455,6 +455,10 @@ blocking when the limit is reached.
 |Period to send a batch of messages.
 |100 ms
 
+|`dynamicBatch`
+|Adapt batch size depending on ingress rate.
+|false
+
 |`confirmTimeout`
 |[[producer-confirm-timeout-configuration-entry]]Time before the client calls the confirm callback to signal
 outstanding unconfirmed messages timed out.

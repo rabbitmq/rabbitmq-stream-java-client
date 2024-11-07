@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -18,17 +18,11 @@ import static com.rabbitmq.stream.Constants.*;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.ConfirmationHandler;
-import com.rabbitmq.stream.ConfirmationStatus;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.MessageBuilder;
-import com.rabbitmq.stream.Producer;
-import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.Response;
-import com.rabbitmq.stream.impl.MessageAccumulator.AccumulatedEntity;
+import com.rabbitmq.stream.impl.ProducerUtils.AccumulatedEntity;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBuf;
 import java.nio.charset.StandardCharsets;
@@ -49,6 +43,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
 import org.slf4j.Logger;
@@ -84,6 +80,7 @@ class StreamProducer implements Producer {
   private volatile Status status;
   private volatile ScheduledFuture<?> confirmTimeoutFuture;
   private final short publishVersion;
+  private final Lock lock = new ReentrantLock();
 
   @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamProducer(
@@ -91,6 +88,7 @@ class StreamProducer implements Producer {
       String stream,
       int subEntrySize,
       int batchSize,
+      boolean dynamicBatch,
       Compression compression,
       Duration batchPublishingDelay,
       int maxUnconfirmedMessages,
@@ -122,37 +120,14 @@ class StreamProducer implements Producer {
             return publishingSequence.getAndIncrement();
           }
         };
+
     if (subEntrySize <= 1) {
-      this.accumulator =
-          new SimpleMessageAccumulator(
-              batchSize,
-              environment.codec(),
-              client.maxFrameSize(),
-              accumulatorPublishSequenceFunction,
-              filterValueExtractor,
-              this.environment.clock(),
-              stream,
-              this.environment.observationCollector());
       if (filterValueExtractor == null) {
         delegateWriteCallback = Client.OUTBOUND_MESSAGE_WRITE_CALLBACK;
       } else {
         delegateWriteCallback = OUTBOUND_MSG_FILTER_VALUE_WRITE_CALLBACK;
       }
     } else {
-      this.accumulator =
-          new SubEntryMessageAccumulator(
-              subEntrySize,
-              batchSize,
-              compression == Compression.NONE
-                  ? null
-                  : environment.compressionCodecFactory().get(compression),
-              environment.codec(),
-              this.environment.byteBufAllocator(),
-              client.maxFrameSize(),
-              accumulatorPublishSequenceFunction,
-              this.environment.clock(),
-              stream,
-              environment.observationCollector());
       delegateWriteCallback = Client.OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK;
     }
 
@@ -166,8 +141,7 @@ class StreamProducer implements Producer {
           new Client.OutboundEntityWriteCallback() {
             @Override
             public int write(ByteBuf bb, Object entity, long publishingId) {
-              MessageAccumulator.AccumulatedEntity accumulatedEntity =
-                  (MessageAccumulator.AccumulatedEntity) entity;
+              AccumulatedEntity accumulatedEntity = (AccumulatedEntity) entity;
               unconfirmedMessages.put(publishingId, accumulatedEntity);
               return delegateWriteCallback.write(
                   bb, accumulatedEntity.encodedEntity(), publishingId);
@@ -176,7 +150,7 @@ class StreamProducer implements Producer {
             @Override
             public int fragmentLength(Object entity) {
               return delegateWriteCallback.fragmentLength(
-                  ((MessageAccumulator.AccumulatedEntity) entity).encodedEntity());
+                  ((AccumulatedEntity) entity).encodedEntity());
             }
           };
     } else {
@@ -185,8 +159,7 @@ class StreamProducer implements Producer {
           new Client.OutboundEntityWriteCallback() {
             @Override
             public int write(ByteBuf bb, Object entity, long publishingId) {
-              MessageAccumulator.AccumulatedEntity accumulatedEntity =
-                  (MessageAccumulator.AccumulatedEntity) entity;
+              AccumulatedEntity accumulatedEntity = (AccumulatedEntity) entity;
               unconfirmedMessages.put(publishingId, accumulatedEntity);
               return delegateWriteCallback.write(bb, accumulatedEntity, publishingId);
             }
@@ -198,14 +171,36 @@ class StreamProducer implements Producer {
           };
     }
 
-    if (!batchPublishingDelay.isNegative() && !batchPublishingDelay.isZero()) {
+    CompressionCodec compressionCodec = null;
+    if (compression != null) {
+      compressionCodec = environment.compressionCodecFactory().get(compression);
+    }
+    this.accumulator =
+        ProducerUtils.createMessageAccumulator(
+            dynamicBatch,
+            subEntrySize,
+            batchSize,
+            compressionCodec,
+            environment.codec(),
+            environment.byteBufAllocator(),
+            client.maxFrameSize(),
+            accumulatorPublishSequenceFunction,
+            filterValueExtractor,
+            environment.clock(),
+            stream,
+            environment.observationCollector(),
+            this);
+
+    boolean backgroundBatchPublishingTaskRequired =
+        !dynamicBatch && batchPublishingDelay.toMillis() > 0;
+    LOGGER.debug(
+        "Background batch publishing task required? {}", backgroundBatchPublishingTaskRequired);
+    if (backgroundBatchPublishingTaskRequired) {
       AtomicReference<Runnable> taskReference = new AtomicReference<>();
       Runnable task =
           () -> {
             if (canSend()) {
-              synchronized (StreamProducer.this) {
-                publishBatch(true);
-              }
+              this.accumulator.flush(false);
             }
             if (status != Status.CLOSED) {
               environment
@@ -289,7 +284,7 @@ class StreamProducer implements Producer {
           error(unconfirmedEntry.getKey(), Constants.CODE_PUBLISH_CONFIRM_TIMEOUT);
           count++;
         } else {
-          // everything else is after, so we can stop
+          // everything else is after, we can stop
           break;
         }
       }
@@ -318,8 +313,10 @@ class StreamProducer implements Producer {
     }
   }
 
+  // visible for testing
   void confirm(long publishingId) {
     AccumulatedEntity accumulatedEntity = this.unconfirmedMessages.remove(publishingId);
+
     if (accumulatedEntity != null) {
       int confirmedCount =
           accumulatedEntity.confirmationCallback().handle(true, Constants.RESPONSE_CODE_OK);
@@ -327,6 +324,11 @@ class StreamProducer implements Producer {
     } else {
       this.unconfirmedMessagesSemaphore.release();
     }
+  }
+
+  // for testing
+  int unconfirmedCount() {
+    return this.unconfirmedMessages.size();
   }
 
   void error(long publishingId, short errorCode) {
@@ -397,11 +399,7 @@ class StreamProducer implements Producer {
 
   private void doSend(Message message, ConfirmationHandler confirmationHandler) {
     if (canSend()) {
-      if (accumulator.add(message, confirmationHandler)) {
-        synchronized (this) {
-          publishBatch(true);
-        }
-      }
+      this.accumulator.add(message, confirmationHandler);
     } else {
       failPublishing(message, confirmationHandler);
     }
@@ -419,7 +417,7 @@ class StreamProducer implements Producer {
     }
   }
 
-  private boolean canSend() {
+  boolean canSend() {
     return this.status == Status.RUNNING;
   }
 
@@ -445,6 +443,7 @@ class StreamProducer implements Producer {
   }
 
   void closeFromEnvironment() {
+    this.accumulator.close();
     this.closingCallback.run();
     cancelConfirmTimeoutTask();
     this.closed.set(true);
@@ -476,25 +475,13 @@ class StreamProducer implements Producer {
     }
   }
 
-  private void publishBatch(boolean stateCheck) {
-    if ((!stateCheck || canSend()) && !accumulator.isEmpty()) {
-      List<Object> messages = new ArrayList<>(this.batchSize);
-      int batchCount = 0;
-      while (batchCount != this.batchSize) {
-        Object accMessage = accumulator.get();
-        if (accMessage == null) {
-          break;
-        }
-        messages.add(accMessage);
-        batchCount++;
-      }
-      client.publishInternal(
-          this.publishVersion,
-          this.publisherId,
-          messages,
-          this.writeCallback,
-          this.publishSequenceFunction);
-    }
+  void publishInternal(List<Object> messages) {
+    client.publishInternal(
+        this.publishVersion,
+        this.publisherId,
+        messages,
+        this.writeCallback,
+        this.publishSequenceFunction);
   }
 
   boolean isOpen() {
@@ -506,76 +493,80 @@ class StreamProducer implements Producer {
   }
 
   void running() {
-    synchronized (this) {
-      LOGGER.debug(
-          "Recovering producer with {} unconfirmed message(s) and {} accumulated message(s)",
-          this.unconfirmedMessages.size(),
-          this.accumulator.size());
-      if (this.retryOnRecovery) {
-        LOGGER.debug("Re-publishing {} unconfirmed message(s)", this.unconfirmedMessages.size());
-        if (!this.unconfirmedMessages.isEmpty()) {
-          Map<Long, AccumulatedEntity> messagesToResend = new TreeMap<>(this.unconfirmedMessages);
-          this.unconfirmedMessages.clear();
-          Iterator<Entry<Long, AccumulatedEntity>> resendIterator =
-              messagesToResend.entrySet().iterator();
-          while (resendIterator.hasNext()) {
-            List<Object> messages = new ArrayList<>(this.batchSize);
-            int batchCount = 0;
-            while (batchCount != this.batchSize) {
-              Object accMessage =
-                  resendIterator.hasNext() ? resendIterator.next().getValue() : null;
-              if (accMessage == null) {
-                break;
-              }
-              messages.add(accMessage);
-              batchCount++;
-            }
-            client.publishInternal(
-                this.publishVersion,
-                this.publisherId,
-                messages,
-                this.writeCallback,
-                this.publishSequenceFunction);
-          }
-        }
-      } else {
-        LOGGER.debug(
-            "Skipping republishing of {} unconfirmed messages", this.unconfirmedMessages.size());
-        Map<Long, AccumulatedEntity> messagesToFail = new TreeMap<>(this.unconfirmedMessages);
-        this.unconfirmedMessages.clear();
-        for (AccumulatedEntity accumulatedEntity : messagesToFail.values()) {
-          try {
-            int permits =
-                accumulatedEntity
-                    .confirmationCallback()
-                    .handle(false, CODE_PUBLISH_CONFIRM_TIMEOUT);
-            this.unconfirmedMessagesSemaphore.release(permits);
-          } catch (Exception e) {
-            LOGGER.debug("Error while nack-ing outbound message: {}", e.getMessage());
-            this.unconfirmedMessagesSemaphore.release(1);
-          }
-        }
-      }
-      publishBatch(false);
-      int toRelease = maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits();
-      if (toRelease > 0) {
-        unconfirmedMessagesSemaphore.release(toRelease);
-        if (!unconfirmedMessagesSemaphore.tryAcquire(this.unconfirmedMessages.size())) {
+    this.executeInLock(
+        () -> {
           LOGGER.debug(
-              "Could not acquire {} permit(s) for message republishing",
-              this.unconfirmedMessages.size());
-        }
-      }
-    }
+              "Recovering producer with {} unconfirmed message(s) and {} accumulated message(s)",
+              this.unconfirmedMessages.size(),
+              this.accumulator.size());
+          if (this.retryOnRecovery) {
+            LOGGER.debug(
+                "Re-publishing {} unconfirmed message(s)", this.unconfirmedMessages.size());
+            if (!this.unconfirmedMessages.isEmpty()) {
+              Map<Long, AccumulatedEntity> messagesToResend =
+                  new TreeMap<>(this.unconfirmedMessages);
+              this.unconfirmedMessages.clear();
+              Iterator<Entry<Long, AccumulatedEntity>> resendIterator =
+                  messagesToResend.entrySet().iterator();
+              while (resendIterator.hasNext()) {
+                List<Object> messages = new ArrayList<>(this.batchSize);
+                int batchCount = 0;
+                while (batchCount != this.batchSize) {
+                  Object accMessage =
+                      resendIterator.hasNext() ? resendIterator.next().getValue() : null;
+                  if (accMessage == null) {
+                    break;
+                  }
+                  messages.add(accMessage);
+                  batchCount++;
+                }
+                client.publishInternal(
+                    this.publishVersion,
+                    this.publisherId,
+                    messages,
+                    this.writeCallback,
+                    this.publishSequenceFunction);
+              }
+            }
+          } else {
+            LOGGER.debug(
+                "Skipping republishing of {} unconfirmed messages",
+                this.unconfirmedMessages.size());
+            Map<Long, AccumulatedEntity> messagesToFail = new TreeMap<>(this.unconfirmedMessages);
+            this.unconfirmedMessages.clear();
+            for (AccumulatedEntity accumulatedEntity : messagesToFail.values()) {
+              try {
+                int permits =
+                    accumulatedEntity
+                        .confirmationCallback()
+                        .handle(false, CODE_PUBLISH_CONFIRM_TIMEOUT);
+                this.unconfirmedMessagesSemaphore.release(permits);
+              } catch (Exception e) {
+                LOGGER.debug("Error while nack-ing outbound message: {}", e.getMessage());
+                this.unconfirmedMessagesSemaphore.release(1);
+              }
+            }
+          }
+          this.accumulator.flush(true);
+          int toRelease = maxUnconfirmedMessages - unconfirmedMessagesSemaphore.availablePermits();
+          if (toRelease > 0) {
+            unconfirmedMessagesSemaphore.release(toRelease);
+            if (!unconfirmedMessagesSemaphore.tryAcquire(this.unconfirmedMessages.size())) {
+              LOGGER.debug(
+                  "Could not acquire {} permit(s) for message republishing",
+                  this.unconfirmedMessages.size());
+            }
+          }
+        });
     this.status = Status.RUNNING;
   }
 
-  synchronized void setClient(Client client) {
-    this.client = client;
+  void setClient(Client client) {
+    this.executeInLock(() -> this.client = client);
   }
 
-  synchronized void setPublisherId(byte publisherId) {
-    this.publisherId = publisherId;
+  void setPublisherId(byte publisherId) {
+    this.executeInLock(() -> this.publisherId = publisherId);
   }
 
   Status status() {
@@ -586,13 +577,6 @@ class StreamProducer implements Producer {
     RUNNING,
     NOT_AVAILABLE,
     CLOSED
-  }
-
-  interface ConfirmationCallback {
-
-    int handle(boolean confirmed, short code);
-
-    Message message();
   }
 
   @Override
@@ -666,6 +650,23 @@ class StreamProducer implements Producer {
       } else {
         return 8 + 2 + accumulatedEntity.filterValue().length() + 4 + message.getSize();
       }
+    }
+  }
+
+  void lock() {
+    this.lock.lock();
+  }
+
+  void unlock() {
+    this.lock.unlock();
+  }
+
+  private void executeInLock(Runnable action) {
+    this.lock();
+    try {
+      action.run();
+    } finally {
+      this.unlock();
     }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -1136,6 +1136,10 @@ public final class TestUtils {
 
     void down() {
       this.latch.get().countDown();
+    }
+
+    void down(int count) {
+      IntStream.range(0, count).forEach(ignored -> this.latch.get().countDown());
     }
 
     boolean await(Duration timeout) {

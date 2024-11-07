@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -17,28 +17,14 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Message;
 
-interface MessageAccumulator {
+interface MessageAccumulator extends AutoCloseable {
 
-  boolean add(Message message, ConfirmationHandler confirmationHandler);
-
-  AccumulatedEntity get();
-
-  boolean isEmpty();
+  void add(Message message, ConfirmationHandler confirmationHandler);
 
   int size();
 
-  interface AccumulatedEntity {
+  void flush(boolean force);
 
-    long time();
-
-    long publishingId();
-
-    String filterValue();
-
-    Object encodedEntity();
-
-    StreamProducer.ConfirmationCallback confirmationCallback();
-
-    Object observationContext();
-  }
+  @Override
+  void close();
 }
