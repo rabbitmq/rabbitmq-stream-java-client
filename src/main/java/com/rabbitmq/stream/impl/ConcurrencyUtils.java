@@ -55,6 +55,7 @@ final class ConcurrencyUtils {
   }
 
   private static boolean isJava21OrMore() {
-    return Utils.versionCompare(System.getProperty("java.version"), "21.0") >= 0;
+    String version = System.getProperty("java.version").replace("-beta", "");
+    return Utils.versionCompare(version, "21.0") >= 0;
   }
 }
