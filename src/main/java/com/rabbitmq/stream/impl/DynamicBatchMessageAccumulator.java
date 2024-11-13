@@ -59,11 +59,13 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
             observationCollector);
     this.producer = producer;
     this.observationCollector = (ObservationCollector<Object>) observationCollector;
+    boolean shouldObserve = !this.observationCollector.isNoop();
     if (subEntrySize <= 1) {
       this.dynamicBatch =
           new DynamicBatch<>(
-              (items, replay) -> {
-                if (!replay) {
+              items -> {
+                boolean result = this.publish(items);
+                if (result && shouldObserve) {
                   items.forEach(
                       i -> {
                         AccumulatedEntity entity = (AccumulatedEntity) i;
@@ -71,7 +73,7 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                             entity.observationContext(), entity.confirmationCallback().message());
                       });
                 }
-                return this.publish(items);
+                return result;
               },
               batchSize);
     } else {
@@ -79,7 +81,7 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
           compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
       this.dynamicBatch =
           new DynamicBatch<>(
-              (items, replay) -> {
+              items -> {
                 List<Object> subBatches = new ArrayList<>();
                 int count = 0;
                 ProducerUtils.Batch batch =
@@ -88,10 +90,6 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                 AccumulatedEntity lastMessageInBatch = null;
                 for (Object msg : items) {
                   AccumulatedEntity message = (AccumulatedEntity) msg;
-                  if (!replay) {
-                    this.observationCollector.published(
-                        message.observationContext(), message.confirmationCallback().message());
-                  }
                   lastMessageInBatch = message;
                   batch.add(
                       (Codec.EncodedMessage) message.encodedEntity(),
@@ -116,7 +114,15 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                   batch.encodedMessageBatch.close();
                   subBatches.add(batch);
                 }
-                return this.publish(subBatches);
+                boolean result = this.publish(subBatches);
+                if (result && shouldObserve) {
+                  for (Object msg : items) {
+                    AccumulatedEntity message = (AccumulatedEntity) msg;
+                    this.observationCollector.published(
+                        message.observationContext(), message.confirmationCallback().message());
+                  }
+                }
+                return result;
               },
               batchSize * subEntrySize);
     }

@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,11 +32,11 @@ final class DynamicBatch<T> implements AutoCloseable {
   private static final int MAX_BATCH_SIZE = 8192;
 
   private final BlockingQueue<T> requests = new LinkedBlockingQueue<>();
-  private final BiPredicate<List<T>, Boolean> consumer;
+  private final BatchConsumer<T> consumer;
   private final int configuredBatchSize;
   private final Thread thread;
 
-  DynamicBatch(BiPredicate<List<T>, Boolean> consumer, int batchSize) {
+  DynamicBatch(BatchConsumer<T> consumer, int batchSize) {
     this.consumer = consumer;
     this.configuredBatchSize = min(max(batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
     this.thread = ConcurrencyUtils.defaultThreadFactory().newThread(this::loop);
@@ -56,7 +55,6 @@ final class DynamicBatch<T> implements AutoCloseable {
     State<T> state = new State<>();
     state.batchSize = this.configuredBatchSize;
     state.items = new ArrayList<>(state.batchSize);
-    state.retry = false;
     Thread currentThread = Thread.currentThread();
     T item;
     while (!currentThread.isInterrupted()) {
@@ -91,12 +89,11 @@ final class DynamicBatch<T> implements AutoCloseable {
 
     int batchSize;
     List<T> items;
-    boolean retry;
   }
 
   private void maybeCompleteBatch(State<T> state, boolean increaseIfCompleted) {
     try {
-      boolean completed = this.consumer.test(state.items, state.retry);
+      boolean completed = this.consumer.process(state.items);
       if (completed) {
         if (increaseIfCompleted) {
           state.batchSize = min(state.batchSize * 2, MAX_BATCH_SIZE);
@@ -104,18 +101,20 @@ final class DynamicBatch<T> implements AutoCloseable {
           state.batchSize = max(state.batchSize / 2, MIN_BATCH_SIZE);
         }
         state.items = new ArrayList<>(state.batchSize);
-        state.retry = false;
-      } else {
-        state.retry = true;
       }
     } catch (Exception e) {
       LOGGER.warn("Error during dynamic batch completion: {}", e.getMessage());
-      state.retry = true;
     }
   }
 
   @Override
   public void close() {
     this.thread.interrupt();
+  }
+
+  @FunctionalInterface
+  interface BatchConsumer<T> {
+
+    boolean process(List<T> items);
   }
 }

@@ -14,58 +14,108 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.codahale.metrics.ConsoleReporter;
-import com.codahale.metrics.Histogram;
-import com.codahale.metrics.MetricRegistry;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+
+import com.codahale.metrics.*;
 import com.google.common.util.concurrent.RateLimiter;
+import com.rabbitmq.stream.impl.TestUtils.Sync;
+import java.util.Locale;
 import java.util.Random;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
 public class DynamicBatchTest {
 
+  private static void simulateActivity(long duration) {
+    try {
+      Thread.sleep(duration);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static void printHistogram(Histogram histogram) {
+    Locale locale = Locale.getDefault();
+    System.out.printf(locale, "             count = %d%n", histogram.getCount());
+    Snapshot snapshot = histogram.getSnapshot();
+    System.out.printf(locale, "               min = %d%n", snapshot.getMin());
+    System.out.printf(locale, "               max = %d%n", snapshot.getMax());
+    System.out.printf(locale, "              mean = %2.2f%n", snapshot.getMean());
+    System.out.printf(locale, "            stddev = %2.2f%n", snapshot.getStdDev());
+    System.out.printf(locale, "            median = %2.2f%n", snapshot.getMedian());
+    System.out.printf(locale, "              75%% <= %2.2f%n", snapshot.get75thPercentile());
+    System.out.printf(locale, "              95%% <= %2.2f%n", snapshot.get95thPercentile());
+    System.out.printf(locale, "              98%% <= %2.2f%n", snapshot.get98thPercentile());
+    System.out.printf(locale, "              99%% <= %2.2f%n", snapshot.get99thPercentile());
+    System.out.printf(locale, "            99.9%% <= %2.2f%n", snapshot.get999thPercentile());
+  }
+
   @Test
-  void test() {
+  void itemAreProcessed() {
     MetricRegistry metrics = new MetricRegistry();
     Histogram batchSizeMetrics = metrics.histogram("batch-size");
-    ConsoleReporter reporter =
-        ConsoleReporter.forRegistry(metrics)
-            .convertRatesTo(TimeUnit.SECONDS)
-            .convertDurationsTo(TimeUnit.MILLISECONDS)
-            .build();
-
     int itemCount = 3000;
-    TestUtils.Sync sync = TestUtils.sync(itemCount);
+    Sync sync = sync(itemCount);
     Random random = new Random();
-    DynamicBatch<String> batch =
-        new DynamicBatch<>(
-            (items, replay) -> {
-              batchSizeMetrics.update(items.size());
-              try {
-                Thread.sleep(random.nextInt(10) + 1);
-              } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-              }
-              sync.down(items.size());
-              return true;
-            },
-            100);
-    try {
-      RateLimiter rateLimiter = RateLimiter.create(3000);
-      long start = System.nanoTime();
+    DynamicBatch.BatchConsumer<String> action =
+        items -> {
+          batchSizeMetrics.update(items.size());
+          simulateActivity(random.nextInt(10) + 1);
+          sync.down(items.size());
+          return true;
+        };
+    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100)) {
+      RateLimiter rateLimiter = RateLimiter.create(10000);
       IntStream.range(0, itemCount)
           .forEach(
               i -> {
                 rateLimiter.acquire();
                 batch.add(String.valueOf(i));
               });
-      Assertions.assertThat(sync).completes();
-      long end = System.nanoTime();
-      //    System.out.println("Done in " + Duration.ofNanos(end - start));
-      //    reporter.report();
-    } finally {
-      batch.close();
+      assertThat(sync).completes();
+      //      printHistogram(batchSizeMetrics);
+    }
+  }
+
+  @Test
+  void failedProcessingIsReplayed() throws Exception {
+    int itemCount = 10000;
+    AtomicInteger collected = new AtomicInteger(0);
+    AtomicInteger processed = new AtomicInteger(0);
+    AtomicBoolean canProcess = new AtomicBoolean(true);
+    DynamicBatch.BatchConsumer<String> action =
+        items -> {
+          boolean result;
+          if (canProcess.get()) {
+            collected.addAndGet(items.size());
+            processed.addAndGet(items.size());
+            result = true;
+          } else {
+            result = false;
+          }
+          return result;
+        };
+    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100)) {
+      int firstRoundCount = itemCount / 5;
+      IntStream.range(0, firstRoundCount)
+          .forEach(
+              i -> {
+                batch.add(String.valueOf(i));
+              });
+      waitAtMost(() -> processed.get() == firstRoundCount);
+      canProcess.set(false);
+      IntStream.range(firstRoundCount, itemCount)
+          .forEach(
+              i -> {
+                batch.add(String.valueOf(i));
+              });
+      canProcess.set(true);
+      waitAtMost(() -> processed.get() == itemCount);
+      waitAtMost(() -> collected.get() == itemCount);
     }
   }
 }

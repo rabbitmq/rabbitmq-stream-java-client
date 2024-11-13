@@ -75,10 +75,8 @@ class SimpleMessageAccumulator implements MessageAccumulator {
 
   AccumulatedEntity get() {
     AccumulatedEntity entity = this.messages.poll();
-    if (entity != null) {
-      this.observationCollector.published(
-          entity.observationContext(), entity.confirmationCallback().message());
-    }
+    this.observationCollector.published(
+        entity.observationContext(), entity.confirmationCallback().message());
     return entity;
   }
 
