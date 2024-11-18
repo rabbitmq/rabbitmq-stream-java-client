@@ -103,7 +103,7 @@ public interface ProducerBuilder {
    * <p>A dynamic-batch approach improves latency for low ingress rates. It can be counterproductive
    * for sustained high ingress rates.
    *
-   * <p>Set this flag to <code>true</code> if you want as little delay as possible before calling
+   * <p>Set this flag to <code>true</code> if you want as little delay as possible between calling
    * {@link Producer#send(Message, ConfirmationHandler)} and the message being sent to the broker.
    *
    * <p>Set this flag to <code>false</code> if latency is not critical for your use case and you
