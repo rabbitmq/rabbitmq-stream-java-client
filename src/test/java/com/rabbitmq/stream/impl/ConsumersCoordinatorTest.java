@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -22,6 +22,7 @@ import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
 import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.Utils.brokerPicker;
 import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -151,6 +152,7 @@ public class ConsumersCoordinatorTest {
     when(environment.addressResolver()).thenReturn(address -> address);
     when(client.brokerVersion()).thenReturn("3.11.0");
     when(client.isOpen()).thenReturn(true);
+    clientAdvertises(replica().get(0));
 
     coordinator =
         new ConsumersCoordinator(
@@ -158,7 +160,8 @@ public class ConsumersCoordinatorTest {
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             type -> "consumer-connection",
             clientFactory,
-            false);
+            false,
+            brokerPicker());
   }
 
   @AfterEach
@@ -179,8 +182,7 @@ public class ConsumersCoordinatorTest {
       shouldRetryUntilGettingExactNodeWithAdvertisedHostNameClientFactoryAndNotExactNodeOnFirstTime() {
     ClientFactory cf =
         context ->
-            Utils.connectToAdvertisedNodeClientFactory(
-                    context.key(), clientFactory, Duration.ofMillis(1))
+            Utils.connectToAdvertisedNodeClientFactory(clientFactory, Duration.ofMillis(1))
                 .client(context);
     ConsumersCoordinator c =
         new ConsumersCoordinator(
@@ -188,7 +190,8 @@ public class ConsumersCoordinatorTest {
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             type -> "consumer-connection",
             cf,
-            false);
+            false,
+            brokerPicker());
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -221,8 +224,7 @@ public class ConsumersCoordinatorTest {
   void shouldGetExactNodeImmediatelyWithAdvertisedHostNameClientFactoryAndExactNodeOnFirstTime() {
     ClientFactory cf =
         context ->
-            Utils.connectToAdvertisedNodeClientFactory(
-                    context.key(), clientFactory, Duration.ofMillis(1))
+            Utils.connectToAdvertisedNodeClientFactory(clientFactory, Duration.ofMillis(1))
                 .client(context);
     ConsumersCoordinator c =
         new ConsumersCoordinator(
@@ -230,7 +232,8 @@ public class ConsumersCoordinatorTest {
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             type -> "consumer-connection",
             cf,
-            false);
+            false,
+            brokerPicker());
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -255,6 +258,48 @@ public class ConsumersCoordinatorTest {
         Collections.emptyMap(),
         flowStrategy());
     verify(clientFactory, times(1)).client(any());
+    verify(client, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+  }
+
+  @Test
+  void shouldAcceptCandidateNode() {
+    ClientFactory cf =
+        context ->
+            Utils.connectToAdvertisedNodeClientFactory(clientFactory, Duration.ofMillis(1))
+                .client(context);
+    ConsumersCoordinator c =
+        new ConsumersCoordinator(
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            cf,
+            false,
+            brokers -> brokers.get(0));
+
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(new Client.Response(Constants.RESPONSE_CODE_OK));
+    when(client.serverAdvertisedHost()).thenReturn("foo").thenReturn(replicas().get(1).getHost());
+    when(client.serverAdvertisedPort()).thenReturn(42).thenReturn(replicas().get(1).getPort());
+
+    c.subscribe(
+        consumer,
+        "stream",
+        OffsetSpecification.first(),
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap(),
+        flowStrategy());
+    verify(clientFactory, times(2)).client(any());
     verify(client, times(1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
   }
@@ -495,6 +540,7 @@ public class ConsumersCoordinatorTest {
   @Test
   void subscribeShouldSubscribeToStreamAndDispatchMessageWithManySubscriptions() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
+    clientAdvertises(leader());
 
     when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
@@ -1078,6 +1124,7 @@ public class ConsumersCoordinatorTest {
   void shouldUseNewClientsForMoreThanMaxSubscriptionsAndCloseClientAfterUnsubscriptions(
       int maxConsumersByConnection) {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
+    clientAdvertises(leader());
 
     when(clientFactory.client(any())).thenReturn(client);
 
@@ -1099,7 +1146,8 @@ public class ConsumersCoordinatorTest {
             maxConsumersByConnection,
             type -> "consumer-connection",
             clientFactory,
-            false);
+            false,
+            brokerPicker());
 
     List<Runnable> closingRunnables =
         IntStream.range(0, subscriptionCount)
@@ -1919,7 +1967,8 @@ public class ConsumersCoordinatorTest {
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             type -> "consumer-connection",
             clientFactory,
-            true);
+            true,
+            brokerPicker());
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     Runnable closingRunnable =
@@ -2065,5 +2114,10 @@ public class ConsumersCoordinatorTest {
 
   private static ConsumerFlowStrategy flowStrategy() {
     return ConsumerFlowStrategy.creditOnChunkArrival(10);
+  }
+
+  private void clientAdvertises(Client.Broker broker) {
+    when(client.serverAdvertisedHost()).thenReturn(broker.getHost());
+    when(client.serverAdvertisedPort()).thenReturn(broker.getPort());
   }
 }

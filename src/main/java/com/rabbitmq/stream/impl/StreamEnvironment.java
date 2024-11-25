@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -219,7 +219,8 @@ class StreamEnvironment implements Environment {
             maxConsumersByConnection,
             connectionNamingStrategy,
             Utils.coordinatorClientFactory(this),
-            forceReplicaForConsumers);
+            forceReplicaForConsumers,
+            Utils.brokerPicker());
     this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
     ClientParameters clientParametersForInit = locatorParametersCopy();
     Runnable locatorInitSequence =

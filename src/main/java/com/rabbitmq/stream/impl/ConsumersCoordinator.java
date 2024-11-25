@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -70,6 +70,7 @@ class ConsumersCoordinator {
   private final AtomicLong managerIdSequence = new AtomicLong(0);
   private final NavigableSet<ClientSubscriptionsManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
+  private final Function<List<Broker>, Broker> brokerPicker;
 
   private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory =
@@ -83,16 +84,14 @@ class ConsumersCoordinator {
       int maxConsumersByConnection,
       Function<ClientConnectionType, String> connectionNamingStrategy,
       ClientFactory clientFactory,
-      boolean forceReplica) {
+      boolean forceReplica,
+      Function<List<Broker>, Broker> brokerPicker) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxConsumersByConnection = maxConsumersByConnection;
     this.connectionNamingStrategy = connectionNamingStrategy;
     this.forceReplica = forceReplica;
-  }
-
-  private static String keyForClientSubscription(Client.Broker broker) {
-    return broker.getHost() + ":" + broker.getPort();
+    this.brokerPicker = brokerPicker;
   }
 
   private BackOffDelayPolicy recoveryBackOffDelayPolicy() {
@@ -138,7 +137,7 @@ class ConsumersCoordinator {
                   flowStrategy);
 
           try {
-            addToManager(newNode, subscriptionTracker, offsetSpecification, true);
+            addToManager(newNode, candidates, subscriptionTracker, offsetSpecification, true);
           } catch (ConnectionStreamException e) {
             // these exceptions are not public
             throw new StreamException(e.getMessage());
@@ -162,6 +161,7 @@ class ConsumersCoordinator {
 
   private void addToManager(
       Broker node,
+      List<Broker> candidates,
       SubscriptionTracker tracker,
       OffsetSpecification offsetSpecification,
       boolean isInitialSubscription) {
@@ -189,9 +189,9 @@ class ConsumersCoordinator {
         }
       }
       if (pickedManager == null) {
-        String name = keyForClientSubscription(node);
+        String name = keyForNode(node);
         LOGGER.debug("Creating subscription manager on {}", name);
-        pickedManager = new ClientSubscriptionsManager(node, clientParameters);
+        pickedManager = new ClientSubscriptionsManager(node, candidates, clientParameters);
         LOGGER.debug("Created subscription manager on {}, id {}", name, pickedManager.id);
       }
       try {
@@ -571,6 +571,7 @@ class ConsumersCoordinator {
     private final long id;
     private final Broker node;
     private final Client client;
+    // <host>:<port> (actual or advertised)
     private final String name;
     // the 2 data structures track the subscriptions, they must remain consistent
     private final Map<String, Set<SubscriptionTracker>> streamToStreamSubscriptions =
@@ -582,12 +583,12 @@ class ConsumersCoordinator {
     private volatile int trackerCount;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private ClientSubscriptionsManager(Broker node, Client.ClientParameters clientParameters) {
+    private ClientSubscriptionsManager(
+        Broker targetNode, List<Broker> candidates, Client.ClientParameters clientParameters) {
       this.id = managerIdSequence.getAndIncrement();
-      this.node = node;
-      this.name = keyForClientSubscription(node);
-      LOGGER.debug("creating subscription manager on {}", name);
       this.trackerCount = 0;
+      AtomicReference<String> nameReference = new AtomicReference<>();
+
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       ChunkListener chunkListener =
           (client, subscriptionId, offset, messageCount, dataSize) -> {
@@ -639,7 +640,7 @@ class ConsumersCoordinator {
                   "Could not find stream subscription {} in manager {}, node {} for message listener",
                   subscriptionId,
                   this.id,
-                  this.name);
+                  nameReference.get());
             }
           };
       MessageIgnoredListener messageIgnoredListener =
@@ -663,7 +664,7 @@ class ConsumersCoordinator {
                   "Could not find stream subscription {} in manager {}, node {} for message ignored listener",
                   subscriptionId,
                   this.id,
-                  this.name);
+                  nameReference.get());
             }
           };
       ShutdownListener shutdownListener =
@@ -675,7 +676,7 @@ class ConsumersCoordinator {
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
                   "Unexpected shutdown notification on subscription connection {}, scheduling consumers re-assignment",
-                  name);
+                  nameReference.get());
               LOGGER.debug(
                   "Subscription connection has {} consumer(s) over {} stream(s) to recover",
                   this.subscriptionTrackers.stream().filter(Objects::nonNull).count(),
@@ -718,7 +719,7 @@ class ConsumersCoordinator {
                             }
                           },
                           "Consumers re-assignment after disconnection from %s",
-                          name));
+                          nameReference.get()));
             }
           };
       MetadataListener metadataListener =
@@ -792,18 +793,23 @@ class ConsumersCoordinator {
           };
       String connectionName = connectionNamingStrategy.apply(ClientConnectionType.CONSUMER);
       ClientFactoryContext clientFactoryContext =
-          ClientFactoryContext.fromParameters(
-                  clientParameters
-                      .clientProperty("connection_name", connectionName)
-                      .chunkListener(chunkListener)
-                      .creditNotification(creditNotification)
-                      .messageListener(messageListener)
-                      .messageIgnoredListener(messageIgnoredListener)
-                      .shutdownListener(shutdownListener)
-                      .metadataListener(metadataListener)
-                      .consumerUpdateListener(consumerUpdateListener))
-              .key(name);
+          new ClientFactoryContext(
+              clientParameters
+                  .clientProperty("connection_name", connectionName)
+                  .chunkListener(chunkListener)
+                  .creditNotification(creditNotification)
+                  .messageListener(messageListener)
+                  .messageIgnoredListener(messageIgnoredListener)
+                  .shutdownListener(shutdownListener)
+                  .metadataListener(metadataListener)
+                  .consumerUpdateListener(consumerUpdateListener),
+              keyForNode(targetNode),
+              candidates);
       this.client = clientFactory.client(clientFactoryContext);
+      this.node = brokerFromClient(this.client);
+      this.name = keyForNode(this.node);
+      nameReference.set(this.name);
+      LOGGER.debug("creating subscription manager on {}", name);
       LOGGER.debug("Created consumer connection '{}'", connectionName);
       clientInitializedInManager.set(true);
     }
@@ -906,7 +912,7 @@ class ConsumersCoordinator {
                 } else {
                   offsetSpecification = tracker.initialOffsetSpecification;
                 }
-                addToManager(broker, tracker, offsetSpecification, false);
+                addToManager(broker, candidates, tracker, offsetSpecification, false);
               }
             }
           } else {

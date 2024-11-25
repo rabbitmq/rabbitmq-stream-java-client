@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -117,6 +117,8 @@ public class ProducersCoordinatorTest {
     when(trackingConsumer.stream()).thenReturn("stream");
     when(client.declarePublisher(anyByte(), isNull(), anyString()))
         .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
+    when(client.serverAdvertisedHost()).thenReturn(leader().getHost());
+    when(client.serverAdvertisedPort()).thenReturn(leader().getPort());
     coordinator =
         new ProducersCoordinator(
             environment,
@@ -184,8 +186,7 @@ public class ProducersCoordinatorTest {
       shouldRetryUntilGettingExactNodeWithAdvertisedHostNameClientFactoryAndNotExactNodeOnFirstTime() {
     ClientFactory cf =
         context ->
-            Utils.connectToAdvertisedNodeClientFactory(
-                    context.key(), clientFactory, Duration.ofMillis(1))
+            Utils.connectToAdvertisedNodeClientFactory(clientFactory, Duration.ofMillis(1))
                 .client(context);
     ProducersCoordinator c =
         new ProducersCoordinator(
@@ -212,8 +213,7 @@ public class ProducersCoordinatorTest {
   void shouldGetExactNodeImmediatelyWithAdvertisedHostNameClientFactoryAndExactNodeOnFirstTime() {
     ClientFactory cf =
         context ->
-            Utils.connectToAdvertisedNodeClientFactory(
-                    context.key(), clientFactory, Duration.ofMillis(1))
+            Utils.connectToAdvertisedNodeClientFactory(clientFactory, Duration.ofMillis(1))
                 .client(context);
     ProducersCoordinator c =
         new ProducersCoordinator(
@@ -391,6 +391,10 @@ public class ProducersCoordinatorTest {
         .thenReturn(metadata(movingStream, null, replicas()))
         .thenReturn(metadata(movingStream, leader2(), replicas()));
 
+    // the created client is on leader1
+    when(client.serverAdvertisedHost()).thenReturn(leader1().getHost());
+    when(client.serverAdvertisedPort()).thenReturn(leader1().getPort());
+
     String fixedStream = "fixed-stream";
     when(locator.metadata(fixedStream)).thenReturn(metadata(fixedStream, leader1(), replicas()));
 
@@ -439,6 +443,10 @@ public class ProducersCoordinatorTest {
     verify(movingTrackingConsumer, times(1)).setTrackingClient(client);
     verify(fixedTrackingConsumer, times(1)).setTrackingClient(client);
     assertThat(coordinator.clientCount()).isEqualTo(1);
+
+    // the created client is on leader2
+    when(client.serverAdvertisedHost()).thenReturn(leader2().getHost());
+    when(client.serverAdvertisedPort()).thenReturn(leader2().getPort());
 
     metadataListener.handle(movingStream, Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -32,13 +32,7 @@ import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.NavigableSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -85,10 +79,6 @@ class ProducersCoordinator {
     this.maxProducersByClient = maxProducersByClient;
     this.maxTrackingConsumersByClient = maxTrackingConsumersByClient;
     this.connectionNamingStrategy = connectionNamingStrategy;
-  }
-
-  private static String keyForNode(Client.Broker broker) {
-    return broker.getHost() + ":" + broker.getPort();
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {
@@ -162,7 +152,7 @@ class ProducersCoordinator {
       }
       if (pickedManager == null) {
         String name = keyForNode(node);
-        LOGGER.debug("Creating producer manager on {}", name);
+        LOGGER.debug("Trying to create producer manager on {}", name);
         pickedManager = new ClientProducersManager(node, this.clientFactory, clientParameters);
         LOGGER.debug("Created producer manager on {}, id {}", name, pickedManager.id);
       }
@@ -578,10 +568,9 @@ class ProducersCoordinator {
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private ClientProducersManager(
-        Broker node, ClientFactory cf, Client.ClientParameters clientParameters) {
+        Broker targetNode, ClientFactory cf, Client.ClientParameters clientParameters) {
       this.id = managerIdSequence.getAndIncrement();
-      this.name = keyForNode(node);
-      this.node = node;
+      AtomicReference<String> nameReference = new AtomicReference<>();
       AtomicReference<Client> ref = new AtomicReference<>();
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       PublishConfirmListener publishConfirmListener =
@@ -636,7 +625,7 @@ class ProducersCoordinator {
                                 });
                           },
                           "Producer recovery after disconnection from %s",
-                          name));
+                          nameReference.get()));
             }
           };
       MetadataListener metadataListener =
@@ -685,15 +674,19 @@ class ProducersCoordinator {
           };
       String connectionName = connectionNamingStrategy.apply(ClientConnectionType.PRODUCER);
       ClientFactoryContext connectionFactoryContext =
-          ClientFactoryContext.fromParameters(
-                  clientParameters
-                      .publishConfirmListener(publishConfirmListener)
-                      .publishErrorListener(publishErrorListener)
-                      .shutdownListener(shutdownListener)
-                      .metadataListener(metadataListener)
-                      .clientProperty("connection_name", connectionName))
-              .key(name);
+          new ClientFactoryContext(
+              clientParameters
+                  .publishConfirmListener(publishConfirmListener)
+                  .publishErrorListener(publishErrorListener)
+                  .shutdownListener(shutdownListener)
+                  .metadataListener(metadataListener)
+                  .clientProperty("connection_name", connectionName),
+              keyForNode(targetNode),
+              Collections.emptyList());
       this.client = cf.client(connectionFactoryContext);
+      this.node = Utils.brokerFromClient(this.client);
+      this.name = keyForNode(this.node);
+      nameReference.set(this.name);
       LOGGER.debug("Created producer connection '{}'", connectionName);
       clientInitializedInManager.set(true);
       ref.set(this.client);
