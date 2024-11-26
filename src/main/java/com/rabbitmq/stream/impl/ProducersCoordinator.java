@@ -224,7 +224,7 @@ final class ProducersCoordinator implements AutoCloseable {
     }
     candidates.add(new BrokerWrapper(leader, true));
 
-    if (!forceLeader && !streamMetadata.getReplicas().isEmpty()) {
+    if (!forceLeader && streamMetadata.hasReplicas()) {
       candidates.addAll(
           streamMetadata.getReplicas().stream()
               .map(b -> new BrokerWrapper(b, false))

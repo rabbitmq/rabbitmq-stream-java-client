@@ -2263,9 +2263,12 @@ public class Client implements AutoCloseable {
       return leader;
     }
 
-    @SuppressFBWarnings("EI_EXPOSE_REP2")
     public List<Broker> getReplicas() {
-      return replicas;
+      return this.replicas.isEmpty() ? Collections.emptyList() : new ArrayList<>(this.replicas);
+    }
+
+    boolean hasReplicas() {
+      return !this.replicas.isEmpty();
     }
 
     public String getStream() {
