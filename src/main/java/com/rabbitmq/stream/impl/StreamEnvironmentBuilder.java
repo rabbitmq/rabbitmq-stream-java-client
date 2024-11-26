@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -65,8 +65,11 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private CompressionCodecFactory compressionCodecFactory;
   private boolean lazyInit = false;
   private boolean forceReplicaForConsumers = false;
+  private boolean forceLeaderForProducers = true;
   private Function<Client.ClientParameters, Client> clientFactory = Client::new;
   private ObservationCollector<?> observationCollector = ObservationCollector.NO_OP;
+  private Duration producerNodeRetryDelay = Duration.ofMillis(500);
+  private Duration consumerNodeRetryDelay = Duration.ofMillis(1000);
 
   public StreamEnvironmentBuilder() {}
 
@@ -275,6 +278,12 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   }
 
   @Override
+  public EnvironmentBuilder forceLeaderForProducers(boolean forceLeader) {
+    this.forceLeaderForProducers = forceLeader;
+    return this;
+  }
+
+  @Override
   public TlsConfiguration tls() {
     this.tls.enable();
     return this.tls;
@@ -293,6 +302,16 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   @Override
   public EnvironmentBuilder observationCollector(ObservationCollector<?> observationCollector) {
     this.observationCollector = observationCollector;
+    return this;
+  }
+
+  StreamEnvironmentBuilder producerNodeRetryDelay(Duration producerNodeRetryDelay) {
+    this.producerNodeRetryDelay = producerNodeRetryDelay;
+    return this;
+  }
+
+  StreamEnvironmentBuilder consumerNodeRetryDelay(Duration consumerNodeRetryDelay) {
+    this.consumerNodeRetryDelay = consumerNodeRetryDelay;
     return this;
   }
 
@@ -327,7 +346,10 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         connectionNamingStrategy,
         this.clientFactory,
         this.observationCollector,
-        this.forceReplicaForConsumers);
+        this.forceReplicaForConsumers,
+        this.forceLeaderForProducers,
+        this.producerNodeRetryDelay,
+        this.consumerNodeRetryDelay);
   }
 
   static final class DefaultTlsConfiguration implements TlsConfiguration {

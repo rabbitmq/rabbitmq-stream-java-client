@@ -220,6 +220,11 @@ The client retries 5 times before falling back to the stream leader node.
 Set to `true` only for clustered environments, not for 1-node environments, where only the stream leader is available.
 |`false`
 
+|`forceLeaderForProducers`
+|Force connecting to a stream leader for producers.
+Set to `false` if it acceptable to stay connected to a stream replica when a load balancer is in use.
+|`true`
+
 |`id`
 |Informational ID for the environment instance.
 Used as a prefix for connection names.

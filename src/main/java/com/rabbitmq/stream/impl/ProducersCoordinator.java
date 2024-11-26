@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.*;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
@@ -49,7 +50,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class ProducersCoordinator {
+final class ProducersCoordinator implements AutoCloseable {
 
   static final int MAX_PRODUCERS_PER_CLIENT = 256;
   static final int MAX_TRACKING_CONSUMERS_PER_CLIENT = 50;
@@ -67,18 +68,21 @@ class ProducersCoordinator {
       new DefaultExecutorServiceFactory(
           Runtime.getRuntime().availableProcessors(), 10, "rabbitmq-stream-producer-connection-");
   private final Lock coordinatorLock = new ReentrantLock();
+  private final boolean forceLeader;
 
   ProducersCoordinator(
       StreamEnvironment environment,
       int maxProducersByClient,
       int maxTrackingConsumersByClient,
       Function<ClientConnectionType, String> connectionNamingStrategy,
-      ClientFactory clientFactory) {
+      ClientFactory clientFactory,
+      boolean forceLeader) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxProducersByClient = maxProducersByClient;
     this.maxTrackingConsumersByClient = maxTrackingConsumersByClient;
     this.connectionNamingStrategy = connectionNamingStrategy;
+    this.forceLeader = forceLeader;
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {
@@ -105,9 +109,10 @@ class ProducersCoordinator {
   }
 
   private Runnable registerAgentTracker(AgentTracker tracker, String stream) {
-    Client.Broker broker = getBrokerForProducer(stream);
+    List<BrokerWrapper> candidates = findCandidateNodes(stream, this.forceLeader);
+    Broker broker = pickBroker(candidates);
 
-    addToManager(broker, tracker);
+    addToManager(broker, candidates, tracker);
 
     if (DEBUG) {
       return () -> {
@@ -125,7 +130,7 @@ class ProducersCoordinator {
     }
   }
 
-  private void addToManager(Broker node, AgentTracker tracker) {
+  private void addToManager(Broker node, List<BrokerWrapper> candidates, AgentTracker tracker) {
     ClientParameters clientParameters =
         environment
             .clientParametersCopy()
@@ -153,7 +158,8 @@ class ProducersCoordinator {
       if (pickedManager == null) {
         String name = keyForNode(node);
         LOGGER.debug("Trying to create producer manager on {}", name);
-        pickedManager = new ClientProducersManager(node, this.clientFactory, clientParameters);
+        pickedManager =
+            new ClientProducersManager(node, candidates, this.clientFactory, clientParameters);
         LOGGER.debug("Created producer manager on {}, id {}", name, pickedManager.id);
       }
       try {
@@ -192,11 +198,12 @@ class ProducersCoordinator {
     }
   }
 
-  private Client.Broker getBrokerForProducer(String stream) {
+  // package protected for testing
+  List<BrokerWrapper> findCandidateNodes(String stream, boolean forceLeader) {
     Map<String, Client.StreamMetadata> metadata =
         this.environment.locatorOperation(
             namedFunction(c -> c.metadata(stream), "Candidate lookup to publish to '%s'", stream));
-    if (metadata.size() == 0 || metadata.get(stream) == null) {
+    if (metadata.isEmpty() || metadata.get(stream) == null) {
       throw new StreamDoesNotExistException(stream);
     }
 
@@ -210,17 +217,34 @@ class ProducersCoordinator {
       }
     }
 
+    List<BrokerWrapper> candidates = new ArrayList<>();
     Client.Broker leader = streamMetadata.getLeader();
-    if (leader == null) {
+    if (leader == null && forceLeader) {
       throw new IllegalStateException("Not leader available for stream " + stream);
     }
-    LOGGER.debug(
-        "Using client on {}:{} to publish to {}", leader.getHost(), leader.getPort(), stream);
+    candidates.add(new BrokerWrapper(leader, true));
 
-    return leader;
+    if (!forceLeader && !streamMetadata.getReplicas().isEmpty()) {
+      candidates.addAll(
+          streamMetadata.getReplicas().stream()
+              .map(b -> new BrokerWrapper(b, false))
+              .collect(toList()));
+    }
+
+    LOGGER.debug("Candidates to publish to {}: {}", stream, candidates);
+
+    return Collections.unmodifiableList(candidates);
   }
 
-  void close() {
+  static Broker pickBroker(List<BrokerWrapper> candidates) {
+    return candidates.stream()
+        .filter(BrokerWrapper::isLeader)
+        .findFirst()
+        .map(BrokerWrapper::broker)
+        .orElseThrow(() -> new IllegalStateException("Not leader available"));
+  }
+
+  public void close() {
     Iterator<ClientProducersManager> iterator = this.managers.iterator();
     while (iterator.hasNext()) {
       ClientProducersManager manager = iterator.next();
@@ -568,7 +592,10 @@ class ProducersCoordinator {
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private ClientProducersManager(
-        Broker targetNode, ClientFactory cf, Client.ClientParameters clientParameters) {
+        Broker targetNode,
+        List<BrokerWrapper> candidates,
+        ClientFactory cf,
+        Client.ClientParameters clientParameters) {
       this.id = managerIdSequence.getAndIncrement();
       AtomicReference<String> nameReference = new AtomicReference<>();
       AtomicReference<Client> ref = new AtomicReference<>();
@@ -682,7 +709,7 @@ class ProducersCoordinator {
                   .metadataListener(metadataListener)
                   .clientProperty("connection_name", connectionName),
               keyForNode(targetNode),
-              Collections.emptyList());
+              candidates.stream().map(BrokerWrapper::broker).collect(toList()));
       this.client = cf.client(connectionFactoryContext);
       this.node = Utils.brokerFromClient(this.client);
       this.name = keyForNode(this.node);
@@ -694,18 +721,19 @@ class ProducersCoordinator {
 
     private void assignProducersToNewManagers(
         Collection<AgentTracker> trackers, String stream, BackOffDelayPolicy delayPolicy) {
-      AsyncRetry.asyncRetry(() -> getBrokerForProducer(stream))
+      AsyncRetry.asyncRetry(() -> findCandidateNodes(stream, forceLeader))
           .description("Candidate lookup to publish to " + stream)
           .scheduler(environment.scheduledExecutorService())
           .retry(ex -> !(ex instanceof StreamDoesNotExistException))
           .delayPolicy(delayPolicy)
           .build()
           .thenAccept(
-              broker -> {
+              candidates -> {
+                Broker broker = pickBroker(candidates);
                 String key = keyForNode(broker);
                 LOGGER.debug(
                     "Assigning {} producer(s) and consumer tracker(s) to {}", trackers.size(), key);
-                trackers.forEach(tracker -> maybeRecoverAgent(broker, tracker));
+                trackers.forEach(tracker -> maybeRecoverAgent(broker, candidates, tracker));
               })
           .exceptionally(
               ex -> {
@@ -730,10 +758,11 @@ class ProducersCoordinator {
               });
     }
 
-    private void maybeRecoverAgent(Broker broker, AgentTracker tracker) {
+    private void maybeRecoverAgent(
+        Broker broker, List<BrokerWrapper> candidates, AgentTracker tracker) {
       if (tracker.markRecoveryInProgress()) {
         try {
-          recoverAgent(broker, tracker);
+          recoverAgent(broker, candidates, tracker);
         } catch (Exception e) {
           LOGGER.warn(
               "Error while recovering {} tracker {} (stream '{}'). Reason: {}",
@@ -750,14 +779,14 @@ class ProducersCoordinator {
       }
     }
 
-    private void recoverAgent(Broker node, AgentTracker tracker) {
+    private void recoverAgent(Broker node, List<BrokerWrapper> candidates, AgentTracker tracker) {
       boolean reassignmentCompleted = false;
       while (!reassignmentCompleted) {
         try {
           if (tracker.isOpen()) {
             LOGGER.debug(
                 "Using {} to resume {} to {}", node.label(), tracker.type(), tracker.stream());
-            addToManager(node, tracker);
+            addToManager(node, candidates, tracker);
             tracker.running();
           } else {
             LOGGER.debug(
@@ -776,14 +805,15 @@ class ProducersCoordinator {
               tracker.identifiable() ? tracker.id() : "N/A",
               tracker.stream());
           // maybe not a good candidate, let's refresh and retry for this one
-          node =
+          candidates =
               Utils.callAndMaybeRetry(
-                  () -> getBrokerForProducer(tracker.stream()),
+                  () -> findCandidateNodes(tracker.stream(), forceLeader),
                   ex -> !(ex instanceof StreamDoesNotExistException),
                   environment.recoveryBackOffDelayPolicy(),
                   "Candidate lookup for %s on stream '%s'",
                   tracker.type(),
                   tracker.stream());
+          node = pickBroker(candidates);
         } catch (Exception e) {
           LOGGER.warn(
               "Error while re-assigning {} (stream '{}')", tracker.type(), tracker.stream(), e);
