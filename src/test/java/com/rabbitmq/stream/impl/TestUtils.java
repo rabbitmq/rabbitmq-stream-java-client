@@ -386,6 +386,16 @@ public final class TestUtils {
     }
   }
 
+  static boolean isCluster() {
+    try {
+      Process process = Host.rabbitmqctl("eval 'nodes().'");
+      String content = capture(process.getInputStream());
+      return !content.replace("[", "").replace("]", "").trim().isEmpty();
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   private static String capture(InputStream is) throws IOException {
     BufferedReader br = new BufferedReader(new InputStreamReader(is));
     String line;
@@ -535,6 +545,12 @@ public final class TestUtils {
   @Documented
   @ExtendWith(DisabledIfTlsNotEnabledCondition.class)
   public @interface DisabledIfTlsNotEnabled {}
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
+  @ExtendWith(DisabledIfNotClusterCondition.class)
+  @interface DisabledIfNotCluster {}
 
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
@@ -894,6 +910,22 @@ public final class TestUtils {
         return ConditionEvaluationResult.enabled("TLS is enabled");
       } else {
         return ConditionEvaluationResult.disabled("TLS is disabled");
+      }
+    }
+  }
+
+  static class DisabledIfNotClusterCondition implements ExecutionCondition {
+
+    private static final String KEY = "isCluster";
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      ExtensionContext.Store store = context.getRoot().getStore(ExtensionContext.Namespace.GLOBAL);
+      boolean isCluster = store.getOrComputeIfAbsent(KEY, k -> isCluster(), Boolean.class);
+      if (isCluster) {
+        return ConditionEvaluationResult.enabled("Multi-node cluster");
+      } else {
+        return ConditionEvaluationResult.disabled("Not a multi-node cluster");
       }
     }
   }

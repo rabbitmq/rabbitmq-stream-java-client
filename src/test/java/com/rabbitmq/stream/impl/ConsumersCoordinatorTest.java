@@ -15,8 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
-import static com.rabbitmq.stream.impl.ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
-import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickSlot;
+import static com.rabbitmq.stream.impl.ConsumersCoordinator.*;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
@@ -25,6 +24,9 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static com.rabbitmq.stream.impl.Utils.brokerPicker;
 import static java.lang.String.format;
 import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.IntStream.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,8 +55,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -441,17 +442,58 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
-  void findBrokersForStreamShouldReturnLeaderIfNoReplicas() {
+  void findCandidateNodesShouldReturnLeaderIfNoReplicas() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), null));
-    assertThat(coordinator.findBrokersForStream("stream", false)).hasSize(1).contains(leader());
+    assertThat(coordinator.findCandidateNodes("stream", false))
+        .hasSize(1)
+        .contains(leaderWrapper());
   }
 
   @Test
-  void findBrokersForStreamShouldReturnReplicasIfThereAreSome() {
+  void findCandidateNodesShouldReturnReplicasIfThereAreSome() {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
-    assertThat(coordinator.findBrokersForStream("stream", false))
+    assertThat(coordinator.findCandidateNodes("stream", false))
         .hasSize(2)
-        .hasSameElementsAs(replicas());
+        .hasSameElementsAs(replicaWrappers());
+  }
+
+  @Test
+  void findCandidateNodesShouldReturnLeaderAndReplicasIfForceReplicaIsFalse() {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    assertThat(coordinator.findCandidateNodes("stream", false))
+        .hasSize(3)
+        .contains(leaderWrapper())
+        .containsAll(replicaWrappers());
+  }
+
+  @Test
+  void findCandidateNodesShouldReturnOnlyReplicasIfForceReplicaIsTrue() {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    assertThat(coordinator.findCandidateNodes("stream", true))
+        .hasSize(2)
+        .containsAll(replicaWrappers());
+  }
+
+  @Test
+  void pickBrokerShouldPreferReplicas() {
+    Client.Broker leader = leader();
+    List<Client.Broker> replicas = replicas();
+    AtomicInteger sequence = new AtomicInteger();
+    Function<List<Client.Broker>, Client.Broker> picker =
+        candidates -> candidates.get(sequence.getAndIncrement() % candidates.size());
+    // never pick a leader if replicas are available
+    List<Utils.BrokerWrapper> leaderAndOneReplica =
+        Arrays.asList(leaderWrapper(), replicaWrappers().get(0));
+    range(0, 10)
+        .forEach(
+            ignored -> {
+              Client.Broker picked = pickBroker(picker, nodeWrappers());
+              assertThat(picked).isNotEqualTo(leader).isIn(replicas);
+              picked = pickBroker(picker, leaderAndOneReplica);
+              assertThat(picked).isNotEqualTo(leader).isIn(replicas);
+            });
+    // pick the leader if it is the only one
+    assertThat(pickBroker(picker, singletonList(leaderWrapper()))).isEqualTo(leader);
   }
 
   @Test
@@ -1150,7 +1192,7 @@ public class ConsumersCoordinatorTest {
             brokerPicker());
 
     List<Runnable> closingRunnables =
-        IntStream.range(0, subscriptionCount)
+        range(0, subscriptionCount)
             .mapToObj(
                 i ->
                     coordinator.subscribe(
@@ -1163,7 +1205,7 @@ public class ConsumersCoordinatorTest {
                         (offset, message) -> {},
                         Collections.emptyMap(),
                         flowStrategy()))
-            .collect(Collectors.toList());
+            .collect(toList());
 
     verify(clientFactory, times(2)).client(any());
     verify(client, times(subscriptionCount))
@@ -1211,7 +1253,7 @@ public class ConsumersCoordinatorTest {
     int extraSubscriptionCount = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
     int subscriptionCount =
         ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
-    IntStream.range(0, subscriptionCount)
+    range(0, subscriptionCount)
         .forEach(
             i -> {
               coordinator.subscribe(
@@ -1276,7 +1318,7 @@ public class ConsumersCoordinatorTest {
     int extraSubscriptionCount = ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT / 5;
     int subscriptionCount =
         ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + extraSubscriptionCount;
-    IntStream.range(0, subscriptionCount)
+    range(0, subscriptionCount)
         .forEach(
             i -> {
               coordinator.subscribe(
@@ -2039,7 +2081,7 @@ public class ConsumersCoordinatorTest {
   @Test
   void pickSlotTest() {
     List<String> list = new ArrayList<>(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
-    IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(ignored -> list.add(null));
+    range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(ignored -> list.add(null));
     AtomicInteger sequence = new AtomicInteger(0);
     int index = pickSlot(list, sequence);
     assertThat(index).isZero();
@@ -2077,12 +2119,26 @@ public class ConsumersCoordinatorTest {
     assertThat(index).isEqualTo(5);
   }
 
-  Client.Broker leader() {
+  static Client.Broker leader() {
     return new Client.Broker("leader", -1);
   }
 
-  List<Client.Broker> replicas() {
+  static Utils.BrokerWrapper leaderWrapper() {
+    return new Utils.BrokerWrapper(leader(), true);
+  }
+
+  static List<Client.Broker> replicas() {
     return Arrays.asList(new Client.Broker("replica1", -1), new Client.Broker("replica2", -1));
+  }
+
+  static List<Utils.BrokerWrapper> nodeWrappers() {
+    List<Utils.BrokerWrapper> wrappers = new ArrayList<>(replicaWrappers());
+    wrappers.add(leaderWrapper());
+    return wrappers;
+  }
+
+  static List<Utils.BrokerWrapper> replicaWrappers() {
+    return replicas().stream().map(b -> new Utils.BrokerWrapper(b, false)).collect(toList());
   }
 
   List<Client.Broker> replica() {

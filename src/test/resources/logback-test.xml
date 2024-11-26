@@ -7,7 +7,7 @@
 
     <logger name="com.rabbitmq.stream" level="warn" />
     <logger name="com.rabbitmq.stream.impl.Utils" level="warn" />
-    <logger name="com.rabbitmq.stream.impl.ProducersCoordinator" level="warn" />
+    <logger name="com.rabbitmq.stream.impl.ConsumersCoordinator" level="warn" />
 
     <logger name="com.rabbitmq.stream.perf.Version" level="error" />
 

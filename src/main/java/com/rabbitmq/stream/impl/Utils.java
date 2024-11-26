@@ -136,6 +136,11 @@ final class Utils {
   }
 
   static ClientFactory coordinatorClientFactory(StreamEnvironment environment) {
+    return coordinatorClientFactory(environment, ConditionalClientFactory.RETRY_INTERVAL);
+  }
+
+  static ClientFactory coordinatorClientFactory(
+      StreamEnvironment environment, Duration retryInterval) {
     String messageFormat =
         "%s. %s. "
             + "This may be due to the usage of a load balancer that makes topology discovery fail. "
@@ -156,7 +161,8 @@ final class Utils {
         ClientFactory delegate = context1 -> new Client(context1.parameters());
         ClientFactoryContext clientFactoryContext =
             new ClientFactoryContext(parametersCopy, context.targetKey(), context.candidates());
-        return Utils.connectToAdvertisedNodeClientFactory(delegate).client(clientFactoryContext);
+        return Utils.connectToAdvertisedNodeClientFactory(delegate, retryInterval)
+            .client(clientFactoryContext);
       } catch (TimeoutStreamException e) {
         throw new TimeoutStreamException(
             format(messageFormat, e.getMessage(), e.getCause().getMessage(), e.getCause()));
@@ -171,11 +177,6 @@ final class Utils {
         }
       }
     };
-  }
-
-  static ClientFactory connectToAdvertisedNodeClientFactory(ClientFactory clientFactory) {
-    return connectToAdvertisedNodeClientFactory(
-        clientFactory, ConditionalClientFactory.RETRY_INTERVAL);
   }
 
   static ClientFactory connectToAdvertisedNodeClientFactory(
@@ -690,6 +691,42 @@ final class Utils {
       return action.get();
     } finally {
       lock.unlock();
+    }
+  }
+
+  static class BrokerWrapper {
+
+    private final Client.Broker broker;
+    private final boolean leader;
+
+    BrokerWrapper(Client.Broker broker, boolean leader) {
+      this.broker = broker;
+      this.leader = leader;
+    }
+
+    Client.Broker broker() {
+      return broker;
+    }
+
+    boolean isLeader() {
+      return this.leader;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (o == null || getClass() != o.getClass()) return false;
+      BrokerWrapper that = (BrokerWrapper) o;
+      return leader == that.leader && Objects.equals(broker, that.broker);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(broker, leader);
+    }
+
+    @Override
+    public String toString() {
+      return "BrokerWrapper{" + "broker=" + broker + ", leader=" + leader + '}';
     }
   }
 }

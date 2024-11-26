@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -130,7 +130,11 @@ class MonitoringTestUtils {
     }
 
     public int getConsumerCount() {
-      return consumer_count;
+      return this.consumer_count;
+    }
+
+    public String node() {
+      return this.node;
     }
 
     @Override
