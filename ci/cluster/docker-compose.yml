@@ -1,0 +1,64 @@
+services:
+  node0:
+    environment:
+      - RABBITMQ_ERLANG_COOKIE='secret_cookie'
+    networks:
+      - rabbitmq-cluster
+    hostname: node0
+    container_name: rabbitmq0
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4.0}
+    pull_policy: always
+    ports:
+      - "5672:5672"
+      - "5552:5552"
+      - "15672:15672"
+    tty: true
+    volumes:
+      - ./configuration-0/:/etc/rabbitmq/
+  node1:
+    environment:
+      - RABBITMQ_ERLANG_COOKIE='secret_cookie'
+    networks:
+      - rabbitmq-cluster
+    hostname: node1
+    container_name: rabbitmq1
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4.0}
+    pull_policy: always
+    ports:
+      - "5673:5672"
+      - "5553:5552"
+      - "15673:15672"
+    tty: true
+    volumes:
+      - ./configuration-1/:/etc/rabbitmq/
+  node2:
+    environment:
+      - RABBITMQ_ERLANG_COOKIE='secret_cookie'
+    networks:
+      - rabbitmq-cluster
+    hostname: node2
+    container_name: rabbitmq2
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4.0}
+    pull_policy: always
+    ports:
+      - "5674:5672"
+      - "5554:5552"
+      - "15674:15672"
+    tty: true
+    volumes:
+      - ./configuration-2/:/etc/rabbitmq/
+  load-balander:
+    networks:
+      - rabbitmq-cluster
+    hostname: load-balancer
+    container_name: haproxy
+    image: haproxy:3.0
+    pull_policy: always
+    ports:
+      - "5555:5555"
+      - "8100:8100"
+    tty: true
+    volumes:
+      - ./load-balancer/:/usr/local/etc/haproxy:ro
+networks:
+  rabbitmq-cluster:

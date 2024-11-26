@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static java.lang.String.format;
+import static java.util.Collections.unmodifiableList;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
@@ -22,13 +23,7 @@ import io.netty.channel.ConnectTimeoutException;
 import java.net.UnknownHostException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -40,12 +35,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
+import java.util.function.*;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.LongConsumer;
-import java.util.function.LongSupplier;
-import java.util.function.Predicate;
-import java.util.function.Supplier;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -145,6 +136,11 @@ final class Utils {
   }
 
   static ClientFactory coordinatorClientFactory(StreamEnvironment environment) {
+    return coordinatorClientFactory(environment, ConditionalClientFactory.RETRY_INTERVAL);
+  }
+
+  static ClientFactory coordinatorClientFactory(
+      StreamEnvironment environment, Duration retryInterval) {
     String messageFormat =
         "%s. %s. "
             + "This may be due to the usage of a load balancer that makes topology discovery fail. "
@@ -157,14 +153,16 @@ final class Utils {
       address = environment.addressResolver().resolve(address);
       parametersCopy.host(address.host()).port(address.port());
 
-      if (context.key() == null) {
+      if (context.targetKey() == null) {
         throw new IllegalArgumentException("A key is necessary to create the client connection");
       }
 
       try {
-        return Utils.connectToAdvertisedNodeClientFactory(
-                context.key(), context1 -> new Client(context1.parameters()))
-            .client(Utils.ClientFactoryContext.fromParameters(parametersCopy).key(context.key()));
+        ClientFactory delegate = context1 -> new Client(context1.parameters());
+        ClientFactoryContext clientFactoryContext =
+            new ClientFactoryContext(parametersCopy, context.targetKey(), context.candidates());
+        return Utils.connectToAdvertisedNodeClientFactory(delegate, retryInterval)
+            .client(clientFactoryContext);
       } catch (TimeoutStreamException e) {
         throw new TimeoutStreamException(
             format(messageFormat, e.getMessage(), e.getCause().getMessage(), e.getCause()));
@@ -182,26 +180,45 @@ final class Utils {
   }
 
   static ClientFactory connectToAdvertisedNodeClientFactory(
-      String expectedAdvertisedHostPort, ClientFactory clientFactory) {
-    return connectToAdvertisedNodeClientFactory(
-        expectedAdvertisedHostPort, clientFactory, ExactNodeRetryClientFactory.RETRY_INTERVAL);
-  }
-
-  static ClientFactory connectToAdvertisedNodeClientFactory(
-      String expectedAdvertisedHostPort, ClientFactory clientFactory, Duration retryInterval) {
-    return new ExactNodeRetryClientFactory(
+      ClientFactory clientFactory, Duration retryInterval) {
+    return new ConditionalClientFactory(
         clientFactory,
-        client -> {
+        (ctx, client) -> {
           String currentKey = client.serverAdvertisedHost() + ":" + client.serverAdvertisedPort();
-          boolean success = expectedAdvertisedHostPort.equals(currentKey);
+          boolean success = ctx.targetKey().equals(currentKey);
+          if (!success && !ctx.candidates().isEmpty()) {
+            success = ctx.candidates().stream().anyMatch(b -> currentKey.equals(keyForNode(b)));
+          }
           LOGGER.debug(
-              "Expected client {}, got {}: {}",
-              expectedAdvertisedHostPort,
+              "Expected client {}, got {}, viable candidates {}: {}",
+              ctx.targetKey(),
               currentKey,
+              ctx.candidates(),
               success ? "success" : "failure");
           return success;
         },
         retryInterval);
+  }
+
+  static String keyForNode(Client.Broker broker) {
+    return broker.getHost() + ":" + broker.getPort();
+  }
+
+  static Client.Broker brokerFromClient(Client client) {
+    return new Client.Broker(client.serverAdvertisedHost(), client.serverAdvertisedPort());
+  }
+
+  static Function<List<Client.Broker>, Client.Broker> brokerPicker() {
+    Random random = new Random();
+    return brokers -> {
+      if (brokers.isEmpty()) {
+        return null;
+      } else if (brokers.size() == 1) {
+        return brokers.get(0);
+      } else {
+        return brokers.get(random.nextInt(brokers.size()));
+      }
+    };
   }
 
   static Runnable namedRunnable(Runnable task, String format, Object... args) {
@@ -295,16 +312,18 @@ final class Utils {
     Client client(ClientFactoryContext context);
   }
 
-  static class ExactNodeRetryClientFactory implements ClientFactory {
+  static class ConditionalClientFactory implements ClientFactory {
 
     private static final Duration RETRY_INTERVAL = Duration.ofSeconds(1);
 
     private final ClientFactory delegate;
-    private final Predicate<Client> condition;
+    private final BiPredicate<ClientFactoryContext, Client> condition;
     private final Duration retryInterval;
 
-    ExactNodeRetryClientFactory(
-        ClientFactory delegate, Predicate<Client> condition, Duration retryInterval) {
+    ConditionalClientFactory(
+        ClientFactory delegate,
+        BiPredicate<ClientFactoryContext, Client> condition,
+        Duration retryInterval) {
       this.delegate = delegate;
       this.condition = condition;
       this.retryInterval = retryInterval;
@@ -314,7 +333,7 @@ final class Utils {
     public Client client(ClientFactoryContext context) {
       while (true) {
         Client client = this.delegate.client(context);
-        if (condition.test(client)) {
+        if (condition.test(context, client)) {
           return client;
         } else {
           try {
@@ -335,29 +354,30 @@ final class Utils {
 
   static class ClientFactoryContext {
 
-    private ClientParameters parameters;
-    private String key;
+    private final ClientParameters parameters;
+    private final String targetKey;
+    private final List<Client.Broker> candidates;
 
-    static ClientFactoryContext fromParameters(ClientParameters parameters) {
-      return new ClientFactoryContext().parameters(parameters);
+    ClientFactoryContext(
+        ClientParameters parameters, String targetKey, List<Client.Broker> candidates) {
+      this.parameters = parameters;
+      this.targetKey = targetKey;
+      this.candidates =
+          candidates == null
+              ? Collections.emptyList()
+              : unmodifiableList(new ArrayList<>(candidates));
     }
 
     ClientParameters parameters() {
       return parameters;
     }
 
-    ClientFactoryContext parameters(ClientParameters parameters) {
-      this.parameters = parameters;
-      return this;
+    String targetKey() {
+      return targetKey;
     }
 
-    String key() {
-      return key;
-    }
-
-    ClientFactoryContext key(String key) {
-      this.key = key;
-      return this;
+    List<Client.Broker> candidates() {
+      return candidates;
     }
   }
 
@@ -671,6 +691,42 @@ final class Utils {
       return action.get();
     } finally {
       lock.unlock();
+    }
+  }
+
+  static class BrokerWrapper {
+
+    private final Client.Broker broker;
+    private final boolean leader;
+
+    BrokerWrapper(Client.Broker broker, boolean leader) {
+      this.broker = broker;
+      this.leader = leader;
+    }
+
+    Client.Broker broker() {
+      return broker;
+    }
+
+    boolean isLeader() {
+      return this.leader;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (o == null || getClass() != o.getClass()) return false;
+      BrokerWrapper that = (BrokerWrapper) o;
+      return leader == that.leader && Objects.equals(broker, that.broker);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(broker, leader);
+    }
+
+    @Override
+    public String toString() {
+      return "BrokerWrapper{" + "broker=" + broker + ", leader=" + leader + '}';
     }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.*;
 import static java.lang.String.format;
+import static java.util.stream.Collectors.toList;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.Consumer;
@@ -35,7 +36,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableSet;
 import java.util.Objects;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -53,7 +53,7 @@ import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class ConsumersCoordinator {
+final class ConsumersCoordinator implements AutoCloseable {
 
   static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
   static final int MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER = 5;
@@ -62,7 +62,6 @@ class ConsumersCoordinator {
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ConsumersCoordinator.class);
-  private final Random random = new Random();
   private final StreamEnvironment environment;
   private final ClientFactory clientFactory;
   private final int maxConsumersByConnection;
@@ -70,6 +69,7 @@ class ConsumersCoordinator {
   private final AtomicLong managerIdSequence = new AtomicLong(0);
   private final NavigableSet<ClientSubscriptionsManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
+  private final Function<List<Broker>, Broker> brokerPicker;
 
   private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory =
@@ -83,16 +83,14 @@ class ConsumersCoordinator {
       int maxConsumersByConnection,
       Function<ClientConnectionType, String> connectionNamingStrategy,
       ClientFactory clientFactory,
-      boolean forceReplica) {
+      boolean forceReplica,
+      Function<List<Broker>, Broker> brokerPicker) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxConsumersByConnection = maxConsumersByConnection;
     this.connectionNamingStrategy = connectionNamingStrategy;
     this.forceReplica = forceReplica;
-  }
-
-  private static String keyForClientSubscription(Client.Broker broker) {
-    return broker.getHost() + ":" + broker.getPort();
+    this.brokerPicker = brokerPicker;
   }
 
   private BackOffDelayPolicy recoveryBackOffDelayPolicy() {
@@ -116,8 +114,8 @@ class ConsumersCoordinator {
     return lock(
         this.coordinatorLock,
         () -> {
-          List<Client.Broker> candidates = findBrokersForStream(stream, forceReplica);
-          Client.Broker newNode = pickBroker(candidates);
+          List<BrokerWrapper> candidates = findCandidateNodes(stream, forceReplica);
+          Broker newNode = pickBroker(this.brokerPicker, candidates);
           if (newNode == null) {
             throw new IllegalStateException("No available node to subscribe to");
           }
@@ -138,7 +136,7 @@ class ConsumersCoordinator {
                   flowStrategy);
 
           try {
-            addToManager(newNode, subscriptionTracker, offsetSpecification, true);
+            addToManager(newNode, candidates, subscriptionTracker, offsetSpecification, true);
           } catch (ConnectionStreamException e) {
             // these exceptions are not public
             throw new StreamException(e.getMessage());
@@ -162,6 +160,7 @@ class ConsumersCoordinator {
 
   private void addToManager(
       Broker node,
+      List<BrokerWrapper> candidates,
       SubscriptionTracker tracker,
       OffsetSpecification offsetSpecification,
       boolean isInitialSubscription) {
@@ -189,9 +188,9 @@ class ConsumersCoordinator {
         }
       }
       if (pickedManager == null) {
-        String name = keyForClientSubscription(node);
+        String name = keyForNode(node);
         LOGGER.debug("Creating subscription manager on {}", name);
-        pickedManager = new ClientSubscriptionsManager(node, clientParameters);
+        pickedManager = new ClientSubscriptionsManager(node, candidates, clientParameters);
         LOGGER.debug("Created subscription manager on {}, id {}", name, pickedManager.id);
       }
       try {
@@ -231,7 +230,7 @@ class ConsumersCoordinator {
   }
 
   // package protected for testing
-  List<Client.Broker> findBrokersForStream(String stream, boolean forceReplica) {
+  List<BrokerWrapper> findCandidateNodes(String stream, boolean forceReplica) {
     LOGGER.debug(
         "Candidate lookup to consumer from '{}', forcing replica? {}", stream, forceReplica);
     Map<String, Client.StreamMetadata> metadata =
@@ -254,12 +253,13 @@ class ConsumersCoordinator {
       }
     }
 
-    List<Client.Broker> replicas = streamMetadata.getReplicas();
-    if ((replicas == null || replicas.isEmpty()) && streamMetadata.getLeader() == null) {
+    Broker leader = streamMetadata.getLeader();
+    List<Broker> replicas = streamMetadata.getReplicas();
+    if ((replicas == null || replicas.isEmpty()) && leader == null) {
       throw new IllegalStateException("No node available to consume from stream " + stream);
     }
 
-    List<Client.Broker> brokers;
+    List<BrokerWrapper> brokers;
     if (replicas == null || replicas.isEmpty()) {
       if (forceReplica) {
         throw new IllegalStateException(
@@ -268,13 +268,18 @@ class ConsumersCoordinator {
                     + "consuming from leader has been deactivated for this consumer",
                 stream));
       } else {
-        brokers = Collections.singletonList(streamMetadata.getLeader());
-        LOGGER.debug(
-            "Only leader node {} for consuming from {}", streamMetadata.getLeader(), stream);
+        brokers = Collections.singletonList(new BrokerWrapper(leader, true));
+        LOGGER.debug("Only leader node {} for consuming from {}", leader, stream);
       }
     } else {
       LOGGER.debug("Replicas for consuming from {}: {}", stream, replicas);
-      brokers = new ArrayList<>(replicas);
+      brokers =
+          replicas.stream()
+              .map(b -> new BrokerWrapper(b, false))
+              .collect(Collectors.toCollection(ArrayList::new));
+      if (!forceReplica && leader != null) {
+        brokers.add(new BrokerWrapper(leader, true));
+      }
     }
 
     LOGGER.debug("Candidates to consume from {}: {}", stream, brokers);
@@ -282,7 +287,7 @@ class ConsumersCoordinator {
     return brokers;
   }
 
-  private Callable<List<Broker>> findBrokersForStream(String stream) {
+  private Callable<List<BrokerWrapper>> findCandidateNodes(String stream) {
     AtomicInteger attemptNumber = new AtomicInteger();
     return () -> {
       boolean mustUseReplica;
@@ -294,18 +299,8 @@ class ConsumersCoordinator {
       }
       LOGGER.debug(
           "Looking for broker(s) for stream {}, forcing replica {}", stream, mustUseReplica);
-      return findBrokersForStream(stream, mustUseReplica);
+      return findCandidateNodes(stream, mustUseReplica);
     };
-  }
-
-  private Client.Broker pickBroker(List<Client.Broker> brokers) {
-    if (brokers.isEmpty()) {
-      return null;
-    } else if (brokers.size() == 1) {
-      return brokers.get(0);
-    } else {
-      return brokers.get(random.nextInt(brokers.size()));
-    }
   }
 
   public void close() {
@@ -571,6 +566,7 @@ class ConsumersCoordinator {
     private final long id;
     private final Broker node;
     private final Client client;
+    // <host>:<port> (actual or advertised)
     private final String name;
     // the 2 data structures track the subscriptions, they must remain consistent
     private final Map<String, Set<SubscriptionTracker>> streamToStreamSubscriptions =
@@ -582,12 +578,14 @@ class ConsumersCoordinator {
     private volatile int trackerCount;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private ClientSubscriptionsManager(Broker node, Client.ClientParameters clientParameters) {
+    private ClientSubscriptionsManager(
+        Broker targetNode,
+        List<BrokerWrapper> candidates,
+        Client.ClientParameters clientParameters) {
       this.id = managerIdSequence.getAndIncrement();
-      this.node = node;
-      this.name = keyForClientSubscription(node);
-      LOGGER.debug("creating subscription manager on {}", name);
       this.trackerCount = 0;
+      AtomicReference<String> nameReference = new AtomicReference<>();
+
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       ChunkListener chunkListener =
           (client, subscriptionId, offset, messageCount, dataSize) -> {
@@ -639,7 +637,7 @@ class ConsumersCoordinator {
                   "Could not find stream subscription {} in manager {}, node {} for message listener",
                   subscriptionId,
                   this.id,
-                  this.name);
+                  nameReference.get());
             }
           };
       MessageIgnoredListener messageIgnoredListener =
@@ -663,7 +661,7 @@ class ConsumersCoordinator {
                   "Could not find stream subscription {} in manager {}, node {} for message ignored listener",
                   subscriptionId,
                   this.id,
-                  this.name);
+                  nameReference.get());
             }
           };
       ShutdownListener shutdownListener =
@@ -675,7 +673,7 @@ class ConsumersCoordinator {
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
                   "Unexpected shutdown notification on subscription connection {}, scheduling consumers re-assignment",
-                  name);
+                  nameReference.get());
               LOGGER.debug(
                   "Subscription connection has {} consumer(s) over {} stream(s) to recover",
                   this.subscriptionTrackers.stream().filter(Objects::nonNull).count(),
@@ -718,7 +716,7 @@ class ConsumersCoordinator {
                             }
                           },
                           "Consumers re-assignment after disconnection from %s",
-                          name));
+                          nameReference.get()));
             }
           };
       MetadataListener metadataListener =
@@ -792,18 +790,23 @@ class ConsumersCoordinator {
           };
       String connectionName = connectionNamingStrategy.apply(ClientConnectionType.CONSUMER);
       ClientFactoryContext clientFactoryContext =
-          ClientFactoryContext.fromParameters(
-                  clientParameters
-                      .clientProperty("connection_name", connectionName)
-                      .chunkListener(chunkListener)
-                      .creditNotification(creditNotification)
-                      .messageListener(messageListener)
-                      .messageIgnoredListener(messageIgnoredListener)
-                      .shutdownListener(shutdownListener)
-                      .metadataListener(metadataListener)
-                      .consumerUpdateListener(consumerUpdateListener))
-              .key(name);
+          new ClientFactoryContext(
+              clientParameters
+                  .clientProperty("connection_name", connectionName)
+                  .chunkListener(chunkListener)
+                  .creditNotification(creditNotification)
+                  .messageListener(messageListener)
+                  .messageIgnoredListener(messageIgnoredListener)
+                  .shutdownListener(shutdownListener)
+                  .metadataListener(metadataListener)
+                  .consumerUpdateListener(consumerUpdateListener),
+              keyForNode(targetNode),
+              candidates.stream().map(BrokerWrapper::broker).collect(toList()));
       this.client = clientFactory.client(clientFactoryContext);
+      this.node = brokerFromClient(this.client);
+      this.name = keyForNode(this.node);
+      nameReference.set(this.name);
+      LOGGER.debug("creating subscription manager on {}", name);
       LOGGER.debug("Created consumer connection '{}'", connectionName);
       clientInitializedInManager.set(true);
     }
@@ -828,7 +831,7 @@ class ConsumersCoordinator {
             }
           };
 
-      AsyncRetry.asyncRetry(findBrokersForStream(stream))
+      AsyncRetry.asyncRetry(findCandidateNodes(stream))
           .description("Candidate lookup to consume from '%s'", stream)
           .scheduler(environment.scheduledExecutorService())
           .retry(ex -> !(ex instanceof StreamDoesNotExistException))
@@ -836,7 +839,7 @@ class ConsumersCoordinator {
           .build()
           .thenAccept(
               candidateNodes -> {
-                List<Broker> candidates = candidateNodes;
+                List<BrokerWrapper> candidates = candidateNodes;
                 if (candidates == null) {
                   LOGGER.debug("No candidate nodes to consume from '{}'", stream);
                   consumersClosingCallback.run();
@@ -870,7 +873,8 @@ class ConsumersCoordinator {
       return newSubscriptions;
     }
 
-    private void maybeRecoverSubscription(List<Broker> candidates, SubscriptionTracker tracker) {
+    private void maybeRecoverSubscription(
+        List<BrokerWrapper> candidates, SubscriptionTracker tracker) {
       if (tracker.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
         try {
           recoverSubscription(candidates, tracker);
@@ -891,12 +895,12 @@ class ConsumersCoordinator {
       }
     }
 
-    private void recoverSubscription(List<Broker> candidates, SubscriptionTracker tracker) {
+    private void recoverSubscription(List<BrokerWrapper> candidates, SubscriptionTracker tracker) {
       boolean reassignmentCompleted = false;
       while (!reassignmentCompleted) {
         try {
           if (tracker.consumer.isOpen()) {
-            Broker broker = pickBroker(candidates);
+            Broker broker = pickBroker(brokerPicker, candidates);
             LOGGER.debug("Using {} to resume consuming from {}", broker, tracker.stream);
             synchronized (tracker.consumer) {
               if (tracker.consumer.isOpen()) {
@@ -906,7 +910,7 @@ class ConsumersCoordinator {
                 } else {
                   offsetSpecification = tracker.initialOffsetSpecification;
                 }
-                addToManager(broker, tracker, offsetSpecification, false);
+                addToManager(broker, candidates, tracker, offsetSpecification, false);
               }
             }
           } else {
@@ -927,7 +931,7 @@ class ConsumersCoordinator {
           // maybe not a good candidate, let's refresh and retry for this one
           candidates =
               Utils.callAndMaybeRetry(
-                  findBrokersForStream(tracker.stream),
+                  findCandidateNodes(tracker.stream),
                   ex -> !(ex instanceof StreamDoesNotExistException),
                   recoveryBackOffDelayPolicy(),
                   "Candidate lookup to consume from '%s' (subscription recovery)",
@@ -1294,5 +1298,21 @@ class ConsumersCoordinator {
       index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
     }
     return index;
+  }
+
+  private static List<Broker> keepReplicasIfPossible(Collection<BrokerWrapper> brokers) {
+    if (brokers.size() > 1) {
+      return brokers.stream()
+          .filter(w -> !w.isLeader())
+          .map(BrokerWrapper::broker)
+          .collect(toList());
+    } else {
+      return brokers.stream().map(BrokerWrapper::broker).collect(toList());
+    }
+  }
+
+  static Broker pickBroker(
+      Function<List<Broker>, Broker> picker, Collection<BrokerWrapper> candidates) {
+    return picker.apply(keepReplicasIfPossible(candidates));
   }
 }
