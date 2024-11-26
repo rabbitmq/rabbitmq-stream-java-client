@@ -33,10 +33,16 @@ jobs:
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
       - name: Test (dynamic-batch publishing)
         run: |
-          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
+          ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq \
             -Drabbitmq.stream.producer.dynamic.batch=true \
             -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
             -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
             -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
+      - name: Start cluster
+        run: ci/start-cluster.sh
+      - name: Test against cluster
+        run: ./mvnw test -Dtest="*ClusterTest" -Drabbitmqctl.bin=DOCKER:rabbitmq0
+      - name: Stop cluster
+        run: docker compose --file ci/cluster/docker-compose.yml down
