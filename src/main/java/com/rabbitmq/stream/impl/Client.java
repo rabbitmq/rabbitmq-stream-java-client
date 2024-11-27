@@ -442,9 +442,9 @@ public class Client implements AutoCloseable {
 
   private static Map<String, String> clientProperties(Map<String, String> fromParameters) {
     fromParameters = fromParameters == null ? Collections.emptyMap() : fromParameters;
-    Map<String, String> clientProperties = new HashMap<>(fromParameters);
+    Map<String, String> clientProperties = new LinkedHashMap<>(fromParameters);
     clientProperties.putAll(ClientProperties.DEFAULT_CLIENT_PROPERTIES);
-    return Map.copyOf(clientProperties);
+    return Collections.unmodifiableMap(clientProperties);
   }
 
   static void checkMessageFitsInFrame(int maxFrameSize, Codec.EncodedMessage encodedMessage) {

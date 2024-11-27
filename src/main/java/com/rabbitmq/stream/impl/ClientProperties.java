@@ -15,8 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import java.io.InputStream;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,12 +36,16 @@ public final class ClientProperties {
   public static final String VERSION = getVersion();
 
   public static final Map<String, String> DEFAULT_CLIENT_PROPERTIES =
-      Map.of(
-          "product", "RabbitMQ Stream",
-          "version", ClientProperties.VERSION,
-          "platform", "Java",
-          "copyright", "Copyright (c) 2020-2024 Broadcom Inc. and/or its subsidiaries.",
-          "information", "Licensed under the MPL 2.0. See https://www.rabbitmq.com/");
+      Collections.unmodifiableMap(
+          new LinkedHashMap<>() {
+            {
+              put("product", "RabbitMQ Stream");
+              put("version", ClientProperties.VERSION);
+              put("platform", "Java");
+              put("copyright", "Copyright (c) 2020-2024 Broadcom Inc. and/or its subsidiaries.");
+              put("information", "Licensed under the MPL 2.0. See https://www.rabbitmq.com/");
+            }
+          });
 
   private static String getVersion() {
     String version;

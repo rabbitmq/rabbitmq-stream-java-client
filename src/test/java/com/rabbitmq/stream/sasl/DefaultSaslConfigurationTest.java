@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -58,6 +58,6 @@ public class DefaultSaslConfigurationTest {
     assertThatThrownBy(() -> configuration.getSaslMechanism(asList("FOO", "BAR")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage(
-            "Unable to agree on a SASL mechanism. Client: PLAIN, ANONYMOUS, EXTERNAL / server FOO, BAR.");
+            "Unable to agree on a SASL mechanism. Client: PLAIN, EXTERNAL, ANONYMOUS / server FOO, BAR.");
   }
 }

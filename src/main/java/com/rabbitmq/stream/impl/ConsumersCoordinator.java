@@ -443,7 +443,7 @@ final class ConsumersCoordinator implements AutoCloseable {
         properties.putAll(subscriptionProperties);
         // we propagate the subscription name, used for monitoring
         properties.put("name", this.offsetTrackingReference);
-        this.subscriptionProperties = Map.copyOf(properties);
+        this.subscriptionProperties = Collections.unmodifiableMap(properties);
       }
     }
 

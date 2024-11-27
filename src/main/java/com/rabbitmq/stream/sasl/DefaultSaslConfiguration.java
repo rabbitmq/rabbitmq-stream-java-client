@@ -16,9 +16,9 @@ package com.rabbitmq.stream.sasl;
 
 import static java.lang.String.format;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /** {@link SaslConfiguration} that supports our built-in mechanisms. */
 public final class DefaultSaslConfiguration implements SaslConfiguration {
@@ -31,10 +31,14 @@ public final class DefaultSaslConfiguration implements SaslConfiguration {
       new DefaultSaslConfiguration(AnonymousSaslMechanism.INSTANCE.getName());
 
   private final Map<String, SaslMechanism> mechanisms =
-      Map.of(
-          PlainSaslMechanism.INSTANCE.getName(), PlainSaslMechanism.INSTANCE,
-          ExternalSaslMechanism.INSTANCE.getName(), ExternalSaslMechanism.INSTANCE,
-          AnonymousSaslMechanism.INSTANCE.getName(), AnonymousSaslMechanism.INSTANCE);
+      Collections.unmodifiableMap(
+          Stream.of(
+                  PlainSaslMechanism.INSTANCE,
+                  ExternalSaslMechanism.INSTANCE,
+                  AnonymousSaslMechanism.INSTANCE)
+              .collect(
+                  Collectors.toMap(
+                      SaslMechanism::getName, m -> m, (k1, k2) -> k1, LinkedHashMap::new)));
 
   private final String mechanism;
 

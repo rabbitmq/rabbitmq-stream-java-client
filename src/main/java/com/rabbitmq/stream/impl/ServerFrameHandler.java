@@ -775,7 +775,7 @@ class ServerFrameHandler {
       if (outstandingRequest == null) {
         LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
       } else {
-        outstandingRequest.response().set(Map.copyOf(serverProperties));
+        outstandingRequest.response().set(Collections.unmodifiableMap(serverProperties));
         outstandingRequest.countDown();
       }
       return read;
