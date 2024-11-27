@@ -506,21 +506,22 @@ public class Client implements AutoCloseable {
       } else if (saslAuthenticateResponse.isChallenge()) {
         challenge = saslAuthenticateResponse.challenge;
       } else if (saslAuthenticateResponse.isAuthenticationFailure()) {
-        String message =
-            "Unexpected response code during authentication: "
-                + formatConstant(saslAuthenticateResponse.getResponseCode());
+        StringBuilder message =
+            new StringBuilder(
+                "Unexpected response code during authentication: "
+                    + formatConstant(saslAuthenticateResponse.getResponseCode()));
         if (saslAuthenticateResponse.getResponseCode()
             == RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK) {
-          message +=
-              ". The user is not authorized to connect from a remote host. "
-                  + "If the broker is running locally, make sure the '"
-                  + this.host
-                  + "' hostname is resolved to "
-                  + "the loopback interface (localhost, 127.0.0.1, ::1). "
-                  + "See https://www.rabbitmq.com/access-control.html#loopback-users.";
+          message
+              .append(". The user is not authorized to connect from a remote host. ")
+              .append("If the broker is running locally, make sure the '")
+              .append(this.host)
+              .append("' hostname is resolved to ")
+              .append("the loopback interface (localhost, 127.0.0.1, ::1). ")
+              .append("See https://www.rabbitmq.com/access-control.html#loopback-users.");
         }
         throw new AuthenticationFailureException(
-            message, saslAuthenticateResponse.getResponseCode());
+            message.toString(), saslAuthenticateResponse.getResponseCode());
       } else {
         throw new StreamException(
             "Unexpected response code during authentication: "
