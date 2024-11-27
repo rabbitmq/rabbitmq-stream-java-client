@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,10 +16,9 @@ package com.rabbitmq.stream.sasl;
 
 import static java.lang.String.format;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /** {@link SaslConfiguration} that supports our built-in mechanisms. */
 public final class DefaultSaslConfiguration implements SaslConfiguration {
@@ -33,13 +32,14 @@ public final class DefaultSaslConfiguration implements SaslConfiguration {
 
   private final Map<String, SaslMechanism> mechanisms =
       Collections.unmodifiableMap(
-          new HashMap<String, SaslMechanism>() {
-            {
-              put(PlainSaslMechanism.INSTANCE.getName(), PlainSaslMechanism.INSTANCE);
-              put(ExternalSaslMechanism.INSTANCE.getName(), ExternalSaslMechanism.INSTANCE);
-              put(AnonymousSaslMechanism.INSTANCE.getName(), AnonymousSaslMechanism.INSTANCE);
-            }
-          });
+          Stream.of(
+                  PlainSaslMechanism.INSTANCE,
+                  ExternalSaslMechanism.INSTANCE,
+                  AnonymousSaslMechanism.INSTANCE)
+              .collect(
+                  Collectors.toMap(
+                      SaslMechanism::getName, m -> m, (k1, k2) -> k1, LinkedHashMap::new)));
+
   private final String mechanism;
 
   public DefaultSaslConfiguration() {

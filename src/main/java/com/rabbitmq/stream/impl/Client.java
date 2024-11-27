@@ -442,7 +442,7 @@ public class Client implements AutoCloseable {
 
   private static Map<String, String> clientProperties(Map<String, String> fromParameters) {
     fromParameters = fromParameters == null ? Collections.emptyMap() : fromParameters;
-    Map<String, String> clientProperties = new HashMap<>(fromParameters);
+    Map<String, String> clientProperties = new LinkedHashMap<>(fromParameters);
     clientProperties.putAll(ClientProperties.DEFAULT_CLIENT_PROPERTIES);
     return Collections.unmodifiableMap(clientProperties);
   }
@@ -506,21 +506,22 @@ public class Client implements AutoCloseable {
       } else if (saslAuthenticateResponse.isChallenge()) {
         challenge = saslAuthenticateResponse.challenge;
       } else if (saslAuthenticateResponse.isAuthenticationFailure()) {
-        String message =
-            "Unexpected response code during authentication: "
-                + formatConstant(saslAuthenticateResponse.getResponseCode());
+        StringBuilder message =
+            new StringBuilder(
+                "Unexpected response code during authentication: "
+                    + formatConstant(saslAuthenticateResponse.getResponseCode()));
         if (saslAuthenticateResponse.getResponseCode()
             == RESPONSE_CODE_AUTHENTICATION_FAILURE_LOOPBACK) {
-          message +=
-              ". The user is not authorized to connect from a remote host. "
-                  + "If the broker is running locally, make sure the '"
-                  + this.host
-                  + "' hostname is resolved to "
-                  + "the loopback interface (localhost, 127.0.0.1, ::1). "
-                  + "See https://www.rabbitmq.com/access-control.html#loopback-users.";
+          message
+              .append(". The user is not authorized to connect from a remote host. ")
+              .append("If the broker is running locally, make sure the '")
+              .append(this.host)
+              .append("' hostname is resolved to ")
+              .append("the loopback interface (localhost, 127.0.0.1, ::1). ")
+              .append("See https://www.rabbitmq.com/access-control.html#loopback-users.");
         }
         throw new AuthenticationFailureException(
-            message, saslAuthenticateResponse.getResponseCode());
+            message.toString(), saslAuthenticateResponse.getResponseCode());
       } else {
         throw new StreamException(
             "Unexpected response code during authentication: "
@@ -2223,7 +2224,7 @@ public class Client implements AutoCloseable {
 
     StreamStatsResponse(short responseCode, Map<String, Long> info) {
       super(responseCode);
-      this.info = Collections.unmodifiableMap(new HashMap<>(info));
+      this.info = Map.copyOf(info);
     }
 
     public Map<String, Long> getInfo() {
@@ -2248,7 +2249,7 @@ public class Client implements AutoCloseable {
       this.replicas =
           (replicas == null || replicas.isEmpty())
               ? Collections.emptyList()
-              : Collections.unmodifiableList(replicas);
+              : List.copyOf(replicas);
     }
 
     public short getResponseCode() {
@@ -2263,8 +2264,9 @@ public class Client implements AutoCloseable {
       return leader;
     }
 
+    @SuppressFBWarnings("EI_EXPOSE_REP")
     public List<Broker> getReplicas() {
-      return this.replicas.isEmpty() ? Collections.emptyList() : new ArrayList<>(this.replicas);
+      return this.replicas;
     }
 
     boolean hasReplicas() {
@@ -2561,7 +2563,7 @@ public class Client implements AutoCloseable {
     }
 
     Map<String, String> clientProperties() {
-      return Collections.unmodifiableMap(this.clientProperties);
+      return Map.copyOf(this.clientProperties);
     }
 
     Codec codec() {

@@ -1,6 +1,6 @@
 == Building the Client
 
-You need JDK 1.8 or more installed.
+You need JDK 11 or more installed.
 
 To build the JAR file:
 

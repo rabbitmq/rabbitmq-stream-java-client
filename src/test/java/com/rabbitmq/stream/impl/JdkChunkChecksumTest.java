@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -35,10 +35,10 @@ public class JdkChunkChecksumTest {
 
   static Charset UTF8 = StandardCharsets.UTF_8;
   static Map<String, Supplier<Checksum>> CHECKSUMS =
-      new HashMap<String, Supplier<Checksum>>() {
+      new HashMap<>() {
         {
-          put("crc32", () -> new CRC32());
-          put("adler32", () -> new Adler32());
+          put("crc32", CRC32::new);
+          put("adler32", Adler32::new);
         }
       };
 

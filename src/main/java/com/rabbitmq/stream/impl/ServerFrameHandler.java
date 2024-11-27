@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -771,10 +771,7 @@ class ServerFrameHandler {
       }
 
       OutstandingRequest<Map<String, String>> outstandingRequest =
-          remove(
-              client.outstandingRequests,
-              correlationId,
-              new ParameterizedTypeReference<Map<String, String>>() {});
+          remove(client.outstandingRequests, correlationId, new ParameterizedTypeReference<>() {});
       if (outstandingRequest == null) {
         LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
       } else {

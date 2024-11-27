@@ -233,7 +233,7 @@ final class ProducersCoordinator implements AutoCloseable {
 
     LOGGER.debug("Candidates to publish to {}: {}", stream, candidates);
 
-    return Collections.unmodifiableList(candidates);
+    return List.copyOf(candidates);
   }
 
   static Broker pickBroker(List<BrokerWrapper> candidates) {

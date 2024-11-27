@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -15,10 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import java.io.InputStream;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +37,7 @@ public final class ClientProperties {
 
   public static final Map<String, String> DEFAULT_CLIENT_PROPERTIES =
       Collections.unmodifiableMap(
-          new HashMap<String, String>() {
+          new LinkedHashMap<>() {
             {
               put("product", "RabbitMQ Stream");
               put("version", ClientProperties.VERSION);
