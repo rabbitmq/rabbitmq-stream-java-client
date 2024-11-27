@@ -102,7 +102,10 @@ class StreamEnvironment implements Environment {
       Function<ClientConnectionType, String> connectionNamingStrategy,
       Function<Client.ClientParameters, Client> clientFactory,
       ObservationCollector<?> observationCollector,
-      boolean forceReplicaForConsumers) {
+      boolean forceReplicaForConsumers,
+      boolean forceLeaderForProducers,
+      Duration producerNodeRetryDelay,
+      Duration consumerNodeRetryDelay) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
     this.byteBufAllocator = byteBufAllocator;
@@ -212,13 +215,14 @@ class StreamEnvironment implements Environment {
             maxProducersByConnection,
             maxTrackingConsumersByConnection,
             connectionNamingStrategy,
-            Utils.coordinatorClientFactory(this));
+            Utils.coordinatorClientFactory(this, producerNodeRetryDelay),
+            forceLeaderForProducers);
     this.consumersCoordinator =
         new ConsumersCoordinator(
             this,
             maxConsumersByConnection,
             connectionNamingStrategy,
-            Utils.coordinatorClientFactory(this),
+            Utils.coordinatorClientFactory(this, consumerNodeRetryDelay),
             forceReplicaForConsumers,
             Utils.brokerPicker());
     this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);

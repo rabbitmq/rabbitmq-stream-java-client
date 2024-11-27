@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.ProducersCoordinator.pickSlot;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.answer;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
+import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -79,6 +80,10 @@ public class ProducersCoordinatorTest {
     return new Client.Broker("leader", 5552);
   }
 
+  static Utils.BrokerWrapper leaderWrapper() {
+    return new Utils.BrokerWrapper(leader(), true);
+  }
+
   static Client.Broker leader1() {
     return new Client.Broker("leader-1", 5552);
   }
@@ -89,6 +94,10 @@ public class ProducersCoordinatorTest {
 
   static List<Client.Broker> replicas() {
     return Arrays.asList(new Client.Broker("replica1", 5552), new Client.Broker("replica2", 5552));
+  }
+
+  static List<Utils.BrokerWrapper> replicaWrappers() {
+    return replicas().stream().map(b -> new Utils.BrokerWrapper(b, false)).collect(toList());
   }
 
   @BeforeEach
@@ -125,7 +134,8 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
-            clientFactory);
+            clientFactory,
+            true);
     when(client.isOpen()).thenReturn(true);
     when(client.deletePublisher(anyByte())).thenReturn(new Response(Constants.RESPONSE_CODE_OK));
   }
@@ -194,7 +204,8 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
-            cf);
+            cf,
+            true);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
 
@@ -221,7 +232,8 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT,
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
-            cf);
+            cf,
+            true);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
 
@@ -563,7 +575,8 @@ public class ProducersCoordinatorTest {
             maxProducersByClient,
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
-            clientFactory);
+            clientFactory,
+            true);
 
     class ProducerInfo {
       StreamProducer producer;
@@ -719,6 +732,28 @@ public class ProducersCoordinatorTest {
     // 0 is already taken, so we should get index 1 when we overflow
     assertThat(pickSlot(map, "256", sequence)).isEqualTo(1);
     assertThat(pickSlot(map, "257", sequence)).isEqualTo(5);
+  }
+
+  @Test
+  void findCandidateNodesShouldReturnOnlyLeaderWhenForceLeaderIsTrue() {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    assertThat(coordinator.findCandidateNodes("stream", true)).containsOnly(leaderWrapper());
+  }
+
+  @Test
+  void findCandidateNodesShouldReturnLeaderAndReplicasWhenForceLeaderIsFalse() {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    assertThat(coordinator.findCandidateNodes("stream", false))
+        .hasSize(3)
+        .contains(leaderWrapper())
+        .containsAll(replicaWrappers());
+  }
+
+  @Test
+  void findCandidateNodesShouldThrowIfThereIsNoLeader() {
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
+    assertThatThrownBy(() -> coordinator.findCandidateNodes("stream", true))
+        .isInstanceOf(IllegalStateException.class);
   }
 
   private static ScheduledExecutorService createScheduledExecutorService() {

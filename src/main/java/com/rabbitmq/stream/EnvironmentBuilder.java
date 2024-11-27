@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -354,7 +354,7 @@ public interface EnvironmentBuilder {
    * <p><b>Do not set this flag to <code>true</code> when streams have only 1 member (the leader),
    * e.g. for local development.</b>
    *
-   * <p>Default is false.
+   * <p>Default is <code>false</code>.
    *
    * @param forceReplica whether to force the connection to a replica or not
    * @return this builder instance
@@ -363,6 +363,37 @@ public interface EnvironmentBuilder {
    * @since 0.13.0
    */
   EnvironmentBuilder forceReplicaForConsumers(boolean forceReplica);
+
+  /**
+   * Flag to force the connection to the stream leader for producers.
+   *
+   * <p>The library prefers to connect to a node that hosts a stream leader for producers (default
+   * behavior).
+   *
+   * <p>When using a load balancer, the library does not know in advance the node it connects to. It
+   * may have to retry to connect to the appropriate node.
+   *
+   * <p>It will retry until it connects to the appropriate node (flag set to <code>true</code>, the
+   * default). This provides the best data locality, but may require several attempts, delaying the
+   * creation or the recovery of producers. This usually suits high-throughput use cases.
+   *
+   * <p>The library will accept the connection to a stream replica if the flag is set to <code>false
+   * </code>. This will speed up the creation/recovery of producers, but at the cost of network hops
+   * between cluster nodes when publishing messages because only a stream leader accepts writes.
+   * This is usually acceptable for low-throughput use cases.
+   *
+   * <p>Changing the default value should only benefit systems where a load balancer sits between
+   * the client applications and the cluster nodes.
+   *
+   * <p>Default is <code>true</code>.
+   *
+   * @param forceLeader whether to force the connection to the leader or not
+   * @return this builder instance
+   * @see #recoveryBackOffDelayPolicy(BackOffDelayPolicy)
+   * @see #topologyUpdateBackOffDelayPolicy(BackOffDelayPolicy)
+   * @since 0.21.0
+   */
+  EnvironmentBuilder forceLeaderForProducers(boolean forceLeader);
 
   /**
    * Create the {@link Environment} instance.

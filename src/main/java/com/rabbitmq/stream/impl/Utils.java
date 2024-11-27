@@ -135,10 +135,6 @@ final class Utils {
     return (short) (code | 0B1000_0000_0000_0000);
   }
 
-  static ClientFactory coordinatorClientFactory(StreamEnvironment environment) {
-    return coordinatorClientFactory(environment, ConditionalClientFactory.RETRY_INTERVAL);
-  }
-
   static ClientFactory coordinatorClientFactory(
       StreamEnvironment environment, Duration retryInterval) {
     String messageFormat =

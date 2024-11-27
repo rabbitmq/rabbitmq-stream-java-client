@@ -2245,7 +2245,10 @@ public class Client implements AutoCloseable {
       this.stream = stream;
       this.responseCode = responseCode;
       this.leader = leader;
-      this.replicas = replicas == null ? null : Collections.unmodifiableList(replicas);
+      this.replicas =
+          (replicas == null || replicas.isEmpty())
+              ? Collections.emptyList()
+              : Collections.unmodifiableList(replicas);
     }
 
     public short getResponseCode() {
@@ -2261,7 +2264,11 @@ public class Client implements AutoCloseable {
     }
 
     public List<Broker> getReplicas() {
-      return replicas;
+      return this.replicas.isEmpty() ? Collections.emptyList() : new ArrayList<>(this.replicas);
+    }
+
+    boolean hasReplicas() {
+      return !this.replicas.isEmpty();
     }
 
     public String getStream() {

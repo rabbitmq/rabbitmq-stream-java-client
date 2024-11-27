@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -98,7 +98,10 @@ public class StreamEnvironmentUnitTest {
             type -> "locator-connection",
             cf,
             ObservationCollector.NO_OP,
-            false);
+            false,
+            true,
+            Duration.ofMillis(100),
+            Duration.ofMillis(100));
   }
 
   @AfterEach
@@ -163,7 +166,10 @@ public class StreamEnvironmentUnitTest {
             type -> "locator-connection",
             cf,
             ObservationCollector.NO_OP,
-            false);
+            false,
+            true,
+            Duration.ofMillis(100),
+            Duration.ofMillis(100));
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }
 
@@ -191,7 +197,10 @@ public class StreamEnvironmentUnitTest {
             type -> "locator-connection",
             cf,
             ObservationCollector.NO_OP,
-            false);
+            false,
+            true,
+            Duration.ofMillis(100),
+            Duration.ofMillis(100));
     verify(cf, times(expectedConnectionCreation)).apply(any(Client.ClientParameters.class));
   }
 
