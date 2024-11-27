@@ -29,62 +29,58 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class Host {
+public class Cli {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(Host.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(Cli.class);
 
   private static final String DOCKER_PREFIX = "DOCKER:";
 
   private static final Gson GSON = new Gson();
 
-  public static String capture(InputStream is) throws IOException {
-    BufferedReader br = new BufferedReader(new InputStreamReader(is));
-    String line;
-    StringBuilder buff = new StringBuilder();
-    while ((line = br.readLine()) != null) {
-      buff.append(line).append("\n");
-    }
-    return buff.toString();
-  }
+  private static final Map<String, String> DOCKER_NODES_TO_CONTAINERS =
+      Map.of(
+          "rabbit@node0", "rabbitmq0",
+          "rabbit@node1", "rabbitmq1",
+          "rabbit@node2", "rabbitmq2");
 
-  private static Process executeCommand(String command) {
+  private static ProcessState executeCommand(String command) {
     return executeCommand(command, false);
   }
 
-  private static Process executeCommand(String command, boolean ignoreError) {
-    try {
-      Process pr = executeCommandProcess(command);
+  private static ProcessState executeCommand(String command, boolean ignoreError) {
+    Process pr = executeCommandProcess(command);
+    InputStreamPumpState inputState = new InputStreamPumpState(pr.getInputStream());
+    InputStreamPumpState errorState = new InputStreamPumpState(pr.getErrorStream());
 
-      int ev = waitForExitValue(pr);
-      if (ev != 0 && !ignoreError) {
-        String stdout = capture(pr.getInputStream());
-        String stderr = capture(pr.getErrorStream());
-        throw new IOException(
-            "unexpected command exit value: "
-                + ev
-                + "\ncommand: "
-                + command
-                + "\n"
-                + "\nstdout:\n"
-                + stdout
-                + "\nstderr:\n"
-                + stderr
-                + "\n");
-      }
-      return pr;
-    } catch (IOException e) {
-      throw new RuntimeException(e);
+    int ev = waitForExitValue(pr, inputState, errorState);
+    inputState.pump();
+    errorState.pump();
+    if (ev != 0 && !ignoreError) {
+      throw new RuntimeException(
+          "unexpected command exit value: "
+              + ev
+              + "\ncommand: "
+              + command
+              + "\n"
+              + "\nstdout:\n"
+              + inputState.buffer.toString()
+              + "\nstderr:\n"
+              + errorState.buffer.toString()
+              + "\n");
     }
+    return new ProcessState(inputState);
   }
 
-  public static String hostname() throws IOException {
-    Process process = executeCommand("hostname");
-    return capture(process.getInputStream()).trim();
+  public static String hostname() {
+    return executeCommand("hostname").output();
   }
 
-  private static int waitForExitValue(Process pr) {
+  private static int waitForExitValue(
+      Process pr, InputStreamPumpState inputState, InputStreamPumpState errorState) {
     while (true) {
       try {
+        inputState.pump();
+        errorState.pump();
         pr.waitFor();
         break;
       } catch (InterruptedException ignored) {
@@ -93,7 +89,7 @@ public class Host {
     return pr.exitValue();
   }
 
-  private static Process executeCommandProcess(String command) throws IOException {
+  private static Process executeCommandProcess(String command) {
     String[] finalCommand;
     if (System.getProperty("os.name").toLowerCase().contains("windows")) {
       finalCommand = new String[4];
@@ -107,70 +103,59 @@ public class Host {
       finalCommand[1] = "-c";
       finalCommand[2] = command;
     }
-    return Runtime.getRuntime().exec(finalCommand);
+    try {
+      return Runtime.getRuntime().exec(finalCommand);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 
-  public static Process rabbitmqctl(String command) throws IOException {
+  public static ProcessState rabbitmqctl(String command) {
     return executeCommand(rabbitmqctlCommand() + " " + command);
   }
 
-  static Process rabbitmqStreams(String command) {
+  static ProcessState rabbitmqStreams(String command) {
     return executeCommand(rabbitmqStreamsCommand() + " " + command);
   }
 
-  public static Process rabbitmqctlIgnoreError(String command) {
+  public static ProcessState rabbitmqctlIgnoreError(String command) {
     return executeCommand(rabbitmqctlCommand() + " " + command, true);
   }
 
-  public static Process killConnection(String connectionName) {
-    try {
-      List<ConnectionInfo> cs = listConnections();
-      if (cs.stream().filter(c -> connectionName.equals(c.clientProvidedName())).count() != 1) {
-        throw new IllegalArgumentException(
-            format(
-                "Could not find 1 connection '%s' in stream connections: %s",
-                connectionName,
-                cs.stream()
-                    .map(ConnectionInfo::clientProvidedName)
-                    .collect(Collectors.joining(", "))));
-      }
-      return rabbitmqctl("eval 'rabbit_stream:kill_connection(\"" + connectionName + "\").'");
-    } catch (IOException e) {
-      throw new RuntimeException(e);
+  public static ProcessState killConnection(String connectionName) {
+    List<ConnectionInfo> cs = listConnections();
+    if (cs.stream().filter(c -> connectionName.equals(c.clientProvidedName())).count() != 1) {
+      throw new IllegalArgumentException(
+          format(
+              "Could not find 1 connection '%s' in stream connections: %s",
+              connectionName,
+              cs.stream()
+                  .map(ConnectionInfo::clientProvidedName)
+                  .collect(Collectors.joining(", "))));
     }
+    return rabbitmqctl("eval 'rabbit_stream:kill_connection(\"" + connectionName + "\").'");
   }
 
   public static List<ConnectionInfo> listConnections() {
-    try {
-      Process process =
-          rabbitmqctl("list_stream_connections -q --formatter table conn_name,client_properties");
-      List<ConnectionInfo> connectionInfoList = Collections.emptyList();
-      if (process.exitValue() != 0) {
-        LOGGER.warn(
-            "Error while trying to list stream connections. Standard output: {}, error output: {}",
-            capture(process.getInputStream()),
-            capture(process.getErrorStream()));
-        return connectionInfoList;
-      }
-      String content = capture(process.getInputStream());
-      String[] lines = content.split(System.getProperty("line.separator"));
-      if (lines.length > 1) {
-        connectionInfoList = new ArrayList<>(lines.length - 1);
-        for (int i = 1; i < lines.length; i++) {
-          String line = lines[i];
-          String[] fields = line.split("\t");
-          String connectionName = fields[0];
-          Map<String, String> clientProperties = Collections.emptyMap();
-          if (fields.length > 1 && fields[1].length() > 1) {
-            clientProperties = buildClientProperties(fields);
-          }
-          connectionInfoList.add(new ConnectionInfo(connectionName, clientProperties));
+    ProcessState process =
+        rabbitmqctl("list_stream_connections -q --formatter table conn_name,client_properties");
+    List<ConnectionInfo> connectionInfoList = Collections.emptyList();
+    String content = process.output();
+    String[] lines = content.split(System.lineSeparator());
+    if (lines.length > 1) {
+      connectionInfoList = new ArrayList<>(lines.length - 1);
+      for (int i = 1; i < lines.length; i++) {
+        String line = lines[i];
+        String[] fields = line.split("\t");
+        String connectionName = fields[0];
+        Map<String, String> clientProperties = Collections.emptyMap();
+        if (fields.length > 1 && fields[1].length() > 1) {
+          clientProperties = buildClientProperties(fields);
         }
+        connectionInfoList.add(new ConnectionInfo(connectionName, clientProperties));
       }
-      return connectionInfoList;
-    } catch (IOException e) {
-      throw new RuntimeException(e);
     }
+    return connectionInfoList;
   }
 
   private static Map<String, String> buildClientProperties(String[] fields) {
@@ -201,32 +186,26 @@ public class Host {
     rabbitmqStreams(" restart_stream " + stream);
   }
 
-  public static Process killStreamLeaderProcess(String stream) {
-    try {
-      return rabbitmqctl(
-          "eval 'case rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\""
-              + stream
-              + "\">>) of {ok, Pid} -> exit(Pid, kill); Pid -> exit(Pid, kill) end.'");
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+  public static void killStreamLeaderProcess(String stream) {
+    rabbitmqctl(
+        "eval 'case rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\""
+            + stream
+            + "\">>) of {ok, Pid} -> exit(Pid, kill); Pid -> exit(Pid, kill) end.'");
   }
 
-  public static void addUser(String username, String password) throws IOException {
+  public static void addUser(String username, String password) {
     rabbitmqctl(format("add_user %s %s", username, password));
   }
 
-  public static void setPermissions(String username, List<String> permissions) throws IOException {
+  public static void setPermissions(String username, List<String> permissions) {
     setPermissions(username, "/", permissions);
   }
 
-  public static void setPermissions(String username, String vhost, String permission)
-      throws IOException {
+  public static void setPermissions(String username, String vhost, String permission) {
     setPermissions(username, vhost, asList(permission, permission, permission));
   }
 
-  public static void setPermissions(String username, String vhost, List<String> permissions)
-      throws IOException {
+  public static void setPermissions(String username, String vhost, List<String> permissions) {
     if (permissions.size() != 3) {
       throw new IllegalArgumentException();
     }
@@ -236,23 +215,23 @@ public class Host {
             vhost, username, permissions.get(0), permissions.get(1), permissions.get(2)));
   }
 
-  public static void changePassword(String username, String newPassword) throws IOException {
+  public static void changePassword(String username, String newPassword) {
     rabbitmqctl(format("change_password %s %s", username, newPassword));
   }
 
-  public static void deleteUser(String username) throws IOException {
+  public static void deleteUser(String username) {
     rabbitmqctl(format("delete_user %s", username));
   }
 
-  public static void addVhost(String vhost) throws IOException {
+  public static void addVhost(String vhost) {
     rabbitmqctl("add_vhost " + vhost);
   }
 
-  public static void deleteVhost(String vhost) throws Exception {
+  public static void deleteVhost(String vhost) {
     rabbitmqctl("delete_vhost " + vhost);
   }
 
-  public static void setEnv(String parameter, String value) throws IOException {
+  public static void setEnv(String parameter, String value) {
     rabbitmqctl(format("eval 'application:set_env(rabbitmq_stream, %s, %s).'", parameter, value));
   }
 
@@ -334,6 +313,68 @@ public class Host {
     return rabbitmqCtl.startsWith(DOCKER_PREFIX);
   }
 
+  public static List<String> nodes() {
+    List<String> clusterNodes = new ArrayList<>();
+    clusterNodes.add(rabbitmqctl("eval 'node().'").output().trim());
+    List<String> nodes =
+        Arrays.stream(
+                rabbitmqctl("eval 'nodes().'")
+                    .output()
+                    .replace("[", "")
+                    .replace("]", "")
+                    .split(","))
+            .map(String::trim)
+            .collect(Collectors.toList());
+    clusterNodes.addAll(nodes);
+    return List.copyOf(clusterNodes);
+  }
+
+  public static void restartNode(String node) {
+    String container = nodeToDockerContainer(node);
+    String dockerCommand = "docker exec " + container + " ";
+    String rabbitmqUpgradeCommand = dockerCommand + "rabbitmq-upgrade ";
+    executeCommand(rabbitmqUpgradeCommand + "await_online_quorum_plus_one -t 300");
+    executeCommand(rabbitmqUpgradeCommand + "drain");
+    executeCommand("docker stop " + container);
+    executeCommand("docker start " + container);
+    String otherContainer =
+        DOCKER_NODES_TO_CONTAINERS.values().stream()
+            .filter(c -> !c.endsWith(container))
+            .findAny()
+            .get();
+    executeCommand(
+        "docker exec "
+            + otherContainer
+            + " rabbitmqctl await_online_nodes "
+            + DOCKER_NODES_TO_CONTAINERS.size());
+    executeCommand(dockerCommand + "rabbitmqctl status");
+  }
+
+  public static void rebalance() {
+    rabbitmqQueues("rebalance all");
+  }
+
+  static ProcessState rabbitmqQueues(String command) {
+    return executeCommand(rabbitmqQueuesCommand() + " " + command);
+  }
+
+  private static String rabbitmqQueuesCommand() {
+    String rabbitmqctl = rabbitmqctlCommand();
+    int lastIndex = rabbitmqctl.lastIndexOf("rabbitmqctl");
+    if (lastIndex == -1) {
+      throw new IllegalArgumentException("Not a valid rabbitqmctl command: " + rabbitmqctl);
+    }
+    return rabbitmqctl.substring(0, lastIndex) + "rabbitmq-queues";
+  }
+
+  private static String nodeToDockerContainer(String node) {
+    String containerId = DOCKER_NODES_TO_CONTAINERS.get(node);
+    if (containerId == null) {
+      throw new IllegalArgumentException("No container for node " + node);
+    }
+    return containerId;
+  }
+
   private static final class CallableAutoCloseable implements AutoCloseable {
 
     private final Callable<Void> end;
@@ -376,6 +417,42 @@ public class Host {
           + ", clientProperties="
           + clientProperties
           + '}';
+    }
+  }
+
+  public static class ProcessState {
+
+    private final InputStreamPumpState inputState;
+
+    ProcessState(InputStreamPumpState inputState) {
+      this.inputState = inputState;
+    }
+
+    public String output() {
+      return inputState.buffer.toString();
+    }
+  }
+
+  private static class InputStreamPumpState {
+
+    private final BufferedReader reader;
+    private final StringBuilder buffer;
+
+    private InputStreamPumpState(InputStream in) {
+      this.reader = new BufferedReader(new InputStreamReader(in));
+      this.buffer = new StringBuilder();
+    }
+
+    void pump() {
+      String line;
+      while (true) {
+        try {
+          if ((line = reader.readLine()) == null) break;
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+        buffer.append(line).append("\n");
+      }
     }
   }
 }

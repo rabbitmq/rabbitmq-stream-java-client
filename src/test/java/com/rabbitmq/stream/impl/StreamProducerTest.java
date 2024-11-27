@@ -280,7 +280,7 @@ public class StreamProducerTest {
 
     Thread.sleep(1000L);
 
-    Host.killConnection("rabbitmq-stream-producer-0");
+    Cli.killConnection("rabbitmq-stream-producer-0");
 
     waitAtMost(() -> ((StreamProducer) producer).status() == Status.NOT_AVAILABLE);
     canPublish.set(false);

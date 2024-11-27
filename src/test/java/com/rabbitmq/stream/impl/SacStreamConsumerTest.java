@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2022-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -241,8 +241,8 @@ public class SacStreamConsumerTest {
   public static Stream<java.util.function.Consumer<Consumer>>
       activeConsumerShouldGetUpdateNotificationAfterDisruption() {
     return Stream.of(
-        namedConsumer(consumer -> Host.killConnection(connectionName(consumer)), "kill connection"),
-        namedConsumer(consumer -> Host.restartStream(stream(consumer)), "restart stream"),
+        namedConsumer(consumer -> Cli.killConnection(connectionName(consumer)), "kill connection"),
+        namedConsumer(consumer -> Cli.restartStream(stream(consumer)), "restart stream"),
         namedConsumer(Consumer::close, "close consumer"));
   }
 

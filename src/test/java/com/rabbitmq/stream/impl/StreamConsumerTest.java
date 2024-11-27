@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -68,20 +68,19 @@ public class StreamConsumerTest {
     return Stream.of(
         TestUtils.namedTask(
             o -> {
-              Host.killStreamLeaderProcess(o.toString());
+              Cli.killStreamLeaderProcess(o.toString());
               Thread.sleep(TOPOLOGY_DELAY.toMillis());
             },
             "stream leader process is killed"),
         TestUtils.namedTask(
-            o -> Host.killConnection("rabbitmq-stream-consumer-0"),
-            "consumer connection is killed"),
+            o -> Cli.killConnection("rabbitmq-stream-consumer-0"), "consumer connection is killed"),
         TestUtils.namedTask(
             o -> {
               try {
-                Host.rabbitmqctl("stop_app");
+                Cli.rabbitmqctl("stop_app");
                 Thread.sleep(1000L);
               } finally {
-                Host.rabbitmqctl("start_app");
+                Cli.rabbitmqctl("start_app");
               }
               Thread.sleep(recoveryInitialDelay.toMillis() * 2);
             },
@@ -90,7 +89,7 @@ public class StreamConsumerTest {
 
   @BeforeEach
   void init() {
-    if (Host.isOnDocker()) {
+    if (Cli.isOnDocker()) {
       // with a containerized broker in bridged network mode, the client should not
       // reconnect too soon, as it would see the port still open but would not get any response.
       // This then provokes some cascading timeouts in the test.
@@ -510,7 +509,7 @@ public class StreamConsumerTest {
         .build();
 
     // killing the consumer connection to trigger an internal restart
-    Host.killConnection("rabbitmq-stream-consumer-0");
+    Cli.killConnection("rabbitmq-stream-consumer-0");
 
     // no messages should have been received
     assertThat(consumedCount.get()).isZero();
@@ -813,7 +812,7 @@ public class StreamConsumerTest {
     waitAtMost(5, () -> receivedMessages.get() == messageCount);
     assertThat(offsetTracking.get()).isGreaterThanOrEqualTo(messageCount - 1);
 
-    Host.killConnection("rabbitmq-stream-consumer-0");
+    Cli.killConnection("rabbitmq-stream-consumer-0");
     waitAtMost(
         recoveryInitialDelay.multipliedBy(2), () -> subscriptionListenerCallCount.get() == 2);
 
@@ -858,7 +857,7 @@ public class StreamConsumerTest {
         };
     publish.accept(storeEvery * 2 - 100);
     waitAtMost(5, () -> receivedMessages.get() == publishedMessages.get());
-    Host.killConnection("rabbitmq-stream-consumer-0");
+    Cli.killConnection("rabbitmq-stream-consumer-0");
 
     publish.accept(storeEvery * 2);
     waitAtMost(
@@ -924,7 +923,7 @@ public class StreamConsumerTest {
         };
     publish.accept(storeEvery * 2 - 100);
     waitAtMost(5, () -> receivedMessages.get() == publishedMessages.get());
-    Host.killConnection("rabbitmq-stream-consumer-0");
+    Cli.killConnection("rabbitmq-stream-consumer-0");
 
     publish.accept(storeEvery * 2);
     producer.send(

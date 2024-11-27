@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -23,7 +23,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.ByteCapacity;
-import com.rabbitmq.stream.Host;
+import com.rabbitmq.stream.Cli;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.TestUtils.CallableConsumer;
 import com.rabbitmq.stream.impl.TestUtils.RunnableWithException;
@@ -85,11 +85,11 @@ public class RetentionClientTest {
                         + "'{\"max-length-bytes\":%d,\"stream-max-segment-size-bytes\":%d }' "
                         + "--priority 1 --apply-to queues",
                     stream, maxLengthBytes, maxSegmentSizeBytes);
-            Host.rabbitmqctl(policyCommand);
+            Cli.rabbitmqctl(policyCommand);
           },
           firstMessageId -> firstMessageId > 0,
           firstMessageId -> "First message ID should be positive but is " + firstMessageId,
-          () -> Host.rabbitmqctl("clear_policy stream-retention-test")),
+          () -> Cli.rabbitmqctl("clear_policy stream-retention-test")),
       new RetentionTestConfig(
           "with size helper to specify bytes",
           context -> {

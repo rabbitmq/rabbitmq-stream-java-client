@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2022-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -27,8 +27,8 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.Cli;
 import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
@@ -430,7 +430,7 @@ public class SacClientTest {
     Map<String, Boolean> consumerStates = new ConcurrentHashMap<>();
     List<String> consumerNames = IntStream.range(0, 5).mapToObj(i -> "foo-" + i).collect(toList());
 
-    int connectionCount = Host.listConnections().size();
+    int connectionCount = Cli.listConnections().size();
 
     for (String consumerName : consumerNames) {
       Client c0 =
@@ -467,10 +467,10 @@ public class SacClientTest {
     }
 
     int cCount = connectionCount;
-    waitAtMost(() -> Host.listConnections().size() == cCount);
+    waitAtMost(() -> Cli.listConnections().size() == cCount);
 
     for (String consumerName : consumerNames) {
-      Host.killConnection(consumerName + "-connection-0");
+      Cli.killConnection(consumerName + "-connection-0");
       waitAtMost(
           () ->
               consumerStates.containsKey(consumerName + "-connection-1")
@@ -605,7 +605,7 @@ public class SacClientTest {
   void connectionShouldBeClosedIfConsumerUpdateTakesTooLong() throws Exception {
     Duration timeout = Duration.ofSeconds(1);
     try {
-      Host.setEnv("request_timeout", String.valueOf(timeout.getSeconds()));
+      Cli.setEnv("request_timeout", String.valueOf(timeout.getSeconds()));
       CountDownLatch shutdownLatch = new CountDownLatch(1);
       Client client =
           cf.get(
@@ -629,7 +629,7 @@ public class SacClientTest {
 
       assertThat(latchAssert(shutdownLatch)).completes(timeout.multipliedBy(5));
     } finally {
-      Host.setEnv("request_timeout", "60000");
+      Cli.setEnv("request_timeout", "60000");
     }
   }
 }

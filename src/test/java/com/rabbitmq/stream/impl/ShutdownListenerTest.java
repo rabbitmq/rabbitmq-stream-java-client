@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,8 +16,8 @@ package com.rabbitmq.stream.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.Cli;
 import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Host;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.util.UUID;
@@ -87,7 +87,7 @@ public class ShutdownListenerTest {
                       shutdownLatch.countDown();
                     }));
 
-    Host.killConnection(connectionName);
+    Cli.killConnection(connectionName);
     assertThat(shutdownLatch.await(10, TimeUnit.SECONDS)).isTrue();
     assertThat(reason.get()).isNotNull().isEqualTo(Client.ShutdownContext.ShutdownReason.UNKNOWN);
     assertThat(client.isOpen()).isFalse();

@@ -28,8 +28,8 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.Cli;
 import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.StreamException;
@@ -372,28 +372,12 @@ public final class TestUtils {
   }
 
   static boolean tlsAvailable() {
-    if (Host.rabbitmqctlCommand() == null) {
-      throw new IllegalStateException(
-          "rabbitmqctl.bin system property not set, cannot check if TLS is enabled");
-    } else {
-      try {
-        Process process = Host.rabbitmqctl("status");
-        String output = capture(process.getInputStream());
-        return output.contains("stream/ssl");
-      } catch (Exception e) {
-        throw new RuntimeException("Error while trying to detect TLS: " + e.getMessage());
-      }
-    }
+    return Cli.rabbitmqctl("status").output().contains("stream/ssl");
   }
 
   static boolean isCluster() {
-    try {
-      Process process = Host.rabbitmqctl("eval 'nodes().'");
-      String content = capture(process.getInputStream());
-      return !content.replace("[", "").replace("]", "").trim().isEmpty();
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+    String content = Cli.rabbitmqctl("eval 'nodes().'").output();
+    return !content.replace("[", "").replace("]", "").trim().isEmpty();
   }
 
   private static String capture(InputStream is) throws IOException {
@@ -825,7 +809,7 @@ public final class TestUtils {
 
     @Override
     public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
-      if (Host.rabbitmqctlCommand() == null) {
+      if (Cli.rabbitmqctlCommand() == null) {
         return ConditionEvaluationResult.disabled("rabbitmqctl.bin system property not set");
       } else {
         return ConditionEvaluationResult.enabled("rabbitmqctl.bin system property is set");
@@ -845,15 +829,14 @@ public final class TestUtils {
 
     @Override
     public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
-      if (Host.rabbitmqctlCommand() == null) {
+      if (Cli.rabbitmqctlCommand() == null) {
         return ConditionEvaluationResult.disabled(
             format(
                 "rabbitmqctl.bin system property not set, cannot check if %s plugin is enabled",
                 pluginLabel));
       } else {
         try {
-          Process process = Host.rabbitmqctl("status");
-          String output = capture(process.getInputStream());
+          String output = Cli.rabbitmqctl("status").output();
           if (condition.test(output)) {
             return ConditionEvaluationResult.enabled(format("%s plugin enabled", pluginLabel));
           } else {

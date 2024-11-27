@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -30,14 +30,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Cli;
+import com.rabbitmq.stream.Cli.ConnectionInfo;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
-import com.rabbitmq.stream.Host;
-import com.rabbitmq.stream.Host.ConnectionInfo;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -363,12 +363,12 @@ public class StreamEnvironmentTest {
     latchAssert(consumeLatch).completes();
 
     try {
-      Host.rabbitmqctl("stop_app");
+      Cli.rabbitmqctl("stop_app");
       producer.close();
       consumer.close();
       environment.close();
     } finally {
-      Host.rabbitmqctl("start_app");
+      Cli.rabbitmqctl("start_app");
     }
     waitAtMost(
         30,
@@ -389,7 +389,7 @@ public class StreamEnvironmentTest {
       String s = streamName(info);
       environment.streamCreator().stream(s).create();
       environment.deleteStream(s);
-      Host.killConnection("rabbitmq-stream-locator-0");
+      Cli.killConnection("rabbitmq-stream-locator-0");
       environment.streamCreator().stream(s).create();
       try {
         Producer producer = environment.producerBuilder().stream(s).build();
@@ -422,14 +422,14 @@ public class StreamEnvironmentTest {
 
       Supplier<List<String>> locatorConnectionNamesSupplier =
           () ->
-              Host.listConnections().stream()
+              Cli.listConnections().stream()
                   .map(ConnectionInfo::clientProvidedName)
                   .filter(name -> name.contains("-locator-"))
                   .collect(toList());
       List<String> locatorConnectionNames = locatorConnectionNamesSupplier.get();
       assertThat(locatorConnectionNames).hasSameSizeAs(uris);
 
-      locatorConnectionNames.forEach(connectionName -> Host.killConnection(connectionName));
+      locatorConnectionNames.forEach(connectionName -> Cli.killConnection(connectionName));
 
       environment.streamCreator().stream(s).create();
       try {

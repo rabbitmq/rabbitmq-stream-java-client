@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2021-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,8 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Host.diskAlarm;
-import static com.rabbitmq.stream.Host.memoryAlarm;
+import static com.rabbitmq.stream.Cli.diskAlarm;
+import static com.rabbitmq.stream.Cli.memoryAlarm;
 import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static java.util.concurrent.TimeUnit.SECONDS;

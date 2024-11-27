@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2023-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,18 +16,18 @@ package com.rabbitmq.stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.Host.ConnectionInfo;
+import com.rabbitmq.stream.Cli.ConnectionInfo;
 import java.util.List;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-public class HostTest {
+public class CliTest {
 
   @Test
   @Disabled
   void deserializeConnectionInfo() {
     List<ConnectionInfo> connections =
-        Host.toConnectionInfoList(LIST_STREAM_CONNECTIONS_JSON_OUTPUT);
+        Cli.toConnectionInfoList(LIST_STREAM_CONNECTIONS_JSON_OUTPUT);
     assertThat(connections).hasSize(3);
     ConnectionInfo c = connections.get(0);
     assertThat(c.name()).isEqualTo("127.0.0.1:49214 -> 127.0.1.1:5552");

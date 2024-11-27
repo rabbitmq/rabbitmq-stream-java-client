@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -19,12 +19,11 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.Cli;
 import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Host;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
@@ -143,7 +142,7 @@ public class MetadataTest {
   }
 
   static void checkHost(Broker broker) {
-    if (!Host.isOnDocker()) {
+    if (!Cli.isOnDocker()) {
       assertThat(broker.getHost()).isEqualTo(hostname());
     }
   }
@@ -152,11 +151,7 @@ public class MetadataTest {
     try {
       return InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
-      try {
-        return Host.hostname();
-      } catch (IOException ex) {
-        throw new RuntimeException(ex);
-      }
+      return Cli.hostname();
     }
   }
 
@@ -166,9 +161,9 @@ public class MetadataTest {
     Client client = cf.get();
     BooleanSupplier hasLeader = () -> client.metadata(stream).get(stream).getLeader() != null;
     waitAtMost(() -> hasLeader.getAsBoolean());
-    Host.rabbitmqctl("eval 'rabbit_maintenance:drain().'");
+    Cli.rabbitmqctl("eval 'rabbit_maintenance:drain().'");
     waitAtMost(() -> !hasLeader.getAsBoolean());
-    Host.rabbitmqctl("eval 'rabbit_maintenance:revive().'");
+    Cli.rabbitmqctl("eval 'rabbit_maintenance:revive().'");
     waitAtMost(() -> hasLeader.getAsBoolean());
   }
 }

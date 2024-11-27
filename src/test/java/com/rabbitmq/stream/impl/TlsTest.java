@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2021-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -36,7 +36,6 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
@@ -268,10 +267,10 @@ public class TlsTest {
             .build();
 
     String username = clientCertificate.getSubjectX500Principal().getName();
-    Host.rabbitmqctlIgnoreError(format("delete_user %s", username));
-    Host.rabbitmqctl(format("add_user %s foo", username));
+    Cli.rabbitmqctlIgnoreError(format("delete_user %s", username));
+    Cli.rabbitmqctl(format("add_user %s foo", username));
     try {
-      Host.rabbitmqctl(format("set_permissions %s '.*' '.*' '.*'", username));
+      Cli.rabbitmqctl(format("set_permissions %s '.*' '.*' '.*'", username));
 
       cf.get(
           new ClientParameters()
@@ -279,7 +278,7 @@ public class TlsTest {
               .sslContext(context)
               .saslConfiguration(DefaultSaslConfiguration.EXTERNAL));
     } finally {
-      Host.rabbitmqctl(format("delete_user %s", username));
+      Cli.rabbitmqctl(format("delete_user %s", username));
     }
   }
 
@@ -295,7 +294,7 @@ public class TlsTest {
             .build();
 
     String username = clientCertificate.getSubjectX500Principal().getName();
-    Host.rabbitmqctlIgnoreError(format("delete_user %s", username));
+    Cli.rabbitmqctlIgnoreError(format("delete_user %s", username));
     assertThatThrownBy(
             () ->
                 cf.get(
@@ -385,11 +384,7 @@ public class TlsTest {
     try {
       return InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
-      try {
-        return Host.hostname();
-      } catch (IOException ex) {
-        throw new RuntimeException(ex);
-      }
+      return Cli.hostname();
     }
   }
 
