@@ -444,7 +444,7 @@ public class Client implements AutoCloseable {
     fromParameters = fromParameters == null ? Collections.emptyMap() : fromParameters;
     Map<String, String> clientProperties = new HashMap<>(fromParameters);
     clientProperties.putAll(ClientProperties.DEFAULT_CLIENT_PROPERTIES);
-    return Collections.unmodifiableMap(clientProperties);
+    return Map.copyOf(clientProperties);
   }
 
   static void checkMessageFitsInFrame(int maxFrameSize, Codec.EncodedMessage encodedMessage) {
@@ -2224,7 +2224,7 @@ public class Client implements AutoCloseable {
 
     StreamStatsResponse(short responseCode, Map<String, Long> info) {
       super(responseCode);
-      this.info = Collections.unmodifiableMap(new HashMap<>(info));
+      this.info = Map.copyOf(info);
     }
 
     public Map<String, Long> getInfo() {
@@ -2249,7 +2249,7 @@ public class Client implements AutoCloseable {
       this.replicas =
           (replicas == null || replicas.isEmpty())
               ? Collections.emptyList()
-              : Collections.unmodifiableList(replicas);
+              : List.copyOf(replicas);
     }
 
     public short getResponseCode() {
@@ -2264,8 +2264,9 @@ public class Client implements AutoCloseable {
       return leader;
     }
 
+    @SuppressFBWarnings("EI_EXPOSE_REP")
     public List<Broker> getReplicas() {
-      return this.replicas.isEmpty() ? Collections.emptyList() : new ArrayList<>(this.replicas);
+      return this.replicas;
     }
 
     boolean hasReplicas() {
@@ -2562,7 +2563,7 @@ public class Client implements AutoCloseable {
     }
 
     Map<String, String> clientProperties() {
-      return Collections.unmodifiableMap(this.clientProperties);
+      return Map.copyOf(this.clientProperties);
     }
 
     Codec codec() {

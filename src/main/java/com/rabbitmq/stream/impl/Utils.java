@@ -15,7 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static java.lang.String.format;
-import static java.util.Collections.unmodifiableList;
+import static java.util.Map.copyOf;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
@@ -71,7 +71,7 @@ final class Utils {
                 LOGGER.info("Error while trying to access field Constants." + field.getName());
               }
             });
-    CONSTANT_LABELS = Collections.unmodifiableMap(labels);
+    CONSTANT_LABELS = copyOf(labels);
   }
 
   static final AddressResolver DEFAULT_ADDRESS_RESOLVER = address -> address;
@@ -358,10 +358,7 @@ final class Utils {
         ClientParameters parameters, String targetKey, List<Client.Broker> candidates) {
       this.parameters = parameters;
       this.targetKey = targetKey;
-      this.candidates =
-          candidates == null
-              ? Collections.emptyList()
-              : unmodifiableList(new ArrayList<>(candidates));
+      this.candidates = candidates == null ? Collections.emptyList() : List.copyOf(candidates);
     }
 
     ClientParameters parameters() {
