@@ -107,4 +107,4 @@ _These SPI are susceptible to change, but this should have no impact on most app
 
 == Pre-requisites
 
-This library requires at least Java 8, but Java 11 or more is recommended (CRC calculation uses methods available as of Java 9).
+This library requires at least Java 11, but Java 21 or more is recommended.

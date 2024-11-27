@@ -31,7 +31,7 @@ See the https://www.rabbitmq.com/client-libraries/java-versions[RabbitMQ Java li
 
 === Pre-requisites
 
-This library requires at least Java 8, but Java 11 or more is recommended.
+This library requires at least Java 11, but Java 21 or more is recommended.
 
 === Dependencies
 
@@ -66,7 +66,7 @@ Breaking changes between releases can happen but will be kept to a minimum.
 
 == Build Instructions
 
-You need JDK 8 or later installed.
+You need JDK 11 or later installed.
 
 To build the JAR file:
 
