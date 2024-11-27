@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.21.0-SNAPSHOT</span>
-<br><span id="revremark">(0e3329e)</span>
+<br><span id="revremark">(d541aba)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1672,6 +1672,12 @@ The limit may not be strictly enforced in case of too many concurrent creations.
 The client retries 5 times before falling back to the stream leader node.
 Set to <code>true</code> only for clustered environments, not for 1-node environments, where only the stream leader is available.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>forceLeaderForProducers</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Force connecting to a stream leader for producers.
+Set to <code>false</code> if it acceptable to stay connected to a stream replica when a load balancer is in use.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>id</code></p></td>
@@ -5005,7 +5011,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.21.0-SNAPSHOT<br>
-Last updated 2024-11-26 10:57:24 UTC
+Last updated 2024-11-27 08:30:09 UTC
 </div>
 </div>
 </body>
