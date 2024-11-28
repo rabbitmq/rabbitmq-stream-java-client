@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Tuples.pair;
 import static com.rabbitmq.stream.impl.Utils.*;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
@@ -30,6 +31,7 @@ import com.rabbitmq.stream.impl.Client.PublishConfirmListener;
 import com.rabbitmq.stream.impl.Client.PublishErrorListener;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.ShutdownListener;
+import com.rabbitmq.stream.impl.Tuples.Pair;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
@@ -219,10 +221,13 @@ final class ProducersCoordinator implements AutoCloseable {
 
     List<BrokerWrapper> candidates = new ArrayList<>();
     Client.Broker leader = streamMetadata.getLeader();
-    if (leader == null && forceLeader) {
-      throw new IllegalStateException("Not leader available for stream " + stream);
+    if (leader == null) {
+      if (forceLeader) {
+        throw new IllegalStateException("Not leader available for stream " + stream);
+      }
+    } else {
+      candidates.add(new BrokerWrapper(leader, true));
     }
-    candidates.add(new BrokerWrapper(leader, true));
 
     if (!forceLeader && streamMetadata.hasReplicas()) {
       candidates.addAll(
@@ -231,7 +236,11 @@ final class ProducersCoordinator implements AutoCloseable {
               .collect(toList()));
     }
 
-    LOGGER.debug("Candidates to publish to {}: {}", stream, candidates);
+    if (candidates.isEmpty()) {
+      throw new IllegalStateException("No stream member available to publish for stream " + stream);
+    } else {
+      LOGGER.debug("Candidates to publish to {}: {}", stream, candidates);
+    }
 
     return List.copyOf(candidates);
   }
@@ -721,15 +730,20 @@ final class ProducersCoordinator implements AutoCloseable {
 
     private void assignProducersToNewManagers(
         Collection<AgentTracker> trackers, String stream, BackOffDelayPolicy delayPolicy) {
-      AsyncRetry.asyncRetry(() -> findCandidateNodes(stream, forceLeader))
+      AsyncRetry.asyncRetry(
+              () -> {
+                List<BrokerWrapper> candidates = findCandidateNodes(stream, forceLeader);
+                return pair(pickBroker(candidates), candidates);
+              })
           .description("Candidate lookup to publish to " + stream)
           .scheduler(environment.scheduledExecutorService())
           .retry(ex -> !(ex instanceof StreamDoesNotExistException))
           .delayPolicy(delayPolicy)
           .build()
           .thenAccept(
-              candidates -> {
-                Broker broker = pickBroker(candidates);
+              brokerAndCandidates -> {
+                Broker broker = brokerAndCandidates.v1();
+                List<BrokerWrapper> candidates = brokerAndCandidates.v2();
                 String key = keyForNode(broker);
                 LOGGER.debug(
                     "Assigning {} producer(s) and consumer tracker(s) to {}", trackers.size(), key);
@@ -805,15 +819,19 @@ final class ProducersCoordinator implements AutoCloseable {
               tracker.identifiable() ? tracker.id() : "N/A",
               tracker.stream());
           // maybe not a good candidate, let's refresh and retry for this one
-          candidates =
-              Utils.callAndMaybeRetry(
-                  () -> findCandidateNodes(tracker.stream(), forceLeader),
+          Pair<Broker, List<BrokerWrapper>> brokerAndCandidates =
+              callAndMaybeRetry(
+                  () -> {
+                    List<BrokerWrapper> cs = findCandidateNodes(tracker.stream(), forceLeader);
+                    return pair(pickBroker(cs), cs);
+                  },
                   ex -> !(ex instanceof StreamDoesNotExistException),
                   environment.recoveryBackOffDelayPolicy(),
                   "Candidate lookup for %s on stream '%s'",
                   tracker.type(),
                   tracker.stream());
-          node = pickBroker(candidates);
+          node = brokerAndCandidates.v1();
+          candidates = brokerAndCandidates.v2();
         } catch (Exception e) {
           LOGGER.warn(
               "Error while re-assigning {} (stream '{}')", tracker.type(), tracker.stream(), e);

@@ -57,7 +57,7 @@ public class LoadBalancerClusterTest {
   String stream;
   EventLoopGroup eventLoopGroup;
   Client locator;
-  Address loadBalancerAddress = new Address("localhost", LB_PORT);
+  static final Address LOAD_BALANCER_ADDRESS = new Address("localhost", LB_PORT);
 
   @BeforeEach
   void init() {
@@ -66,7 +66,7 @@ public class LoadBalancerClusterTest {
     when(environment.locator()).thenReturn(locator);
     when(environment.clientParametersCopy())
         .thenReturn(new Client.ClientParameters().eventLoopGroup(eventLoopGroup).port(LB_PORT));
-    when(environment.addressResolver()).thenReturn(address -> loadBalancerAddress);
+    when(environment.addressResolver()).thenReturn(address -> LOAD_BALANCER_ADDRESS);
     when(environment.locatorOperation(any())).thenCallRealMethod();
   }
 
@@ -175,7 +175,7 @@ public class LoadBalancerClusterTest {
             .port(LB_PORT)
             .forceReplicaForConsumers(forceLocality)
             .forceReplicaForConsumers(forceLocality)
-            .addressResolver(addr -> loadBalancerAddress)
+            .addressResolver(addr -> LOAD_BALANCER_ADDRESS)
             .maxProducersByConnection(maxPerConnection)
             .maxConsumersByConnection(maxPerConnection)
             .forceLeaderForProducers(forceLocality)

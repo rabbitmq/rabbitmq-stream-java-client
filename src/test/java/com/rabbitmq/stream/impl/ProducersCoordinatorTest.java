@@ -750,10 +750,25 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
-  void findCandidateNodesShouldThrowIfThereIsNoLeader() {
+  void findCandidateNodesShouldThrowIfThereIsNoLeaderAndForceLeaderIsTrue() {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
     assertThatThrownBy(() -> coordinator.findCandidateNodes("stream", true))
         .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void findCandidateNodesShouldThrowIfNoMembersAndForceLeaderIsFalse() {
+    when(locator.metadata("stream")).thenReturn(metadata(null, List.of()));
+    assertThatThrownBy(() -> coordinator.findCandidateNodes("stream", false))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void findCandidateNodesShouldReturnOnlyReplicasIfNoLeaderAndForceLeaderIsFalse() {
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
+    assertThat(coordinator.findCandidateNodes("stream", false))
+        .hasSize(2)
+        .containsAll(replicaWrappers());
   }
 
   private static ScheduledExecutorService createScheduledExecutorService() {

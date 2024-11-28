@@ -15,21 +15,31 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.LoadBalancerClusterTest.LOAD_BALANCER_ADDRESS;
 import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static io.vavr.Tuple.of;
 import static java.time.Duration.ofSeconds;
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.IntStream.range;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
+import io.netty.channel.EventLoopGroup;
+import io.vavr.Tuple2;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.IntStream;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,12 +51,12 @@ public class RecoveryClusterTest {
 
   static List<String> nodes;
   static final List<String> URIS =
-      IntStream.range(5552, 5555)
-          .mapToObj(p -> "rabbitmq-stream://localhost:" + p)
-          .collect(toList());
-  static final BackOffDelayPolicy BACK_OFF_DELAY_POLICY = BackOffDelayPolicy.fixed(ofSeconds(3));
+      range(5552, 5555).mapToObj(p -> "rabbitmq-stream://localhost:" + p).collect(toList());
+  static final BackOffDelayPolicy BACK_OFF_DELAY_POLICY = BackOffDelayPolicy.fixed(ofSeconds(2));
   Environment environment;
   TestInfo testInfo;
+  EventLoopGroup eventLoopGroup;
+  EnvironmentBuilder environmentBuilder;
 
   @BeforeAll
   static void initAll() {
@@ -55,33 +65,76 @@ public class RecoveryClusterTest {
 
   @BeforeEach
   void init(TestInfo info) {
-    environment =
+    environmentBuilder =
         Environment.builder()
-            .uris(URIS)
             .recoveryBackOffDelayPolicy(BACK_OFF_DELAY_POLICY)
             .topologyUpdateBackOffDelayPolicy(BACK_OFF_DELAY_POLICY)
-            .build();
+            .netty()
+            .eventLoopGroup(eventLoopGroup)
+            .environmentBuilder();
     this.testInfo = info;
   }
 
   @AfterEach
   void tearDown() {
-    environment.close();
+    if (environment != null) {
+      environment.close();
+    }
   }
 
-  @Test
-  void clusterRestart() {
+  @ParameterizedTest
+  @CsvSource({
+    "false,false",
+    "true,true",
+    "true,false",
+  })
+  void clusterRestart(boolean useLoadBalancer, boolean forceLeader) throws InterruptedException {
     int streamCount = 10;
+    int producerCount = streamCount * 2;
+    int consumerCount = streamCount * 2;
+
+    if (useLoadBalancer) {
+      environmentBuilder
+          .host(LOAD_BALANCER_ADDRESS.host())
+          .port(LOAD_BALANCER_ADDRESS.port())
+          .addressResolver(addr -> LOAD_BALANCER_ADDRESS);
+      Duration nodeRetryDelay = Duration.ofMillis(100);
+      environmentBuilder.forceLeaderForProducers(forceLeader);
+      // to make the test faster
+      ((StreamEnvironmentBuilder) environmentBuilder).producerNodeRetryDelay(nodeRetryDelay);
+      ((StreamEnvironmentBuilder) environmentBuilder).consumerNodeRetryDelay(nodeRetryDelay);
+    } else {
+      environmentBuilder.uris(URIS);
+    }
+
+    environment =
+        environmentBuilder
+            .maxProducersByConnection(producerCount / 4)
+            .maxConsumersByConnection(consumerCount / 4)
+            .build();
     List<String> streams =
-        IntStream.range(0, streamCount)
+        range(0, streamCount)
             .mapToObj(i -> TestUtils.streamName(testInfo) + "-" + i)
             .collect(toList());
     streams.forEach(s -> environment.streamCreator().stream(s).create());
     try {
       List<ProducerState> producers =
-          streams.stream().map(s -> new ProducerState(s, environment)).collect(toList());
+          range(0, producerCount)
+              .mapToObj(
+                  i -> {
+                    String s = streams.get(i % streams.size());
+                    boolean dynamicBatch = i % 2 == 0;
+                    return new ProducerState(s, dynamicBatch, environment);
+                  })
+              .collect(toList());
       List<ConsumerState> consumers =
-          streams.stream().map(s -> new ConsumerState(s, environment)).collect(toList());
+          range(0, consumerCount)
+              .mapToObj(
+                  i -> {
+                    String s = streams.get(i % streams.size());
+                    return new ConsumerState(s, environment);
+                  })
+              .collect(toList());
 
       producers.forEach(ProducerState::start);
 
@@ -101,11 +154,33 @@ public class RecoveryClusterTest {
       Cli.rebalance();
       LOGGER.info("Rebalancing over.");
 
-      syncs = producers.stream().map(p -> p.waitForNewMessages(100)).collect(toList());
-      syncs.forEach(s -> assertThat(s).completes());
+      Thread.sleep(BACK_OFF_DELAY_POLICY.delay(0).multipliedBy(2).toMillis());
+
+      List<Tuple2<String, Sync>> streamsSyncs =
+          producers.stream().map(p -> of(p.stream(), p.waitForNewMessages(100))).collect(toList());
+      streamsSyncs.forEach(
+          t -> {
+            LOGGER.info("Checking publisher to {} still publishes", t._1());
+            assertThat(t._2()).completes();
+            LOGGER.info("Publisher to {} still publishes", t._1());
+          });
 
       syncs = consumers.stream().map(c -> c.waitForNewMessages(100)).collect(toList());
       syncs.forEach(s -> assertThat(s).completes());
+
+      Map<String, Long> committedChunkIdPerStream = new LinkedHashMap<>(streamCount);
+      streams.forEach(
+          s ->
+              committedChunkIdPerStream.put(s, environment.queryStreamStats(s).committedChunkId()));
+
+      syncs = producers.stream().map(p -> p.waitForNewMessages(100)).collect(toList());
+      syncs.forEach(s -> assertThat(s).completes());
+
+      streams.forEach(
+          s -> {
+            assertThat(environment.queryStreamStats(s).committedChunkId())
+                .isGreaterThan(committedChunkIdPerStream.get(s));
+          });
 
       producers.forEach(ProducerState::close);
       consumers.forEach(ConsumerState::close);
@@ -126,9 +201,10 @@ public class RecoveryClusterTest {
     final AtomicInteger acceptedCount = new AtomicInteger();
     final AtomicReference<Runnable> postConfirmed = new AtomicReference<>(() -> {});
 
-    private ProducerState(String stream, Environment environment) {
+    private ProducerState(String stream, boolean dynamicBatch, Environment environment) {
       this.stream = stream;
-      this.producer = environment.producerBuilder().stream(stream).build();
+      this.producer =
+          environment.producerBuilder().stream(stream).dynamicBatch(dynamicBatch).build();
     }
 
     void start() {
@@ -169,6 +245,10 @@ public class RecoveryClusterTest {
       return sync;
     }
 
+    String stream() {
+      return this.stream;
+    }
+
     @Override
     public void close() {
       stopped.set(true);
@@ -179,13 +259,11 @@ public class RecoveryClusterTest {
 
   private static class ConsumerState implements AutoCloseable {
 
-    private final String stream;
     private final Consumer consumer;
     final AtomicInteger receivedCount = new AtomicInteger();
     final AtomicReference<Runnable> postHandle = new AtomicReference<>(() -> {});
 
     private ConsumerState(String stream, Environment environment) {
-      this.stream = stream;
       this.consumer =
           environment.consumerBuilder().stream(stream)
               .offset(OffsetSpecification.first())
