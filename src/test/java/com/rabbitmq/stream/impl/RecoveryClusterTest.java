@@ -23,6 +23,7 @@ import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
@@ -57,10 +58,13 @@ public class RecoveryClusterTest {
   TestInfo testInfo;
   EventLoopGroup eventLoopGroup;
   EnvironmentBuilder environmentBuilder;
+  static Level producersCoordinatorLogLevel;
 
   @BeforeAll
   static void initAll() {
     nodes = Cli.nodes();
+    producersCoordinatorLogLevel =
+        TestUtils.newLoggerLevel(ProducersCoordinator.class, Level.DEBUG);
   }
 
   @BeforeEach
@@ -79,6 +83,13 @@ public class RecoveryClusterTest {
   void tearDown() {
     if (environment != null) {
       environment.close();
+    }
+  }
+
+  @AfterAll
+  static void tearDownAll() {
+    if (producersCoordinatorLogLevel != null) {
+      TestUtils.newLoggerLevel(ProducersCoordinator.class, producersCoordinatorLogLevel);
     }
   }
 

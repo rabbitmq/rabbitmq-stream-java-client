@@ -2824,7 +2824,17 @@ public class Client implements AutoCloseable {
       // because it will be handled later anyway.
       if (shutdownReason == null) {
         if (closing.compareAndSet(false, true)) {
-          executorService.submit(() -> closingSequence(ShutdownReason.UNKNOWN));
+          if (executorService == null) {
+            // the TCP connection is closed before the state is initialized
+            // we do our best the execute the closing sequence
+            new Thread(
+                    () -> {
+                      closingSequence(ShutdownReason.UNKNOWN);
+                    })
+                .start();
+          } else {
+            executorService.submit(() -> closingSequence(ShutdownReason.UNKNOWN));
+          }
         }
       }
     }

@@ -742,7 +742,7 @@ class StreamEnvironment implements Environment {
       Function<Client, T> operation,
       Supplier<Client> clientSupplier,
       BackOffDelayPolicy backOffDelayPolicy) {
-    int maxAttempt = 3;
+    int maxAttempt = 5;
     int attempt = 0;
     boolean executed = false;
     Exception lastException = null;
