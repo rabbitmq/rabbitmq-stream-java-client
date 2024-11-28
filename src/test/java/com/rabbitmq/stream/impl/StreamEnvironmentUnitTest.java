@@ -245,7 +245,7 @@ public class StreamEnvironmentUnitTest {
                     CLIENT_SUPPLIER,
                     BackOffDelayPolicy.fixed(Duration.ofMillis(10))))
         .isInstanceOf(LocatorNotAvailableException.class);
-    assertThat(counter).hasValue(3);
+    assertThat(counter).hasValue(5);
   }
 
   @Test
