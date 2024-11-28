@@ -157,7 +157,7 @@ public class RecoveryClusterTest {
       Thread.sleep(BACK_OFF_DELAY_POLICY.delay(0).multipliedBy(2).toMillis());
 
       List<Tuple2<String, Sync>> streamsSyncs =
-          producers.stream().map(p -> of(p.stream(), p.waitForNewMessages(100))).collect(toList());
+          producers.stream().map(p -> of(p.stream(), p.waitForNewMessages(1000))).collect(toList());
       streamsSyncs.forEach(
           t -> {
             LOGGER.info("Checking publisher to {} still publishes", t._1());
@@ -165,7 +165,7 @@ public class RecoveryClusterTest {
             LOGGER.info("Publisher to {} still publishes", t._1());
           });
 
-      syncs = consumers.stream().map(c -> c.waitForNewMessages(100)).collect(toList());
+      syncs = consumers.stream().map(c -> c.waitForNewMessages(1000)).collect(toList());
       syncs.forEach(s -> assertThat(s).completes());
 
       Map<String, Long> committedChunkIdPerStream = new LinkedHashMap<>(streamCount);
@@ -173,12 +173,13 @@ public class RecoveryClusterTest {
           s ->
               committedChunkIdPerStream.put(s, environment.queryStreamStats(s).committedChunkId()));
 
-      syncs = producers.stream().map(p -> p.waitForNewMessages(100)).collect(toList());
+      syncs = producers.stream().map(p -> p.waitForNewMessages(1000)).collect(toList());
       syncs.forEach(s -> assertThat(s).completes());
 
       streams.forEach(
           s -> {
             assertThat(environment.queryStreamStats(s).committedChunkId())
+                .as("Committed chunk ID did not increase")
                 .isGreaterThan(committedChunkIdPerStream.get(s));
           });
 
