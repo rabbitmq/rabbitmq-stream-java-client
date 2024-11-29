@@ -182,7 +182,12 @@ class StreamEnvironment implements Environment {
 
     this.addressResolver = addressResolverToUse;
 
-    int locatorCount = Math.max(this.addresses.size(), expectedLocatorCount);
+    int locatorCount;
+    if (expectedLocatorCount > 0) {
+      locatorCount = expectedLocatorCount;
+    } else {
+      locatorCount = Math.min(this.addresses.size(), 3);
+    }
     LOGGER.debug("Using {} locator connection(s)", locatorCount);
 
     List<Locator> lctrs =

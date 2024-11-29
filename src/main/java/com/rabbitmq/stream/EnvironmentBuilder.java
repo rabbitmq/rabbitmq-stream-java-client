@@ -16,6 +16,7 @@ package com.rabbitmq.stream;
 
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
+import com.rabbitmq.stream.impl.StreamEnvironmentBuilder;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
@@ -62,14 +63,15 @@ public interface EnvironmentBuilder {
    * An {@link AddressResolver} to potentially change resolved node address to connect to.
    *
    * <p>Applications can use this abstraction to make sure connection attempts ignore metadata hints
-   * and always go to a single point like a load balancer.
+   * and always go to a single point like a load balancer. Consider setting {@link
+   * #locatorConnectionCount(int)} when using a load balancer.
    *
    * <p>The default implementation does not perform any logic, it just returns the passed-in
    * address.
    *
    * <p><i>The default implementation is overridden automatically if the following conditions are
    * met: the host to connect to is <code>localhost</code>, the user is <code>guest</code>, and no
-   * address resolver has been provided. The client will then always tries to connect to <code>
+   * address resolver has been provided. The client will then always try to connect to <code>
    * localhost</code> to facilitate local development. Just provide a pass-through address resolver
    * to avoid this behavior, e.g.:</i>
    *
@@ -79,10 +81,11 @@ public interface EnvironmentBuilder {
    *   .build();
    * </pre>
    *
-   * @param addressResolver
+   * @param addressResolver the address resolver
    * @return this builder instance
    * @see <a href="https://blog.rabbitmq.com/posts/2021/07/connecting-to-streams/">"Connecting to
    *     Streams" blog post</a>
+   * @see #locatorConnectionCount(int)
    */
   EnvironmentBuilder addressResolver(AddressResolver addressResolver);
 
@@ -394,6 +397,27 @@ public interface EnvironmentBuilder {
    * @since 0.21.0
    */
   EnvironmentBuilder forceLeaderForProducers(boolean forceLeader);
+
+  /**
+   * Set the expected number of "locator" connections to maintain.
+   *
+   * <p>Locator connections are used to perform infrastructure-related operations (e.g. looking up
+   * the topology of a stream to find an appropriate node to connect to).
+   *
+   * <p>It is recommended to maintain 2 to 3 locator connections. The environment uses the smaller
+   * of the number of passed-in URIs and 3 by default (see {@link #uris(List)}).
+   *
+   * <p>The number of locator connections should be explicitly set when a load balancer is used, as
+   * the environment cannot know the number of cluster nodes in this case (the only URI set is the
+   * one of the load balancer).
+   *
+   * @param locatorConnectionCount number of expected locator connections
+   * @return this builder instance
+   * @see #uris(List)
+   * @see #addressResolver(AddressResolver)
+   * @since 0.21.0
+   */
+  StreamEnvironmentBuilder locatorConnectionCount(int locatorConnectionCount);
 
   /**
    * Create the {@link Environment} instance.
