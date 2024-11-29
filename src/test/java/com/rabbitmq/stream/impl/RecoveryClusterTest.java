@@ -99,8 +99,8 @@ public class RecoveryClusterTest {
 
   @ParameterizedTest
   @CsvSource({
-    //    "false,false",
-    //    "true,true",
+    "false,false",
+    "true,true",
     "true,false",
   })
   void clusterRestart(boolean useLoadBalancer, boolean forceLeader) throws InterruptedException {
