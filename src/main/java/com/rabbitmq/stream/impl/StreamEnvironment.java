@@ -245,8 +245,8 @@ class StreamEnvironment implements Environment {
     Runnable locatorInitSequence =
         () -> {
           RuntimeException lastException = null;
-          for (int i = 0; i < addresses.size(); i++) {
-            Address address = addresses.get(i);
+          for (int i = 0; i < locators.size(); i++) {
+            Address address = addresses.get(i % addresses.size());
             Locator locator = locator(i);
             address = addressResolver.resolve(address);
             String connectionName = connectionNamingStrategy.apply(ClientConnectionType.LOCATOR);
@@ -305,10 +305,10 @@ class StreamEnvironment implements Environment {
     Client.ShutdownListener shutdownListener =
         shutdownContext -> {
           if (shutdownContext.isShutdownUnexpected()) {
+            String label = locator.label();
             locator.client(null);
             LOGGER.debug(
-                "Unexpected locator disconnection for locator on '{}', trying to reconnect",
-                locator.label());
+                "Unexpected locator disconnection for locator on '{}', trying to reconnect", label);
             try {
               Client.ClientParameters newLocatorParameters =
                   this.locatorParametersCopy().shutdownListener(shutdownListenerReference.get());
@@ -1006,7 +1006,9 @@ class StreamEnvironment implements Environment {
       if (c == null) {
         return address.host() + ":" + address.port();
       } else {
-        return c.getHost() + ":" + c.getPort();
+        return String.format(
+            "%s:%d [advertised %s:%d]",
+            c.getHost(), c.getPort(), c.serverAdvertisedHost(), c.serverAdvertisedPort());
       }
     }
 
