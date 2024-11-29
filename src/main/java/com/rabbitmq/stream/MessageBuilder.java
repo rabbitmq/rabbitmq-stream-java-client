@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -38,12 +38,16 @@ public interface MessageBuilder {
   Message build();
 
   /**
-   * Set the publishing ID (for de-duplication).
+   * Set the publishing ID (for deduplication).
    *
    * <p>This is value is used only for outbound messages and is not persisted.
    *
    * @param publishingId
    * @return this builder instance
+   * @see ProducerBuilder#name(String)
+   * @see <a
+   *     href="https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#outbound-message-deduplication">Deduplication
+   *     documentation</a>
    */
   MessageBuilder publishingId(long publishingId);
 
