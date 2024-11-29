@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.21.0-SNAPSHOT</span>
-<br><span id="revremark">(69dd43a)</span>
+<br><span id="revremark">(96edf94)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1691,6 +1691,11 @@ Used as a prefix for connection names.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Pass-through (no-op)</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>locatorConnectionCount</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Number of locator connections to maintain (for metadata search)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The smaller of the number of URIs and 3.</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Configuration helper for TLS.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">TLS is enabled if a <code>rabbitmq-stream+tls</code> URI is provided.</p></td>
@@ -1761,6 +1766,7 @@ Environment environment = Environment.builder()
     .host(entryPoint.host())  <i class="conum" data-value="2"></i><b>(2)</b>
     .port(entryPoint.port())  <i class="conum" data-value="2"></i><b>(2)</b>
     .addressResolver(address -&gt; entryPoint)  <i class="conum" data-value="3"></i><b>(3)</b>
+    .locatorConnectionCount(<span class="integer">3</span>)  <i class="conum" data-value="4"></i><b>(4)</b>
     .build();</code></pre>
 </div>
 </div>
@@ -1778,10 +1784,17 @@ Environment environment = Environment.builder()
 <td><i class="conum" data-value="3"></i><b>3</b></td>
 <td>Ignore metadata hints, always use load balancer</td>
 </tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Set the number of locator connections to maintain</td>
+</tr>
 </table>
 </div>
 <div class="paragraph">
-<p>The blog post covers the <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams/#client-workaround-with-a-load-balancer">underlying details of this workaround</a>.</p>
+<p>Note the example above sets the number of locator connections the environment maintains.
+Locator connections are used to perform infrastructure-related operations (e.g. looking up the topology of a stream to find an appropriate node to connect to).
+The environment uses the number of passed-in URIs to choose an appropriate default number and will pick 1 in this case, which may be too low for a cluster deployment.
+This is why it is recommended to set the value explicitly, 3 being a good default.</p>
 </div>
 </div>
 <div class="sect3">
@@ -5011,7 +5024,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.21.0-SNAPSHOT<br>
-Last updated 2024-11-28 15:32:00 UTC
+Last updated 2024-11-29 16:27:17 UTC
 </div>
 </div>
 </body>
