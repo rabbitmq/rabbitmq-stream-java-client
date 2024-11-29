@@ -475,8 +475,7 @@ public class StreamConsumerTest {
 
   @Test
   @DisabledIfRabbitMqCtlNotSet
-  void consumerShouldReUseInitialOffsetSpecificationAfterDisruptionIfNoMessagesReceived()
-      throws Exception {
+  void consumerShouldReUseInitialOffsetSpecificationAfterDisruptionIfNoMessagesReceived() {
     int messageCountFirstWave = 10_000;
     Producer producer = environment.producerBuilder().stream(stream).build();
 

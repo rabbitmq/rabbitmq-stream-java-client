@@ -115,6 +115,7 @@ public class RecoveryClusterTest {
           .addressResolver(addr -> LOAD_BALANCER_ADDRESS);
       Duration nodeRetryDelay = Duration.ofMillis(100);
       environmentBuilder.forceLeaderForProducers(forceLeader);
+      ((StreamEnvironmentBuilder) environmentBuilder).locatorCount(URIS.size());
       // to make the test faster
       ((StreamEnvironmentBuilder) environmentBuilder).producerNodeRetryDelay(nodeRetryDelay);
       ((StreamEnvironmentBuilder) environmentBuilder).consumerNodeRetryDelay(nodeRetryDelay);

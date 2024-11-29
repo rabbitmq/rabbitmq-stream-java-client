@@ -70,6 +70,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private ObservationCollector<?> observationCollector = ObservationCollector.NO_OP;
   private Duration producerNodeRetryDelay = Duration.ofMillis(500);
   private Duration consumerNodeRetryDelay = Duration.ofMillis(1000);
+  private int locatorCount = 1;
 
   public StreamEnvironmentBuilder() {}
 
@@ -315,6 +316,11 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
+  StreamEnvironmentBuilder locatorCount(int locatorCount) {
+    this.locatorCount = locatorCount;
+    return this;
+  }
+
   @Override
   public Environment build() {
     if (this.compressionCodecFactory == null) {
@@ -349,7 +355,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         this.forceReplicaForConsumers,
         this.forceLeaderForProducers,
         this.producerNodeRetryDelay,
-        this.consumerNodeRetryDelay);
+        this.consumerNodeRetryDelay,
+        this.locatorCount);
   }
 
   static final class DefaultTlsConfiguration implements TlsConfiguration {
