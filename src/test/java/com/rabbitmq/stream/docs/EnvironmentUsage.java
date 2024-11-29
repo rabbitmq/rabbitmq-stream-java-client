@@ -97,6 +97,7 @@ public class EnvironmentUsage {
             .host(entryPoint.host())  // <2>
             .port(entryPoint.port())  // <2>
             .addressResolver(address -> entryPoint)  // <3>
+            .locatorConnectionCount(3)  // <4>
             .build();
         // end::address-resolver[]
     }

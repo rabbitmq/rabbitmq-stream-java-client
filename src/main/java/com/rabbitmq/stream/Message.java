@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -32,18 +32,26 @@ public interface Message {
   /**
    * Does this message has a publishing ID?
    *
-   * <p>Publishing IDs are used for de-duplication of outbound messages. They are not persisted.
+   * <p>Publishing IDs are used for deduplication of outbound messages. They are not persisted.
    *
    * @return true if the message has a publishing ID, false otherwise
+   * @see ProducerBuilder#name(String)
+   * @see <a
+   *     href="https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#outbound-message-deduplication">Deduplication
+   *     documentation</a>
    */
   boolean hasPublishingId();
 
   /**
    * Get the publishing ID for the message.
    *
-   * <p>Publishing IDs are used for de-duplication of outbound messages. They are not persisted.
+   * <p>Publishing IDs are used for deduplication of outbound messages. They are not persisted.
    *
    * @return the publishing ID of the message
+   * @see ProducerBuilder#name(String)
+   * @see <a
+   *     href="https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#outbound-message-deduplication">Deduplication
+   *     documentation</a>
    */
   long getPublishingId();
 

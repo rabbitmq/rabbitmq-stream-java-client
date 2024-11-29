@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Utils.*;
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
@@ -53,6 +54,7 @@ import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.net.ssl.SSLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,7 +83,7 @@ class StreamEnvironment implements Environment {
   private final ByteBufAllocator byteBufAllocator;
   private final AtomicBoolean locatorsInitialized = new AtomicBoolean(false);
   private final Runnable locatorInitializationSequence;
-  private final List<Locator> locators = new CopyOnWriteArrayList<>();
+  private final List<Locator> locators;
   private final ExecutorServiceFactory executorServiceFactory;
   private final ObservationCollector<?> observationCollector;
 
@@ -105,7 +107,8 @@ class StreamEnvironment implements Environment {
       boolean forceReplicaForConsumers,
       boolean forceLeaderForProducers,
       Duration producerNodeRetryDelay,
-      Duration consumerNodeRetryDelay) {
+      Duration consumerNodeRetryDelay,
+      int expectedLocatorCount) {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
     this.byteBufAllocator = byteBufAllocator;
@@ -147,7 +150,7 @@ class StreamEnvironment implements Environment {
                       new Address(
                           uriItem.getHost() == null ? "localhost" : uriItem.getHost(),
                           uriItem.getPort() == -1 ? defaultPort : uriItem.getPort()))
-              .collect(Collectors.toList());
+              .collect(toList());
     }
 
     AddressResolver addressResolverToUse = addressResolver;
@@ -179,7 +182,24 @@ class StreamEnvironment implements Environment {
 
     this.addressResolver = addressResolverToUse;
 
-    this.addresses.forEach(address -> this.locators.add(new Locator(address)));
+    int locatorCount;
+    if (expectedLocatorCount > 0) {
+      locatorCount = expectedLocatorCount;
+    } else {
+      locatorCount = Math.min(this.addresses.size(), 3);
+    }
+    LOGGER.debug("Using {} locator connection(s)", locatorCount);
+
+    List<Locator> lctrs =
+        IntStream.range(0, locatorCount)
+            .mapToObj(
+                i -> {
+                  Address addr = this.addresses.get(i % this.addresses.size());
+                  return new Locator(addr);
+                })
+            .collect(toList());
+    this.locators = List.copyOf(lctrs);
+
     this.executorServiceFactory =
         new DefaultExecutorServiceFactory(
             this.addresses.size(), 1, "rabbitmq-stream-locator-connection-");
@@ -230,8 +250,8 @@ class StreamEnvironment implements Environment {
     Runnable locatorInitSequence =
         () -> {
           RuntimeException lastException = null;
-          for (int i = 0; i < addresses.size(); i++) {
-            Address address = addresses.get(i);
+          for (int i = 0; i < locators.size(); i++) {
+            Address address = addresses.get(i % addresses.size());
             Locator locator = locator(i);
             address = addressResolver.resolve(address);
             String connectionName = connectionNamingStrategy.apply(ClientConnectionType.LOCATOR);
@@ -290,10 +310,10 @@ class StreamEnvironment implements Environment {
     Client.ShutdownListener shutdownListener =
         shutdownContext -> {
           if (shutdownContext.isShutdownUnexpected()) {
+            String label = locator.label();
             locator.client(null);
             LOGGER.debug(
-                "Unexpected locator disconnection for locator on '{}', trying to reconnect",
-                locator.label());
+                "Unexpected locator disconnection for locator on '{}', trying to reconnect", label);
             try {
               Client.ClientParameters newLocatorParameters =
                   this.locatorParametersCopy().shutdownListener(shutdownListenerReference.get());
@@ -742,7 +762,7 @@ class StreamEnvironment implements Environment {
       Function<Client, T> operation,
       Supplier<Client> clientSupplier,
       BackOffDelayPolicy backOffDelayPolicy) {
-    int maxAttempt = 5;
+    int maxAttempt = 3;
     int attempt = 0;
     boolean executed = false;
     Exception lastException = null;
@@ -991,7 +1011,9 @@ class StreamEnvironment implements Environment {
       if (c == null) {
         return address.host() + ":" + address.port();
       } else {
-        return c.getHost() + ":" + c.getPort();
+        return String.format(
+            "%s:%d [advertised %s:%d]",
+            c.getHost(), c.getPort(), c.serverAdvertisedHost(), c.serverAdvertisedPort());
       }
     }
 

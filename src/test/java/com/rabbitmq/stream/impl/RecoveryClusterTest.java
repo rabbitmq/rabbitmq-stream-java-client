@@ -16,19 +16,21 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.LoadBalancerClusterTest.LOAD_BALANCER_ADDRESS;
+import static com.rabbitmq.stream.impl.TestUtils.newLoggerLevel;
 import static com.rabbitmq.stream.impl.TestUtils.sync;
-import static io.vavr.Tuple.of;
+import static com.rabbitmq.stream.impl.Tuples.pair;
 import static java.time.Duration.ofSeconds;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ch.qos.logback.classic.Level;
+import com.google.common.collect.Streams;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
+import com.rabbitmq.stream.impl.Tuples.Pair;
 import io.netty.channel.EventLoopGroup;
-import io.vavr.Tuple2;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -58,13 +60,14 @@ public class RecoveryClusterTest {
   TestInfo testInfo;
   EventLoopGroup eventLoopGroup;
   EnvironmentBuilder environmentBuilder;
-  static Level producersCoordinatorLogLevel;
+  static List<Level> logLevels;
+  static List<Class<?>> logClasses =
+      List.of(ProducersCoordinator.class, ConsumersCoordinator.class, StreamEnvironment.class);
 
   @BeforeAll
   static void initAll() {
     nodes = Cli.nodes();
-    producersCoordinatorLogLevel =
-        TestUtils.newLoggerLevel(ProducersCoordinator.class, Level.DEBUG);
+    logLevels = logClasses.stream().map(c -> newLoggerLevel(c, Level.DEBUG)).collect(toList());
   }
 
   @BeforeEach
@@ -88,8 +91,9 @@ public class RecoveryClusterTest {
 
   @AfterAll
   static void tearDownAll() {
-    if (producersCoordinatorLogLevel != null) {
-      TestUtils.newLoggerLevel(ProducersCoordinator.class, producersCoordinatorLogLevel);
+    if (logLevels != null) {
+      Streams.zip(logClasses.stream(), logLevels.stream(), Tuples::pair)
+          .forEach(t -> newLoggerLevel(t.v1(), t.v2()));
     }
   }
 
@@ -108,9 +112,10 @@ public class RecoveryClusterTest {
       environmentBuilder
           .host(LOAD_BALANCER_ADDRESS.host())
           .port(LOAD_BALANCER_ADDRESS.port())
-          .addressResolver(addr -> LOAD_BALANCER_ADDRESS);
+          .addressResolver(addr -> LOAD_BALANCER_ADDRESS)
+          .forceLeaderForProducers(forceLeader)
+          .locatorConnectionCount(URIS.size());
       Duration nodeRetryDelay = Duration.ofMillis(100);
-      environmentBuilder.forceLeaderForProducers(forceLeader);
       // to make the test faster
       ((StreamEnvironmentBuilder) environmentBuilder).producerNodeRetryDelay(nodeRetryDelay);
       ((StreamEnvironmentBuilder) environmentBuilder).consumerNodeRetryDelay(nodeRetryDelay);
@@ -167,17 +172,27 @@ public class RecoveryClusterTest {
 
       Thread.sleep(BACK_OFF_DELAY_POLICY.delay(0).multipliedBy(2).toMillis());
 
-      List<Tuple2<String, Sync>> streamsSyncs =
-          producers.stream().map(p -> of(p.stream(), p.waitForNewMessages(1000))).collect(toList());
+      List<Pair<String, Sync>> streamsSyncs =
+          producers.stream()
+              .map(p -> pair(p.stream(), p.waitForNewMessages(1000)))
+              .collect(toList());
       streamsSyncs.forEach(
-          t -> {
-            LOGGER.info("Checking publisher to {} still publishes", t._1());
-            assertThat(t._2()).completes();
-            LOGGER.info("Publisher to {} still publishes", t._1());
+          p -> {
+            LOGGER.info("Checking publisher to {} still publishes", p.v1());
+            assertThat(p.v2()).completes();
+            LOGGER.info("Publisher to {} still publishes", p.v1());
           });
 
-      syncs = consumers.stream().map(c -> c.waitForNewMessages(1000)).collect(toList());
-      syncs.forEach(s -> assertThat(s).completes());
+      streamsSyncs =
+          consumers.stream()
+              .map(c -> pair(c.stream(), c.waitForNewMessages(1000)))
+              .collect(toList());
+      streamsSyncs.forEach(
+          p -> {
+            LOGGER.info("Checking consumer from {} still consumes", p.v1());
+            assertThat(p.v2()).completes();
+            LOGGER.info("Consumer from {} still consumes", p.v1());
+          });
 
       Map<String, Long> committedChunkIdPerStream = new LinkedHashMap<>(streamCount);
       streams.forEach(
@@ -271,11 +286,13 @@ public class RecoveryClusterTest {
 
   private static class ConsumerState implements AutoCloseable {
 
+    private final String stream;
     private final Consumer consumer;
     final AtomicInteger receivedCount = new AtomicInteger();
     final AtomicReference<Runnable> postHandle = new AtomicReference<>(() -> {});
 
     private ConsumerState(String stream, Environment environment) {
+      this.stream = stream;
       this.consumer =
           environment.consumerBuilder().stream(stream)
               .offset(OffsetSpecification.first())
@@ -298,6 +315,10 @@ public class RecoveryClusterTest {
             sync.down();
           });
       return sync;
+    }
+
+    String stream() {
+      return this.stream;
     }
 
     @Override

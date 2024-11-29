@@ -101,7 +101,8 @@ public class StreamEnvironmentUnitTest {
             false,
             true,
             Duration.ofMillis(100),
-            Duration.ofMillis(100));
+            Duration.ofMillis(100),
+            -1);
   }
 
   @AfterEach
@@ -169,7 +170,8 @@ public class StreamEnvironmentUnitTest {
             false,
             true,
             Duration.ofMillis(100),
-            Duration.ofMillis(100));
+            Duration.ofMillis(100),
+            -1);
     verify(cf, times(3)).apply(any(Client.ClientParameters.class));
   }
 
@@ -200,7 +202,8 @@ public class StreamEnvironmentUnitTest {
             false,
             true,
             Duration.ofMillis(100),
-            Duration.ofMillis(100));
+            Duration.ofMillis(100),
+            -1);
     verify(cf, times(expectedConnectionCreation)).apply(any(Client.ClientParameters.class));
   }
 
@@ -245,7 +248,7 @@ public class StreamEnvironmentUnitTest {
                     CLIENT_SUPPLIER,
                     BackOffDelayPolicy.fixed(Duration.ofMillis(10))))
         .isInstanceOf(LocatorNotAvailableException.class);
-    assertThat(counter).hasValue(5);
+    assertThat(counter).hasValue(3);
   }
 
   @Test

@@ -23,12 +23,18 @@ import java.util.function.ToIntFunction;
 public interface ProducerBuilder {
 
   /**
-   * The logical name of the producer.
+   * The producer name for deduplication (<b>read the <a
+   * href="https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#outbound-message-deduplication">documentation</a>
+   * before use</b>).
    *
-   * <p>Set a value to enable de-duplication.
+   * <p>There must be only one producer instance at the same time using a given name.
    *
    * @param name
    * @return this builder instance
+   * @see MessageBuilder#publishingId(long)
+   * @see <a
+   *     href="https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#outbound-message-deduplication">Deduplication
+   *     documentation</a>
    */
   ProducerBuilder name(String name);
 

@@ -234,6 +234,10 @@ Used as a prefix for connection names.
 |Contract to change resolved node address to connect to.
 |Pass-through (no-op)
 
+|`locatorConnectionCount`
+|Number of locator connections to maintain (for metadata search)
+|The smaller of the number of URIs and 3.
+
 |`tls`
 |Configuration helper for TLS.
 |TLS is enabled if a `rabbitmq-stream+tls` URI is provided.
@@ -293,8 +297,12 @@ include::{test-examples}/EnvironmentUsage.java[tag=address-resolver]
 <1> Set the load balancer address
 <2> Use load balancer address for initial connection
 <3> Ignore metadata hints, always use load balancer
+<4> Set the number of locator connections to maintain
 
-The blog post covers the https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams/#client-workaround-with-a-load-balancer[underlying details of this workaround].
+Note the example above sets the number of locator connections the environment maintains.
+Locator connections are used to perform infrastructure-related operations (e.g. looking up the topology of a stream to find an appropriate node to connect to).
+The environment uses the number of passed-in URIs to choose an appropriate default number and will pick 1 in this case, which may be too low for a cluster deployment.
+This is why it is recommended to set the value explicitly, 3 being a good default.
 
 ==== Managing Streams
 
