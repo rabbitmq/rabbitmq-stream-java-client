@@ -37,6 +37,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -62,7 +64,12 @@ public class RecoveryClusterTest {
   EnvironmentBuilder environmentBuilder;
   static List<Level> logLevels;
   static List<Class<?>> logClasses =
-      List.of(ProducersCoordinator.class, ConsumersCoordinator.class, StreamEnvironment.class);
+      List.of(
+          ProducersCoordinator.class,
+          ConsumersCoordinator.class,
+          StreamEnvironment.class,
+          AsyncRetry.class);
+  ScheduledExecutorService scheduledExecutorService;
 
   @BeforeAll
   static void initAll() {
@@ -72,10 +79,17 @@ public class RecoveryClusterTest {
 
   @BeforeEach
   void init(TestInfo info) {
+    int availableProcessors = Runtime.getRuntime().availableProcessors();
+    LOGGER.info("Available processors: {}", availableProcessors);
+    ThreadFactory threadFactory =
+        new Utils.NamedThreadFactory("rabbitmq-stream-environment-scheduler-");
+    scheduledExecutorService =
+        Executors.newScheduledThreadPool(availableProcessors * 2, threadFactory);
     environmentBuilder =
         Environment.builder()
             .recoveryBackOffDelayPolicy(BACK_OFF_DELAY_POLICY)
             .topologyUpdateBackOffDelayPolicy(BACK_OFF_DELAY_POLICY)
+            .scheduledExecutorService(scheduledExecutorService)
             .netty()
             .eventLoopGroup(eventLoopGroup)
             .environmentBuilder();
@@ -86,6 +100,9 @@ public class RecoveryClusterTest {
   void tearDown() {
     if (environment != null) {
       environment.close();
+    }
+    if (scheduledExecutorService != null) {
+      scheduledExecutorService.shutdownNow();
     }
   }
 
@@ -104,6 +121,10 @@ public class RecoveryClusterTest {
     "true,false",
   })
   void clusterRestart(boolean useLoadBalancer, boolean forceLeader) throws InterruptedException {
+    LOGGER.info(
+        "Cluster restart test, use load balancer {}, force leader {}",
+        useLoadBalancer,
+        forceLeader);
     int streamCount = 10;
     int producerCount = streamCount * 2;
     int consumerCount = streamCount * 2;
