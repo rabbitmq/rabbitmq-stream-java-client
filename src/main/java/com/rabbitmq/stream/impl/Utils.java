@@ -28,9 +28,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -160,8 +158,12 @@ final class Utils {
         return Utils.connectToAdvertisedNodeClientFactory(delegate, retryInterval)
             .client(clientFactoryContext);
       } catch (TimeoutStreamException e) {
-        throw new TimeoutStreamException(
-            format(messageFormat, e.getMessage(), e.getCause().getMessage(), e.getCause()));
+        if (e.getCause() == null) {
+          throw new TimeoutStreamException(format(messageFormat, e.getMessage(), "No root cause"));
+        } else {
+          throw new TimeoutStreamException(
+              format(messageFormat, e.getMessage(), e.getCause().getMessage()), e.getCause());
+        }
       } catch (StreamException e) {
         if (e.getCause() != null
             && (e.getCause() instanceof UnknownHostException
@@ -552,31 +554,6 @@ final class Utils {
     return quote(name) + " : " + quote(value);
   }
 
-  static class NamedThreadFactory implements ThreadFactory {
-
-    private final ThreadFactory backingThreaFactory;
-
-    private final String prefix;
-
-    private final AtomicLong count = new AtomicLong(0);
-
-    public NamedThreadFactory(String prefix) {
-      this(Executors.defaultThreadFactory(), prefix);
-    }
-
-    public NamedThreadFactory(ThreadFactory backingThreadFactory, String prefix) {
-      this.backingThreaFactory = backingThreadFactory;
-      this.prefix = prefix;
-    }
-
-    @Override
-    public Thread newThread(Runnable r) {
-      Thread thread = this.backingThreaFactory.newThread(r);
-      thread.setName(prefix + count.getAndIncrement());
-      return thread;
-    }
-  }
-
   static final ExecutorServiceFactory NO_OP_EXECUTOR_SERVICE_FACTORY =
       new NoOpExecutorServiceFactory();
 
@@ -676,6 +653,15 @@ final class Utils {
     boolean get() {
       return this.value;
     }
+  }
+
+  static void lock(Lock lock, Runnable action) {
+    lock(
+        lock,
+        () -> {
+          action.run();
+          return null;
+        });
   }
 
   static <T> T lock(Lock lock, Supplier<T> action) {
