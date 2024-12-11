@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -245,9 +245,13 @@ public interface ConsumerBuilder {
     /**
      * The number of initial credits for the subscription.
      *
-     * <p>Default is 1.
+     * <p>Default is 10.
      *
      * <p>This calls uses {@link ConsumerFlowStrategy#creditOnChunkArrival(int)}.
+     *
+     * <p>Use a small value like 1 for streams with large chunks (several hundreds of messages per
+     * chunk) and higher values (5 or more) for streams with small chunks (1 or a few messages per
+     * chunk).
      *
      * @param initialCredits the number of initial credits
      * @return this configuration instance

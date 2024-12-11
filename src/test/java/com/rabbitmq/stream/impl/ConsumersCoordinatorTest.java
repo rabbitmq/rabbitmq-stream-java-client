@@ -665,7 +665,7 @@ public class ConsumersCoordinatorTest {
         new ConsumerFlowStrategy() {
           @Override
           public int initialCredits() {
-            return 1;
+            return 10;
           }
 
           @Override

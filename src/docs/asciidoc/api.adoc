@@ -470,7 +470,7 @@ blocking when the limit is reached.
 
 |`dynamicBatch`
 |Adapt batch size depending on ingress rate.
-|false
+|true
 
 |`confirmTimeout`
 |[[producer-confirm-timeout-configuration-entry]]Time before the client calls the confirm callback to signal
@@ -897,11 +897,11 @@ Useful when using an external store for offset tracking.
 |`flow#initialCredits`
 |Number of credits when the subscription is created.
 Increase for higher throughput at the expense of memory usage.
-|1
+|10
 
 |`flow#strategy`
 |The `ConsumerFlowStrategy` to use.
-|`ConsumerFlowStrategy#creditOnChunkArrival(1)`
+|`ConsumerFlowStrategy#creditOnChunkArrival(10)`
 |===
 
 [NOTE]
