@@ -243,9 +243,9 @@ public class StreamConsumerTest {
   void asynchronousProcessingWithFlowControl() {
     int messageCount = 100_000;
     publishAndWaitForConfirms(cf, messageCount, stream);
-
-    try (ExecutorService executorService =
-        Executors.newFixedThreadPool(getRuntime().availableProcessors())) {
+    ExecutorService executorService =
+        Executors.newFixedThreadPool(getRuntime().availableProcessors());
+    try {
       CountDownLatch latch = new CountDownLatch(messageCount);
       environment.consumerBuilder().stream(stream)
           .offset(OffsetSpecification.first())
@@ -261,6 +261,8 @@ public class StreamConsumerTest {
                       }))
           .build();
       assertThat(latch).is(completed());
+    } finally {
+      executorService.shutdownNow();
     }
   }
 
