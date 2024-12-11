@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.21.0-SNAPSHOT</span>
-<br><span id="revremark">(ff4e2cb)</span>
+<br><span id="revremark">(741de6a)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -2082,7 +2082,7 @@ blocking when the limit is reached.</p></td>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>dynamicBatch</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Adapt batch size depending on ingress rate.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">false</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">true</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>confirmTimeout</code></p></td>
@@ -2859,12 +2859,12 @@ Useful when using an external store for offset tracking.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>flow#initialCredits</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Number of credits when the subscription is created.
 Increase for higher throughput at the expense of memory usage.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>flow#strategy</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The <code>ConsumerFlowStrategy</code> to use.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ConsumerFlowStrategy#creditOnChunkArrival(1)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ConsumerFlowStrategy#creditOnChunkArrival(10)</code></p></td>
 </tr>
 </tbody>
 </table>
@@ -5024,7 +5024,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.21.0-SNAPSHOT<br>
-Last updated 2024-12-11 14:27:11 UTC
+Last updated 2024-12-11 15:09:08 UTC
 </div>
 </div>
 </body>
