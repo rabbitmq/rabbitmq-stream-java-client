@@ -759,7 +759,7 @@ class StreamEnvironment implements Environment {
                 .map(l -> l.label() + " is set " + l.isSet())
                 .collect(Collectors.joining(", ")));
       } catch (Exception e) {
-        // OK
+        LOGGER.debug("Error while listing locators: {}", e.getMessage());
       }
     }
     return this.locators.stream()
