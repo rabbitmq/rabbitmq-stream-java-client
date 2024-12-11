@@ -63,7 +63,9 @@ public class LoadBalancerClusterTest {
   void init() {
     mocks = MockitoAnnotations.openMocks(this);
     locator = cf.get(new Client.ClientParameters().port(LB_PORT));
-    when(environment.locator()).thenReturn(locator);
+    StreamEnvironment.Locator l = new StreamEnvironment.Locator(-1, new Address("localhost", 5555));
+    l.client(locator);
+    when(environment.locator()).thenReturn(l);
     when(environment.clientParametersCopy())
         .thenReturn(new Client.ClientParameters().eventLoopGroup(eventLoopGroup).port(LB_PORT));
     when(environment.addressResolver()).thenReturn(address -> LOAD_BALANCER_ADDRESS);

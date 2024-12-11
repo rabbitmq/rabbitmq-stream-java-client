@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2023-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,7 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.impl.Utils.NamedThreadFactory;
+import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
+
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -39,7 +40,7 @@ class ScheduledExecutorServiceWrapper implements ScheduledExecutorService {
   private final Set<Task> tasks = ConcurrentHashMap.newKeySet();
   private final ScheduledExecutorService scheduler =
       Executors.newSingleThreadScheduledExecutor(
-          new NamedThreadFactory("rabbitmq-stream-scheduled-executor-service-wrapper-"));
+          threadFactory("rabbitmq-stream-scheduled-executor-service-wrapper-"));
 
   ScheduledExecutorServiceWrapper(ScheduledExecutorService delegate) {
     this.delegate = delegate;
@@ -122,10 +123,12 @@ class ScheduledExecutorServiceWrapper implements ScheduledExecutorService {
   @Override
   public void shutdown() {
     this.delegate.shutdown();
+    this.scheduler.shutdown();
   }
 
   @Override
   public List<Runnable> shutdownNow() {
+    this.delegate.shutdownNow();
     return this.delegate.shutdownNow();
   }
 

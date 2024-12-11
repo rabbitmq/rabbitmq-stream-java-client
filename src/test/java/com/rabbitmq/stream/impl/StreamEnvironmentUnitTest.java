@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.StreamException;
@@ -297,5 +298,11 @@ public class StreamEnvironmentUnitTest {
     assertThat(counter).hasValue(1);
   }
 
-  private static final Supplier<Client> CLIENT_SUPPLIER = () -> mock(Client.class);
+  private static final Supplier<StreamEnvironment.Locator> CLIENT_SUPPLIER =
+      () -> {
+        StreamEnvironment.Locator locator =
+            new StreamEnvironment.Locator(-1, new Address("localhost", 5555));
+        locator.client(mock(Client.class));
+        return locator;
+      };
 }

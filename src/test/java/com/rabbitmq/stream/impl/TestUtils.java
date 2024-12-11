@@ -23,6 +23,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import ch.qos.logback.classic.Level;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -1052,6 +1056,12 @@ public final class TestUtils {
     }
   }
 
+  static String jsonPrettyPrint(String in) {
+    Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    JsonElement element = JsonParser.parseString(in);
+    return gson.toJson(element);
+  }
+
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Tag("single-active-consumer")
@@ -1164,6 +1174,10 @@ public final class TestUtils {
         Thread.currentThread().interrupt();
         throw new RuntimeException(ie);
       }
+    }
+
+    long currentCount() {
+      return this.latch.get().getCount();
     }
 
     void reset(int count) {

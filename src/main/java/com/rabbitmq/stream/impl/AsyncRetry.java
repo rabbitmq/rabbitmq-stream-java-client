@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.ThreadUtils.isVirtual;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
@@ -53,11 +54,19 @@ class AsyncRetry<V> {
                 return;
               }
               try {
+                LOGGER.debug(
+                    "Running task '{}' (virtual threads: {})",
+                    description,
+                    isVirtual(Thread.currentThread()));
                 V result = task.call();
                 LOGGER.debug("Task '{}' succeeded, completing future", description);
                 completableFuture.complete(result);
               } catch (Exception e) {
                 int attemptCount = attempts.getAndIncrement();
+                LOGGER.debug(
+                    "Attempt {} for task '{}' failed, checking retry policy",
+                    attemptCount,
+                    description);
                 if (retry.test(e)) {
                   if (delayPolicy.delay(attemptCount).equals(BackOffDelayPolicy.TIMEOUT)) {
                     LOGGER.debug(

@@ -14,6 +14,7 @@ wait_for_message() {
 
 make -C "${PWD}"/tls-gen/basic
 
+rm -rf rabbitmq-configuration
 mkdir -p rabbitmq-configuration/tls
 cp -R "${PWD}"/tls-gen/basic/result/* rabbitmq-configuration/tls
 chmod o+r rabbitmq-configuration/tls/*

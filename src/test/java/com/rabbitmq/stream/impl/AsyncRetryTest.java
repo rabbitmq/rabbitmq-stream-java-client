@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -19,35 +19,36 @@ import static org.mockito.Mockito.*;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 public class AsyncRetryTest {
 
-  ScheduledExecutorService scheduler;
   @Mock Callable<Integer> task;
   AutoCloseable mocks;
 
   @BeforeEach
-  void init() {
+  void init(TestInfo info) {
     mocks = MockitoAnnotations.openMocks(this);
-    this.scheduler = Executors.newSingleThreadScheduledExecutor();
   }
 
   @AfterEach
   void tearDown() throws Exception {
-    this.scheduler.shutdownNow();
     mocks.close();
   }
 
-  @Test
-  void callbackCalledIfCompletedImmediately() throws Exception {
+  @ParameterizedTest
+  @MethodSource("schedulers")
+  void callbackCalledIfCompletedImmediately(ScheduledExecutorService scheduler) throws Exception {
     when(task.call()).thenReturn(42);
     CompletableFuture<Integer> completableFuture =
         AsyncRetry.asyncRetry(task)
@@ -61,8 +62,9 @@ public class AsyncRetryTest {
     verify(task, times(1)).call();
   }
 
-  @Test
-  void shouldRetryWhenExecutionFails() throws Exception {
+  @ParameterizedTest
+  @MethodSource("schedulers")
+  void shouldRetryWhenExecutionFails(ScheduledExecutorService scheduler) throws Exception {
     when(task.call())
         .thenThrow(new RuntimeException())
         .thenThrow(new RuntimeException())
@@ -81,12 +83,14 @@ public class AsyncRetryTest {
     verify(task, times(3)).call();
   }
 
-  @Test
-  void shouldTimeoutWhenExecutionFailsForTooLong() throws Exception {
+  @ParameterizedTest
+  @MethodSource("schedulers")
+  void shouldTimeoutWhenExecutionFailsForTooLong(ScheduledExecutorService scheduler)
+      throws Exception {
     when(task.call()).thenThrow(new RuntimeException());
     CompletableFuture<Integer> completableFuture =
         AsyncRetry.asyncRetry(task)
-            .scheduler(this.scheduler)
+            .scheduler(scheduler)
             .delayPolicy(
                 BackOffDelayPolicy.fixedWithInitialDelay(
                     Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMillis(500)))
@@ -111,8 +115,9 @@ public class AsyncRetryTest {
     verify(task, atLeast(5)).call();
   }
 
-  @Test
-  void shouldRetryWhenPredicateAllowsIt() throws Exception {
+  @ParameterizedTest
+  @MethodSource("schedulers")
+  void shouldRetryWhenPredicateAllowsIt(ScheduledExecutorService scheduler) throws Exception {
     when(task.call())
         .thenThrow(new IllegalStateException())
         .thenThrow(new IllegalStateException())
@@ -135,8 +140,10 @@ public class AsyncRetryTest {
     verify(task, times(3)).call();
   }
 
-  @Test
-  void shouldFailWhenPredicateDoesNotAllowRetry() throws Exception {
+  @ParameterizedTest
+  @MethodSource("schedulers")
+  void shouldFailWhenPredicateDoesNotAllowRetry(ScheduledExecutorService scheduler)
+      throws Exception {
     when(task.call())
         .thenThrow(new IllegalStateException())
         .thenThrow(new IllegalStateException())
@@ -165,5 +172,12 @@ public class AsyncRetryTest {
     assertThat(acceptCalled.get()).isFalse();
     assertThat(exceptionallyCalled.get()).isTrue();
     verify(task, times(3)).call();
+  }
+
+  static List<ScheduledExecutorService> schedulers() {
+    return List.of(
+        Executors.newSingleThreadScheduledExecutor(),
+        Executors.newScheduledThreadPool(
+            0, ThreadUtils.internalThreadFactory("async-retry-test-")));
   }
 }

@@ -186,6 +186,10 @@ public class Cli {
     rabbitmqStreams(" restart_stream " + stream);
   }
 
+  public static String streamStatus(String stream) {
+    return rabbitmqStreams(" stream_status --formatter table " + stream).output();
+  }
+
   public static void killStreamLeaderProcess(String stream) {
     rabbitmqctl(
         "eval 'case rabbit_stream_manager:lookup_leader(<<\"/\">>, <<\""

@@ -33,6 +33,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
@@ -119,7 +120,9 @@ public class ProducersCoordinatorTest {
           }
         };
     mocks = MockitoAnnotations.openMocks(this);
-    when(environment.locator()).thenReturn(locator);
+    StreamEnvironment.Locator l = new StreamEnvironment.Locator(-1, new Address("localhost", 5555));
+    l.client(locator);
+    when(environment.locator()).thenReturn(l);
     when(environment.locatorOperation(any())).thenCallRealMethod();
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.addressResolver()).thenReturn(address -> address);

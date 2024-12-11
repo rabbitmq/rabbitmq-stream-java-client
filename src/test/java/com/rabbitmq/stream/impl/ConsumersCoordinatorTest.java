@@ -147,7 +147,9 @@ public class ConsumersCoordinatorTest {
           }
         };
     mocks = MockitoAnnotations.openMocks(this);
-    when(environment.locator()).thenReturn(locator);
+    StreamEnvironment.Locator l = new StreamEnvironment.Locator(-1, new Address("localhost", 5555));
+    l.client(locator);
+    when(environment.locator()).thenReturn(l);
     when(environment.locatorOperation(any())).thenCallRealMethod();
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.addressResolver()).thenReturn(address -> address);

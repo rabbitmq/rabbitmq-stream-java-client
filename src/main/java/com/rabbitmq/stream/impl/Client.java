@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.*;
+import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.DEFAULT_USERNAME;
 import static com.rabbitmq.stream.impl.Utils.encodeRequestCode;
 import static com.rabbitmq.stream.impl.Utils.encodeResponseCode;
@@ -45,7 +46,6 @@ import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
-import com.rabbitmq.stream.impl.Utils.NamedThreadFactory;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
@@ -164,7 +164,7 @@ public class Client implements AutoCloseable {
   final CompressionCodecFactory compressionCodecFactory;
   private final Consumer<ShutdownContext.ShutdownReason> shutdownListenerCallback;
   private final ToLongFunction<Object> publishSequenceFunction =
-      new ToLongFunction<Object>() {
+      new ToLongFunction<>() {
         private final AtomicLong publishSequence = new AtomicLong(0);
 
         @Override
@@ -302,6 +302,7 @@ public class Client implements AutoCloseable {
           }
         });
 
+    this.nettyClosing = Utils.makeIdempotent(this::closeNetty);
     ChannelFuture f;
     String clientConnectionName = parameters.clientProperties.getOrDefault("connection_name", "");
     try {
@@ -326,13 +327,11 @@ public class Client implements AutoCloseable {
         throw new StreamException(message, e);
       }
     }
-
     this.channel = f.channel();
-    this.nettyClosing = Utils.makeIdempotent(this::closeNetty);
     ExecutorServiceFactory executorServiceFactory = parameters.executorServiceFactory;
     if (executorServiceFactory == null) {
       this.executorService =
-          Executors.newSingleThreadExecutor(new NamedThreadFactory(clientConnectionName + "-"));
+          Executors.newSingleThreadExecutor(threadFactory(clientConnectionName + "-"));
     } else {
       this.executorService = executorServiceFactory.get();
     }
@@ -341,7 +340,7 @@ public class Client implements AutoCloseable {
     if (dispatchingExecutorServiceFactory == null) {
       this.dispatchingExecutorService =
           Executors.newSingleThreadExecutor(
-              new NamedThreadFactory("dispatching-" + clientConnectionName + "-"));
+              threadFactory("dispatching-" + clientConnectionName + "-"));
     } else {
       this.dispatchingExecutorService = dispatchingExecutorServiceFactory.get();
     }
@@ -1443,7 +1442,7 @@ public class Client implements AutoCloseable {
 
   private void closeNetty() {
     try {
-      if (this.channel.isOpen()) {
+      if (this.channel != null && this.channel.isOpen()) {
         LOGGER.debug("Closing Netty channel");
         this.channel.close().get(10, TimeUnit.SECONDS);
       }

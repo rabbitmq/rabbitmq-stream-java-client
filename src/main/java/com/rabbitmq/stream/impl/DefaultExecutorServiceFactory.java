@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2023-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,7 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.impl.Utils.NamedThreadFactory;
+import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -45,7 +46,7 @@ class DefaultExecutorServiceFactory implements ExecutorServiceFactory {
   DefaultExecutorServiceFactory(int minSize, int clientPerExecutor, String prefix) {
     this.minSize = minSize;
     this.clientPerExecutor = clientPerExecutor;
-    this.threadFactory = new NamedThreadFactory(prefix);
+    this.threadFactory = threadFactory(prefix);
     this.executorFactory = () -> newExecutor();
     List<Executor> l = new ArrayList<>(this.minSize);
     IntStream.range(0, this.minSize).forEach(ignored -> l.add(this.executorFactory.get()));

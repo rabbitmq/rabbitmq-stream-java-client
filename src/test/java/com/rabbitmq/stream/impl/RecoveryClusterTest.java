@@ -18,8 +18,8 @@ import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.LoadBalancerClusterTest.LOAD_BALANCER_ADDRESS;
 import static com.rabbitmq.stream.impl.TestUtils.newLoggerLevel;
 import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Tuples.pair;
-import static java.time.Duration.ofSeconds;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,9 +30,11 @@ import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
 import com.rabbitmq.stream.impl.Tuples.Pair;
+import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,10 +56,15 @@ public class RecoveryClusterTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RecoveryClusterTest.class);
 
+  private static final Duration ASSERTION_TIMEOUT = Duration.ofSeconds(20);
+  // give some slack before first recovery attempt, especially on Docker
+  static final Duration RECOVERY_INITIAL_DELAY = Duration.ofSeconds(10);
+  static final Duration RECOVERY_DELAY = Duration.ofSeconds(2);
   static List<String> nodes;
   static final List<String> URIS =
       range(5552, 5555).mapToObj(p -> "rabbitmq-stream://localhost:" + p).collect(toList());
-  static final BackOffDelayPolicy BACK_OFF_DELAY_POLICY = BackOffDelayPolicy.fixed(ofSeconds(2));
+  static final BackOffDelayPolicy BACK_OFF_DELAY_POLICY =
+      BackOffDelayPolicy.fixedWithInitialDelay(RECOVERY_INITIAL_DELAY, RECOVERY_DELAY);
   Environment environment;
   TestInfo testInfo;
   EventLoopGroup eventLoopGroup;
@@ -68,7 +75,9 @@ public class RecoveryClusterTest {
           ProducersCoordinator.class,
           ConsumersCoordinator.class,
           StreamEnvironment.class,
-          AsyncRetry.class);
+          AsyncRetry.class,
+          StreamEnvironment.class,
+          ScheduledExecutorServiceWrapper.class);
   ScheduledExecutorService scheduledExecutorService;
 
   @BeforeAll
@@ -81,15 +90,16 @@ public class RecoveryClusterTest {
   void init(TestInfo info) {
     int availableProcessors = Runtime.getRuntime().availableProcessors();
     LOGGER.info("Available processors: {}", availableProcessors);
-    ThreadFactory threadFactory =
-        new Utils.NamedThreadFactory("rabbitmq-stream-environment-scheduler-");
-    scheduledExecutorService =
-        Executors.newScheduledThreadPool(availableProcessors * 2, threadFactory);
+    ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-scheduler-");
+    scheduledExecutorService = Executors.newScheduledThreadPool(availableProcessors, threadFactory);
+    // add some debug log messages
+    scheduledExecutorService = new ScheduledExecutorServiceWrapper(scheduledExecutorService);
     environmentBuilder =
         Environment.builder()
             .recoveryBackOffDelayPolicy(BACK_OFF_DELAY_POLICY)
             .topologyUpdateBackOffDelayPolicy(BACK_OFF_DELAY_POLICY)
             .scheduledExecutorService(scheduledExecutorService)
+            .requestedHeartbeat(Duration.ofSeconds(3))
             .netty()
             .eventLoopGroup(eventLoopGroup)
             .environmentBuilder();
@@ -146,6 +156,14 @@ public class RecoveryClusterTest {
 
     environment =
         environmentBuilder
+            .netty()
+            .bootstrapCustomizer(
+                b -> {
+                  b.option(
+                      ChannelOption.CONNECT_TIMEOUT_MILLIS,
+                      (int) BACK_OFF_DELAY_POLICY.delay(0).toMillis());
+                })
+            .environmentBuilder()
             .maxProducersByConnection(producerCount / 4)
             .maxConsumersByConnection(consumerCount / 4)
             .build();
@@ -154,8 +172,10 @@ public class RecoveryClusterTest {
             .mapToObj(i -> TestUtils.streamName(testInfo) + "-" + i)
             .collect(toList());
     streams.forEach(s -> environment.streamCreator().stream(s).create());
+    List<ProducerState> producers = Collections.emptyList();
+    List<ConsumerState> consumers = Collections.emptyList();
     try {
-      List<ProducerState> producers =
+      producers =
           range(0, producerCount)
               .mapToObj(
                   i -> {
@@ -164,7 +184,7 @@ public class RecoveryClusterTest {
                     return new ProducerState(s, dynamicBatch, environment);
                   })
               .collect(toList());
-      List<ConsumerState> consumers =
+      consumers =
           range(0, consumerCount)
               .mapToObj(
                   i -> {
@@ -191,7 +211,7 @@ public class RecoveryClusterTest {
       Cli.rebalance();
       LOGGER.info("Rebalancing over.");
 
-      Thread.sleep(BACK_OFF_DELAY_POLICY.delay(0).multipliedBy(2).toMillis());
+      Thread.sleep(BACK_OFF_DELAY_POLICY.delay(0).toMillis());
 
       List<Pair<String, Sync>> streamsSyncs =
           producers.stream()
@@ -200,7 +220,7 @@ public class RecoveryClusterTest {
       streamsSyncs.forEach(
           p -> {
             LOGGER.info("Checking publisher to {} still publishes", p.v1());
-            assertThat(p.v2()).completes();
+            assertThat(p.v2()).completes(ASSERTION_TIMEOUT);
             LOGGER.info("Publisher to {} still publishes", p.v1());
           });
 
@@ -211,7 +231,7 @@ public class RecoveryClusterTest {
       streamsSyncs.forEach(
           p -> {
             LOGGER.info("Checking consumer from {} still consumes", p.v1());
-            assertThat(p.v2()).completes();
+            assertThat(p.v2()).completes(ASSERTION_TIMEOUT);
             LOGGER.info("Consumer from {} still consumes", p.v1());
           });
 
@@ -221,7 +241,7 @@ public class RecoveryClusterTest {
               committedChunkIdPerStream.put(s, environment.queryStreamStats(s).committedChunkId()));
 
       syncs = producers.stream().map(p -> p.waitForNewMessages(1000)).collect(toList());
-      syncs.forEach(s -> assertThat(s).completes());
+      syncs.forEach(s -> assertThat(s).completes(ASSERTION_TIMEOUT));
 
       streams.forEach(
           s -> {
@@ -230,10 +250,38 @@ public class RecoveryClusterTest {
                 .isGreaterThan(committedChunkIdPerStream.get(s));
           });
 
-      producers.forEach(ProducerState::close);
-      consumers.forEach(ConsumerState::close);
     } finally {
-      streams.forEach(s -> environment.deleteStream(s));
+      LOGGER.info("Environment information:");
+      System.out.println(TestUtils.jsonPrettyPrint(environment.toString()));
+
+      LOGGER.info("Closing producers");
+      producers.forEach(
+          p -> {
+            try {
+              p.close();
+            } catch (Exception e) {
+              LOGGER.info("Error while closing producer to '{}': {}", p.stream(), e.getMessage());
+            }
+          });
+
+      LOGGER.info("Stream status...");
+      streams.forEach(s -> System.out.println(Cli.streamStatus(s)));
+
+      consumers.forEach(
+          c -> {
+            try {
+              c.close();
+            } catch (Exception e) {
+              LOGGER.info("Error while closing from '{}': {}", c.stream(), e.getMessage());
+            }
+          });
+
+      LOGGER.info("Deleting streams after test");
+      try {
+        streams.forEach(s -> environment.deleteStream(s));
+      } catch (Exception e) {
+        LOGGER.info("Error while deleting streams: {}", e.getMessage());
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -23,13 +23,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.stream.Codec;
-import com.rabbitmq.stream.Constants;
-import com.rabbitmq.stream.Message;
-import com.rabbitmq.stream.MessageBuilder;
-import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.Properties;
-import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;

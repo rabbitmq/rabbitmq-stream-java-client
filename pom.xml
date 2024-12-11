@@ -78,6 +78,7 @@
     <maven.gpg.plugin.version>3.2.7</maven.gpg.plugin.version>
     <buildnumber.plugin.version>3.2.1</buildnumber.plugin.version>
     <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
+    <maven-clean-plugin.version>3.4.0</maven-clean-plugin.version>
     <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
     <maven-javadoc-plugin.version>3.11.2</maven-javadoc-plugin.version>
     <maven.jar.plugin.version>3.4.2</maven.jar.plugin.version>
@@ -100,7 +101,6 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.packagecloud.wagon.version>0.0.6</maven.packagecloud.wagon.version>
     <nexus-staging-maven-plugin.version>1.7.0</nexus-staging-maven-plugin.version>
-
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <gpg.skip>true</gpg.skip>
   </properties>
@@ -354,6 +354,12 @@
             <arg>-Xlint:unchecked</arg>
           </compilerArgs>
         </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>${maven-clean-plugin.version}</version>
       </plugin>
 
       <plugin>

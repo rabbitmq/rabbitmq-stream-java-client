@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
+import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.*;
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -195,7 +196,7 @@ class StreamEnvironment implements Environment {
             .mapToObj(
                 i -> {
                   Address addr = this.addresses.get(i % this.addresses.size());
-                  return new Locator(addr);
+                  return new Locator(i, addr);
                 })
             .collect(toList());
     this.locators = List.copyOf(lctrs);
@@ -219,8 +220,7 @@ class StreamEnvironment implements Environment {
     if (scheduledExecutorService == null) {
       int threads = Runtime.getRuntime().availableProcessors();
       LOGGER.debug("Creating scheduled executor service with {} thread(s)", threads);
-      ThreadFactory threadFactory =
-          new Utils.NamedThreadFactory("rabbitmq-stream-environment-scheduler-");
+      ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-scheduler-");
       executorService = Executors.newScheduledThreadPool(threads, threadFactory);
       this.privateScheduleExecutorService = true;
     } else {
@@ -281,7 +281,19 @@ class StreamEnvironment implements Environment {
             this.locators.forEach(
                 l -> {
                   if (l.isNotSet()) {
-                    scheduleLocatorConnection(l, connectionNamingStrategy, clientFactory);
+                    ShutdownListener shutdownListener =
+                        shutdownListener(l, connectionNamingStrategy, clientFactory);
+                    Client.ClientParameters newLocatorParameters =
+                        this.locatorParametersCopy().shutdownListener(shutdownListener);
+                    scheduleLocatorConnection(
+                        newLocatorParameters,
+                        this.addressResolver,
+                        l,
+                        connectionNamingStrategy,
+                        clientFactory,
+                        this.scheduledExecutorService,
+                        this.recoveryBackOffDelayPolicy,
+                        l.label());
                   }
                 });
           }
@@ -309,64 +321,46 @@ class StreamEnvironment implements Environment {
     AtomicReference<Client.ShutdownListener> shutdownListenerReference = new AtomicReference<>();
     Client.ShutdownListener shutdownListener =
         shutdownContext -> {
+          String label = locator.label();
+          LOGGER.debug("Locator {} disconnected", label);
           if (shutdownContext.isShutdownUnexpected()) {
-            String label = locator.label();
             locator.client(null);
+            BackOffDelayPolicy delayPolicy = recoveryBackOffDelayPolicy;
             LOGGER.debug(
-                "Unexpected locator disconnection for locator on '{}', trying to reconnect", label);
-            try {
-              Client.ClientParameters newLocatorParameters =
-                  this.locatorParametersCopy().shutdownListener(shutdownListenerReference.get());
-              asyncRetry(
-                      () -> {
-                        LOGGER.debug("Locator reconnection...");
-                        Address resolvedAddress = addressResolver.resolve(locator.address());
-                        String connectionName =
-                            connectionNamingStrategy.apply(ClientConnectionType.LOCATOR);
-                        LOGGER.debug(
-                            "Trying to reconnect locator on {}, with client connection name '{}'",
-                            resolvedAddress,
-                            connectionName);
-                        Client newLocator =
-                            clientFactory.apply(
-                                newLocatorParameters
-                                    .host(resolvedAddress.host())
-                                    .port(resolvedAddress.port())
-                                    .clientProperty("connection_name", connectionName));
-                        LOGGER.debug("Created locator connection '{}'", connectionName);
-                        LOGGER.debug("Locator connected on {}", resolvedAddress);
-                        return newLocator;
-                      })
-                  .description("Locator recovery")
-                  .scheduler(this.scheduledExecutorService)
-                  .delayPolicy(recoveryBackOffDelayPolicy)
-                  .build()
-                  .thenAccept(locator::client)
-                  .exceptionally(
-                      ex -> {
-                        LOGGER.debug("Locator recovery failed", ex);
-                        return null;
-                      });
-            } catch (Exception e) {
-              LOGGER.debug("Error while scheduling locator reconnection", e);
-            }
+                "Unexpected locator disconnection for on '{}', scheduling recovery with {}",
+                label,
+                delayPolicy);
+            Client.ClientParameters newLocatorParameters =
+                this.locatorParametersCopy().shutdownListener(shutdownListenerReference.get());
+            scheduleLocatorConnection(
+                newLocatorParameters,
+                this.addressResolver,
+                locator,
+                connectionNamingStrategy,
+                clientFactory,
+                this.scheduledExecutorService,
+                delayPolicy,
+                label);
           } else {
-            LOGGER.debug("Locator connection '{}' closing normally", locator.label());
+            LOGGER.debug("Locator connection '{}' closing normally", label);
           }
         };
     shutdownListenerReference.set(shutdownListener);
     return shutdownListener;
   }
 
-  private void scheduleLocatorConnection(
+  private static void scheduleLocatorConnection(
+      ClientParameters newLocatorParameters,
+      AddressResolver addressResolver,
       Locator locator,
       Function<ClientConnectionType, String> connectionNamingStrategy,
-      Function<Client.ClientParameters, Client> clientFactory) {
-    ShutdownListener shutdownListener =
-        shutdownListener(locator, connectionNamingStrategy, clientFactory);
+      Function<Client.ClientParameters, Client> clientFactory,
+      ScheduledExecutorService scheduler,
+      BackOffDelayPolicy delayPolicy,
+      String locatorLabel) {
+    LOGGER.debug(
+        "Scheduling locator '{}' connection with delay policy {}", locatorLabel, delayPolicy);
     try {
-      Client.ClientParameters newLocatorParameters =
-          this.locatorParametersCopy().shutdownListener(shutdownListener);
       asyncRetry(
               () -> {
                 LOGGER.debug("Locator reconnection...");
@@ -387,18 +381,18 @@ class StreamEnvironment implements Environment {
                 LOGGER.debug("Locator connected on {}", resolvedAddress);
                 return newLocator;
               })
-          .description("Locator recovery")
-          .scheduler(this.scheduledExecutorService)
-          .delayPolicy(recoveryBackOffDelayPolicy)
+          .description("Locator '%s' connection", locatorLabel)
+          .scheduler(scheduler)
+          .delayPolicy(delayPolicy)
           .build()
           .thenAccept(locator::client)
           .exceptionally(
               ex -> {
-                LOGGER.debug("Locator recovery failed", ex);
+                LOGGER.debug("Locator connection failed", ex);
                 return null;
               });
     } catch (Exception e) {
-      LOGGER.debug("Error while scheduling locator reconnection", e);
+      LOGGER.debug("Error while scheduling locator '{}' reconnection", locatorLabel, e);
     }
   }
 
@@ -482,7 +476,7 @@ class StreamEnvironment implements Environment {
   public void deleteStream(String stream) {
     checkNotClosed();
     this.maybeInitializeLocator();
-    Client.Response response = this.locator().delete(stream);
+    Client.Response response = this.locator().client().delete(stream);
     if (!response.isOk()) {
       throw new StreamException(
           "Error while deleting stream "
@@ -498,7 +492,7 @@ class StreamEnvironment implements Environment {
   public void deleteSuperStream(String superStream) {
     checkNotClosed();
     this.maybeInitializeLocator();
-    Client.Response response = this.locator().deleteSuperStream(superStream);
+    Client.Response response = this.locator().client().deleteSuperStream(superStream);
     if (!response.isOk()) {
       throw new StreamException(
           "Error while deleting super stream "
@@ -604,6 +598,16 @@ class StreamEnvironment implements Environment {
     @Override
     public long committedChunkId() {
       return committedOffsetSupplier.getAsLong();
+    }
+
+    @Override
+    public String toString() {
+      return "StreamStats{"
+          + "firstOffset="
+          + firstOffset()
+          + ", committedOffset="
+          + committedChunkId()
+          + '}';
     }
   }
 
@@ -746,12 +750,22 @@ class StreamEnvironment implements Environment {
     return producersCoordinator.registerProducer(producer, reference, stream);
   }
 
-  Client locator() {
+  Locator locator() {
+    if (LOGGER.isDebugEnabled()) {
+      try {
+        LOGGER.debug(
+            "Locators: {}",
+            this.locators.stream()
+                .map(l -> l.label() + " is set " + l.isSet())
+                .collect(Collectors.joining(", ")));
+      } catch (Exception e) {
+        // OK
+      }
+    }
     return this.locators.stream()
         .filter(Locator::isSet)
         .findAny()
-        .orElseThrow(LocatorNotAvailableException::new)
-        .client();
+        .orElseThrow(LocatorNotAvailableException::new);
   }
 
   <T> T locatorOperation(Function<Client, T> operation) {
@@ -760,7 +774,7 @@ class StreamEnvironment implements Environment {
 
   static <T> T locatorOperation(
       Function<Client, T> operation,
-      Supplier<Client> clientSupplier,
+      Supplier<Locator> locatorSupplier,
       BackOffDelayPolicy backOffDelayPolicy) {
     int maxAttempt = 3;
     int attempt = 0;
@@ -771,9 +785,11 @@ class StreamEnvironment implements Environment {
     long start = System.nanoTime();
     while (attempt < maxAttempt) {
       try {
-        Client client = clientSupplier.get();
+        Locator locator = locatorSupplier.get();
+        Client client = locator.client();
         LOGGER.debug(
-            "Using locator on {}:{} to run operation '{}'",
+            "Using locator {} on {}:{} to run operation '{}'",
+            locator.id(),
             client.getHost(),
             client.getPort(),
             operation);
@@ -892,7 +908,7 @@ class StreamEnvironment implements Environment {
             .map(
                 l -> {
                   Client c = l.nullableClient();
-                  return c == null ? "null" : ("\"" + c.connectionName() + "\"");
+                  return c == null ? "null" : ("\"" + l.label() + "\"");
                 })
             .collect(Collectors.joining(","))
         + "], "
@@ -949,6 +965,10 @@ class StreamEnvironment implements Environment {
     public LocatorNotAvailableException() {
       super("Locator not available");
     }
+
+    public LocatorNotAvailableException(long id) {
+      super(String.format("Locator %d not available", id));
+    }
   }
 
   private void checkNotClosed() {
@@ -957,13 +977,15 @@ class StreamEnvironment implements Environment {
     }
   }
 
-  private static class Locator {
+  static class Locator {
 
+    private final long id;
     private final Address address;
     private volatile Optional<Client> client;
     private volatile LocalDateTime lastChanged;
 
-    private Locator(Address address) {
+    Locator(long id, Address address) {
+      this.id = id;
       this.address = address;
       this.client = Optional.empty();
       lastChanged = LocalDateTime.now();
@@ -986,6 +1008,10 @@ class StreamEnvironment implements Environment {
       return this;
     }
 
+    private long id() {
+      return this.id;
+    }
+
     private boolean isNotSet() {
       return !this.isSet();
     }
@@ -995,7 +1021,7 @@ class StreamEnvironment implements Environment {
     }
 
     private Client client() {
-      return this.client.orElseThrow(LocatorNotAvailableException::new);
+      return this.client.orElseThrow(() -> new LocatorNotAvailableException(id));
     }
 
     private Client nullableClient() {
@@ -1009,11 +1035,15 @@ class StreamEnvironment implements Environment {
     private String label() {
       Client c = this.nullableClient();
       if (c == null) {
-        return address.host() + ":" + address.port();
+        return String.format("%s:%d (id %d)", address.host(), address.port(), this.id);
       } else {
         return String.format(
-            "%s:%d [advertised %s:%d]",
-            c.getHost(), c.getPort(), c.serverAdvertisedHost(), c.serverAdvertisedPort());
+            "%s:%d [id %d, advertised %s:%d]",
+            c.getHost(),
+            c.getPort(),
+            this.id(),
+            c.serverAdvertisedHost(),
+            c.serverAdvertisedPort());
       }
     }
 

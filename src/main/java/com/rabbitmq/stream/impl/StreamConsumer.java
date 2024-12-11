@@ -35,6 +35,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -63,6 +65,7 @@ class StreamConsumer implements Consumer {
   private volatile boolean sacActive;
   private final boolean sac;
   private final OffsetSpecification initialOffsetSpecification;
+  private final Lock lock = new ReentrantLock();
 
   @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamConsumer(
@@ -525,8 +528,20 @@ class StreamConsumer implements Consumer {
   }
 
   synchronized void unavailable() {
-    this.status = Status.NOT_AVAILABLE;
-    this.trackingClient = null;
+    Utils.lock(
+        this.lock,
+        () -> {
+          this.status = Status.NOT_AVAILABLE;
+          this.trackingClient = null;
+        });
+  }
+
+  void lock() {
+    this.lock.lock();
+  }
+
+  void unlock() {
+    this.lock.unlock();
   }
 
   void running() {
