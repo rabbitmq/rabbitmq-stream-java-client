@@ -203,7 +203,7 @@ public class StreamConsumerTest {
         environment.consumerBuilder().stream(stream)
             .offset(OffsetSpecification.first())
             .flow()
-            .strategy(creditWhenHalfMessagesProcessed())
+            .strategy(creditWhenHalfMessagesProcessed(1))
             .builder();
 
     List<MessageHandler.Context> messageContexts = synchronizedList(new ArrayList<>());
@@ -244,14 +244,13 @@ public class StreamConsumerTest {
     int messageCount = 100_000;
     publishAndWaitForConfirms(cf, messageCount, stream);
 
-    ExecutorService executorService =
-        Executors.newFixedThreadPool(getRuntime().availableProcessors());
-    try {
+    try (ExecutorService executorService =
+        Executors.newFixedThreadPool(getRuntime().availableProcessors())) {
       CountDownLatch latch = new CountDownLatch(messageCount);
       environment.consumerBuilder().stream(stream)
           .offset(OffsetSpecification.first())
           .flow()
-          .strategy(creditWhenHalfMessagesProcessed())
+          .strategy(creditWhenHalfMessagesProcessed(1))
           .builder()
           .messageHandler(
               (ctx, message) ->
@@ -262,8 +261,6 @@ public class StreamConsumerTest {
                       }))
           .build();
       assertThat(latch).is(completed());
-    } finally {
-      executorService.shutdownNow();
     }
   }
 
