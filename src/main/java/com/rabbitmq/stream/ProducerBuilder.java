@@ -106,22 +106,26 @@ public interface ProducerBuilder {
   /**
    * Adapt batch size depending on ingress rate.
    *
-   * <p>A dynamic-batch approach improves latency for low ingress rates. It can be counterproductive
-   * for sustained high ingress rates.
+   * <p>A dynamic-batch approach improves latency for low ingress rates.
    *
    * <p>Set this flag to <code>true</code> if you want as little delay as possible between calling
    * {@link Producer#send(Message, ConfirmationHandler)} and the message being sent to the broker.
+   * Consumers should provide enough initial credits (between 5 and 10, depending on the workload),
+   * see {@link ConsumerBuilder#flow()} and {@link
+   * ConsumerBuilder.FlowConfiguration#initialCredits(int)}.
    *
    * <p>Set this flag to <code>false</code> if latency is not critical for your use case and you
-   * want the highest throughput possible for both publishing and consuming.
+   * want the highest throughput possible for both publishing and consuming. Consumers can provide 1
+   * initial credit (depending on the workload), see {@link ConsumerBuilder#flow()} and {@link
+   * ConsumerBuilder.FlowConfiguration#initialCredits(int)}.
    *
-   * <p>Dynamic batch is not activated by default (<code>dynamicBatch = false</code>).
-   *
-   * <p>Dynamic batch is experimental.
+   * <p>Dynamic batch is activated by default (<code>dynamicBatch = true</code>).
    *
    * @param dynamicBatch
    * @return this builder instance
    * @since 0.20.0
+   * @see ConsumerBuilder#flow()
+   * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(int)
    */
   ProducerBuilder dynamicBatch(boolean dynamicBatch);
 

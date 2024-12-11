@@ -203,7 +203,7 @@ public class StreamConsumerTest {
         environment.consumerBuilder().stream(stream)
             .offset(OffsetSpecification.first())
             .flow()
-            .strategy(creditWhenHalfMessagesProcessed())
+            .strategy(creditWhenHalfMessagesProcessed(1))
             .builder();
 
     List<MessageHandler.Context> messageContexts = synchronizedList(new ArrayList<>());
@@ -243,7 +243,6 @@ public class StreamConsumerTest {
   void asynchronousProcessingWithFlowControl() {
     int messageCount = 100_000;
     publishAndWaitForConfirms(cf, messageCount, stream);
-
     ExecutorService executorService =
         Executors.newFixedThreadPool(getRuntime().availableProcessors());
     try {
@@ -251,7 +250,7 @@ public class StreamConsumerTest {
       environment.consumerBuilder().stream(stream)
           .offset(OffsetSpecification.first())
           .flow()
-          .strategy(creditWhenHalfMessagesProcessed())
+          .strategy(creditWhenHalfMessagesProcessed(1))
           .builder()
           .messageHandler(
               (ctx, message) ->

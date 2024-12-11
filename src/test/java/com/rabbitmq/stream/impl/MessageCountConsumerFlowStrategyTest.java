@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2023-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -55,7 +55,7 @@ public class MessageCountConsumerFlowStrategyTest {
   }
 
   ConsumerFlowStrategy build(double ratio) {
-    return creditOnProcessedMessageCount(1, ratio);
+    return creditOnProcessedMessageCount(10, ratio);
   }
 
   ConsumerFlowStrategy.Context context(long messageCount) {

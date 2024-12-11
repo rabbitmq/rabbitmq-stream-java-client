@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Broadcom. All Rights Reserved.
+// Copyright (c) 2023-2024 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -120,13 +120,14 @@ public interface ConsumerFlowStrategy {
    *
    * @param initialCredits number of initial credits
    * @return flow strategy
+   * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(int)
    */
   static ConsumerFlowStrategy creditOnChunkArrival(int initialCredits) {
     return new CreditOnChunkArrivalConsumerFlowStrategy(initialCredits);
   }
 
   /**
-   * Strategy that provides 1 initial credit and a credit when half of the chunk messages are
+   * Strategy that provides 10 initial credits and a credit when half of the chunk messages are
    * processed.
    *
    * <p>Make sure to call {@link MessageHandler.Context#processed()} on every message when using
@@ -135,7 +136,7 @@ public interface ConsumerFlowStrategy {
    * @return flow strategy
    */
   static ConsumerFlowStrategy creditWhenHalfMessagesProcessed() {
-    return creditOnProcessedMessageCount(1, 0.5);
+    return creditOnProcessedMessageCount(10, 0.5);
   }
 
   /**
@@ -147,6 +148,7 @@ public interface ConsumerFlowStrategy {
    *
    * @param initialCredits number of initial credits
    * @return flow strategy
+   * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(int)
    */
   static ConsumerFlowStrategy creditWhenHalfMessagesProcessed(int initialCredits) {
     return creditOnProcessedMessageCount(initialCredits, 0.5);
