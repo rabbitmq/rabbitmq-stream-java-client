@@ -905,11 +905,7 @@ class StreamEnvironment implements Environment {
   public String toString() {
     return "{ \"locators\" : ["
         + this.locators.stream()
-            .map(
-                l -> {
-                  Client c = l.nullableClient();
-                  return c == null ? "null" : ("\"" + l.label() + "\"");
-                })
+            .map(l -> quote(l.label()))
             .collect(Collectors.joining(","))
         + "], "
         + Utils.jsonField("producer_client_count", this.producersCoordinator.clientCount())

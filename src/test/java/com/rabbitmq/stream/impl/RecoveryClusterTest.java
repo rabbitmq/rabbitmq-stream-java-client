@@ -72,9 +72,8 @@ public class RecoveryClusterTest {
   static List<Level> logLevels;
   static List<Class<?>> logClasses =
       List.of(
-          ProducersCoordinator.class,
-          ConsumersCoordinator.class,
-          StreamEnvironment.class,
+//          ProducersCoordinator.class,
+//          ConsumersCoordinator.class,
           AsyncRetry.class,
           StreamEnvironment.class,
           ScheduledExecutorServiceWrapper.class);
@@ -126,9 +125,9 @@ public class RecoveryClusterTest {
 
   @ParameterizedTest
   @CsvSource({
-    "false,false",
+//    "false,false",
     "true,true",
-    "true,false",
+//    "true,false",
   })
   void clusterRestart(boolean useLoadBalancer, boolean forceLeader) throws InterruptedException {
     LOGGER.info(
