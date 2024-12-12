@@ -2,7 +2,7 @@ name: Test against RabbitMQ alphas
 
 on:
   schedule:
-    - cron:  '0 4 * * *'
+    - cron:  '0 * * * *'
   push:
     branches:
       - main
