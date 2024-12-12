@@ -66,6 +66,7 @@ class StreamEnvironment implements Environment {
 
   private final EventLoopGroup eventLoopGroup;
   private final ScheduledExecutorService scheduledExecutorService;
+  private final ScheduledExecutorService locatorReconnectionScheduledExecutorService;
   private final boolean privateScheduleExecutorService;
   private final Client.ClientParameters clientParametersPrototype;
   private final List<Address> addresses;
@@ -235,17 +236,22 @@ class StreamEnvironment implements Environment {
             maxProducersByConnection,
             maxTrackingConsumersByConnection,
             connectionNamingStrategy,
-            Utils.coordinatorClientFactory(this, producerNodeRetryDelay),
+            coordinatorClientFactory(this, producerNodeRetryDelay),
             forceLeaderForProducers);
     this.consumersCoordinator =
         new ConsumersCoordinator(
             this,
             maxConsumersByConnection,
             connectionNamingStrategy,
-            Utils.coordinatorClientFactory(this, consumerNodeRetryDelay),
+            coordinatorClientFactory(this, consumerNodeRetryDelay),
             forceReplicaForConsumers,
             Utils.brokerPicker());
     this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
+
+    ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-locator-scheduler-");
+    this.locatorReconnectionScheduledExecutorService =
+        Executors.newScheduledThreadPool(this.locators.size(), threadFactory);
+
     ClientParameters clientParametersForInit = locatorParametersCopy();
     Runnable locatorInitSequence =
         () -> {
@@ -291,7 +297,7 @@ class StreamEnvironment implements Environment {
                         l,
                         connectionNamingStrategy,
                         clientFactory,
-                        this.scheduledExecutorService,
+                        this.locatorReconnectionScheduledExecutorService,
                         this.recoveryBackOffDelayPolicy,
                         l.label());
                   }
@@ -338,7 +344,7 @@ class StreamEnvironment implements Environment {
                 locator,
                 connectionNamingStrategy,
                 clientFactory,
-                this.scheduledExecutorService,
+                this.locatorReconnectionScheduledExecutorService,
                 delayPolicy,
                 label);
           } else {
@@ -683,6 +689,9 @@ class StreamEnvironment implements Environment {
       if (privateScheduleExecutorService) {
         this.scheduledExecutorService.shutdownNow();
       }
+      if (this.locatorReconnectionScheduledExecutorService != null) {
+        this.locatorReconnectionScheduledExecutorService.shutdownNow();
+      }
       try {
         if (this.eventLoopGroup != null
             && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
@@ -904,9 +913,7 @@ class StreamEnvironment implements Environment {
   @Override
   public String toString() {
     return "{ \"locators\" : ["
-        + this.locators.stream()
-            .map(l -> quote(l.label()))
-            .collect(Collectors.joining(","))
+        + this.locators.stream().map(l -> quote(l.label())).collect(Collectors.joining(","))
         + "], "
         + Utils.jsonField("producer_client_count", this.producersCoordinator.clientCount())
         + ","

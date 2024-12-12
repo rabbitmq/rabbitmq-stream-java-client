@@ -252,6 +252,15 @@ public class Cli {
     }
   }
 
+  private static String dockerContainer() {
+    if (rabbitmqctlCommand().startsWith("docker")) {
+      String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
+      return rabbitmqCtl.split(":")[1];
+    } else {
+      throw new IllegalStateException("Broker does not run on broker");
+    }
+  }
+
   private static String rabbitmqStreamsCommand() {
     String rabbitmqctl = rabbitmqctlCommand();
     int lastIndex = rabbitmqctl.lastIndexOf("rabbitmqctl");
@@ -352,6 +361,12 @@ public class Cli {
             + " rabbitmqctl await_online_nodes "
             + DOCKER_NODES_TO_CONTAINERS.size());
     executeCommand(dockerCommand + "rabbitmqctl status");
+  }
+
+  public static void restartBrokerContainer() {
+    String container = dockerContainer();
+    executeCommand("docker stop " + container);
+    executeCommand("docker start " + container);
   }
 
   public static void rebalance() {
