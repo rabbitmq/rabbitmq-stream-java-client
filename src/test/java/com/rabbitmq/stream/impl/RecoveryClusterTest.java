@@ -72,12 +72,9 @@ public class RecoveryClusterTest {
   static List<Level> logLevels;
   static List<Class<?>> logClasses =
       List.of(
-          ProducersCoordinator.class,
-          ConsumersCoordinator.class,
-          StreamEnvironment.class,
-          AsyncRetry.class,
-          StreamEnvironment.class,
-          ScheduledExecutorServiceWrapper.class);
+          //          ProducersCoordinator.class,
+          //          ConsumersCoordinator.class,
+          AsyncRetry.class, StreamEnvironment.class, ScheduledExecutorServiceWrapper.class);
   ScheduledExecutorService scheduledExecutorService;
 
   @BeforeAll

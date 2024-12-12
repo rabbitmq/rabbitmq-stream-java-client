@@ -14,13 +14,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.*;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
-import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.TestUtils.localhost;
-import static com.rabbitmq.stream.impl.TestUtils.localhostTls;
-import static com.rabbitmq.stream.impl.TestUtils.streamName;
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
@@ -57,7 +53,6 @@ import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollSocketChannel;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslHandler;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
@@ -92,22 +87,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamEnvironmentTest {
 
-  static EventLoopGroup eventLoopGroup;
-
   EnvironmentBuilder environmentBuilder;
 
   String stream;
   TestUtils.ClientFactory cf;
-
-  @BeforeAll
-  static void initAll() {
-    eventLoopGroup = new NioEventLoopGroup();
-  }
-
-  @AfterAll
-  static void afterAll() throws Exception {
-    eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
-  }
+  EventLoopGroup eventLoopGroup;
 
   @BeforeEach
   void init() {
