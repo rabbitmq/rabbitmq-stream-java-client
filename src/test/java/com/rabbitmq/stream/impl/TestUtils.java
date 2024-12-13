@@ -44,10 +44,7 @@ import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.vavr.Tuple2;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -95,6 +92,11 @@ public final class TestUtils {
 
   public static Duration waitAtMost(CallableBooleanSupplier condition) throws Exception {
     return waitAtMost(DEFAULT_CONDITION_TIMEOUT, condition, null);
+  }
+
+  public static Duration waitAtMost(
+      CallableBooleanSupplier condition, String format, Object... args) throws Exception {
+    return waitAtMost(DEFAULT_CONDITION_TIMEOUT, condition, () -> String.format(format, args));
   }
 
   public static Duration waitAtMost(CallableBooleanSupplier condition, Supplier<String> message)
@@ -382,16 +384,6 @@ public final class TestUtils {
   static boolean isCluster() {
     String content = Cli.rabbitmqctl("eval 'nodes().'").output();
     return !content.replace("[", "").replace("]", "").trim().isEmpty();
-  }
-
-  private static String capture(InputStream is) throws IOException {
-    BufferedReader br = new BufferedReader(new InputStreamReader(is));
-    String line;
-    StringBuilder buff = new StringBuilder();
-    while ((line = br.readLine()) != null) {
-      buff.append(line).append("\n");
-    }
-    return buff.toString();
   }
 
   static <T> void forEach(Collection<T> in, CallableIndexConsumer<T> consumer) throws Exception {

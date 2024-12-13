@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.lang.Integer.parseInt;
 import static java.util.stream.Collectors.toSet;
 import static java.util.stream.IntStream.range;
@@ -79,7 +80,7 @@ public class LoadBalancerClusterTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {false, true})
-  void pickConsumersAmongCandidates(boolean forceReplica) {
+  void pickConsumersAmongCandidates(boolean forceReplica) throws Exception {
     int maxSubscriptionsPerClient = 2;
     int subscriptionCount = maxSubscriptionsPerClient * 10;
     try (ConsumersCoordinator c =
@@ -90,6 +91,10 @@ public class LoadBalancerClusterTest {
             Utils.coordinatorClientFactory(this.environment, Duration.ofMillis(10)),
             forceReplica,
             Utils.brokerPicker())) {
+
+      waitAtMost(
+          () -> locator.metadata(stream).get(stream).hasReplicas(),
+          "Stream '%s' should have replicas");
 
       range(0, subscriptionCount)
           .forEach(

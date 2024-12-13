@@ -26,12 +26,8 @@ import java.io.InputStreamReader;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class Cli {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(Cli.class);
 
   private static final String DOCKER_PREFIX = "DOCKER:";
 
@@ -252,15 +248,6 @@ public class Cli {
     }
   }
 
-  private static String dockerContainer() {
-    if (rabbitmqctlCommand().startsWith("docker")) {
-      String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
-      return rabbitmqCtl.split(":")[1];
-    } else {
-      throw new IllegalStateException("Broker does not run on broker");
-    }
-  }
-
   private static String rabbitmqStreamsCommand() {
     String rabbitmqctl = rabbitmqctlCommand();
     int lastIndex = rabbitmqctl.lastIndexOf("rabbitmqctl");
@@ -314,7 +301,7 @@ public class Cli {
     rabbitmqctl("eval 'rabbit_alarm:set_alarm({{resource_limit, " + source + ", node()}, []}).'");
   }
 
-  private static void clearResourceAlarm(String source) throws IOException {
+  private static void clearResourceAlarm(String source) {
     rabbitmqctl("eval 'rabbit_alarm:clear_alarm({resource_limit, " + source + ", node()}).'");
   }
 
@@ -361,12 +348,6 @@ public class Cli {
             + " rabbitmqctl await_online_nodes "
             + DOCKER_NODES_TO_CONTAINERS.size());
     executeCommand(dockerCommand + "rabbitmqctl status");
-  }
-
-  public static void restartBrokerContainer() {
-    String container = dockerContainer();
-    executeCommand("docker stop " + container);
-    executeCommand("docker start " + container);
   }
 
   public static void rebalance() {
