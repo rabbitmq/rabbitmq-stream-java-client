@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -119,24 +120,24 @@ public class SacStreamConsumerTest {
   void manualTrackingSecondConsumerShouldTakeOverWhereTheFirstOneLeftOff() throws Exception {
     int messageCount = 10000;
     int storeEvery = 1000;
-    Map<Integer, AtomicInteger> receivedMessages = new ConcurrentHashMap<>();
-    receivedMessages.put(0, new AtomicInteger(0));
-    receivedMessages.put(1, new AtomicInteger(0));
+    AtomicInteger consumer1MessageCount = new AtomicInteger(0);
+    AtomicInteger consumer2MessageCount = new AtomicInteger(0);
     AtomicLong lastReceivedOffset = new AtomicLong(0);
     String consumerName = "foo";
+
+    BiConsumer<MessageHandler.Context, AtomicInteger> handler =
+        (ctx, count) -> {
+          lastReceivedOffset.set(ctx.offset());
+          if (count.incrementAndGet() % storeEvery == 0) {
+            ctx.storeOffset();
+          }
+        };
 
     Consumer consumer1 =
         environment.consumerBuilder().stream(stream)
             .name(consumerName)
             .singleActiveConsumer()
-            .messageHandler(
-                (context, message) -> {
-                  lastReceivedOffset.set(context.offset());
-                  int count = receivedMessages.get(0).incrementAndGet();
-                  if (count % storeEvery == 0) {
-                    context.storeOffset();
-                  }
-                })
+            .messageHandler((context, message) -> handler.accept(context, consumer1MessageCount))
             .offset(OffsetSpecification.first())
             .manualTrackingStrategy()
             .builder()
@@ -146,24 +147,17 @@ public class SacStreamConsumerTest {
         environment.consumerBuilder().stream(stream)
             .name(consumerName)
             .singleActiveConsumer()
-            .messageHandler(
-                (context, message) -> {
-                  lastReceivedOffset.set(context.offset());
-                  int count = receivedMessages.get(1).incrementAndGet();
-                  if (count % storeEvery == 0) {
-                    context.storeOffset();
-                  }
-                })
+            .messageHandler((context, message) -> handler.accept(context, consumer2MessageCount))
             .offset(OffsetSpecification.first())
             .manualTrackingStrategy()
             .builder()
             .build();
 
     publishAndWaitForConfirms(cf, messageCount, stream);
-    waitAtMost(() -> receivedMessages.getOrDefault(0, new AtomicInteger(0)).get() == messageCount);
+    waitAtMost(() -> consumer1MessageCount.get() == messageCount);
 
     assertThat(lastReceivedOffset).hasPositiveValue();
-    assertThat(receivedMessages.get(1)).hasValue(0);
+    assertThat(consumer2MessageCount).hasValue(0);
 
     long firstWaveLimit = lastReceivedOffset.get();
 
@@ -174,9 +168,9 @@ public class SacStreamConsumerTest {
 
     publishAndWaitForConfirms(cf, messageCount, stream);
 
-    waitAtMost(() -> receivedMessages.getOrDefault(0, new AtomicInteger(1)).get() == messageCount);
+    waitAtMost(() -> consumer2MessageCount.get() == messageCount);
     assertThat(lastReceivedOffset).hasValueGreaterThan(firstWaveLimit);
-    assertThat(receivedMessages.get(0)).hasValue(messageCount);
+    assertThat(consumer1MessageCount).hasValue(messageCount);
 
     consumer2.close();
   }
