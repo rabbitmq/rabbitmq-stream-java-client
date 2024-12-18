@@ -408,12 +408,12 @@ public class StreamEnvironmentTest {
           () ->
               Cli.listConnections().stream()
                   .map(ConnectionInfo::clientProvidedName)
-                  .filter(name -> name.contains("-locator-"))
+                  .filter(name -> name != null && name.contains("-locator-"))
                   .collect(toList());
       List<String> locatorConnectionNames = locatorConnectionNamesSupplier.get();
       assertThat(locatorConnectionNames).hasSameSizeAs(uris);
 
-      locatorConnectionNames.forEach(connectionName -> Cli.killConnection(connectionName));
+      locatorConnectionNames.forEach(Cli::killConnection);
 
       environment.streamCreator().stream(s).create();
       try {
