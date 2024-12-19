@@ -750,7 +750,7 @@ final class ProducersCoordinator implements AutoCloseable {
                 List<BrokerWrapper> candidates = brokerAndCandidates.v2();
                 String key = keyForNode(broker);
                 LOGGER.debug(
-                    "Assigning {} producer(s) and consumer tracker(s) to {}", trackers.size(), key);
+                    "Assigning {} producer(s) and consumer tracker(s) to {} (stream '{}')", trackers.size(), key, stream);
                 trackers.forEach(tracker -> maybeRecoverAgent(broker, candidates, tracker));
               })
           .exceptionally(

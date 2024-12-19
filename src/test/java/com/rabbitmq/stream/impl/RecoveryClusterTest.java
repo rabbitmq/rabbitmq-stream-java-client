@@ -34,6 +34,9 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -251,6 +254,11 @@ public class RecoveryClusterTest {
       LOGGER.info("Environment information:");
       System.out.println(TestUtils.jsonPrettyPrint(environment.toString()));
 
+      LOGGER.info("Producer information:");
+      producers.forEach(p -> {
+        LOGGER.info("Producer to '{}' (last exception: '{}')", p.stream(), p.lastException);
+      });
+
       LOGGER.info("Closing producers");
       producers.forEach(
           p -> {
@@ -293,6 +301,8 @@ public class RecoveryClusterTest {
     final AtomicBoolean stopped = new AtomicBoolean(false);
     final AtomicInteger acceptedCount = new AtomicInteger();
     final AtomicReference<Runnable> postConfirmed = new AtomicReference<>(() -> {});
+    final AtomicReference<Throwable> lastException = new AtomicReference<>();
+    final AtomicReference<Instant> lastExceptionInstant = new AtomicReference<>();
 
     private ProducerState(String stream, boolean dynamicBatch, Environment environment) {
       this.stream = stream;
@@ -317,8 +327,9 @@ public class RecoveryClusterTest {
                         this.limiter.acquire(1);
                         this.producer.send(
                             producer.messageBuilder().addData(BODY).build(), confirmationHandler);
-                      } catch (Exception e) {
-
+                      } catch (Throwable e) {
+                        this.lastException.set(e);
+                        this.lastExceptionInstant.set(Instant.now());
                       }
                     }
                   });
@@ -340,6 +351,14 @@ public class RecoveryClusterTest {
 
     String stream() {
       return this.stream;
+    }
+
+    String lastException() {
+      if (this.lastException.get() == null) {
+        return "no exception";
+      } else {
+        return this.lastException.get().getMessage() + " at " + DateTimeFormatter.ISO_LOCAL_TIME.format(lastExceptionInstant.get());
+      }
     }
 
     @Override
