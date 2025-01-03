@@ -114,7 +114,7 @@ Please launch the `./mvnw spotless:apply` command to format your changes before 
 
 == Copyright and License
 
-(c) 2020-2024 Broadcom. All Rights Reserved.
+(c) 2020-2025 Broadcom. All Rights Reserved.
 The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 
 Double licensed under the MPL2.0 and ASL2. See link:LICENSE[LICENSE] for details.
