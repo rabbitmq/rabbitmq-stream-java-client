@@ -65,7 +65,7 @@
     <mockito.version>5.15.2</mockito.version>
     <amqp-client.version>5.24.0</amqp-client.version>
     <commons-lang3.version>3.17.0</commons-lang3.version>
-    <commons-codec.version>1.17.1</commons-codec.version>
+    <commons-codec.version>1.17.2</commons-codec.version>
     <gson.version>2.11.0</gson.version>
     <vavr.version>0.10.5</vavr.version>
     <paho.version>1.2.5</paho.version>
