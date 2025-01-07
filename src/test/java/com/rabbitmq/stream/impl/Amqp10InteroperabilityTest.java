@@ -32,7 +32,6 @@ import com.swiftmq.amqp.v100.client.Connection;
 import com.swiftmq.amqp.v100.client.Producer;
 import com.swiftmq.amqp.v100.client.QoS;
 import com.swiftmq.amqp.v100.client.Session;
-import com.swiftmq.amqp.v100.generated.messaging.delivery_state.*;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.AmqpSequence;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.AmqpValue;
 import com.swiftmq.amqp.v100.generated.messaging.message_format.ApplicationProperties;

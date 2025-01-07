@@ -8,7 +8,6 @@ updates:
       interval: "daily"
     open-pull-requests-limit: 20
     ignore:
-      - dependency-name: "com.swiftmq:swiftmq-client"
       - dependency-name: "org.slf4j:slf4j-api"
         versions: [ "[2.0,)" ]
       - dependency-name: "ch.qos.logback:logback-classic"
