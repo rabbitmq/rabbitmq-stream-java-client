@@ -35,7 +35,6 @@ import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -255,9 +254,10 @@ public class RecoveryClusterTest {
       System.out.println(TestUtils.jsonPrettyPrint(environment.toString()));
 
       LOGGER.info("Producer information:");
-      producers.forEach(p -> {
-        LOGGER.info("Producer to '{}' (last exception: '{}')", p.stream(), p.lastException);
-      });
+      producers.forEach(
+          p -> {
+            LOGGER.info("Producer to '{}' (last exception: '{}')", p.stream(), p.lastException);
+          });
 
       LOGGER.info("Closing producers");
       producers.forEach(
@@ -357,7 +357,9 @@ public class RecoveryClusterTest {
       if (this.lastException.get() == null) {
         return "no exception";
       } else {
-        return this.lastException.get().getMessage() + " at " + DateTimeFormatter.ISO_LOCAL_TIME.format(lastExceptionInstant.get());
+        return this.lastException.get().getMessage()
+            + " at "
+            + DateTimeFormatter.ISO_INSTANT.format(lastExceptionInstant.get());
       }
     }
 
