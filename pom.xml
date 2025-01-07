@@ -88,7 +88,7 @@
     <asciidoctorj.diagram.version>2.3.1</asciidoctorj.diagram.version>
     <buildnumber.plugin.version>3.2.1</buildnumber.plugin.version>
     <jmh.version>1.37</jmh.version>
-    <spotless.version>2.43.0</spotless.version>
+    <spotless.version>2.44.0</spotless.version>
     <google-java-format.version>1.25.2</google-java-format.version>
     <jacoco.version>0.8.12</jacoco.version>
     <spotbugs-maven-plugin.version>4.8.6.6</spotbugs-maven-plugin.version>
