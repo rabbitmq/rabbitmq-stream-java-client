@@ -25,6 +25,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -42,12 +44,13 @@ class DefaultExecutorServiceFactory implements ExecutorServiceFactory {
   private final int minSize;
   private final int clientPerExecutor;
   private final Supplier<Executor> executorFactory;
+  private final Lock lock = new ReentrantLock();
 
   DefaultExecutorServiceFactory(int minSize, int clientPerExecutor, String prefix) {
     this.minSize = minSize;
     this.clientPerExecutor = clientPerExecutor;
     this.threadFactory = threadFactory(prefix);
-    this.executorFactory = () -> newExecutor();
+    this.executorFactory = this::newExecutor;
     List<Executor> l = new ArrayList<>(this.minSize);
     IntStream.range(0, this.minSize).forEach(ignored -> l.add(this.executorFactory.get()));
     executors = new CopyOnWriteArrayList<>(l);
@@ -111,29 +114,39 @@ class DefaultExecutorServiceFactory implements ExecutorServiceFactory {
   }
 
   @Override
-  public synchronized ExecutorService get() {
-    if (closed.get()) {
-      throw new IllegalStateException("Executor service factory is closed");
-    } else {
-      maybeResize(this.executors, this.minSize, this.clientPerExecutor, this.executorFactory);
-      LOGGER.debug("Looking least used executor in {}", this.executors);
-      Executor executor = this.executors.stream().min(EXECUTOR_COMPARATOR).get();
-      LOGGER.debug("Least used executor is {}", executor);
-      executor.incrementUsage();
-      return executor.executorService;
+  public ExecutorService get() {
+    this.lock.lock();
+    try {
+      if (closed.get()) {
+        throw new IllegalStateException("Executor service factory is closed");
+      } else {
+        maybeResize(this.executors, this.minSize, this.clientPerExecutor, this.executorFactory);
+        LOGGER.debug("Looking least used executor in {}", this.executors);
+        Executor executor = this.executors.stream().min(EXECUTOR_COMPARATOR).get();
+        LOGGER.debug("Least used executor is {}", executor);
+        executor.incrementUsage();
+        return executor.executorService;
+      }
+    } finally {
+      this.lock.unlock();
     }
   }
 
   @Override
-  public synchronized void clientClosed(ExecutorService executorService) {
-    if (!closed.get()) {
-      Executor executor = find(executorService);
-      if (executor == null) {
-        LOGGER.info("Could not find executor service wrapper");
-      } else {
-        executor.decrementUsage();
-        maybeResize(this.executors, this.minSize, this.clientPerExecutor, this.executorFactory);
+  public void clientClosed(ExecutorService executorService) {
+    this.lock.lock();
+    try {
+      if (!closed.get()) {
+        Executor executor = find(executorService);
+        if (executor == null) {
+          LOGGER.info("Could not find executor service wrapper");
+        } else {
+          executor.decrementUsage();
+          maybeResize(this.executors, this.minSize, this.clientPerExecutor, this.executorFactory);
+        }
       }
+    } finally {
+      this.lock.unlock();
     }
   }
 
@@ -148,17 +161,26 @@ class DefaultExecutorServiceFactory implements ExecutorServiceFactory {
 
   @Override
   public synchronized void close() {
-    if (closed.compareAndSet(false, true)) {
-      this.executors.forEach(executor -> executor.executorService.shutdownNow());
+    this.lock.lock();
+    try {
+      if (closed.compareAndSet(false, true)) {
+        this.executors.forEach(executor -> executor.executorService.shutdownNow());
+      }
+    } finally {
+      this.lock.unlock();
     }
   }
 
   static class Executor {
 
+    private static final AtomicInteger ID_SEQUENCE = new AtomicInteger();
+
     private final ExecutorService executorService;
     private AtomicInteger usage = new AtomicInteger(0);
+    private final int id;
 
     Executor(ExecutorService executorService) {
+      this.id = ID_SEQUENCE.getAndIncrement();
       this.executorService = executorService;
     }
 
@@ -192,7 +214,7 @@ class DefaultExecutorServiceFactory implements ExecutorServiceFactory {
 
     @Override
     public String toString() {
-      return "Executor{" + "usage=" + usage.get() + '}';
+      return "Executor{" + "id=" + id + ", usage=" + usage.get() + '}';
     }
   }
 }
