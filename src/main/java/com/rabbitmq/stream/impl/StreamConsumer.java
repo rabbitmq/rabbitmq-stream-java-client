@@ -17,21 +17,21 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
+import static java.lang.String.format;
 import static java.time.Duration.ofMillis;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
+import com.rabbitmq.stream.impl.StreamEnvironment.LocatorNotAvailableException;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -161,18 +161,7 @@ class StreamConsumer implements Consumer {
                   if (context.isActive()) {
                     LOGGER.debug("Looking up offset (stream {})", this.stream);
                     StreamConsumer consumer = (StreamConsumer) context.consumer();
-                    try {
-                      long offset = getStoredOffsetSafely(consumer, this.environment);
-                      LOGGER.debug(
-                          "Stored offset is {}, returning the value + 1 to the server", offset);
-                      result = OffsetSpecification.offset(offset + 1);
-                    } catch (NoOffsetException e) {
-                      LOGGER.debug(
-                          "No stored offset, using initial offset specification: {}",
-                          this.initialOffsetSpecification);
-                      result = initialOffsetSpecification;
-                    }
-                    return result;
+                    return getStoredOffset(consumer, environment, initialOffsetSpecification);
                   } else {
                     if (receivedSomething.get()) {
                       LOGGER.debug(
@@ -209,17 +198,7 @@ class StreamConsumer implements Consumer {
                   if (context.isActive()) {
                     LOGGER.debug("Going from passive to active, looking up offset");
                     StreamConsumer consumer = (StreamConsumer) context.consumer();
-                    try {
-                      long offset = getStoredOffsetSafely(consumer, this.environment);
-                      LOGGER.debug(
-                          "Stored offset is {}, returning the value + 1 to the server", offset);
-                      result = OffsetSpecification.offset(offset + 1);
-                    } catch (NoOffsetException e) {
-                      LOGGER.debug(
-                          "No stored offset, using initial offset specification: {}",
-                          this.initialOffsetSpecification);
-                      result = initialOffsetSpecification;
-                    }
+                    result = getStoredOffset(consumer, environment, initialOffsetSpecification);
                   }
                   return result;
                 };
@@ -274,47 +253,79 @@ class StreamConsumer implements Consumer {
     }
   }
 
+  static OffsetSpecification getStoredOffset(
+      StreamConsumer consumer, StreamEnvironment environment, OffsetSpecification fallback) {
+    OffsetSpecification result = null;
+    while (result == null) {
+      try {
+        long offset = getStoredOffsetSafely(consumer, environment);
+        LOGGER.debug("Stored offset is {}, returning the value + 1 to the server", offset);
+        result = OffsetSpecification.offset(offset + 1);
+      } catch (NoOffsetException e) {
+        LOGGER.debug("No stored offset, using initial offset specification: {}", fallback);
+        result = fallback;
+      } catch (TimeoutStreamException e) {
+        LOGGER.debug("Timeout when looking up stored offset, retrying");
+      }
+    }
+    return result;
+  }
+
   static long getStoredOffsetSafely(StreamConsumer consumer, StreamEnvironment environment) {
     long offset;
     try {
       offset = consumer.storedOffset();
     } catch (IllegalStateException e) {
-      LOGGER.debug("Leader connection not available to retrieve offset, retrying");
-      // no connection to leader to retrieve the offset, retrying
+      LOGGER.debug(
+          "Leader connection for '{}' not available to retrieve offset, retrying", consumer.stream);
+      // no connection to leader to retrieve the offset, trying with environment connections
+      String description =
+          format("Stored offset retrieval for '%s' on stream '%s'", consumer.name, consumer.stream);
       CompletableFuture<Long> storedOffetRetrievalFuture =
-          asyncRetry(() -> consumer.storedOffset(() -> consumer.trackingClient()))
-              .description(
-                  "Stored offset retrieval for '%s' on stream '%s'", consumer.name, consumer.stream)
+          asyncRetry(() -> consumer.storedOffset(() -> environment.locator().client()))
+              .description(description)
               .scheduler(environment.scheduledExecutorService())
-              .retry(ex -> ex instanceof IllegalStateException)
+              .retry(
+                  ex ->
+                      ex instanceof IllegalStateException
+                          || ex instanceof LocatorNotAvailableException)
               .delayPolicy(
                   fixedWithInitialDelay(
-                      environment.recoveryBackOffDelayPolicy().delay(0),
+                      Duration.ZERO,
                       environment.recoveryBackOffDelayPolicy().delay(1),
                       environment.recoveryBackOffDelayPolicy().delay(0).multipliedBy(3)))
               .build();
       try {
-        offset = storedOffetRetrievalFuture.get();
+        offset =
+            storedOffetRetrievalFuture.get(
+                environment.rpcTimeout().toMillis(), TimeUnit.MILLISECONDS);
       } catch (InterruptedException ex) {
         Thread.currentThread().interrupt();
         throw new StreamException(
-            String.format(
+            format(
                 "Could not get stored offset for '%s' on stream '%s'",
                 consumer.name, consumer.stream),
             ex);
       } catch (ExecutionException ex) {
-        throw new StreamException(
-            String.format(
-                "Could not get stored offset for '%s' on stream '%s'",
+        if (ex.getCause() instanceof StreamException) {
+          throw (StreamException) ex.getCause();
+        } else {
+          throw new StreamException(
+              format(
+                  "Could not get stored offset for '%s' on stream '%s'",
+                  consumer.name, consumer.stream),
+              ex);
+        }
+      } catch (TimeoutException ex) {
+        storedOffetRetrievalFuture.cancel(true);
+        throw new TimeoutStreamException(
+            format(
+                "Could not get stored offset for '%s' on stream '%s' (timeout)",
                 consumer.name, consumer.stream),
             ex);
       }
     }
     return offset;
-  }
-
-  Client trackingClient() {
-    return this.trackingClient;
   }
 
   void waitForOffsetToBeStored(long expectedStoredOffset) {
@@ -469,8 +480,9 @@ class StreamConsumer implements Consumer {
     return this.sacActive;
   }
 
-  private boolean canTrack() {
-    return (this.status == Status.INITIALIZING || this.status == Status.RUNNING)
+  boolean canTrack() {
+    return ((this.status == Status.INITIALIZING || this.status == Status.RUNNING)
+            || (this.trackingClient == null && this.status == Status.NOT_AVAILABLE))
         && this.name != null;
   }
 
@@ -557,7 +569,7 @@ class StreamConsumer implements Consumer {
         response = clientSupplier.get().queryOffset(this.name, this.stream);
       } catch (Exception e) {
         throw new IllegalStateException(
-            String.format(
+            format(
                 "Not possible to query offset for consumer %s on stream %s for now: %s",
                 this.name, this.stream, e.getMessage()),
             e);
@@ -566,23 +578,22 @@ class StreamConsumer implements Consumer {
         return response.getOffset();
       } else if (response.getResponseCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
         throw new NoOffsetException(
-            String.format(
+            format(
                 "No offset stored for consumer %s on stream %s (%s)",
                 this.name, this.stream, Utils.formatConstant(response.getResponseCode())));
       } else {
         throw new StreamException(
-            String.format(
+            format(
                 "QueryOffset for consumer %s on stream %s returned an error (%s)",
                 this.name, this.stream, Utils.formatConstant(response.getResponseCode())),
             response.getResponseCode());
       }
-
     } else if (this.name == null) {
       throw new UnsupportedOperationException(
           "Not possible to query stored offset for a consumer without a name");
     } else {
       throw new IllegalStateException(
-          String.format(
+          format(
               "Not possible to query offset for consumer %s on stream %s for now, consumer status is %s",
               this.name, this.stream, this.status.name()));
     }

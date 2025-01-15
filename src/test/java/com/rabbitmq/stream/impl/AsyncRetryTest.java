@@ -14,18 +14,20 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static java.time.Duration.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
-import com.rabbitmq.stream.BackOffDelayPolicy;
-import java.time.Duration;
+import com.rabbitmq.stream.impl.TestUtils.Sync;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
@@ -37,7 +39,7 @@ public class AsyncRetryTest {
   AutoCloseable mocks;
 
   @BeforeEach
-  void init(TestInfo info) {
+  void init() {
     mocks = MockitoAnnotations.openMocks(this);
   }
 
@@ -52,12 +54,11 @@ public class AsyncRetryTest {
     when(task.call()).thenReturn(42);
     CompletableFuture<Integer> completableFuture =
         AsyncRetry.asyncRetry(task)
-            .delayPolicy(
-                BackOffDelayPolicy.fixedWithInitialDelay(Duration.ZERO, Duration.ofMillis(10)))
+            .delayPolicy(fixedWithInitialDelay(ZERO, ofMillis(10)))
             .scheduler(scheduler)
             .build();
     AtomicInteger result = new AtomicInteger(0);
-    completableFuture.thenAccept(value -> result.set(value));
+    completableFuture.thenAccept(result::set);
     assertThat(result.get()).isEqualTo(42);
     verify(task, times(1)).call();
   }
@@ -70,7 +71,7 @@ public class AsyncRetryTest {
         .thenThrow(new RuntimeException())
         .thenReturn(42);
     CompletableFuture<Integer> completableFuture =
-        AsyncRetry.asyncRetry(task).scheduler(scheduler).delay(Duration.ofMillis(50)).build();
+        AsyncRetry.asyncRetry(task).scheduler(scheduler).delay(ofMillis(50)).build();
     CountDownLatch latch = new CountDownLatch(1);
     AtomicInteger result = new AtomicInteger(0);
     completableFuture.thenAccept(
@@ -91,9 +92,7 @@ public class AsyncRetryTest {
     CompletableFuture<Integer> completableFuture =
         AsyncRetry.asyncRetry(task)
             .scheduler(scheduler)
-            .delayPolicy(
-                BackOffDelayPolicy.fixedWithInitialDelay(
-                    Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMillis(500)))
+            .delayPolicy(fixedWithInitialDelay(ofMillis(50), ofMillis(50), ofMillis(500)))
             .build();
     CountDownLatch latch = new CountDownLatch(1);
     AtomicBoolean acceptCalled = new AtomicBoolean(false);
@@ -126,7 +125,7 @@ public class AsyncRetryTest {
         AsyncRetry.asyncRetry(task)
             .scheduler(scheduler)
             .retry(e -> e instanceof IllegalStateException)
-            .delay(Duration.ofMillis(50))
+            .delay(ofMillis(50))
             .build();
     CountDownLatch latch = new CountDownLatch(1);
     AtomicInteger result = new AtomicInteger(0);
@@ -152,7 +151,7 @@ public class AsyncRetryTest {
         AsyncRetry.asyncRetry(task)
             .scheduler(scheduler)
             .retry(e -> !(e instanceof IllegalArgumentException))
-            .delay(Duration.ofMillis(50))
+            .delay(ofMillis(50))
             .build();
     CountDownLatch latch = new CountDownLatch(1);
     AtomicBoolean acceptCalled = new AtomicBoolean(false);
@@ -172,6 +171,28 @@ public class AsyncRetryTest {
     assertThat(acceptCalled.get()).isFalse();
     assertThat(exceptionallyCalled.get()).isTrue();
     verify(task, times(3)).call();
+  }
+
+  @ParameterizedTest
+  @MethodSource("schedulers")
+  void completeExceptionally(ScheduledExecutorService scheduler) throws Exception {
+    when(task.call()).thenThrow(new UnsupportedOperationException());
+    CompletableFuture<Integer> completableFuture =
+        AsyncRetry.asyncRetry(task)
+            .delayPolicy(fixedWithInitialDelay(ZERO, ofMillis(10)))
+            .retry(ex -> ex instanceof IllegalStateException)
+            .scheduler(scheduler)
+            .build();
+    Sync sync = sync();
+    completableFuture.handleAsync(
+        (v, ex) -> {
+          if (ex != null) {
+            sync.down();
+          }
+          return null;
+        },
+        scheduler);
+    assertThat(sync).completes();
   }
 
   static List<ScheduledExecutorService> schedulers() {

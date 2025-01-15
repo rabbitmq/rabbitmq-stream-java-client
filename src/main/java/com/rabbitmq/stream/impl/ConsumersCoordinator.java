@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
 import static com.rabbitmq.stream.impl.Utils.*;
 import static java.lang.String.format;
 import static java.util.stream.Collectors.toList;
@@ -412,7 +413,7 @@ final class ConsumersCoordinator implements AutoCloseable {
     private volatile boolean hasReceivedSomething = false;
     private volatile byte subscriptionIdInClient;
     private volatile ClientSubscriptionsManager manager;
-    private volatile AtomicReference<SubscriptionState> state =
+    private final AtomicReference<SubscriptionState> state =
         new AtomicReference<>(SubscriptionState.OPENING);
     private final ConsumerFlowStrategy flowStrategy;
     private final Lock subscriptionTrackerLock = new ReentrantLock();
@@ -507,7 +508,8 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     String label() {
       return String.format(
-          "[id=%d, stream=%s, consumer=%d]", this.id, this.stream, this.consumer.id());
+          "[id=%d, stream=%s, name=%s, consumer=%d]",
+          this.id, this.stream, this.offsetTrackingReference, this.consumer.id());
     }
   }
 
@@ -962,8 +964,27 @@ final class ConsumersCoordinator implements AutoCloseable {
                   recoveryBackOffDelayPolicy(),
                   "Candidate lookup to consume from '%s' (subscription recovery)",
                   tracker.stream);
+        } catch (StreamException e) {
+          LOGGER.warn(
+              "Stream error while re-assigning subscription from stream {} (name {})",
+              tracker.stream,
+              tracker.offsetTrackingReference,
+              e);
+          if (e.getCode() == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS) {
+            LOGGER.debug("Subscription ID already existing, retrying");
+          } else {
+            LOGGER.debug(
+                "Not re-assigning consumer '{}' because of '{}'", tracker.label(), e.getMessage());
+            reassignmentCompleted = true;
+          }
         } catch (Exception e) {
-          LOGGER.warn("Error while re-assigning subscription from stream {}", tracker.stream, e);
+          LOGGER.warn(
+              "Error while re-assigning subscription from stream {} (name {})",
+              tracker.stream,
+              tracker.offsetTrackingReference,
+              e);
+          LOGGER.debug(
+              "Not re-assigning consumer '{}' because of '{}'", tracker.label(), e.getMessage());
           reassignmentCompleted = true;
         }
       }
@@ -1002,11 +1023,13 @@ final class ConsumersCoordinator implements AutoCloseable {
         List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
 
         LOGGER.debug(
-            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}",
+            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
+                + "subscription ID is {}",
             subscriptionTracker.stream,
             offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
             subscriptionTracker.offsetTrackingReference,
-            subscriptionTracker.subscriptionProperties);
+            subscriptionTracker.subscriptionProperties,
+            subscriptionId);
         try {
           // updating data structures before subscribing
           // (to make sure they are up-to-date in case message would arrive super fast)
@@ -1063,12 +1086,11 @@ final class ConsumersCoordinator implements AutoCloseable {
               subscriptionContext.offsetSpecification());
 
           checkNotClosed();
-          byte subId = subscriptionId;
           Client.Response subscribeResponse =
               Utils.callAndMaybeRetry(
                   () ->
                       client.subscribe(
-                          subId,
+                          subscriptionId,
                           subscriptionTracker.stream,
                           subscriptionContext.offsetSpecification(),
                           subscriptionTracker.flowStrategy.initialCredits(),
@@ -1084,6 +1106,19 @@ final class ConsumersCoordinator implements AutoCloseable {
                     + " failed with code "
                     + formatConstant(subscribeResponse.getResponseCode());
             LOGGER.debug(message);
+            if (subscribeResponse.getResponseCode()
+                == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS) {
+              if (LOGGER.isDebugEnabled()) {
+                SubscriptionTracker initialTracker = previousSubscriptions.get(subscriptionId);
+                LOGGER.debug("Subscription ID already exists");
+                LOGGER.debug(
+                    "Initial tracker with sub ID {}: consumer {}, stream {}, name {}",
+                    subscriptionId,
+                    initialTracker.consumer.id(),
+                    initialTracker.stream,
+                    initialTracker.offsetTrackingReference);
+              }
+            }
             throw convertCodeToException(
                 subscribeResponse.getResponseCode(), subscriptionTracker.stream, () -> message);
           }

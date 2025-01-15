@@ -251,6 +251,13 @@ class ServerFrameHandler {
     }
 
     abstract int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message);
+
+    protected void logMissingOutstandingRequest(int correlationId) {
+      LOGGER.warn(
+          "Could not find outstanding request with correlation ID {} ({})",
+          correlationId,
+          this.getClass().getSimpleName());
+    }
   }
 
   private static class ConfirmFrameHandler extends BaseFrameHandler {
@@ -670,7 +677,7 @@ class ServerFrameHandler {
       OutstandingRequest<QueryPublisherSequenceResponse> outstandingRequest =
           remove(client.outstandingRequests, correlationId, QueryPublisherSequenceResponse.class);
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         QueryPublisherSequenceResponse response =
             new QueryPublisherSequenceResponse(responseCode, sequence);
@@ -695,7 +702,7 @@ class ServerFrameHandler {
       OutstandingRequest<QueryOffsetResponse> outstandingRequest =
           remove(client.outstandingRequests, correlationId, QueryOffsetResponse.class);
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         QueryOffsetResponse response = new QueryOffsetResponse(responseCode, offset);
         outstandingRequest.response().set(response);
@@ -744,7 +751,13 @@ class ServerFrameHandler {
 
     @Override
     int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      LOGGER.debug(
+          "Handling peer properties response for connection {}", client.clientConnectionName());
       int correlationId = message.readInt();
+      LOGGER.debug(
+          "Handling peer properties response for connection {}, correlation ID is {}",
+          client.clientConnectionName(),
+          correlationId);
       int read = 4;
 
       short responseCode = message.readShort();
@@ -773,7 +786,7 @@ class ServerFrameHandler {
       OutstandingRequest<Map<String, String>> outstandingRequest =
           remove(client.outstandingRequests, correlationId, new ParameterizedTypeReference<>() {});
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(Collections.unmodifiableMap(serverProperties));
         outstandingRequest.countDown();
@@ -811,7 +824,7 @@ class ServerFrameHandler {
       OutstandingRequest<OpenResponse> outstandingRequest =
           remove(client.outstandingRequests, correlationId, OpenResponse.class);
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(new OpenResponse(responseCode, connectionProperties));
         outstandingRequest.countDown();
@@ -900,7 +913,7 @@ class ServerFrameHandler {
       OutstandingRequest<SaslAuthenticateResponse> outstandingRequest =
           remove(client.outstandingRequests, correlationId, SaslAuthenticateResponse.class);
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(response);
         outstandingRequest.countDown();
@@ -943,7 +956,7 @@ class ServerFrameHandler {
               correlationId,
               new ParameterizedTypeReference<List<String>>() {});
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(mechanisms);
         outstandingRequest.countDown();
@@ -1005,7 +1018,7 @@ class ServerFrameHandler {
               correlationId,
               new ParameterizedTypeReference<Map<String, StreamMetadata>>() {});
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(results);
         outstandingRequest.countDown();
@@ -1026,7 +1039,7 @@ class ServerFrameHandler {
       OutstandingRequest<Response> outstandingRequest =
           remove(client.outstandingRequests, correlationId, Response.class);
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         Response response = new Response(responseCode);
         outstandingRequest.response().set(response);
@@ -1063,12 +1076,9 @@ class ServerFrameHandler {
       }
 
       OutstandingRequest<List<String>> outstandingRequest =
-          remove(
-              client.outstandingRequests,
-              correlationId,
-              new ParameterizedTypeReference<List<String>>() {});
+          remove(client.outstandingRequests, correlationId, new ParameterizedTypeReference<>() {});
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(streams);
         outstandingRequest.countDown();
@@ -1110,7 +1120,7 @@ class ServerFrameHandler {
               correlationId,
               new ParameterizedTypeReference<List<String>>() {});
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(streams);
         outstandingRequest.countDown();
@@ -1155,7 +1165,7 @@ class ServerFrameHandler {
               correlationId,
               new ParameterizedTypeReference<List<FrameHandlerInfo>>() {});
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(commandVersions);
         outstandingRequest.countDown();
@@ -1189,7 +1199,7 @@ class ServerFrameHandler {
       OutstandingRequest<StreamStatsResponse> outstandingRequest =
           remove(client.outstandingRequests, correlationId, StreamStatsResponse.class);
       if (outstandingRequest == null) {
-        LOGGER.warn("Could not find outstanding request with correlation ID {}", correlationId);
+        logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(new StreamStatsResponse(responseCode, info));
         outstandingRequest.countDown();

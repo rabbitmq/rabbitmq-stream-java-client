@@ -53,6 +53,10 @@ class AsyncRetry<V> {
                 this.completableFuture.completeExceptionally(new CancellationException());
                 return;
               }
+              if (this.completableFuture.isCancelled()) {
+                LOGGER.debug("Task '{}' cancelled", description);
+                return;
+              }
               try {
                 LOGGER.debug(
                     "Running task '{}' (virtual threads: {})",
@@ -64,9 +68,10 @@ class AsyncRetry<V> {
               } catch (Exception e) {
                 int attemptCount = attempts.getAndIncrement();
                 LOGGER.debug(
-                    "Attempt {} for task '{}' failed, checking retry policy",
+                    "Attempt {} for task '{}' failed with '{}', checking retry policy",
                     attemptCount,
-                    description);
+                    description,
+                    e.getMessage());
                 if (retry.test(e)) {
                   if (delayPolicy.delay(attemptCount).equals(BackOffDelayPolicy.TIMEOUT)) {
                     LOGGER.debug(

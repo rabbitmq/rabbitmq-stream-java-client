@@ -15,9 +15,11 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
+import static com.rabbitmq.stream.impl.Client.DEFAULT_RPC_TIMEOUT;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.*;
 import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 
@@ -88,6 +90,7 @@ class StreamEnvironment implements Environment {
   private final List<Locator> locators;
   private final ExecutorServiceFactory executorServiceFactory;
   private final ObservationCollector<?> observationCollector;
+  private final Duration rpcTimeout;
 
   @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamEnvironment(
@@ -114,6 +117,8 @@ class StreamEnvironment implements Environment {
     this.recoveryBackOffDelayPolicy = recoveryBackOffDelayPolicy;
     this.topologyUpdateBackOffDelayPolicy = topologyBackOffDelayPolicy;
     this.byteBufAllocator = byteBufAllocator;
+    this.rpcTimeout =
+        ofNullable(clientParametersPrototype.rpcTimeout()).orElse(DEFAULT_RPC_TIMEOUT);
     clientParametersPrototype = clientParametersPrototype.byteBufAllocator(byteBufAllocator);
     clientParametersPrototype = maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
 
@@ -713,6 +718,10 @@ class StreamEnvironment implements Environment {
     return this.scheduledExecutorService;
   }
 
+  Duration rpcTimeout() {
+    return this.rpcTimeout;
+  }
+
   void execute(Runnable task, String description, Object... args) {
     this.scheduledExecutorService().execute(namedRunnable(task, description, args));
   }
@@ -998,7 +1007,7 @@ class StreamEnvironment implements Environment {
 
     Locator client(Client client) {
       Client previous = this.nullableClient();
-      this.client = Optional.ofNullable(client);
+      this.client = ofNullable(client);
       LocalDateTime now = LocalDateTime.now();
       LOGGER.debug(
           "Locator wrapper '{}' updated from {} to {}, last changed {}, {} ago",
@@ -1023,7 +1032,7 @@ class StreamEnvironment implements Environment {
       return this.client.isPresent();
     }
 
-    private Client client() {
+    Client client() {
       return this.client.orElseThrow(() -> new LocatorNotAvailableException(id));
     }
 

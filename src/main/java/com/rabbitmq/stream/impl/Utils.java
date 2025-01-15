@@ -312,8 +312,6 @@ final class Utils {
 
   static class ConditionalClientFactory implements ClientFactory {
 
-    private static final Duration RETRY_INTERVAL = Duration.ofSeconds(1);
-
     private final ClientFactory delegate;
     private final BiPredicate<ClientFactoryContext, Client> condition;
     private final Duration retryInterval;
