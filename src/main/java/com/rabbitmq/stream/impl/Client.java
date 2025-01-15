@@ -104,6 +104,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLHandshakeException;
@@ -178,7 +179,7 @@ public class Client implements AutoCloseable {
   private final CredentialsProvider credentialsProvider;
   private final Runnable nettyClosing;
   private final int maxFrameSize;
-  private final boolean frameSizeCopped;
+  private final boolean frameSizeCapped;
   private final EventLoopGroup eventLoopGroup;
   private final Map<String, String> clientProperties;
   private final String NETTY_HANDLER_FLUSH_CONSOLIDATION =
@@ -373,12 +374,18 @@ public class Client implements AutoCloseable {
           new TuneState(
               parameters.requestedMaxFrameSize, (int) parameters.requestedHeartbeat.getSeconds());
       this.clientProperties = clientProperties(parameters.clientProperties);
+      debug(() -> "exchanging peer properties");
       this.serverProperties = peerProperties();
+      debug(() -> "peer properties exchanged");
+      debug(() -> "starting SASL handshake");
       this.saslMechanisms = getSaslMechanisms();
+      debug(() -> "SASL mechanisms supported by server ({})", this.saslMechanisms);
+      debug(() -> "starting authentication");
       authenticate(this.credentialsProvider);
+      debug(() -> "authenticated");
       this.tuneState.await(Duration.ofSeconds(10));
       this.maxFrameSize = this.tuneState.getMaxFrameSize();
-      this.frameSizeCopped = this.maxFrameSize() > 0;
+      this.frameSizeCapped = this.maxFrameSize() > 0;
       LOGGER.debug(
           "Connection tuned with max frame size {} and heartbeat {}",
           this.maxFrameSize(),
@@ -418,6 +425,8 @@ public class Client implements AutoCloseable {
       started.set(true);
       this.metricsCollector.openConnection();
     } catch (RuntimeException e) {
+      LOGGER.debug(
+          "Error while opening connection {}: {}", this.clientConnectionName, e.getMessage());
       this.closingSequence(null);
       throw e;
     }
@@ -462,10 +471,14 @@ public class Client implements AutoCloseable {
     return this.maxFrameSize;
   }
 
+  private int nextCorrelationId() {
+    return this.correlationSequence.getAndIncrement();
+  }
+
   private Map<String, String> peerProperties() {
     int clientPropertiesSize = mapSize(this.clientProperties);
     int length = 2 + 2 + 4 + clientPropertiesSize;
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
@@ -474,6 +487,7 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       writeMap(bb, this.clientProperties);
       OutstandingRequest<Map<String, String>> request = outstandingRequest();
+      LOGGER.debug("Peer properties request has correlation ID {}", correlationId);
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb);
       request.block();
@@ -539,7 +553,7 @@ public class Client implements AutoCloseable {
             + saslMechanism.getName().length()
             + 4
             + (challengeResponse == null ? 0 : challengeResponse.length);
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
@@ -569,7 +583,7 @@ public class Client implements AutoCloseable {
 
   private Map<String, String> open(String virtualHost) {
     int length = 2 + 2 + 4 + 2 + virtualHost.length();
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -610,7 +624,7 @@ public class Client implements AutoCloseable {
 
   private void sendClose(short code, String reason) {
     int length = 2 + 2 + 4 + 2 + 2 + reason.length();
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -643,7 +657,7 @@ public class Client implements AutoCloseable {
 
   private List<String> getSaslMechanisms() {
     int length = 2 + 2 + 4;
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocateNoCheck(length + 4);
       bb.writeInt(length);
@@ -670,7 +684,7 @@ public class Client implements AutoCloseable {
 
   public Response create(String stream, Map<String, String> arguments) {
     int length = 2 + 2 + 4 + 2 + stream.length() + mapSize(arguments);
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -719,7 +733,7 @@ public class Client implements AutoCloseable {
             + collectionSize(partitions)
             + collectionSize(bindingKeys)
             + mapSize(arguments);
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -748,7 +762,7 @@ public class Client implements AutoCloseable {
   Response deleteSuperStream(String superStream) {
     this.superStreamManagementCommandVersionsCheck.run();
     int length = 2 + 2 + 4 + 2 + superStream.length();
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -808,7 +822,7 @@ public class Client implements AutoCloseable {
   }
 
   ByteBuf allocate(ByteBufAllocator allocator, int capacity) {
-    if (frameSizeCopped && capacity > this.maxFrameSize()) {
+    if (frameSizeCapped && capacity > this.maxFrameSize()) {
       throw new IllegalArgumentException(
           "Cannot allocate "
               + capacity
@@ -832,7 +846,7 @@ public class Client implements AutoCloseable {
 
   public Response delete(String stream) {
     int length = 2 + 2 + 4 + 2 + stream.length();
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -864,7 +878,7 @@ public class Client implements AutoCloseable {
       throw new IllegalArgumentException("At least one stream must be specified");
     }
     int length = 2 + 2 + 4 + arraySize(streams); // API code, version, correlation ID, array size
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -897,7 +911,7 @@ public class Client implements AutoCloseable {
           "If specified, publisher reference must less than 256 characters");
     }
     int length = 2 + 2 + 4 + 1 + 2 + publisherReferenceSize + 2 + stream.length();
-    int correlationId = correlationSequence.getAndIncrement();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -928,7 +942,7 @@ public class Client implements AutoCloseable {
 
   public Response deletePublisher(byte publisherId) {
     int length = 2 + 2 + 4 + 1;
-    int correlationId = correlationSequence.getAndIncrement();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -1252,7 +1266,7 @@ public class Client implements AutoCloseable {
       propertiesSize = mapSize(properties);
     }
     length += propertiesSize;
-    int correlationId = correlationSequence.getAndIncrement();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -1320,7 +1334,7 @@ public class Client implements AutoCloseable {
     }
 
     int length = 2 + 2 + 4 + 2 + reference.length() + 2 + stream.length();
-    int correlationId = correlationSequence.getAndIncrement();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -1361,7 +1375,7 @@ public class Client implements AutoCloseable {
     }
 
     int length = 2 + 2 + 4 + 2 + publisherReference.length() + 2 + stream.length();
-    int correlationId = correlationSequence.getAndIncrement();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -1398,7 +1412,7 @@ public class Client implements AutoCloseable {
 
   public Response unsubscribe(byte subscriptionId) {
     int length = 2 + 2 + 4 + 1;
-    int correlationId = correlationSequence.getAndIncrement();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -1445,6 +1459,8 @@ public class Client implements AutoCloseable {
       if (this.channel != null && this.channel.isOpen()) {
         LOGGER.debug("Closing Netty channel");
         this.channel.close().get(10, TimeUnit.SECONDS);
+      } else {
+        LOGGER.debug("No Netty channel to close");
       }
     } catch (InterruptedException e) {
       LOGGER.info("Channel closing has been interrupted");
@@ -1530,7 +1546,7 @@ public class Client implements AutoCloseable {
             + routingKey.length()
             + 2
             + superStream.length(); // API code, version, correlation ID, 2 strings
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -1565,7 +1581,7 @@ public class Client implements AutoCloseable {
     }
     int length =
         2 + 2 + 4 + 2 + superStream.length(); // API code, version, correlation ID, 1 string
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -1593,7 +1609,7 @@ public class Client implements AutoCloseable {
     List<FrameHandlerInfo> commandVersions = ServerFrameHandler.commandVersions();
     int length = 2 + 2 + 4 + 4; // API code, version, correlation ID, array size
     length += commandVersions.size() * (2 + 2 + 2);
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -1626,7 +1642,7 @@ public class Client implements AutoCloseable {
       throw new IllegalArgumentException("stream must not be null");
     }
     int length = 2 + 2 + 4 + 2 + stream.length(); // API code, version, correlation ID, 1 string
-    int correlationId = correlationSequence.incrementAndGet();
+    int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
       bb.writeInt(length);
@@ -2583,6 +2599,10 @@ public class Client implements AutoCloseable {
       return this;
     }
 
+    Duration rpcTimeout() {
+      return this.rpcTimeout;
+    }
+
     ClientParameters duplicate() {
       ClientParameters duplicate = new ClientParameters();
       for (Field field : ClientParameters.class.getDeclaredFields()) {
@@ -2925,5 +2945,11 @@ public class Client implements AutoCloseable {
   @Override
   public String toString() {
     return "Client{connectionName='" + connectionName() + "'}";
+  }
+
+  private void debug(Supplier<String> format, Object... args) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Connection '" + this.clientConnectionName + "': " + format.get(), args);
+    }
   }
 }
