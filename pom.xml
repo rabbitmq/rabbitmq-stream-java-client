@@ -92,7 +92,7 @@
     <google-java-format.version>1.25.2</google-java-format.version>
     <jacoco.version>0.8.12</jacoco.version>
     <spotbugs-maven-plugin.version>4.8.6.6</spotbugs-maven-plugin.version>
-    <spotbugs.version>4.8.6</spotbugs.version>
+    <spotbugs.version>4.9.0</spotbugs.version>
     <!-- for documentation -->
     <broker.version>4.0</broker.version>
     <!-- to sign artifacts when releasing -->
