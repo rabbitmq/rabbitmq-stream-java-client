@@ -94,6 +94,37 @@ public class SuperStreamConsumerTest {
     latchAssert(publishLatch).completes();
   }
 
+  static AutoCloseable publishToPartitions(TestUtils.ClientFactory cf, List<String> partitions) {
+    Client client = cf.get();
+    for (int i = 0; i < partitions.size(); i++) {
+      assertThat(client.declarePublisher(b(i), null, partitions.get(i)).isOk()).isTrue();
+    }
+    Runnable publish =
+        () -> {
+          int count = 0;
+          while (!Thread.currentThread().isInterrupted()) {
+            int partitionIndex = count++ % partitions.size();
+            String partition = partitions.get(partitionIndex);
+            client.publish(
+                b(partitionIndex),
+                Collections.singletonList(
+                    client
+                        .messageBuilder()
+                        .addData(partition.getBytes(StandardCharsets.UTF_8))
+                        .build()));
+            try {
+              Thread.sleep(10);
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              break;
+            }
+          }
+        };
+    Thread thread = new Thread(publish);
+    thread.start();
+    return thread::interrupt;
+  }
+
   @Test
   void consumeAllMessagesFromAllPartitions() {
     declareSuperStreamTopology(configurationClient, superStream, partitionCount);
@@ -299,62 +330,62 @@ public class SuperStreamConsumerTest {
   @BrokerVersionAtLeast(RABBITMQ_3_11_11)
   void rebalancedPartitionShouldGetMessagesWhenItComesBackToOriginalConsumerInstance()
       throws Exception {
+    Duration timeout = Duration.ofSeconds(60);
     declareSuperStreamTopology(configurationClient, superStream, partitionCount);
     Client client = cf.get();
     List<String> partitions = client.partitions(superStream);
-    int messageCount = 10_000;
-    publishToPartitions(cf, partitions, messageCount);
-    String consumerName = "my-app";
-    Set<String> receivedPartitions = ConcurrentHashMap.newKeySet(partitionCount);
-    Runnable processing =
-        () -> {
-          try {
-            Thread.sleep(10);
-          } catch (InterruptedException e) {
-            // OK
-          }
-        };
-    Consumer consumer1 =
-        environment
-            .consumerBuilder()
-            .superStream(superStream)
-            .singleActiveConsumer()
-            .offset(OffsetSpecification.first())
-            .name(consumerName)
-            .autoTrackingStrategy()
-            .messageCountBeforeStorage(messageCount / partitionCount / 50)
-            .builder()
-            .messageHandler(
-                (context, message) -> {
-                  receivedPartitions.add(context.stream());
-                  processing.run();
-                })
-            .build();
-    waitAtMost(() -> receivedPartitions.size() == partitions.size(),
-        () -> format("Expected to receive messages from all partitions, got %s", receivedPartitions));
+    try (AutoCloseable publish = publishToPartitions(cf, partitions)) {
+      int messageCountBeforeStorage = 10;
+      String consumerName = "my-app";
+      Set<String> receivedPartitions = ConcurrentHashMap.newKeySet(partitionCount);
+      Consumer consumer1 =
+          environment
+              .consumerBuilder()
+              .superStream(superStream)
+              .singleActiveConsumer()
+              .offset(OffsetSpecification.first())
+              .name(consumerName)
+              .autoTrackingStrategy()
+              .messageCountBeforeStorage(messageCountBeforeStorage)
+              .builder()
+              .messageHandler(
+                  (context, message) -> {
+                    receivedPartitions.add(context.stream());
+                  })
+              .build();
+      waitAtMost(
+          timeout,
+          () -> receivedPartitions.size() == partitions.size(),
+          () ->
+              format(
+                  "Expected to receive messages from all partitions, got %s", receivedPartitions));
 
-    AtomicReference<String> partition = new AtomicReference<>();
-    Consumer consumer2 =
-        environment
-            .consumerBuilder()
-            .superStream(superStream)
-            .singleActiveConsumer()
-            .offset(OffsetSpecification.first())
-            .name(consumerName)
-            .autoTrackingStrategy()
-            .messageCountBeforeStorage(messageCount / partitionCount / 50)
-            .builder()
-            .messageHandler(
-                (context, message) -> {
-                  partition.set(context.stream());
-                  processing.run();
-                })
-            .build();
-    waitAtMost(() -> partition.get() != null);
-    consumer2.close();
-    receivedPartitions.clear();
-    waitAtMost(() -> receivedPartitions.size() == partitions.size(),
-        () -> format("Expected to receive messages from all partitions, got %s", receivedPartitions));
-    consumer1.close();
+      AtomicReference<String> partition = new AtomicReference<>();
+      Consumer consumer2 =
+          environment
+              .consumerBuilder()
+              .superStream(superStream)
+              .singleActiveConsumer()
+              .offset(OffsetSpecification.first())
+              .name(consumerName)
+              .autoTrackingStrategy()
+              .messageCountBeforeStorage(messageCountBeforeStorage)
+              .builder()
+              .messageHandler(
+                  (context, message) -> {
+                    partition.set(context.stream());
+                  })
+              .build();
+      waitAtMost(timeout, () -> partition.get() != null);
+      consumer2.close();
+      receivedPartitions.clear();
+      waitAtMost(
+          timeout,
+          () -> receivedPartitions.size() == partitions.size(),
+          () ->
+              format(
+                  "Expected to receive messages from all partitions, got %s", receivedPartitions));
+      consumer1.close();
+    }
   }
 }
