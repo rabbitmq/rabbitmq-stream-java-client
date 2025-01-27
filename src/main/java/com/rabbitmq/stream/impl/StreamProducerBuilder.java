@@ -28,8 +28,8 @@ import java.util.function.ToIntFunction;
 
 class StreamProducerBuilder implements ProducerBuilder {
 
-  static final boolean DEFAULT_DYNAMIC_BATCH =
-      Boolean.parseBoolean(System.getProperty("rabbitmq.stream.producer.dynamic.batch", "true"));
+  static final boolean DEFAULT_DYNAMIC_BATCH = true;
+//      Boolean.parseBoolean(System.getProperty("rabbitmq.stream.producer.dynamic.batch", "true"));
 
   private final StreamEnvironment environment;
 

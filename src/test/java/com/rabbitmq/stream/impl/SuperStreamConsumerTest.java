@@ -330,7 +330,8 @@ public class SuperStreamConsumerTest {
                   processing.run();
                 })
             .build();
-    waitAtMost(() -> receivedPartitions.size() == partitions.size());
+    waitAtMost(() -> receivedPartitions.size() == partitions.size(),
+        () -> format("Expected to receive messages from all partitions, got %s", receivedPartitions));
 
     AtomicReference<String> partition = new AtomicReference<>();
     Consumer consumer2 =
@@ -352,7 +353,8 @@ public class SuperStreamConsumerTest {
     waitAtMost(() -> partition.get() != null);
     consumer2.close();
     receivedPartitions.clear();
-    waitAtMost(() -> receivedPartitions.size() == partitions.size());
+    waitAtMost(() -> receivedPartitions.size() == partitions.size(),
+        () -> format("Expected to receive messages from all partitions, got %s", receivedPartitions));
     consumer1.close();
   }
 }
