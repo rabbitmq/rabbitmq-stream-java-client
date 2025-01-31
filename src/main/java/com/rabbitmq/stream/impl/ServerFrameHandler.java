@@ -451,7 +451,6 @@ class ServerFrameHandler {
       }
 
       metricsCollector.chunk(numEntries);
-      long messagesRead = 0;
       MutableBoolean messageIgnored = new MutableBoolean(false);
 
       while (numRecords != 0) {
@@ -482,7 +481,7 @@ class ServerFrameHandler {
                 subscriptionId, offset, chunkTimestamp, committedOffset, chunkContext);
             messageIgnored.set(false);
           } else {
-            messagesRead++;
+            metricsCollector.consume(1);
           }
           numRecords--;
           offset++; // works even for unsigned long
@@ -551,7 +550,7 @@ class ServerFrameHandler {
                   subscriptionId, offset, chunkTimestamp, committedOffset, chunkContext);
               messageIgnored.set(false);
             } else {
-              messagesRead++;
+              metricsCollector.consume(1);
             }
             numRecordsInBatch--;
             offset++; // works even for unsigned long
@@ -564,7 +563,6 @@ class ServerFrameHandler {
           }
         }
       }
-      metricsCollector.consume(messagesRead);
       return read;
     }
 
