@@ -50,7 +50,7 @@
     <spotless.check.skip>true</spotless.check.skip>
     <slf4j.version>1.7.36</slf4j.version>
     <logback.version>1.2.13</logback.version>
-    <netty.version>4.1.117.Final</netty.version>
+    <netty.version>4.1.118.Final</netty.version>
     <proton-j.version>0.34.1</proton-j.version>
     <metrics.version>4.2.30</metrics.version>
     <micrometer.version>1.14.3</micrometer.version>
