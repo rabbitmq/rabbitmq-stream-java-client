@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_FILTER_PREFIX
 import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED;
 
 import com.rabbitmq.stream.*;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
@@ -112,6 +113,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
+  @SuppressFBWarnings("AT_STALE_THREAD_WRITE_OF_PRIMITIVE")
   public ManualTrackingStrategy manualTrackingStrategy() {
     this.manualTrackingStrategy = new DefaultManualTrackingStrategy(this);
     this.autoTrackingStrategy = null;
@@ -120,6 +122,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
+  @SuppressFBWarnings("AT_STALE_THREAD_WRITE_OF_PRIMITIVE")
   public AutoTrackingStrategy autoTrackingStrategy() {
     this.autoTrackingStrategy = new DefaultAutoTrackingStrategy(this);
     this.manualTrackingStrategy = null;
@@ -128,6 +131,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   @Override
+  @SuppressFBWarnings("AT_STALE_THREAD_WRITE_OF_PRIMITIVE")
   public ConsumerBuilder noTrackingStrategy() {
     this.noTrackingStrategy = true;
     this.autoTrackingStrategy = null;
@@ -140,6 +144,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     return this.flowConfiguration;
   }
 
+  @SuppressFBWarnings("AT_STALE_THREAD_WRITE_OF_PRIMITIVE")
   StreamConsumerBuilder lazyInit(boolean lazyInit) {
     this.lazyInit = lazyInit;
     return this;

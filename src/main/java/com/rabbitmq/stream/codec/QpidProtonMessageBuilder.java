@@ -18,6 +18,7 @@ import static com.rabbitmq.stream.codec.QpidProtonCodec.EMPTY_BODY;
 
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -70,6 +71,7 @@ class QpidProtonMessageBuilder implements MessageBuilder {
   }
 
   @Override
+  @SuppressFBWarnings({"AT_NONATOMIC_64BIT_PRIMITIVE", "AT_STALE_THREAD_WRITE_OF_PRIMITIVE"})
   public MessageBuilder publishingId(long publishingId) {
     this.publishingId = publishingId;
     this.hasPublishingId = true;

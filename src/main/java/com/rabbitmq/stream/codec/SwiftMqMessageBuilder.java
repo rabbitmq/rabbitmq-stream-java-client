@@ -21,6 +21,7 @@ import com.swiftmq.amqp.v100.generated.messaging.message_format.*;
 import com.swiftmq.amqp.v100.generated.transport.definitions.SequenceNo;
 import com.swiftmq.amqp.v100.messaging.AMQPMessage;
 import com.swiftmq.amqp.v100.types.*;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
@@ -77,6 +78,7 @@ class SwiftMqMessageBuilder implements MessageBuilder {
   }
 
   @Override
+  @SuppressFBWarnings({"AT_NONATOMIC_64BIT_PRIMITIVE", "AT_STALE_THREAD_WRITE_OF_PRIMITIVE"})
   public MessageBuilder publishingId(long publishingId) {
     this.publishingId = publishingId;
     this.hasPublishingId = true;
