@@ -295,12 +295,12 @@ public class TlsTest {
   @Test
   void shouldConnectWhenSettingHostToLoopbackInterfaceAndDisablingHostnameVerification()
       throws Exception {
-    SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
-    cf.get(
-        new ClientParameters()
-            .sslContext(context)
-            .host("127.0.0.1")
-            .tlsHostnameVerification(false));
+    SslContext context =
+        SslContextBuilder.forClient()
+            .endpointIdentificationAlgorithm(null)
+            .trustManager(caCertificate())
+            .build();
+    cf.get(new ClientParameters().sslContext(context).host("127.0.0.1"));
   }
 
   @Test
