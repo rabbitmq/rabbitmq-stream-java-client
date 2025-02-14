@@ -51,7 +51,8 @@ import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.epoll.EpollIoHandler;
 import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.handler.ssl.SslHandler;
 import java.net.ConnectException;
@@ -723,7 +724,8 @@ public class StreamEnvironmentTest {
   @EnabledIfSystemProperty(named = "os.arch", matches = "amd64")
   void nativeEpollWorksOnLinux() {
     int messageCount = 10_000;
-    EventLoopGroup epollEventLoopGroup = new EpollEventLoopGroup();
+    EventLoopGroup epollEventLoopGroup =
+        new MultiThreadIoEventLoopGroup(EpollIoHandler.newFactory());
     try {
       Set<Channel> channels = ConcurrentHashMap.newKeySet();
       try (Environment env =

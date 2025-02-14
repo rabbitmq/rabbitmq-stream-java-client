@@ -19,7 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.impl.Client;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -31,7 +32,7 @@ public class DefaultEnvironmentTest {
 
   @BeforeAll
   static void initAll() {
-    eventLoopGroup = new NioEventLoopGroup();
+    eventLoopGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
   }
 
   @AfterAll

@@ -38,7 +38,6 @@ import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import java.io.IOException;
@@ -212,7 +211,7 @@ class StreamEnvironment implements Environment {
             this.addresses.size(), 1, "rabbitmq-stream-locator-connection-");
 
     if (clientParametersPrototype.eventLoopGroup == null) {
-      this.eventLoopGroup = new NioEventLoopGroup();
+      this.eventLoopGroup = Utils.eventLoopGroup();
       this.clientParametersPrototype =
           clientParametersPrototype.duplicate().eventLoopGroup(this.eventLoopGroup);
     } else {
