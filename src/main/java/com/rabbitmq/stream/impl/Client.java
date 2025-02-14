@@ -96,9 +96,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
-import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLHandshakeException;
-import javax.net.ssl.SSLParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -282,13 +280,6 @@ public class Client implements AutoCloseable {
             if (parameters.sslContext != null) {
               SslHandler sslHandler =
                   parameters.sslContext.newHandler(ch.alloc(), parameters.host, parameters.port);
-
-              if (parameters.tlsHostnameVerification) {
-                SSLEngine sslEngine = sslHandler.engine();
-                SSLParameters sslParameters = sslEngine.getSSLParameters();
-                sslParameters.setEndpointIdentificationAlgorithm("HTTPS");
-                sslEngine.setSSLParameters(sslParameters);
-              }
 
               ch.pipeline().addFirst("ssl", sslHandler);
             }
@@ -2397,7 +2388,6 @@ public class Client implements AutoCloseable {
     private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
-    private boolean tlsHostnameVerification = true;
     private ByteBufAllocator byteBufAllocator;
     private Duration rpcTimeout;
     private Consumer<Channel> channelCustomizer = noOpConsumer();
@@ -2551,11 +2541,6 @@ public class Client implements AutoCloseable {
       if (this.port == DEFAULT_PORT && sslContext != null) {
         this.port = DEFAULT_TLS_PORT;
       }
-      return this;
-    }
-
-    public ClientParameters tlsHostnameVerification(boolean tlsHostnameVerification) {
-      this.tlsHostnameVerification = tlsHostnameVerification;
       return this;
     }
 
