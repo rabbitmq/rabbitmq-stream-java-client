@@ -155,8 +155,12 @@ public class Client implements AutoCloseable {
   final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
       new ConcurrentHashMap<>();
   final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
+  // dispatches broker frames, except for delivery frames
   final ExecutorService executorService;
+  private final Consumer<ExecutorService> closeExecutorService;
+  // dispatches delivery frames only
   final ExecutorService dispatchingExecutorService;
+  private final Consumer<ExecutorService> closeDispatchingExecutorService;
   final TuneState tuneState;
   final AtomicBoolean closing = new AtomicBoolean(false);
   final AtomicBoolean shuttingDownDispatching = new AtomicBoolean(false);
@@ -174,7 +178,6 @@ public class Client implements AutoCloseable {
         }
       };
   private final AtomicInteger correlationSequence = new AtomicInteger(0);
-  private final Runnable executorServiceClosing;
   private final SaslConfiguration saslConfiguration;
   private final CredentialsProvider credentialsProvider;
   private final Runnable nettyClosing;
@@ -331,44 +334,58 @@ public class Client implements AutoCloseable {
     this.channel = f.channel();
     ExecutorServiceFactory executorServiceFactory = parameters.executorServiceFactory;
     if (executorServiceFactory == null) {
+      this.closeExecutorService =
+          Utils.makeIdempotent(
+              es -> {
+                if (es != null) {
+                  es.shutdownNow();
+                }
+              });
       this.executorService =
           Executors.newSingleThreadExecutor(threadFactory(clientConnectionName + "-"));
     } else {
+      this.closeExecutorService =
+          Utils.makeIdempotent(
+              es -> {
+                if (es != null) {
+                  executorServiceFactory.clientClosed(es);
+                }
+              });
       this.executorService = executorServiceFactory.get();
     }
     ExecutorServiceFactory dispatchingExecutorServiceFactory =
         parameters.dispatchingExecutorServiceFactory;
     if (dispatchingExecutorServiceFactory == null) {
+      this.closeDispatchingExecutorService =
+          Utils.makeIdempotent(
+              es -> {
+                if (es != null) {
+                  List<Runnable> outstandingTasks = es.shutdownNow();
+                  this.shuttingDownDispatching.set(true);
+                  for (Runnable outstandingTask : outstandingTasks) {
+                    try {
+                      outstandingTask.run();
+                    } catch (Exception e) {
+                      LOGGER.info(
+                          "Error while releasing buffer in outstanding connection tasks: {}",
+                          e.getMessage());
+                    }
+                  }
+                }
+              });
       this.dispatchingExecutorService =
           Executors.newSingleThreadExecutor(
               threadFactory("dispatching-" + clientConnectionName + "-"));
     } else {
+      this.closeDispatchingExecutorService =
+          Utils.makeIdempotent(
+              es -> {
+                if (es != null) {
+                  dispatchingExecutorServiceFactory.clientClosed(es);
+                }
+              });
       this.dispatchingExecutorService = dispatchingExecutorServiceFactory.get();
     }
-    this.executorServiceClosing =
-        Utils.makeIdempotent(
-            () -> {
-              if (dispatchingExecutorServiceFactory == null) {
-                List<Runnable> outstandingTasks = this.dispatchingExecutorService.shutdownNow();
-                this.shuttingDownDispatching.set(true);
-                for (Runnable outstandingTask : outstandingTasks) {
-                  try {
-                    outstandingTask.run();
-                  } catch (Exception e) {
-                    LOGGER.info(
-                        "Error while releasing buffer in outstanding connection tasks: {}",
-                        e.getMessage());
-                  }
-                }
-              } else {
-                dispatchingExecutorServiceFactory.clientClosed(this.dispatchingExecutorService);
-              }
-              if (executorServiceFactory == null) {
-                this.executorService.shutdownNow();
-              } else {
-                executorServiceFactory.clientClosed(this.executorService);
-              }
-            });
     try {
       this.tuneState =
           new TuneState(
@@ -1451,7 +1468,12 @@ public class Client implements AutoCloseable {
       this.shutdownListenerCallback.accept(reason);
     }
     this.nettyClosing.run();
-    this.executorServiceClosing.run();
+    if (this.closeDispatchingExecutorService != null) {
+      this.closeDispatchingExecutorService.accept(this.dispatchingExecutorService);
+    }
+    if (this.closeExecutorService != null) {
+      this.closeExecutorService.accept(this.executorService);
+    }
   }
 
   private void closeNetty() {
