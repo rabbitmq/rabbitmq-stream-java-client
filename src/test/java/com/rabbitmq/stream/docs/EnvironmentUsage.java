@@ -19,7 +19,9 @@ import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.observation.micrometer.MicrometerObservationCollectorBuilder;
 import io.micrometer.observation.ObservationRegistry;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollIoHandler;
 import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -140,7 +142,9 @@ public class EnvironmentUsage {
 
     void nativeEpoll() {
         // tag::native-epoll[]
-        EventLoopGroup epollEventLoopGroup = new EpollEventLoopGroup();  // <1>
+        EventLoopGroup epollEventLoopGroup = new MultiThreadIoEventLoopGroup(  // <1>
+            EpollIoHandler.newFactory()                                        // <1>
+        );                                                                     // <1>
         Environment environment = Environment.builder()
             .netty()  // <2>
                 .eventLoopGroup(epollEventLoopGroup)  // <3>

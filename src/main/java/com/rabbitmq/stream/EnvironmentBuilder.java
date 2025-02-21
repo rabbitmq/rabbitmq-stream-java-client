@@ -442,7 +442,10 @@ public interface EnvironmentBuilder {
      * <p>Hostname verification is enabled by default.
      *
      * @return the TLS configuration helper
+     * @deprecated use {@link SslContextBuilder#endpointIdentificationAlgorithm(String)} with {@link
+     *     #sslContext(SslContext)}
      */
+    @Deprecated(forRemoval = true)
     TlsConfiguration hostnameVerification();
 
     /**
@@ -450,9 +453,12 @@ public interface EnvironmentBuilder {
      *
      * <p>Hostname verification is enabled by default.
      *
-     * @param hostnameVerification
+     * @param hostnameVerification whether to enable hostname verification or not
      * @return the TLS configuration helper
+     * @deprecated use {@link SslContextBuilder#endpointIdentificationAlgorithm(String)} with {@link
+     *     #sslContext(SslContext)}
      */
+    @Deprecated(forRemoval = true)
     TlsConfiguration hostnameVerification(boolean hostnameVerification);
 
     /**
@@ -460,7 +466,7 @@ public interface EnvironmentBuilder {
      *
      * <p>Use {@link SslContextBuilder#forClient()} to configure and create an instance.
      *
-     * @param sslContext
+     * @param sslContext the SSL context
      * @return the TLS configuration helper
      */
     TlsConfiguration sslContext(SslContext sslContext);

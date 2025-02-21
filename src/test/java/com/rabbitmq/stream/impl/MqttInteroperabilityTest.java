@@ -27,7 +27,6 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.amqp.UnsignedByte;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -57,7 +56,7 @@ public class MqttInteroperabilityTest {
 
   @BeforeAll
   static void initAll() {
-    eventLoopGroup = new NioEventLoopGroup();
+    eventLoopGroup = Utils.eventLoopGroup();
   }
 
   @AfterAll
