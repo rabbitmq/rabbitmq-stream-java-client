@@ -71,7 +71,7 @@
     <paho.version>1.2.5</paho.version>
     <micrometer-tracing-test.version>1.4.3</micrometer-tracing-test.version>
     <micrometer-docs-generator.version>1.0.4</micrometer-docs-generator.version>
-    <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+    <maven.compiler.plugin.version>3.14.0</maven.compiler.plugin.version>
     <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
     <maven-dependency-plugin.version>3.8.1</maven-dependency-plugin.version>
     <checksum.maven.plugin.version>1.11</checksum.maven.plugin.version>
