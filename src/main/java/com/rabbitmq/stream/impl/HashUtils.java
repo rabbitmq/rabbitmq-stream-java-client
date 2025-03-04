@@ -18,6 +18,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
 import java.util.function.ToIntFunction;
 
+@SuppressFBWarnings({"SF_SWITCH_FALLTHROUGH", "SF_SWITCH_NO_DEFAULT"})
 final class HashUtils {
 
   static final ToIntFunction<String> MURMUR3 = new Murmur3();
@@ -72,7 +73,6 @@ final class HashUtils {
       this.seed = seed;
     }
 
-    @SuppressFBWarnings({"SF_SWITCH_FALLTHROUGH", "SF_SWITCH_NO_DEFAULT"})
     @Override
     public int applyAsInt(String value) {
       byte[] data = value.getBytes(StandardCharsets.UTF_8);
