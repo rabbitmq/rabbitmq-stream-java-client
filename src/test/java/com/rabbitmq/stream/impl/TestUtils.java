@@ -42,7 +42,6 @@ import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.vavr.Tuple2;
 import java.io.IOException;
 import java.lang.annotation.Documented;
@@ -627,7 +626,7 @@ public final class TestUtils {
 
     @Override
     public void beforeAll(ExtensionContext context) {
-      store(context).put("nettyEventLoopGroup", new NioEventLoopGroup());
+      store(context).put("nettyEventLoopGroup", Utils.eventLoopGroup());
     }
 
     @Override

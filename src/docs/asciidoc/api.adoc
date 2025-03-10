@@ -88,10 +88,9 @@ TLS can be enabled by using the `rabbitmq-stream+tls` scheme in the URI.
 The default TLS port is 5551.
 
 Use the `EnvironmentBuilder#tls` method to configure TLS.
-The most important setting is a `io.netty.handler.ssl.SslContext` instance,
-which is created and configured with the
-`io.netty.handler.ssl.SslContext#forClient` method. Note hostname verification
-is enabled by default.
+The most important setting is a `io.netty.handler.ssl.SslContext` instance, which is created and configured with the
+`io.netty.handler.ssl.SslContext#forClient` method.
+Note hostname verification is enabled by default.
 
 The following snippet shows a common configuration, whereby
 the client is instructed to trust servers with certificates
@@ -242,15 +241,10 @@ Used as a prefix for connection names.
 |Configuration helper for TLS.
 |TLS is enabled if a `rabbitmq-stream+tls` URI is provided.
 
-|`tls#hostnameVerification`
-|Enable or disable hostname verification.
-|Enabled by default.
-
 |`tls#sslContext`
 |Set the `io.netty.handler.ssl.SslContext` used for the TLS connection.
 Use `io.netty.handler.ssl.SslContextBuilder#forClient` to configure it.
-The server certificate chain and the client private key are the typical
-elements that need to be configured.
+The server certificate chain, the client private key, and hostname verification are the usual elements that need to be configured.
 |The JDK trust manager and no client private key.
 
 |`tls#trustEverything`

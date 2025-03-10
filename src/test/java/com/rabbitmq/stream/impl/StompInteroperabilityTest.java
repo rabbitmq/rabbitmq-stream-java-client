@@ -22,7 +22,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.*;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -66,7 +65,7 @@ public class StompInteroperabilityTest {
 
   @BeforeAll
   static void initAll() {
-    eventLoopGroup = new NioEventLoopGroup();
+    eventLoopGroup = Utils.eventLoopGroup();
   }
 
   @AfterAll
