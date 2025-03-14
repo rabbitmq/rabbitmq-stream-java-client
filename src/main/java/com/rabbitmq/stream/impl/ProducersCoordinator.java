@@ -68,7 +68,7 @@ final class ProducersCoordinator implements AutoCloseable {
   private final List<ProducerTracker> producerTrackers = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory =
       new DefaultExecutorServiceFactory(
-          Runtime.getRuntime().availableProcessors(), 10, "rabbitmq-stream-producer-connection-");
+          AVAILABLE_PROCESSORS, 10, "rabbitmq-stream-producer-connection-");
   private final Lock coordinatorLock = new ReentrantLock();
   private final boolean forceLeader;
 
@@ -750,7 +750,10 @@ final class ProducersCoordinator implements AutoCloseable {
                 List<BrokerWrapper> candidates = brokerAndCandidates.v2();
                 String key = keyForNode(broker);
                 LOGGER.debug(
-                    "Assigning {} producer(s) and consumer tracker(s) to {} (stream '{}')", trackers.size(), key, stream);
+                    "Assigning {} producer(s) and consumer tracker(s) to {} (stream '{}')",
+                    trackers.size(),
+                    key,
+                    stream);
                 trackers.forEach(tracker -> maybeRecoverAgent(broker, candidates, tracker));
               })
           .exceptionally(

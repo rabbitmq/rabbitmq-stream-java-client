@@ -224,7 +224,7 @@ class StreamEnvironment implements Environment {
     }
     ScheduledExecutorService executorService;
     if (scheduledExecutorService == null) {
-      int threads = Runtime.getRuntime().availableProcessors();
+      int threads = AVAILABLE_PROCESSORS;
       LOGGER.debug("Creating scheduled executor service with {} thread(s)", threads);
       ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-scheduler-");
       executorService = Executors.newScheduledThreadPool(threads, threadFactory);

@@ -28,6 +28,7 @@ import ch.qos.logback.classic.Level;
 import com.google.common.collect.Streams;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfNotCluster;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
 import com.rabbitmq.stream.impl.Tuples.Pair;
 import io.netty.channel.ChannelOption;
@@ -52,7 +53,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@TestUtils.DisabledIfNotCluster
+@DisabledIfNotCluster
 @StreamTestInfrastructure
 public class RecoveryClusterTest {
 
@@ -87,7 +88,7 @@ public class RecoveryClusterTest {
 
   @BeforeEach
   void init(TestInfo info) {
-    int availableProcessors = Runtime.getRuntime().availableProcessors();
+    int availableProcessors = Utils.AVAILABLE_PROCESSORS;
     LOGGER.info("Available processors: {}", availableProcessors);
     ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-scheduler-");
     scheduledExecutorService = Executors.newScheduledThreadPool(availableProcessors, threadFactory);
@@ -134,7 +135,7 @@ public class RecoveryClusterTest {
         "Cluster restart test, use load balancer {}, force leader {}",
         useLoadBalancer,
         forceLeader);
-    int streamCount = 10;
+    int streamCount = Utils.AVAILABLE_PROCESSORS;
     int producerCount = streamCount * 2;
     int consumerCount = streamCount * 2;
 

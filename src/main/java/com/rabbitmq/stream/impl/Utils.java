@@ -41,6 +41,8 @@ import org.slf4j.LoggerFactory;
 
 final class Utils {
 
+  static final int AVAILABLE_PROCESSORS = Runtime.getRuntime().availableProcessors();
+
   @SuppressWarnings("rawtypes")
   private static final Consumer NO_OP_CONSUMER = o -> {};
 

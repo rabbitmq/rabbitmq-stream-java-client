@@ -75,7 +75,7 @@ final class ConsumersCoordinator implements AutoCloseable {
   private final List<SubscriptionTracker> trackers = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory =
       new DefaultExecutorServiceFactory(
-          Runtime.getRuntime().availableProcessors(), 10, "rabbitmq-stream-consumer-connection-");
+          AVAILABLE_PROCESSORS, 10, "rabbitmq-stream-consumer-connection-");
   private final boolean forceReplica;
   private final Lock coordinatorLock = new ReentrantLock();
 
