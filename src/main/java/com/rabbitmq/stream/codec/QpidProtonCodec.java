@@ -18,7 +18,6 @@ import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Properties;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.Function;
@@ -655,7 +654,6 @@ public class QpidProtonCodec implements Codec {
       this.buffer = new byte[capacity];
     }
 
-    @SuppressFBWarnings("EI_EXPOSE_REP")
     byte[] getArray() {
       return buffer;
     }
