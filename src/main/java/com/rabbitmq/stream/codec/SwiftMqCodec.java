@@ -25,10 +25,9 @@ import com.swiftmq.amqp.v100.messaging.AMQPMessage;
 import com.swiftmq.amqp.v100.types.*;
 import com.swiftmq.tools.util.DataByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.lang.reflect.Array;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 
 public class SwiftMqCodec implements Codec {
 
@@ -69,13 +68,48 @@ public class SwiftMqCodec implements Codec {
       return ((AMQPUuid) value).getValue();
     } else if (value instanceof AMQPSymbol) {
       return ((AMQPSymbol) value).getValue();
+    } else if (value instanceof AMQPList) {
+      try {
+        List<AMQPType> source = ((AMQPList) value).getValue();
+        List<Object> target = new ArrayList<>(source.size());
+        for (AMQPType o : source) {
+          target.add(convertAmqpMapValue(o));
+        }
+        return target;
+      } catch (IOException e) {
+        throw new StreamException("Error while reading SwiftMQ list", e);
+      }
+    } else if (value instanceof AMQPMap) {
+      try {
+        Map<AMQPType, AMQPType> source = ((AMQPMap) value).getValue();
+        Map<Object, Object> target = new LinkedHashMap<>(source.size());
+        for (Map.Entry<AMQPType, AMQPType> entry : source.entrySet()) {
+          target.put(convertAmqpMapValue(entry.getKey()), convertAmqpMapValue(entry.getValue()));
+        }
+        return target;
+      } catch (IOException e) {
+        throw new StreamException("Error while reading SwiftMQ map", e);
+      }
+    } else if (value instanceof AMQPArray) {
+      try {
+        AMQPType[] source = ((AMQPArray) value).getValue();
+        Object target =
+            Array.newInstance(
+                source.length == 0 ? Object.class : convertAmqpMapValue(source[0]).getClass(),
+                source.length);
+        for (int i = 0; i < source.length; i++) {
+          Array.set(target, i, convertAmqpMapValue(source[i]));
+        }
+        return target;
+      } catch (IOException e) {
+        throw new StreamException("Error while reading SwiftMQ array", e);
+      }
     } else if (value instanceof AMQPNull) {
       return null;
     } else if (value == null) {
       return null;
     } else {
-      throw new IllegalArgumentException(
-          "Type not supported for an application property: " + value.getClass());
+      throw new IllegalArgumentException("Type not supported: " + value.getClass());
     }
   }
 
@@ -320,11 +354,111 @@ public class SwiftMqCodec implements Codec {
       return new AMQPSymbol(value.toString());
     } else if (value instanceof UUID) {
       return new AMQPUuid((UUID) value);
+    } else if (value instanceof List) {
+      List<?> source = (List<?>) value;
+      List<AMQPType> target = new ArrayList<>(source.size());
+      for (Object o : source) {
+        target.add(convertToSwiftMqType(o));
+      }
+      try {
+        return new AMQPList(target);
+      } catch (IOException e) {
+        throw new StreamException("Error while creating SwiftMQ list", e);
+      }
+    } else if (value instanceof Map) {
+      Map<?, ?> source = (Map<?, ?>) value;
+      Map<AMQPType, AMQPType> target = new LinkedHashMap<>(source.size());
+      for (Map.Entry<?, ?> entry : source.entrySet()) {
+        target.put(convertToSwiftMqType(entry.getKey()), convertToSwiftMqType(entry.getValue()));
+      }
+      try {
+        return new AMQPMap(target);
+      } catch (IOException e) {
+        throw new StreamException("Error while creating SwiftMQ map", e);
+      }
+    } else if (value instanceof Object[]) {
+      Object[] source = (Object[]) value;
+      AMQPType[] target = new AMQPType[source.length];
+      for (int i = 0; i < source.length; i++) {
+        target[i] = convertToSwiftMqType(source[i]);
+      }
+      try {
+        int code = source.length == 0 ? AMQPTypeDecoder.UNKNOWN : toSwiftMqTypeCode(source[0]);
+        return new AMQPArray(code, target);
+      } catch (IOException e) {
+        throw new StreamException("Error while creating SwiftMQ list", e);
+      }
     } else if (value == null) {
       return AMQPNull.NULL;
     } else {
-      throw new IllegalArgumentException(
-          "Type not supported for an application property: " + value.getClass());
+      throw new IllegalArgumentException("Type not supported: " + value.getClass());
+    }
+  }
+
+  protected static int toSwiftMqTypeCode(Object value) {
+    if (value instanceof Boolean) {
+      return AMQPTypeDecoder.BOOLEAN;
+    } else if (value instanceof Byte) {
+      return AMQPTypeDecoder.BYTE;
+    } else if (value instanceof Short) {
+      return AMQPTypeDecoder.SHORT;
+    } else if (value instanceof Integer) {
+      int v = (Integer) value;
+      return (v < -128 || v > 127) ? AMQPTypeDecoder.INT : AMQPTypeDecoder.SINT;
+    } else if (value instanceof Long) {
+      long v = (Long) value;
+      return (v < -128 || v > 127) ? AMQPTypeDecoder.LONG : AMQPTypeDecoder.SLONG;
+    } else if (value instanceof UnsignedByte) {
+      return AMQPTypeDecoder.UBYTE;
+    } else if (value instanceof UnsignedShort) {
+      return AMQPTypeDecoder.USHORT;
+    } else if (value instanceof UnsignedInteger) {
+      return AMQPTypeDecoder.UINT;
+    } else if (value instanceof UnsignedLong) {
+      return AMQPTypeDecoder.ULONG;
+    } else if (value instanceof Float) {
+      return AMQPTypeDecoder.FLOAT;
+    } else if (value instanceof Double) {
+      return AMQPTypeDecoder.DOUBLE;
+    } else if (value instanceof byte[]) {
+      return ((byte[]) value).length > 255 ? AMQPTypeDecoder.BIN32 : AMQPTypeDecoder.BIN8;
+    } else if (value instanceof String) {
+      return value.toString().getBytes(StandardCharsets.UTF_8).length > 255
+          ? AMQPTypeDecoder.STR32UTF8
+          : AMQPTypeDecoder.STR8UTF8;
+    } else if (value instanceof Character) {
+      return AMQPTypeDecoder.CHAR;
+    } else if (value instanceof Date) {
+      return AMQPTypeDecoder.TIMESTAMP;
+    } else if (value instanceof Symbol) {
+      return value.toString().getBytes(StandardCharsets.US_ASCII).length > 255
+          ? AMQPTypeDecoder.SYM32
+          : AMQPTypeDecoder.SYM8;
+    } else if (value instanceof UUID) {
+      return AMQPTypeDecoder.UUID;
+    } else if (value instanceof List) {
+      List<?> l = (List<?>) value;
+      if (l.isEmpty()) {
+        return AMQPTypeDecoder.LIST0;
+      } else if (l.size() > 255) {
+        return AMQPTypeDecoder.LIST32;
+      } else {
+        return AMQPTypeDecoder.LIST8;
+      }
+    } else if (value instanceof Map) {
+      Map<?, ?> source = (Map<?, ?>) value;
+      return source.size() * 2 > 255 ? AMQPTypeDecoder.MAP32 : AMQPTypeDecoder.MAP8;
+    } else if (value instanceof Object[]) {
+      Object[] source = (Object[]) value;
+      if (source.length > 255) {
+        return AMQPTypeDecoder.ARRAY32;
+      } else {
+        return AMQPTypeDecoder.ARRAY8;
+      }
+    } else if (value == null) {
+      return AMQPTypeDecoder.NULL;
+    } else {
+      throw new IllegalArgumentException("Type not supported: " + value.getClass());
     }
   }
 

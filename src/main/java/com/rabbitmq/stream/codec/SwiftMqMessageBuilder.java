@@ -14,6 +14,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.codec;
 
+import static com.rabbitmq.stream.codec.SwiftMqCodec.convertToSwiftMqType;
+import static com.rabbitmq.stream.codec.SwiftMqCodec.toSwiftMqTypeCode;
+
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.StreamException;
@@ -23,10 +26,9 @@ import com.swiftmq.amqp.v100.messaging.AMQPMessage;
 import com.swiftmq.amqp.v100.types.*;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.math.BigDecimal;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
@@ -321,6 +323,62 @@ class SwiftMqMessageBuilder implements MessageBuilder {
     protected void addEntrySymbol(String key, String value) {
       map.put(keyMaker.apply(key), value == null ? AMQPNull.NULL : new AMQPSymbol(value));
     }
+
+    protected void addEntry(String key, List<?> list) {
+      AMQPType amqpValue;
+      if (list == null) {
+        amqpValue = AMQPNull.NULL;
+      } else {
+        List<AMQPType> l = new ArrayList<>(list.size());
+        for (Object o : list) {
+          l.add(convertToSwiftMqType(o));
+        }
+        try {
+          amqpValue = new AMQPList(l);
+        } catch (IOException e) {
+          throw new StreamException("Error while creating SwiftMq list", e);
+        }
+      }
+      map.put(keyMaker.apply(key), amqpValue);
+    }
+
+    protected void addEntry(String key, Map<?, ?> mapEntry) {
+      AMQPType amqpValue;
+      if (mapEntry == null) {
+        amqpValue = AMQPNull.NULL;
+      } else {
+        Map<AMQPType, AMQPType> m = new LinkedHashMap<>(mapEntry.size());
+        mapEntry.forEach(
+            (k, v) -> {
+              m.put(convertToSwiftMqType(k), convertToSwiftMqType(v));
+            });
+        try {
+          amqpValue = new AMQPMap(m);
+        } catch (IOException e) {
+          throw new StreamException("Error while creating SwiftMQ map", e);
+        }
+      }
+      map.put(keyMaker.apply(key), amqpValue);
+    }
+
+    protected void addEntry(String key, Object[] array) {
+      AMQPType amqpValue;
+      if (array == null) {
+        amqpValue = AMQPNull.NULL;
+      } else {
+        AMQPType[] a = new AMQPType[array.length];
+        for (int i = 0; i < array.length; i++) {
+          a[i] = convertToSwiftMqType(Array.get(array, i));
+        }
+        try {
+          int code = a.length == 0 ? AMQPTypeDecoder.UNKNOWN : toSwiftMqTypeCode(array[0]);
+          amqpValue = new AMQPArray(code, a);
+        } catch (IOException e) {
+          throw new StreamException("Error while creating SwiftMq list", e);
+        }
+      }
+      map.put(keyMaker.apply(key), amqpValue);
+    }
   }
 
   private static class SwiftMqApplicationPropertiesBuilder extends AmqpMapBuilderSupport
@@ -584,6 +642,24 @@ class SwiftMqMessageBuilder implements MessageBuilder {
     @Override
     public MessageAnnotationsBuilder entrySymbol(String key, String value) {
       addEntrySymbol(key, value);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, List<?> list) {
+      addEntry(key, list);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, Map<?, ?> map) {
+      addEntry(key, map);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryArray(String key, Object[] array) {
+      addEntry(key, array);
       return this;
     }
 

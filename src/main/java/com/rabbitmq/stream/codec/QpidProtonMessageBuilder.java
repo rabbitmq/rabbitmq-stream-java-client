@@ -20,10 +20,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.math.BigDecimal;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.qpid.proton.amqp.Binary;
 import org.apache.qpid.proton.amqp.Symbol;
@@ -362,6 +359,24 @@ class QpidProtonMessageBuilder implements MessageBuilder {
     @Override
     public MessageAnnotationsBuilder entrySymbol(String key, String value) {
       messageAnnotations.put(Symbol.getSymbol(key), Symbol.valueOf(value));
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, List<?> list) {
+      messageAnnotations.put(Symbol.getSymbol(key), list);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, Map<?, ?> map) {
+      messageAnnotations.put(Symbol.getSymbol(key), map);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryArray(String key, Object[] array) {
+      messageAnnotations.put(Symbol.getSymbol(key), array);
       return this;
     }
 
