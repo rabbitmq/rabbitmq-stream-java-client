@@ -332,9 +332,14 @@ class ServerFrameHandler {
       if (ignore && Long.compareUnsigned(offset, offsetLimit) < 0) {
         messageIgnored.set(true);
       } else {
-        Message message = codec.decode(data);
-        messageListener.handle(
-            subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message);
+        try {
+          Message message = codec.decode(data);
+          messageListener.handle(
+              subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message);
+        } catch (RuntimeException e) {
+          LOGGER.warn("Error while decoding message at offset {}", offset, e);
+          throw e;
+        }
       }
       return read;
     }
