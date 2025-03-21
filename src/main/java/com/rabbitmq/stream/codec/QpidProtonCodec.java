@@ -18,6 +18,7 @@ import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Properties;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.Function;
@@ -637,28 +638,29 @@ public class QpidProtonCodec implements Codec {
 
   // from
   // https://github.com/apache/activemq/blob/master/activemq-amqp/src/main/java/org/apache/activemq/transport/amqp/message/AmqpWritableBuffer.java
-  protected static class ByteArrayWritableBuffer implements WritableBuffer {
+  static class ByteArrayWritableBuffer implements WritableBuffer {
 
-    public static final int DEFAULT_CAPACITY = 4 * 1024;
+    static final int DEFAULT_CAPACITY = 4 * 1024;
 
-    byte[] buffer;
-    int position;
+    private byte[] buffer;
+    private int position;
 
     /** Creates a new WritableBuffer with default capacity. */
-    public ByteArrayWritableBuffer() {
+    ByteArrayWritableBuffer() {
       this(DEFAULT_CAPACITY);
     }
 
     /** Create a new WritableBuffer with the given capacity. */
-    public ByteArrayWritableBuffer(int capacity) {
+    ByteArrayWritableBuffer(int capacity) {
       this.buffer = new byte[capacity];
     }
 
-    public byte[] getArray() {
+    @SuppressFBWarnings("EI_EXPOSE_REP")
+    byte[] getArray() {
       return buffer;
     }
 
-    public int getArrayLength() {
+    int getArrayLength() {
       return position;
     }
 
