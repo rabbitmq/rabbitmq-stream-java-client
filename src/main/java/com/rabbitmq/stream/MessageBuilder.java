@@ -15,6 +15,8 @@
 package com.rabbitmq.stream;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -185,6 +187,12 @@ public interface MessageBuilder {
     MessageAnnotationsBuilder entry(String key, String value);
 
     MessageAnnotationsBuilder entrySymbol(String key, String value);
+
+    MessageAnnotationsBuilder entry(String key, List<?> list);
+
+    MessageAnnotationsBuilder entry(String key, Map<?, ?> map);
+
+    MessageAnnotationsBuilder entryArray(String key, Object[] array);
 
     /**
      * Go back to the message builder

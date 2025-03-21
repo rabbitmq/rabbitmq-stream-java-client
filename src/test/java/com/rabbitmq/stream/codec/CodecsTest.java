@@ -33,18 +33,18 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
+import org.apache.qpid.proton.amqp.Symbol;
 import org.apache.qpid.proton.amqp.messaging.AmqpValue;
+import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.assertj.core.api.ThrowableAssert;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -248,6 +248,22 @@ public class CodecsTest {
                   .entry("annotations.string", string)
                   .entrySymbol("annotations.symbol", symbol)
                   .entry("annotations.null", (String) null)
+                  .entry(
+                      "list",
+                      List.of("1", "2", 3, List.of("1"), Map.of("k1", "v1"), new String[] {"1"}))
+                  .entry(
+                      "map",
+                      Map.of(
+                          "k1",
+                          "v1",
+                          "k2",
+                          List.of("v2"),
+                          "k3",
+                          Map.of("k1", "v1"),
+                          "k4",
+                          new String[] {"1"}))
+                  .entryArray("arrayString", new String[] {"1", "2", "3"})
+                  .entryArray("arrayInt", new Integer[] {200, 201, 202})
                   .messageBuilder()
                   .build();
           outboundMessage.annotate("extra.annotation", "extra annotation value");
@@ -474,6 +490,35 @@ public class CodecsTest {
               .isNotNull()
               .isInstanceOf(String.class)
               .isEqualTo("extra annotation value");
+
+          List<?> list = (List<?>) inboundMessage.getMessageAnnotations().get("list");
+          assertThat(list.get(0)).isEqualTo("1");
+          assertThat(list.get(1)).isEqualTo("2");
+          assertThat(list.get(2)).isEqualTo(3);
+          assertThat(list.get(3)).isEqualTo(List.of("1"));
+          assertThat(list.get(4)).isEqualTo(Map.of("k1", "v1"));
+          assertThat(list.get(5)).isEqualTo(new String[] {"1"});
+
+          Map<?, ?> map = (Map<?, ?>) inboundMessage.getMessageAnnotations().get("map");
+          assertThat(map.get("k1")).isEqualTo("v1");
+          assertThat(map.get("k2")).isEqualTo(List.of("v2"));
+          assertThat(map.get("k3")).isEqualTo(Map.of("k1", "v1"));
+          assertThat(map.get("k4")).isEqualTo(new String[] {"1"});
+
+          Object[] arrayString =
+              (Object[]) inboundMessage.getMessageAnnotations().get("arrayString");
+          assertThat(arrayString).containsExactly("1", "2", "3");
+          int[] arrayInt;
+          // QPid codec returns int[] and SwiftMQ codec returns Integer[]
+          if (inboundMessage.getMessageAnnotations().get("arrayInt") instanceof Integer[]) {
+            arrayInt =
+                Arrays.stream((Integer[]) inboundMessage.getMessageAnnotations().get("arrayInt"))
+                    .mapToInt(Integer::intValue)
+                    .toArray();
+          } else {
+            arrayInt = (int[]) inboundMessage.getMessageAnnotations().get("arrayInt");
+          }
+          assertThat(arrayInt).containsExactly(200, 201, 202);
         });
   }
 
@@ -622,6 +667,40 @@ public class CodecsTest {
         .hasSize(2)
         .containsEntry("foo", "bar")
         .containsEntry("copy", "copy value");
+  }
+
+  @Test
+  void qpidDoesNotSupportPrimitiveArrayEncodingInMap() {
+    org.apache.qpid.proton.message.Message message =
+        org.apache.qpid.proton.message.Message.Factory.create();
+    Map<Symbol, Object> map = new LinkedHashMap<>();
+    map.put(Symbol.valueOf("foo"), new int[] {1, 2, 3});
+    message.setMessageAnnotations(new MessageAnnotations(map));
+    assertThatThrownBy(() -> qpidEncodeDecode(message)).isInstanceOf(ClassCastException.class);
+  }
+
+  @Test
+  void qpidEncodeIntegerArrayDecodeIntArrayInMap() {
+    org.apache.qpid.proton.message.Message message =
+        org.apache.qpid.proton.message.Message.Factory.create();
+    Map<Symbol, Object> map = new LinkedHashMap<>();
+    map.put(Symbol.valueOf("foo"), new Integer[] {1, 2, 3});
+    message.setMessageAnnotations(new MessageAnnotations(map));
+    message = qpidEncodeDecode(message);
+    map = message.getMessageAnnotations().getValue();
+    assertThat(map.get(Symbol.valueOf("foo"))).isInstanceOf(int[].class);
+  }
+
+  private static org.apache.qpid.proton.message.Message qpidEncodeDecode(
+      org.apache.qpid.proton.message.Message in) {
+    QpidProtonCodec.ByteArrayWritableBuffer writableBuffer =
+        new QpidProtonCodec.ByteArrayWritableBuffer(8192);
+    in.encode(writableBuffer);
+
+    org.apache.qpid.proton.message.Message out =
+        org.apache.qpid.proton.message.Message.Factory.create();
+    out.decode(writableBuffer.getArray(), 0, writableBuffer.getArrayLength());
+    return out;
   }
 
   MessageTestConfiguration test(

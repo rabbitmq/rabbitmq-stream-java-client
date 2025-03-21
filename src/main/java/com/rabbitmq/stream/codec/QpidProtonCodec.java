@@ -19,10 +19,7 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Properties;
 import java.nio.ByteBuffer;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import org.apache.qpid.proton.amqp.*;
 import org.apache.qpid.proton.amqp.messaging.*;
@@ -63,7 +60,7 @@ public class QpidProtonCodec implements Codec {
     if (amqpMap != null) {
       result = new LinkedHashMap<>(amqpMap.size());
       for (Map.Entry<K, Object> entry : amqpMap.entrySet()) {
-        result.put(keyMaker.apply(entry.getKey()), convertApplicationProperty(entry.getValue()));
+        result.put(keyMaker.apply(entry.getKey()), fromQpidToJava(entry.getValue()));
       }
     } else {
       result = null;
@@ -71,7 +68,7 @@ public class QpidProtonCodec implements Codec {
     return result;
   }
 
-  private static Object convertApplicationProperty(Object value) {
+  private static Object fromQpidToJava(Object value) {
     if (value instanceof Boolean
         || value instanceof Byte
         || value instanceof Short
@@ -81,7 +78,10 @@ public class QpidProtonCodec implements Codec {
         || value instanceof Double
         || value instanceof String
         || value instanceof Character
-        || value instanceof UUID) {
+        || value instanceof UUID
+        || value instanceof List
+        || value instanceof Map
+        || value instanceof Object[]) {
       return value;
     } else if (value instanceof Binary) {
       return ((Binary) value).getArray();
@@ -99,9 +99,10 @@ public class QpidProtonCodec implements Codec {
       return ((Symbol) value).toString();
     } else if (value == null) {
       return null;
+    } else if (value.getClass().isArray()) {
+      return value;
     } else {
-      throw new IllegalArgumentException(
-          "Type not supported for an application property: " + value.getClass());
+      throw new IllegalArgumentException("Type not supported: " + value.getClass());
     }
   }
 
@@ -281,7 +282,10 @@ public class QpidProtonCodec implements Codec {
         || value instanceof String
         || value instanceof Character
         || value instanceof UUID
-        || value instanceof Date) {
+        || value instanceof Date
+        || value instanceof List
+        || value instanceof Map
+        || value instanceof Object[]) {
       return value;
     } else if (value instanceof com.rabbitmq.stream.amqp.UnsignedByte) {
       return UnsignedByte.valueOf(((com.rabbitmq.stream.amqp.UnsignedByte) value).byteValue());
@@ -298,8 +302,7 @@ public class QpidProtonCodec implements Codec {
     } else if (value == null) {
       return null;
     } else {
-      throw new IllegalArgumentException(
-          "Type not supported for an application property: " + value.getClass());
+      throw new IllegalArgumentException("Type not supported: " + value.getClass());
     }
   }
 
@@ -634,7 +637,7 @@ public class QpidProtonCodec implements Codec {
 
   // from
   // https://github.com/apache/activemq/blob/master/activemq-amqp/src/main/java/org/apache/activemq/transport/amqp/message/AmqpWritableBuffer.java
-  private static class ByteArrayWritableBuffer implements WritableBuffer {
+  protected static class ByteArrayWritableBuffer implements WritableBuffer {
 
     public static final int DEFAULT_CAPACITY = 4 * 1024;
 

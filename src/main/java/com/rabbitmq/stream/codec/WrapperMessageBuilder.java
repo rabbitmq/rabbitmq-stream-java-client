@@ -20,10 +20,7 @@ import com.rabbitmq.stream.Properties;
 import com.rabbitmq.stream.amqp.*;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.math.BigDecimal;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class WrapperMessageBuilder implements MessageBuilder {
@@ -217,6 +214,24 @@ public class WrapperMessageBuilder implements MessageBuilder {
     @Override
     public MessageAnnotationsBuilder entrySymbol(String key, String value) {
       messageAnnotations.put(key, Symbol.valueOf(value));
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, List<?> list) {
+      messageAnnotations.put(key, list);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entry(String key, Map<?, ?> map) {
+      messageAnnotations.put(key, map);
+      return this;
+    }
+
+    @Override
+    public MessageAnnotationsBuilder entryArray(String key, Object[] array) {
+      messageAnnotations.put(key, array);
       return this;
     }
 
