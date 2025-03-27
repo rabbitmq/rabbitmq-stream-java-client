@@ -146,23 +146,7 @@ public interface StreamCreator {
      *
      * <p>Default value for RabbitMQ 3.10+.
      */
-    BALANCED("balanced"),
-
-    /**
-     * The stream leader will be a random node of the cluster.
-     *
-     * <p>Deprecated as of RabbitMQ 3.10, same as {@link LeaderLocator#BALANCED}.
-     */
-    RANDOM("random"),
-
-    /**
-     * The stream leader will be on the node with the least number of stream leaders.
-     *
-     * <p>Deprecated as of RabbitMQ 3.10, same as {@link LeaderLocator#BALANCED}.
-     *
-     * <p>Default value for RabbitMQ 3.9.
-     */
-    LEAST_LEADERS("least-leaders");
+    BALANCED("balanced");
 
     String value;
 
