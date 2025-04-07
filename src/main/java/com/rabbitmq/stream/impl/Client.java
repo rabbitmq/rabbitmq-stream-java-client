@@ -59,17 +59,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufOutputStream;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelOutboundHandlerAdapter;
-import io.netty.channel.ChannelPromise;
-import io.netty.channel.ConnectTimeoutException;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.DecoderException;
@@ -106,9 +96,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
-import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLHandshakeException;
-import javax.net.ssl.SSLParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -248,7 +236,7 @@ public class Client implements AutoCloseable {
     if (b.config().group() == null) {
       EventLoopGroup eventLoopGroup;
       if (parameters.eventLoopGroup == null) {
-        this.eventLoopGroup = new NioEventLoopGroup();
+        this.eventLoopGroup = Utils.eventLoopGroup();
         eventLoopGroup = this.eventLoopGroup;
       } else {
         this.eventLoopGroup = null;
@@ -292,13 +280,6 @@ public class Client implements AutoCloseable {
             if (parameters.sslContext != null) {
               SslHandler sslHandler =
                   parameters.sslContext.newHandler(ch.alloc(), parameters.host, parameters.port);
-
-              if (parameters.tlsHostnameVerification) {
-                SSLEngine sslEngine = sslHandler.engine();
-                SSLParameters sslParameters = sslEngine.getSSLParameters();
-                sslParameters.setEndpointIdentificationAlgorithm("HTTPS");
-                sslEngine.setSSLParameters(sslParameters);
-              }
 
               ch.pipeline().addFirst("ssl", sslHandler);
             }
@@ -2407,7 +2388,6 @@ public class Client implements AutoCloseable {
     private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
-    private boolean tlsHostnameVerification = true;
     private ByteBufAllocator byteBufAllocator;
     private Duration rpcTimeout;
     private Consumer<Channel> channelCustomizer = noOpConsumer();
@@ -2561,11 +2541,6 @@ public class Client implements AutoCloseable {
       if (this.port == DEFAULT_PORT && sslContext != null) {
         this.port = DEFAULT_TLS_PORT;
       }
-      return this;
-    }
-
-    public ClientParameters tlsHostnameVerification(boolean tlsHostnameVerification) {
-      this.tlsHostnameVerification = tlsHostnameVerification;
       return this;
     }
 

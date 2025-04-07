@@ -32,7 +32,6 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -56,7 +55,7 @@ public class AlarmsTest {
 
   @BeforeAll
   static void initAll() {
-    eventLoopGroup = new NioEventLoopGroup();
+    eventLoopGroup = Utils.eventLoopGroup();
   }
 
   @AfterAll

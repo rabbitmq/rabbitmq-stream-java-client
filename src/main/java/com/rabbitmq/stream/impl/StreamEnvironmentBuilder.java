@@ -373,12 +373,14 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     }
 
     @Override
+    @SuppressWarnings("removal")
     public TlsConfiguration hostnameVerification() {
       this.hostnameVerification = true;
       return this;
     }
 
     @Override
+    @SuppressWarnings("removal")
     public TlsConfiguration hostnameVerification(boolean hostnameVerification) {
       this.hostnameVerification = hostnameVerification;
       return this;
@@ -400,6 +402,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         this.sslContext(
             SslContextBuilder.forClient()
                 .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
+                .endpointIdentificationAlgorithm("NONE")
                 .build());
       } catch (SSLException e) {
         throw new StreamException("Error while creating Netty SSL context", e);
