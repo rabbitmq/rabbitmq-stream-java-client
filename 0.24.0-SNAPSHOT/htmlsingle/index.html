@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 0.24.0-SNAPSHOT</span>
-<br><span id="revremark">(1c17aca)</span>
+<br><span id="revremark">(59ae86c)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1469,10 +1469,9 @@ The default TLS port is 5551.</p>
 </div>
 <div class="paragraph">
 <p>Use the <code>EnvironmentBuilder#tls</code> method to configure TLS.
-The most important setting is a <code>io.netty.handler.ssl.SslContext</code> instance,
-which is created and configured with the
-<code>io.netty.handler.ssl.SslContext#forClient</code> method. Note hostname verification
-is enabled by default.</p>
+The most important setting is a <code>io.netty.handler.ssl.SslContext</code> instance, which is created and configured with the
+<code>io.netty.handler.ssl.SslContext#forClient</code> method.
+Note hostname verification is enabled by default.</p>
 </div>
 <div class="paragraph">
 <p>The following snippet shows a common configuration, whereby
@@ -1701,16 +1700,10 @@ Used as a prefix for connection names.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">TLS is enabled if a <code>rabbitmq-stream+tls</code> URI is provided.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls#hostnameVerification</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Enable or disable hostname verification.</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Enabled by default.</p></td>
-</tr>
-<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>tls#sslContext</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Set the <code>io.netty.handler.ssl.SslContext</code> used for the TLS connection.
 Use <code>io.netty.handler.ssl.SslContextBuilder#forClient</code> to configure it.
-The server certificate chain and the client private key are the typical
-elements that need to be configured.</p></td>
+The server certificate chain, the client private key, and hostname verification are the usual elements that need to be configured.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The JDK trust manager and no client private key.</p></td>
 </tr>
 <tr>
@@ -4578,7 +4571,7 @@ Here is the declaration for Maven:</p>
   <span class="tag">&lt;dependency&gt;</span>
     <span class="tag">&lt;groupId&gt;</span>io.netty<span class="tag">&lt;/groupId&gt;</span>
     <span class="tag">&lt;artifactId&gt;</span>netty-transport-native-epoll<span class="tag">&lt;/artifactId&gt;</span>
-    <span class="tag">&lt;version&gt;</span>4.1.119.Final<span class="tag">&lt;/version&gt;</span>
+    <span class="tag">&lt;version&gt;</span>4.2.0.Final<span class="tag">&lt;/version&gt;</span>
     <span class="tag">&lt;classifier&gt;</span>linux-x86_64<span class="tag">&lt;/classifier&gt;</span>
   <span class="tag">&lt;/dependency&gt;</span>
 
@@ -4592,7 +4585,7 @@ Here is the declaration for Maven:</p>
 <div class="title">Declaring the Linux x86-64 native <code>epoll</code> transport dependency with Gradle</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">io.netty:netty-transport-native-epoll:4.1.119.Final:linux-x86_64</span><span class="delimiter">&quot;</span></span>
+  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">io.netty:netty-transport-native-epoll:4.2.0.Final:linux-x86_64</span><span class="delimiter">&quot;</span></span>
 }</code></pre>
 </div>
 </div>
@@ -4602,7 +4595,9 @@ Here is the declaration for Maven:</p>
 <div class="listingblock">
 <div class="title">Configuring the native <code>epoll</code> transport in the environment</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java">EventLoopGroup epollEventLoopGroup = <span class="keyword">new</span> EpollEventLoopGroup();  <i class="conum" data-value="1"></i><b>(1)</b>
+<pre class="CodeRay highlight"><code data-lang="java">EventLoopGroup epollEventLoopGroup = <span class="keyword">new</span> MultiThreadIoEventLoopGroup(  <i class="conum" data-value="1"></i><b>(1)</b>
+    EpollIoHandler.newFactory()                                        <i class="conum" data-value="1"></i><b>(1)</b>
+);                                                                     <i class="conum" data-value="1"></i><b>(1)</b>
 Environment environment = Environment.builder()
     .netty()  <i class="conum" data-value="2"></i><b>(2)</b>
         .eventLoopGroup(epollEventLoopGroup)  <i class="conum" data-value="3"></i><b>(3)</b>
@@ -5024,7 +5019,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 0.24.0-SNAPSHOT<br>
-Last updated 2025-04-04 17:48:50 UTC
+Last updated 2025-04-07 07:44:53 UTC
 </div>
 </div>
 </body>
