@@ -129,10 +129,7 @@ class StreamEnvironment implements Environment {
       try {
         SslContext sslContext =
             tlsConfiguration.sslContext() == null
-                ? SslContextBuilder.forClient()
-                    .endpointIdentificationAlgorithm(
-                        tlsConfiguration.hostnameVerificationEnabled() ? "HTTPS" : null)
-                    .build()
+                ? SslContextBuilder.forClient().build()
                 : tlsConfiguration.sslContext();
 
         clientParametersPrototype.sslContext(sslContext);

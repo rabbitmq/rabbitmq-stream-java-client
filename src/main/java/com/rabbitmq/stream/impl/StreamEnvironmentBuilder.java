@@ -402,7 +402,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         this.sslContext(
             SslContextBuilder.forClient()
                 .trustManager(Utils.TRUST_EVERYTHING_TRUST_MANAGER)
-                .endpointIdentificationAlgorithm("NONE")
+                .endpointIdentificationAlgorithm(null)
                 .build());
       } catch (SSLException e) {
         throw new StreamException("Error while creating Netty SSL context", e);
