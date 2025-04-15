@@ -54,7 +54,7 @@
     <proton-j.version>0.34.1</proton-j.version>
     <metrics.version>4.2.30</metrics.version>
     <micrometer.version>1.14.6</micrometer.version>
-    <swiftmq-client.version>13.1.1</swiftmq-client.version>
+    <swiftmq-client.version>13.1.2</swiftmq-client.version>
     <picocli.version>4.7.5</picocli.version>
     <commons-compress.version>1.27.1</commons-compress.version>
     <zstd-jni.version>1.5.7-2</zstd-jni.version>
