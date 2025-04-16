@@ -373,20 +373,6 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     }
 
     @Override
-    @SuppressWarnings("removal")
-    public TlsConfiguration hostnameVerification() {
-      this.hostnameVerification = true;
-      return this;
-    }
-
-    @Override
-    @SuppressWarnings("removal")
-    public TlsConfiguration hostnameVerification(boolean hostnameVerification) {
-      this.hostnameVerification = hostnameVerification;
-      return this;
-    }
-
-    @Override
     public TlsConfiguration sslContext(SslContext sslContext) {
       this.sslContext = sslContext;
       return this;

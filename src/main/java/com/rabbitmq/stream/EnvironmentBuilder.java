@@ -437,31 +437,6 @@ public interface EnvironmentBuilder {
   interface TlsConfiguration {
 
     /**
-     * Enable hostname verification.
-     *
-     * <p>Hostname verification is enabled by default.
-     *
-     * @return the TLS configuration helper
-     * @deprecated use {@link SslContextBuilder#endpointIdentificationAlgorithm(String)} with {@link
-     *     #sslContext(SslContext)}
-     */
-    @Deprecated(forRemoval = true)
-    TlsConfiguration hostnameVerification();
-
-    /**
-     * Enable or disable hostname verification.
-     *
-     * <p>Hostname verification is enabled by default.
-     *
-     * @param hostnameVerification whether to enable hostname verification or not
-     * @return the TLS configuration helper
-     * @deprecated use {@link SslContextBuilder#endpointIdentificationAlgorithm(String)} with {@link
-     *     #sslContext(SslContext)}
-     */
-    @Deprecated(forRemoval = true)
-    TlsConfiguration hostnameVerification(boolean hostnameVerification);
-
-    /**
      * Netty {@link SslContext} for TLS connections.
      *
      * <p>Use {@link SslContextBuilder#forClient()} to configure and create an instance.
