@@ -94,7 +94,7 @@
     <spotbugs-maven-plugin.version>4.9.3.0</spotbugs-maven-plugin.version>
     <spotbugs.version>4.9.3</spotbugs.version>
     <!-- for documentation -->
-    <broker.version>4.0</broker.version>
+    <broker.version>4.1</broker.version>
     <!-- to sign artifacts when releasing -->
     <gpg.keyname>6026DFCA</gpg.keyname>
     <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
