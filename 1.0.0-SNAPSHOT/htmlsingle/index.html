@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.0.0-SNAPSHOT</span>
-<br><span id="revremark">(afa083b)</span>
+<br><span id="revremark">(1089f6c)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -780,7 +780,7 @@ is also supported on the publisher side.</p>
 <div class="sectionbody">
 <div class="paragraph">
 <p>The RabbitMQ Stream Java Client implements the
-<a href="https://github.com/rabbitmq/rabbitmq-server/blob/v4.0.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
+<a href="https://github.com/rabbitmq/rabbitmq-server/blob/v4.1.x/deps/rabbitmq_stream/docs/PROTOCOL.adoc">RabbitMQ Stream protocol</a>
 and avoids dealing with low-level concerns by providing high-level functionalities
 to build fast, efficient, and robust client applications.</p>
 </div>
@@ -822,39 +822,16 @@ recovery and automatic re-subscription for consumers.</p>
 <h2 id="versioning"><a class="anchor" href="#versioning"></a>Versioning</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>The RabbitMQ Stream Java Client is in development and stabilization phase.
-When the stabilization phase ends, a 1.0.0 version will be cut, and
-<a href="https://semver.org/">semantic versioning</a> is likely to be enforced.</p>
+<p>This library uses <a href="https://semver.org/">semantic versioning</a>.</p>
 </div>
 <div class="paragraph">
-<p>Before reaching the stable phase, the client will use a versioning scheme of <code>[0.MINOR.PATCH]</code> where:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p><code>0</code> indicates the project is still in a stabilization phase.</p>
-</li>
-<li>
-<p><code>MINOR</code> is a 0-based number incrementing with each new release cycle. It generally reflects significant changes like new features and potentially some programming interfaces changes.</p>
-</li>
-<li>
-<p><code>PATCH</code> is a 0-based number incrementing with each service release, that is bux fixes.</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>Breaking changes between releases can happen but will be kept to a minimum.
-The next section provides more details about the evolution of programming interfaces.</p>
+<p>The next section provides more details about the evolution of programming interfaces.</p>
 </div>
 </div>
 </div>
 <div class="sect1">
 <h2 id="stability-of-programming-interfaces"><a class="anchor" href="#stability-of-programming-interfaces"></a>Stability of Programming Interfaces</h2>
 <div class="sectionbody">
-<div class="paragraph">
-<p>The RabbitMQ Stream Java Client is in active development but its programming interfaces will remain as stable as possible.
-There is no guarantee though that they will remain completely stable, at least until it reaches version 1.0.0.</p>
-</div>
 <div class="paragraph">
 <p>The client contains 2 sets of programming interfaces whose stability are of interest for application developers:</p>
 </div>
@@ -863,7 +840,8 @@ There is no guarantee though that they will remain completely stable, at least u
 <li>
 <p>Application Programming Interfaces (API): those are the ones used to write application logic.
 They include the interfaces and classes in the <code>com.rabbitmq.stream</code> package (e.g. <code>Producer</code>, <code>Consumer</code>, <code>Message</code>).
-These API constitute the main programming model of the client and will be kept as stable as possible.</p>
+These API constitute the main programming model of the client and are kept as stable as possible.
+New features may require to add methods to existing interfaces.</p>
 </li>
 <li>
 <p>Service Provider Interfaces (SPI): those are interfaces to implement mainly technical behavior in the client.
@@ -928,7 +906,7 @@ same host).</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq -p 5552:5552 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:4.0</code></pre>
+    rabbitmq:4.1</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -940,7 +918,7 @@ ports for other protocols:</p>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq -p 5552:5552 -p 5672:5672 -p 15672:15672 \
     -e RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS='-rabbitmq_stream advertised_host localhost' \
-    rabbitmq:4.0-management</code></pre>
+    rabbitmq:4.1-management</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -967,7 +945,7 @@ this is perfect for experimenting locally.</p>
 <div class="listingblock">
 <div class="title">Running RabbitMQ Stream with the host network driver</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq --network host rabbitmq:4.0</code></pre>
+<pre class="CodeRay highlight"><code data-lang="shell">docker run -it --rm --name rabbitmq --network host rabbitmq:4.1</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -5019,7 +4997,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.0.0-SNAPSHOT<br>
-Last updated 2025-04-16 15:12:34 UTC
+Last updated 2025-04-16 15:27:14 UTC
 </div>
 </div>
 </body>
