@@ -16,8 +16,11 @@ Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/stabl
 
 == Project Maturity
 
-The project is in development and stabilization phase.
-Features and API are subject to change, but https://rabbitmq.github.io/rabbitmq-stream-java-client/stable/htmlsingle/#stability-of-programming-interfaces[breaking changes] will be kept to a minimum.
+The library is stable and production-ready.
+
+== Versioning
+
+This library uses https://semver.org/[semantic versioning].
 
 == Support
 
