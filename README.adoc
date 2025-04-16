@@ -18,10 +18,6 @@ Please refer to the https://rabbitmq.github.io/rabbitmq-stream-java-client/stabl
 
 The library is stable and production-ready.
 
-== Versioning
-
-This library uses https://semver.org/[semantic versioning].
-
 == Support
 
 * For questions: https://groups.google.com/forum/#!forum/rabbitmq-users[RabbitMQ Users]
@@ -54,17 +50,7 @@ This library requires at least Java 11, but Java 21 or more is recommended.
 
 == Versioning
 
-The RabbitMQ Stream Java Client is in development and stabilization phase.
-When the stabilization phase ends, a 1.0.0 version will be cut, and
-https://semver.org/[semantic versioning] is likely to be enforced.
-
-Before reaching the stable phase, the client will use a versioning scheme of `[0.MINOR.PATCH]` where:
-
-* `0` indicates the project is still in a stabilization phase.
-* `MINOR` is a 0-based number incrementing with each new release cycle. It generally reflects significant changes like new features and potentially some programming interfaces changes.
-* `PATCH` is a 0-based number incrementing with each service release, that is bux fixes.
-
-Breaking changes between releases can happen but will be kept to a minimum.
+This library uses https://semver.org/[semantic versioning].
 
 == Build Instructions
 
