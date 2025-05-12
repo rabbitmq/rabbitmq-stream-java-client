@@ -41,7 +41,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,7 +57,6 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import wiremock.org.checkerframework.checker.units.qual.A;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamProducerTest {
@@ -88,67 +86,6 @@ public class StreamProducerTest {
   @AfterEach
   void tearDown() {
     environment.close();
-  }
-
-  private static AtomicLong rate() {
-    AtomicLong count = new AtomicLong();
-    AtomicLong tick = new AtomicLong(System.nanoTime());
-
-    Executors.newSingleThreadScheduledExecutor()
-        .scheduleAtFixedRate(
-            () -> {
-              long now = System.nanoTime();
-              long before = tick.getAndSet(now);
-              long elapsed = now - before;
-              long sent = count.getAndSet(0);
-              System.out.println("Rate " + (sent * 1_000_000_000L / elapsed) + " msg/s");
-            },
-            1,
-            1,
-            TimeUnit.SECONDS);
-    return count;
-  }
-
-  @Test
-  void test() {
-    AtomicLong count = rate();
-    Producer producer = environment.producerBuilder().stream(stream)
-        .maxUnconfirmedMessages(10)
-        .build();
-
-    while(true) {
-      producer.send(producer.messageBuilder().build(), s -> { });
-      count.incrementAndGet();
-    }
-
-  }
-
-  @Test
-  void client() throws Exception {
-    int permits = 10;
-    Semaphore semaphore = new Semaphore(permits);
-    Client client = cf.get(new Client.ClientParameters().publishConfirmListener(new Client.PublishConfirmListener() {
-      @Override
-      public void handle(byte publisherId, long publishingId) {
-        semaphore.release();
-      }
-    }));
-
-    byte pubId = (byte) 0;
-    client.declarePublisher(pubId, null, stream);
-
-    AtomicLong count = rate();
-
-    List<Message> messages = IntStream.range(0, permits).mapToObj(ignored -> client
-        .messageBuilder()
-        .addData("hello".getBytes(StandardCharsets.UTF_8))
-        .build()).collect(Collectors.toList());
-    while (true) {
-      semaphore.acquire(permits);
-      client.publish(pubId, messages);
-      count.addAndGet(permits);
-    }
-
   }
 
   @Test
