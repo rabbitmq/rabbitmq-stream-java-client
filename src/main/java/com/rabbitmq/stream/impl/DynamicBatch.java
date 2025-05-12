@@ -69,19 +69,27 @@ final class DynamicBatch<T> implements AutoCloseable {
         if (state.items.size() >= state.batchSize) {
           this.maybeCompleteBatch(state, true);
         } else {
-          item = this.requests.poll();
-          if (item == null) {
-            this.maybeCompleteBatch(state, false);
-          } else {
-            state.items.add(item);
-            if (state.items.size() >= state.batchSize) {
-              this.maybeCompleteBatch(state, true);
-            }
-          }
+          pump(state, 2);
         }
       } else {
         this.maybeCompleteBatch(state, false);
       }
+    }
+  }
+
+  private void pump(State<T> state, int pumpCount) {
+    if (pumpCount <= 0) {
+      return;
+    }
+    T item = this.requests.poll();
+    if (item == null) {
+      this.maybeCompleteBatch(state, false);
+    } else {
+      state.items.add(item);
+      if (state.items.size() >= state.batchSize) {
+        this.maybeCompleteBatch(state, true);
+      }
+      this.pump(state, pumpCount - 1);
     }
   }
 

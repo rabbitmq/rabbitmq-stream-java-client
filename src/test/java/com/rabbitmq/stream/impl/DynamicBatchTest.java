@@ -23,8 +23,11 @@ import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
 import java.util.Locale;
 import java.util.Random;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
@@ -116,6 +119,39 @@ public class DynamicBatchTest {
       canProcess.set(true);
       waitAtMost(() -> processed.get() == itemCount);
       waitAtMost(() -> collected.get() == itemCount);
+    }
+  }
+
+  @Test
+  void lowThrottlingValueShouldStillHighPublishingRate() throws Exception {
+    int batchSize = 10;
+    Semaphore semaphore = new Semaphore(batchSize);
+    DynamicBatch.BatchConsumer<Long> action =
+        items -> {
+          semaphore.release(items.size());
+          return true;
+        };
+
+    try (DynamicBatch<Long> batch = new DynamicBatch<>(action, batchSize)) {
+      MetricRegistry metrics = new MetricRegistry();
+      Meter rate = metrics.meter("publishing-rate");
+      AtomicBoolean keepGoing = new AtomicBoolean(true);
+      AtomicLong sequence = new AtomicLong();
+      new Thread(
+              () -> {
+                while (keepGoing.get() && !Thread.interrupted()) {
+                  long id = sequence.getAndIncrement();
+                  if (semaphore.tryAcquire()) {
+                    batch.add(id);
+                    rate.mark();
+                  }
+                }
+              })
+          .start();
+      long start = System.nanoTime();
+      waitAtMost(
+          () ->
+              System.nanoTime() - start > TimeUnit.SECONDS.toNanos(1) && rate.getMeanRate() > 1000);
     }
   }
 }
