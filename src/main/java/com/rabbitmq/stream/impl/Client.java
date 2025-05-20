@@ -256,7 +256,7 @@ public class Client implements AutoCloseable {
       b.option(
           ChannelOption.ALLOCATOR,
           parameters.byteBufAllocator == null
-              ? ByteBufAllocator.DEFAULT
+              ? Utils.byteBufAllocator()
               : parameters.byteBufAllocator);
     }
 

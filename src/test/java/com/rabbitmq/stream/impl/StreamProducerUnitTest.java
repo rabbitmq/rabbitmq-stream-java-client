@@ -75,7 +75,7 @@ public class StreamProducerUnitTest {
   void init() {
     mocks = MockitoAnnotations.openMocks(this);
     executorService = Executors.newScheduledThreadPool(2);
-    when(channel.alloc()).thenReturn(ByteBufAllocator.DEFAULT);
+    when(channel.alloc()).thenReturn(Utils.byteBufAllocator());
     when(channel.writeAndFlush(Mockito.any())).thenReturn(channelFuture);
     when(client.allocateNoCheck(any(ByteBufAllocator.class), anyInt()))
         .thenAnswer(

@@ -422,7 +422,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
 
     private final EnvironmentBuilder environmentBuilder;
     private EventLoopGroup eventLoopGroup;
-    private ByteBufAllocator byteBufAllocator = ByteBufAllocator.DEFAULT;
+    private ByteBufAllocator byteBufAllocator = Utils.byteBufAllocator();
     private Consumer<Channel> channelCustomizer = noOpConsumer();
     private Consumer<Bootstrap> bootstrapCustomizer = noOpConsumer();
 

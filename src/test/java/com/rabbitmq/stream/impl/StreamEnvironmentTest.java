@@ -216,7 +216,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  void growShrinkResourcesWhenProducersConsumersAreOpenedAndClosed(TestInfo info) throws Exception {
+  void growShrinkResourcesWhenProducersConsumersAreOpenedAndClosed(TestInfo info) {
     int messageCount = 100;
     int streamCount = 20;
     int producersCount = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT * 3 + 10;

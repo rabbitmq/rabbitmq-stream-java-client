@@ -26,7 +26,6 @@ import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.StreamEnvironment.LocatorNotAvailableException;
-import io.netty.buffer.ByteBufAllocator;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
@@ -94,7 +93,7 @@ public class StreamEnvironmentUnitTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
-            ByteBufAllocator.DEFAULT,
+            Utils.byteBufAllocator(),
             false,
             type -> "locator-connection",
             cf,
@@ -163,7 +162,7 @@ public class StreamEnvironmentUnitTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
-            ByteBufAllocator.DEFAULT,
+            Utils.byteBufAllocator(),
             false,
             type -> "locator-connection",
             cf,
@@ -195,7 +194,7 @@ public class StreamEnvironmentUnitTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
             null,
-            ByteBufAllocator.DEFAULT,
+            Utils.byteBufAllocator(),
             lazyInit,
             type -> "locator-connection",
             cf,

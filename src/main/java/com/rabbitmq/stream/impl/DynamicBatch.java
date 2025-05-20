@@ -111,6 +111,7 @@ final class DynamicBatch<T> implements AutoCloseable {
         state.items = new ArrayList<>(state.batchSize);
       }
     } catch (Exception e) {
+      //      e.printStackTrace();
       LOGGER.warn("Error during dynamic batch completion: {}", e.getMessage());
     }
   }

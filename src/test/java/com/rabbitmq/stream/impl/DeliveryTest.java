@@ -20,7 +20,6 @@ import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.ServerFrameHandler.DeliverVersion1FrameHandler;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -51,7 +50,7 @@ public class DeliveryTest {
 
   ByteBuf generateFrameBuffer(
       int nbMessages, long chunkOffset, int dataSize, Iterable<byte[]> messages) {
-    ByteBuf bb = ByteBufAllocator.DEFAULT.buffer(1024);
+    ByteBuf bb = Utils.byteBufAllocator().buffer(1024);
     bb.writeShort(Utils.encodeRequestCode(Constants.COMMAND_DELIVER))
         .writeShort(Constants.VERSION_1)
         .writeByte(1) // subscription id

@@ -26,7 +26,6 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Properties;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import java.io.ByteArrayOutputStream;
@@ -149,7 +148,7 @@ public class FrameTest {
       tests.forEach(
           test -> {
             Channel channel = Mockito.mock(Channel.class);
-            Mockito.when(channel.alloc()).thenReturn(ByteBufAllocator.DEFAULT);
+            Mockito.when(channel.alloc()).thenReturn(Utils.byteBufAllocator());
             Mockito.when(channel.writeAndFlush(Mockito.any()))
                 .thenReturn(Mockito.mock(ChannelFuture.class));
 

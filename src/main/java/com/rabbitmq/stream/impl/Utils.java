@@ -19,6 +19,8 @@ import static java.util.Map.copyOf;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
@@ -413,6 +415,10 @@ final class Utils {
 
   static EventLoopGroup eventLoopGroup() {
     return new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+  }
+
+  static ByteBufAllocator byteBufAllocator() {
+    return PooledByteBufAllocator.DEFAULT;
   }
 
   /*
