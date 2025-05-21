@@ -263,7 +263,7 @@ It is the developer's responsibility to close the `EventLoopGroup` they provide.
 
 |`netty#ByteBufAllocator`
 |`ByteBuf` allocator.
-|ByteBufAllocator.DEFAULT
+|PooledByteBufAllocator.DEFAULT
 
 |`netty#channelCustomizer`
 |Extension point to customize Netty's `Channel` instances used for connections.
