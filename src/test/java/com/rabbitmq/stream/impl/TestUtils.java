@@ -73,7 +73,6 @@ import org.junit.jupiter.api.extension.ExecutionCondition;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
-import org.junit.jupiter.api.extension.ExtensionContext.Store.CloseableResource;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.slf4j.Logger;
@@ -736,7 +735,7 @@ public final class TestUtils {
       return field;
     }
 
-    private static class ExecutorServiceCloseableResourceWrapper implements CloseableResource {
+    private static class ExecutorServiceCloseableResourceWrapper implements AutoCloseable {
 
       private final ExecutorService executorService;
 
