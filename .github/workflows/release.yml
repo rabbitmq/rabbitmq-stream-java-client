@@ -17,51 +17,26 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
           cache: 'maven'
-          server-id: ${{ env.maven_server_id }}
+          server-id: central
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
-      - name: Release Stream Java Client (GA)
-        if: ${{ env.ga_release == 'true' }}
+      - name: Release Stream Java Client
         run:  |
           git config user.name "rabbitmq-ci"
           git config user.email "rabbitmq-ci@users.noreply.github.com"
           ci/release-stream-java-client.sh
         env:
-          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+          MAVEN_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-      - name: Release Stream Java Client (Milestone/RC)
-        if: ${{ env.ga_release != 'true' }}
-        run:  |
-          git config user.name "rabbitmq-ci"
-          git config user.email "rabbitmq-ci@users.noreply.github.com"
-          ci/release-stream-java-client.sh
-        env:
-          MAVEN_USERNAME: ''
-          MAVEN_PASSWORD: ${{ secrets.PACKAGECLOUD_TOKEN }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-      - name: Checkout tls-gen
-        uses: actions/checkout@v4
-        with:
-          repository: rabbitmq/tls-gen
-          path: './tls-gen'
-      - name: Start broker
-        run: ci/start-broker.sh
-      - name: Set up JDK for sanity check and documentation generation
+      - name: Set up JDK for documentation generation
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
           cache: 'maven'
-      - name: Sanity Check
-        run: |
-          source ./release-versions.txt
-          export RABBITMQ_LIBRARY_VERSION=$RELEASE_VERSION
-          curl -Ls https://sh.jbang.dev | bash -s - src/test/java/SanityCheck.java
-      - name: Stop broker
-        run: docker stop rabbitmq && docker rm rabbitmq
       - name: Publish Documentation
         run: |
           git config user.name "rabbitmq-ci"

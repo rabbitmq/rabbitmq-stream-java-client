@@ -99,8 +99,7 @@
     <gpg.keyname>6026DFCA</gpg.keyname>
     <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.packagecloud.wagon.version>0.0.6</maven.packagecloud.wagon.version>
-    <nexus-staging-maven-plugin.version>1.7.0</nexus-staging-maven-plugin.version>
+    <central-publishing-maven-plugin.version>0.7.0</central-publishing-maven-plugin.version>
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <gpg.skip>true</gpg.skip>
   </properties>
@@ -613,14 +612,18 @@
         </executions>
       </plugin>
 
+      <plugin>
+          <groupId>org.sonatype.central</groupId>
+          <artifactId>central-publishing-maven-plugin</artifactId>
+          <version>${central-publishing-maven-plugin.version}</version>
+          <extensions>true</extensions>
+          <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>true</autoPublish>
+          </configuration>
+      </plugin>
+
     </plugins>
-    <extensions>
-      <extension>
-        <groupId>io.packagecloud.maven.wagon</groupId>
-        <artifactId>maven-packagecloud-wagon</artifactId>
-        <version>${maven.packagecloud.wagon.version}</version>
-      </extension>
-    </extensions>
   </build>
 
   <profiles>
@@ -631,26 +634,6 @@
         <maven.javadoc.skip>false</maven.javadoc.skip>
         <gpg.skip>false</gpg.skip>
       </properties>
-      <distributionManagement>
-        <snapshotRepository>
-          <id>ossrh</id>
-          <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
-      </distributionManagement>
-    </profile>
-
-    <profile>
-      <id>milestone</id>
-      <properties>
-        <maven.javadoc.skip>false</maven.javadoc.skip>
-        <gpg.skip>false</gpg.skip>
-      </properties>
-      <distributionManagement>
-        <repository>
-          <id>packagecloud-rabbitmq-maven-milestones</id>
-          <url>packagecloud+https://packagecloud.io/rabbitmq/maven-milestones</url>
-        </repository>
-      </distributionManagement>
     </profile>
 
     <profile>
@@ -659,29 +642,6 @@
         <maven.javadoc.skip>false</maven.javadoc.skip>
         <gpg.skip>false</gpg.skip>
       </properties>
-      <build>
-        <plugins>
-
-          <plugin>
-            <groupId>org.sonatype.plugins</groupId>
-            <artifactId>nexus-staging-maven-plugin</artifactId>
-            <version>${nexus-staging-maven-plugin.version}</version>
-            <extensions>true</extensions>
-            <configuration>
-              <serverId>ossrh</serverId>
-              <nexusUrl>https://oss.sonatype.org/</nexusUrl>
-              <autoReleaseAfterClose>false</autoReleaseAfterClose>
-              <stagingProgressTimeoutMinutes>20</stagingProgressTimeoutMinutes>
-            </configuration>
-          </plugin>
-        </plugins>
-      </build>
-      <distributionManagement>
-        <repository>
-          <id>ossrh</id>
-          <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-        </repository>
-      </distributionManagement>
     </profile>
     <profile>
       <id>jvm-test-arguments-below-java-21</id>
@@ -701,7 +661,6 @@
         <test-arguments>-Xshare:off -javaagent:${org.mockito:mockito-core:jar}</test-arguments>
       </properties>
     </profile>
-
 
   </profiles>
 
