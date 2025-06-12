@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.2.0-SNAPSHOT</span>
-<br><span id="revremark">(fc83c4d)</span>
+<br><span id="revremark">(f6b389e)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1060,8 +1060,8 @@ Snapshots are available from a repository which must be declared in the dependen
 <pre class="CodeRay highlight"><code data-lang="xml"><span class="tag">&lt;repositories&gt;</span>
 
   <span class="tag">&lt;repository&gt;</span>
-    <span class="tag">&lt;id&gt;</span>ossrh<span class="tag">&lt;/id&gt;</span>
-    <span class="tag">&lt;url&gt;</span>https://oss.sonatype.org/content/repositories/snapshots<span class="tag">&lt;/url&gt;</span>
+    <span class="tag">&lt;id&gt;</span>central-portal-snapshots<span class="tag">&lt;/id&gt;</span>
+    <span class="tag">&lt;url&gt;</span>https://central.sonatype.com/repository/maven-snapshots/<span class="tag">&lt;/url&gt;</span>
     <span class="tag">&lt;snapshots&gt;</span><span class="tag">&lt;enabled&gt;</span>true<span class="tag">&lt;/enabled&gt;</span><span class="tag">&lt;/snapshots&gt;</span>
     <span class="tag">&lt;releases&gt;</span><span class="tag">&lt;enabled&gt;</span>false<span class="tag">&lt;/enabled&gt;</span><span class="tag">&lt;/releases&gt;</span>
   <span class="tag">&lt;/repository&gt;</span>
@@ -1076,7 +1076,14 @@ Snapshots are available from a repository which must be declared in the dependen
 <div class="title">Snapshot repository declaration for Gradle:</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="groovy">repositories {
-  maven { url <span class="string"><span class="delimiter">'</span><span class="content">https://oss.sonatype.org/content/repositories/snapshots</span><span class="delimiter">'</span></span> }
+  maven {
+    name = <span class="string"><span class="delimiter">'</span><span class="content">Central Portal Snapshots</span><span class="delimiter">'</span></span>
+    url = <span class="string"><span class="delimiter">'</span><span class="content">https://central.sonatype.com/repository/maven-snapshots/</span><span class="delimiter">'</span></span>
+    <span class="comment">// Only search this repository for the specific dependency</span>
+    content {
+      includeModule(<span class="string"><span class="delimiter">&quot;</span><span class="content">com.rabbitmq</span><span class="delimiter">&quot;</span></span>, <span class="string"><span class="delimiter">&quot;</span><span class="content">stream-client</span><span class="delimiter">&quot;</span></span>)
+    }
+  }
   mavenCentral()
 }</code></pre>
 </div>
@@ -4997,7 +5004,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.2.0-SNAPSHOT<br>
-Last updated 2025-06-12 15:02:13 UTC
+Last updated 2025-06-12 15:43:18 UTC
 </div>
 </div>
 </body>
