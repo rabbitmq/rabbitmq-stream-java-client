@@ -28,8 +28,8 @@ import java.util.function.ToIntFunction;
 
 class StreamProducerBuilder implements ProducerBuilder {
 
-  static final boolean DEFAULT_DYNAMIC_BATCH = true;
-//      Boolean.parseBoolean(System.getProperty("rabbitmq.stream.producer.dynamic.batch", "true"));
+  static final boolean DEFAULT_DYNAMIC_BATCH =
+      Boolean.parseBoolean(System.getProperty("rabbitmq.stream.producer.dynamic.batch", "true"));
 
   private final StreamEnvironment environment;
 
@@ -201,7 +201,7 @@ class StreamProducerBuilder implements ProducerBuilder {
 
     if (this.routingConfiguration == null && this.superStream != null) {
       throw new IllegalArgumentException(
-          "A routing configuration must specified when a super stream is set");
+          "A routing configuration must be specified when a super stream is set");
     }
 
     if (this.stream != null) {

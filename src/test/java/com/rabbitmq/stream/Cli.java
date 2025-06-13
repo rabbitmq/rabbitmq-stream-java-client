@@ -178,6 +178,30 @@ public class Cli {
     return GSON.fromJson(json, new TypeToken<List<ConnectionInfo>>() {}.getType());
   }
 
+  public static List<SubscriptionInfo> listGroupConsumers(String stream, String reference) {
+    ProcessState process =
+        rabbitmqStreams(
+            format(
+                "list_stream_group_consumers -q --stream %s --reference %s "
+                    + "--formatter table subscription_id,state",
+                stream, reference));
+
+    List<SubscriptionInfo> itemList = Collections.emptyList();
+    String content = process.output();
+    String[] lines = content.split(System.lineSeparator());
+    if (lines.length > 1) {
+      itemList = new ArrayList<>(lines.length - 1);
+      for (int i = 1; i < lines.length; i++) {
+        String line = lines[i];
+        String[] fields = line.split("\t");
+        String id = fields[0];
+        String state = fields[1].replace("\"", "");
+        itemList.add(new SubscriptionInfo(Integer.parseInt(id), state));
+      }
+    }
+    return itemList;
+  }
+
   public static void restartStream(String stream) {
     rabbitmqStreams(" restart_stream " + stream);
   }
@@ -417,6 +441,30 @@ public class Cli {
           + ", clientProperties="
           + clientProperties
           + '}';
+    }
+  }
+
+  public static final class SubscriptionInfo {
+
+    private final int id;
+    private final String state;
+
+    public SubscriptionInfo(int id, String state) {
+      this.id = id;
+      this.state = state;
+    }
+
+    public int id() {
+      return this.id;
+    }
+
+    public String state() {
+      return this.state;
+    }
+
+    @Override
+    public String toString() {
+      return "SubscriptionInfo{id='" + id + '\'' + ", state='" + state + '\'' + '}';
     }
   }
 
