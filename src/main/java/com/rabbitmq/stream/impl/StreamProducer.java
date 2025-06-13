@@ -180,6 +180,7 @@ class StreamProducer implements Producer {
             dynamicBatch,
             subEntrySize,
             batchSize,
+            maxUnconfirmedMessages,
             compressionCodec,
             environment.codec(),
             environment.byteBufAllocator(),

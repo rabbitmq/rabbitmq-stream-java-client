@@ -30,6 +30,7 @@ final class ProducerUtils {
       boolean dynamicBatch,
       int subEntrySize,
       int batchSize,
+      int maxUnconfirmedMessages,
       CompressionCodec compressionCodec,
       Codec codec,
       ByteBufAllocator byteBufAllocator,
@@ -44,6 +45,7 @@ final class ProducerUtils {
       return new DynamicBatchMessageAccumulator(
           subEntrySize,
           batchSize,
+          maxUnconfirmedMessages,
           codec,
           maxFrameSize,
           publishSequenceFunction,

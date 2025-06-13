@@ -71,7 +71,7 @@ public class DynamicBatchTest {
           sync.down(items.size());
           return true;
         };
-    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100)) {
+    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100, 10_000)) {
       RateLimiter rateLimiter = RateLimiter.create(10000);
       IntStream.range(0, itemCount)
           .forEach(
@@ -102,7 +102,7 @@ public class DynamicBatchTest {
           }
           return result;
         };
-    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100)) {
+    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100, 10_000)) {
       int firstRoundCount = itemCount / 5;
       IntStream.range(0, firstRoundCount)
           .forEach(
@@ -132,7 +132,7 @@ public class DynamicBatchTest {
           return true;
         };
 
-    try (DynamicBatch<Long> batch = new DynamicBatch<>(action, batchSize)) {
+    try (DynamicBatch<Long> batch = new DynamicBatch<>(action, batchSize, 10_000)) {
       MetricRegistry metrics = new MetricRegistry();
       Meter rate = metrics.meter("publishing-rate");
       AtomicBoolean keepGoing = new AtomicBoolean(true);

@@ -38,6 +38,7 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
   DynamicBatchMessageAccumulator(
       int subEntrySize,
       int batchSize,
+      int maxUnconfirmedMessages,
       Codec codec,
       int maxFrameSize,
       ToLongFunction<Message> publishSequenceFunction,
@@ -75,7 +76,8 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                 }
                 return result;
               },
-              batchSize);
+              batchSize,
+              maxUnconfirmedMessages);
     } else {
       byte compressionCode =
           compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
@@ -124,7 +126,8 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                 }
                 return result;
               },
-              batchSize * subEntrySize);
+              batchSize * subEntrySize,
+              maxUnconfirmedMessages);
     }
   }
 

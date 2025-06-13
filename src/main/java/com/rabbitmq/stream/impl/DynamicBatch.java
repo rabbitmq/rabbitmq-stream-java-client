@@ -28,17 +28,22 @@ import org.slf4j.LoggerFactory;
 final class DynamicBatch<T> implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DynamicBatch.class);
-  private static final int MIN_BATCH_SIZE = 32;
-  private static final int MAX_BATCH_SIZE = 8192;
+  private static final int MIN_BATCH_SIZE = 16;
 
   private final BlockingQueue<T> requests = new LinkedBlockingQueue<>();
   private final BatchConsumer<T> consumer;
-  private final int configuredBatchSize;
+  private final int configuredBatchSize, minBatchSize, maxBatchSize;
   private final Thread thread;
 
-  DynamicBatch(BatchConsumer<T> consumer, int batchSize) {
+  DynamicBatch(BatchConsumer<T> consumer, int batchSize, int maxUnconfirmed) {
     this.consumer = consumer;
-    this.configuredBatchSize = min(max(batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
+    if (batchSize < maxUnconfirmed) {
+      this.minBatchSize = min(MIN_BATCH_SIZE, batchSize / 2);
+    } else {
+      this.minBatchSize = min(1, maxUnconfirmed / 2);
+    }
+    this.configuredBatchSize = batchSize;
+    this.maxBatchSize = batchSize * 2;
     this.thread = ConcurrencyUtils.defaultThreadFactory().newThread(this::loop);
     this.thread.start();
   }
@@ -104,9 +109,9 @@ final class DynamicBatch<T> implements AutoCloseable {
       boolean completed = this.consumer.process(state.items);
       if (completed) {
         if (increaseIfCompleted) {
-          state.batchSize = min(state.batchSize * 2, MAX_BATCH_SIZE);
+          state.batchSize = min(state.batchSize * 2, this.maxBatchSize);
         } else {
-          state.batchSize = max(state.batchSize / 2, MIN_BATCH_SIZE);
+          state.batchSize = max(state.batchSize / 2, this.minBatchSize);
         }
         state.items = new ArrayList<>(state.batchSize);
       }
