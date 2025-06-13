@@ -18,11 +18,13 @@ import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.LoadBalancerClusterTest.LOAD_BALANCER_ADDRESS;
 import static com.rabbitmq.stream.impl.TestUtils.newLoggerLevel;
 import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Tuples.pair;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.InstanceOfAssertFactories.stream;
 
 import ch.qos.logback.classic.Level;
 import com.google.common.collect.Streams;
@@ -41,6 +43,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -289,7 +292,7 @@ public class RecoveryClusterTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
-  void sacWithClusterRestart(boolean superStream) throws InterruptedException {
+  void sacWithClusterRestart(boolean superStream) throws Exception {
     environment =
         environmentBuilder
             .uris(URIS)
@@ -351,13 +354,31 @@ public class RecoveryClusterTest {
       sync = consumers.get(0).waitForNewMessages(100);
       assertThat(sync).completes();
 
-      List<Cli.SubscriptionInfo> subscriptions =
-          Cli.listGroupConsumers(superStream ? s + "-0" : s, app);
-      assertThat(subscriptions).hasSize(consumerCount);
-      assertThat(subscriptions.stream().filter(sub -> sub.state().startsWith("active")).count())
-          .isEqualTo(1);
-      assertThat(subscriptions.stream().filter(sub -> sub.state().startsWith("waiting")).count())
-          .isEqualTo(2);
+      String streamArg = superStream ? s + "-0" : s;
+
+      Callable<Void> checkConsumers =
+          () -> {
+            waitAtMost(
+                () -> {
+                  List<Cli.SubscriptionInfo> subscriptions = Cli.listGroupConsumers(streamArg, app);
+                  LOGGER.info("Group consumers: {}", subscriptions);
+                  return subscriptions.size() == consumerCount
+                      && subscriptions.stream()
+                              .filter(sub -> sub.state().startsWith("active"))
+                              .count()
+                          == 1
+                      && subscriptions.stream()
+                              .filter(sub -> sub.state().startsWith("waiting"))
+                              .count()
+                          == 2;
+                },
+                () ->
+                    "Group consumers not in expected state: "
+                        + Cli.listGroupConsumers(streamArg, app));
+            return null;
+          };
+
+      checkConsumers.call();
 
       restartCluster();
 
@@ -375,12 +396,7 @@ public class RecoveryClusterTest {
       sync = consumers.get(activeIndex).waitForNewMessages(100);
       assertThat(sync).completes(ASSERTION_TIMEOUT);
 
-      subscriptions = Cli.listGroupConsumers(superStream ? s + "-0" : s, app);
-      assertThat(subscriptions).hasSize(consumerCount);
-      assertThat(subscriptions.stream().filter(sub -> sub.state().startsWith("active")).count())
-          .isEqualTo(1);
-      assertThat(subscriptions.stream().filter(sub -> sub.state().startsWith("waiting")).count())
-          .isEqualTo(2);
+      checkConsumers.call();
 
     } finally {
       if (pState != null) {
