@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.LoadBalancerClusterTest.LOAD_BALANCER_ADDRESS;
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_1_2;
 import static com.rabbitmq.stream.impl.TestUtils.newLoggerLevel;
 import static com.rabbitmq.stream.impl.TestUtils.sync;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
@@ -30,6 +31,7 @@ import ch.qos.logback.classic.Level;
 import com.google.common.collect.Streams;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfNotCluster;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
 import com.rabbitmq.stream.impl.Tuples.Pair;
@@ -292,6 +294,7 @@ public class RecoveryClusterTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
+  @BrokerVersionAtLeast(RABBITMQ_4_1_2)
   void sacWithClusterRestart(boolean superStream) throws Exception {
     environment =
         environmentBuilder
