@@ -666,4 +666,16 @@ public class StreamProducerTest {
           .isInstanceOfAny(ConnectTimeoutException.class, UnknownHostException.class);
     }
   }
+
+  @Test
+  void messageLargerThanMaxFrameSizeShouldThrowException() {
+    int messageSize = Client.DEFAULT_MAX_FRAME_SIZE + 1;
+    Producer producer = environment.producerBuilder().stream(stream).build();
+    assertThatThrownBy(
+            () ->
+                producer.send(
+                    producer.messageBuilder().addData(new byte[messageSize]).build(),
+                    confirmationStatus -> {}))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

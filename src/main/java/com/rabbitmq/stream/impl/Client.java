@@ -117,6 +117,7 @@ public class Client implements AutoCloseable {
   public static final int DEFAULT_PORT = 5552;
   public static final int DEFAULT_TLS_PORT = 5551;
   static final int MAX_REFERENCE_SIZE = 256;
+  static final int DEFAULT_MAX_FRAME_SIZE = 1048576;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
@@ -2363,7 +2364,7 @@ public class Client implements AutoCloseable {
     CompressionCodecFactory compressionCodecFactory;
     private String virtualHost = "/";
     private Duration requestedHeartbeat = Duration.ofSeconds(60);
-    private int requestedMaxFrameSize = 1048576;
+    private int requestedMaxFrameSize = DEFAULT_MAX_FRAME_SIZE;
     private PublishConfirmListener publishConfirmListener = NO_OP_PUBLISH_CONFIRM_LISTENER;
     private PublishErrorListener publishErrorListener = NO_OP_PUBLISH_ERROR_LISTENER;
     private ChunkListener chunkListener =
