@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.*;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
@@ -810,6 +811,21 @@ public class StreamEnvironmentTest {
     } finally {
       env.deleteStream(s);
       env.close();
+    }
+  }
+
+  @Test
+  void storeOffset() {
+    String ref = "app";
+    Client client = cf.get();
+    assertThat(client.queryOffset(ref, stream)).isNotOk().hasCodeNoOffset();
+    try (Environment env = environmentBuilder.build()) {
+      env.storeOffset(ref, stream, 42);
+      assertThat(client.queryOffset(ref, stream).getOffset()).isEqualTo(42);
+      env.storeOffset(ref, stream, 43);
+      assertThat(client.queryOffset(ref, stream).getOffset()).isEqualTo(43);
+      env.storeOffset(ref, stream, 0);
+      assertThat(client.queryOffset(ref, stream).getOffset()).isEqualTo(0);
     }
   }
 }

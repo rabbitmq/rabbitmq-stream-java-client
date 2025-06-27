@@ -557,6 +557,29 @@ class StreamEnvironment implements Environment {
   }
 
   @Override
+  public void storeOffset(String reference, String stream, long offset) {
+    checkNotClosed();
+    this.maybeInitializeLocator();
+    locatorOperation(
+        Utils.namedFunction(
+            l -> {
+              l.storeOffset(reference, stream, offset);
+              return null;
+            },
+            "Store offset %d for stream '%s' with reference '%s'",
+            offset,
+            stream,
+            reference));
+    OffsetTrackingUtils.waitForOffsetToBeStored(
+        "env-store-offset",
+        this.scheduledExecutorService,
+        () -> OffsetTrackingUtils.storedOffset(() -> locator().client(), reference, stream),
+        reference,
+        stream,
+        offset);
+  }
+
+  @Override
   public boolean streamExists(String stream) {
     checkNotClosed();
     this.maybeInitializeLocator();

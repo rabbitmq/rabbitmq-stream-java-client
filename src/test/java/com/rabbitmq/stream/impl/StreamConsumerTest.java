@@ -15,11 +15,12 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.ConsumerFlowStrategy.creditWhenHalfMessagesProcessed;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.*;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static java.lang.String.format;
 import static java.util.Collections.synchronizedList;
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
@@ -40,6 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -148,8 +150,8 @@ public class StreamConsumerTest {
                 })
             .build();
 
-    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
-    assertThat(committedOffset.get()).isNotZero();
+    org.assertj.core.api.Assertions.assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    org.assertj.core.api.Assertions.assertThat(committedOffset.get()).isNotZero();
 
     consumer.close();
   }
@@ -172,7 +174,7 @@ public class StreamConsumerTest {
                     Collections.singletonList(
                         client.messageBuilder().addData("".getBytes()).build())));
 
-    assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    org.assertj.core.api.Assertions.assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
     CountDownLatch consumeLatch = new CountDownLatch(messageCount);
 
@@ -187,8 +189,8 @@ public class StreamConsumerTest {
                 })
             .build();
 
-    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
-    assertThat(chunkTimestamp.get()).isNotZero();
+    org.assertj.core.api.Assertions.assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    org.assertj.core.api.Assertions.assertThat(chunkTimestamp.get()).isNotZero();
 
     consumer.close();
   }
@@ -227,7 +229,7 @@ public class StreamConsumerTest {
     waitAtMost(() -> receivedMessageCount.get() >= processingLimit);
     waitUntilStable(receivedMessageCount::get);
 
-    assertThat(receivedMessageCount)
+    org.assertj.core.api.Assertions.assertThat(receivedMessageCount)
         .hasValueGreaterThanOrEqualTo(processingLimit)
         .hasValueLessThan(messageCount);
 
@@ -258,7 +260,7 @@ public class StreamConsumerTest {
                         ctx.processed();
                       }))
           .build();
-      assertThat(latch).is(completed());
+      org.assertj.core.api.Assertions.assertThat(latch).is(completed());
     } finally {
       executorService.shutdownNow();
     }
@@ -282,7 +284,7 @@ public class StreamConsumerTest {
                     Collections.singletonList(
                         client.messageBuilder().addData("".getBytes()).build())));
 
-    assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    org.assertj.core.api.Assertions.assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
     int messagesToProcess = 20_000;
 
@@ -304,9 +306,9 @@ public class StreamConsumerTest {
                 })
             .build();
 
-    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    org.assertj.core.api.Assertions.assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     consumer.close();
-    assertThat(processedMessages).hasValue(messagesToProcess);
+    org.assertj.core.api.Assertions.assertThat(processedMessages).hasValue(messagesToProcess);
   }
 
   @Test
@@ -339,7 +341,7 @@ public class StreamConsumerTest {
                     producer.messageBuilder().addData("".getBytes()).build(),
                     confirmationStatus -> publishLatch.countDown()));
 
-    assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    org.assertj.core.api.Assertions.assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
     CountDownLatch consumeLatch = new CountDownLatch(messageCount);
     StreamConsumer consumer =
@@ -349,14 +351,14 @@ public class StreamConsumerTest {
                 .messageHandler((offset, message) -> consumeLatch.countDown())
                 .build();
 
-    assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    org.assertj.core.api.Assertions.assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
-    assertThat(consumer.isOpen()).isTrue();
+    org.assertj.core.api.Assertions.assertThat(consumer.isOpen()).isTrue();
 
     environment.deleteStream(s);
 
     TestUtils.waitAtMost(10, () -> !consumer.isOpen());
-    assertThat(consumer.isOpen()).isFalse();
+    org.assertj.core.api.Assertions.assertThat(consumer.isOpen()).isFalse();
   }
 
   @Test
@@ -396,7 +398,7 @@ public class StreamConsumerTest {
 
     messageSending.accept(messageCountFirstWave);
 
-    assertThat(latchAssert(latchConfirmFirstWave)).completes();
+    org.assertj.core.api.Assertions.assertThat(latchAssert(latchConfirmFirstWave)).completes();
 
     int storeEvery = 100;
     AtomicInteger consumedMessageCount = new AtomicInteger();
@@ -425,22 +427,24 @@ public class StreamConsumerTest {
             .build();
 
     ConsumerInfo consumerInfo = MonitoringTestUtils.extract(consumer);
-    assertThat(consumerInfo.getId()).isGreaterThanOrEqualTo(0);
-    assertThat(consumerInfo.getStream()).isEqualTo(stream);
-    assertThat(consumerInfo.getSubscriptionClient()).contains(" -> localhost:5552");
-    assertThat(consumerInfo.getTrackingClient()).contains(" -> localhost:5552");
+    org.assertj.core.api.Assertions.assertThat(consumerInfo.getId()).isGreaterThanOrEqualTo(0);
+    org.assertj.core.api.Assertions.assertThat(consumerInfo.getStream()).isEqualTo(stream);
+    org.assertj.core.api.Assertions.assertThat(consumerInfo.getSubscriptionClient())
+        .contains(" -> localhost:5552");
+    org.assertj.core.api.Assertions.assertThat(consumerInfo.getTrackingClient())
+        .contains(" -> localhost:5552");
 
     consumerReference.set(consumer);
 
     waitAtMost(10, () -> consumedMessageCount.get() == messageCountFirstWave);
 
-    assertThat(lastStoredOffset.get()).isPositive();
+    org.assertj.core.api.Assertions.assertThat(lastStoredOffset.get()).isPositive();
 
     consumer.close();
 
     messageSending.accept(messageCountSecondWave);
 
-    assertThat(latchAssert(latchConfirmSecondWave)).completes();
+    org.assertj.core.api.Assertions.assertThat(latchAssert(latchConfirmSecondWave)).completes();
 
     AtomicLong firstOffset = new AtomicLong(0);
     consumer =
@@ -465,7 +469,8 @@ public class StreamConsumerTest {
 
     // there will be the tracking records after the first wave of messages,
     // messages offset won't be contiguous, so it's not an exact match
-    assertThat(firstOffset.get()).isGreaterThanOrEqualTo(lastStoredOffset.get());
+    org.assertj.core.api.Assertions.assertThat(firstOffset.get())
+        .isGreaterThanOrEqualTo(lastStoredOffset.get());
 
     consumer.close();
   }
@@ -508,7 +513,7 @@ public class StreamConsumerTest {
     Cli.killConnection("rabbitmq-stream-consumer-0");
 
     // no messages should have been received
-    assertThat(consumedCount.get()).isZero();
+    org.assertj.core.api.Assertions.assertThat(consumedCount.get()).isZero();
 
     // starting the second wave, it sends a message every 100 ms
     AtomicBoolean keepPublishing = new AtomicBoolean(true);
@@ -526,7 +531,7 @@ public class StreamConsumerTest {
     // the consumer should restart consuming with its initial offset spec, "next"
     try {
       latchAssert(consumeLatch).completes(recoveryInitialDelay.multipliedBy(2));
-      assertThat(bodies).hasSize(1).contains("second wave");
+      org.assertj.core.api.Assertions.assertThat(bodies).hasSize(1).contains("second wave");
     } finally {
       keepPublishing.set(false);
     }
@@ -551,7 +556,7 @@ public class StreamConsumerTest {
                       producer.messageBuilder().addData("".getBytes()).build(),
                       confirmationStatus -> publishLatch.countDown()));
 
-      assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
+      org.assertj.core.api.Assertions.assertThat(publishLatch.await(10, TimeUnit.SECONDS)).isTrue();
       producer.close();
 
       AtomicInteger receivedMessageCount = new AtomicInteger(0);
@@ -569,9 +574,9 @@ public class StreamConsumerTest {
                       })
                   .build();
 
-      assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+      org.assertj.core.api.Assertions.assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
-      assertThat(consumer.isOpen()).isTrue();
+      org.assertj.core.api.Assertions.assertThat(consumer.isOpen()).isTrue();
 
       disruption.accept(s);
 
@@ -592,13 +597,14 @@ public class StreamConsumerTest {
                       producerSecondWave.messageBuilder().addData("".getBytes()).build(),
                       confirmationStatus -> publishLatchSecondWave.countDown()));
 
-      assertThat(publishLatchSecondWave.await(10, TimeUnit.SECONDS)).isTrue();
+      org.assertj.core.api.Assertions.assertThat(publishLatchSecondWave.await(10, TimeUnit.SECONDS))
+          .isTrue();
       producerSecondWave.close();
 
       latchAssert(consumeLatchSecondWave).completes(recoveryInitialDelay.plusSeconds(2));
-      assertThat(receivedMessageCount.get())
+      org.assertj.core.api.Assertions.assertThat(receivedMessageCount.get())
           .isBetween(messageCount * 2, messageCount * 2 + 1); // there can be a duplicate
-      assertThat(consumer.isOpen()).isTrue();
+      org.assertj.core.api.Assertions.assertThat(consumer.isOpen()).isTrue();
 
     } finally {
       if (consumer != null) {
@@ -806,7 +812,8 @@ public class StreamConsumerTest {
     publish.run();
 
     waitAtMost(5, () -> receivedMessages.get() == messageCount);
-    assertThat(offsetTracking.get()).isGreaterThanOrEqualTo(messageCount - 1);
+    org.assertj.core.api.Assertions.assertThat(offsetTracking.get())
+        .isGreaterThanOrEqualTo(messageCount - 1);
 
     Cli.killConnection("rabbitmq-stream-consumer-0");
     waitAtMost(
@@ -814,7 +821,8 @@ public class StreamConsumerTest {
 
     publish.run();
     waitAtMost(5, () -> receivedMessages.get() == messageCount * 2);
-    assertThat(offsetTracking.get()).isGreaterThanOrEqualTo(messageCount * 2 - 1);
+    org.assertj.core.api.Assertions.assertThat(offsetTracking.get())
+        .isGreaterThanOrEqualTo(messageCount * 2 - 1);
   }
 
   @Test
@@ -866,7 +874,8 @@ public class StreamConsumerTest {
         });
 
     // we have duplicates because the last stored value is behind and the re-subscription uses it
-    assertThat(receivedMessages).hasValueGreaterThan(publishedMessages.get());
+    org.assertj.core.api.Assertions.assertThat(receivedMessages)
+        .hasValueGreaterThan(publishedMessages.get());
   }
 
   @Test
@@ -927,7 +936,8 @@ public class StreamConsumerTest {
     latchAssert(poisonLatch).completes(recoveryInitialDelay.plusSeconds(2));
     // no duplicates because the custom offset tracking overrides the stored offset in the
     // subscription listener
-    assertThat(receivedMessages).hasValue(publishedMessages.get() + 1);
+    org.assertj.core.api.Assertions.assertThat(receivedMessages)
+        .hasValue(publishedMessages.get() + 1);
   }
 
   @Test
@@ -990,5 +1000,51 @@ public class StreamConsumerTest {
           .cause()
           .isInstanceOfAny(ConnectTimeoutException.class, UnknownHostException.class);
     }
+  }
+
+  @Test
+  void resetOffsetTrackingFromEnvironment() {
+    int messageCount = 100;
+    publishAndWaitForConfirms(cf, messageCount, stream);
+    String reference = "app";
+    Sync sync = sync(messageCount);
+    AtomicLong lastOffset = new AtomicLong(0);
+    Supplier<Consumer> consumerSupplier =
+        () ->
+            environment.consumerBuilder().stream(stream)
+                .name(reference)
+                .offset(OffsetSpecification.first())
+                .messageHandler(
+                    (context, message) -> {
+                      lastOffset.set(context.offset());
+                      sync.down();
+                    })
+                .autoTrackingStrategy()
+                .builder()
+                .build();
+    // consumer gets the initial message batch and stores the offset on closing
+    Consumer consumer = consumerSupplier.get();
+    assertThat(sync).completes();
+    consumer.close();
+
+    // we'll publish 1 more message and make sure the consumers only consumes that one
+    // (because it restarts where it left off)
+    long limit = lastOffset.get();
+    sync.reset(1);
+    consumer = consumerSupplier.get();
+
+    publishAndWaitForConfirms(cf, 1, stream);
+
+    assertThat(sync).completes();
+    org.assertj.core.api.Assertions.assertThat(lastOffset).hasValueGreaterThan(limit);
+    consumer.close();
+
+    // we reset the offset to 0, the consumer should restart from the beginning
+    environment.storeOffset(reference, stream, 0);
+    sync.reset(messageCount + 1);
+    consumer = consumerSupplier.get();
+
+    assertThat(sync).completes();
+    consumer.close();
   }
 }
