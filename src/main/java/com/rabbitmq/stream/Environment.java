@@ -84,6 +84,22 @@ public interface Environment extends AutoCloseable {
   StreamStats queryStreamStats(String stream);
 
   /**
+   * Store the offset for a given reference on the given stream.
+   *
+   * <p>This method is useful to store a given offset before a consumer is created.
+   *
+   * <p>Prefer the {@link Consumer#store(long)} or {@link MessageHandler.Context#storeOffset()}
+   * methods to store offsets while consuming messages.
+   *
+   * @see Consumer#store(long)
+   * @see MessageHandler.Context#storeOffset()
+   * @param reference the reference to store the offset for, e.g. a consumer name
+   * @param stream the stream
+   * @param offset the offset to store
+   */
+  void storeOffset(String reference, String stream, long offset);
+
+  /**
    * Return whether a stream exists or not.
    *
    * @param stream the stream to check the existence

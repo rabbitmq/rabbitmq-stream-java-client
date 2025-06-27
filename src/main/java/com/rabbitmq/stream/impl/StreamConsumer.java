@@ -18,11 +18,9 @@ import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 import static java.lang.String.format;
-import static java.time.Duration.ofMillis;
 
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.MessageHandler.Context;
-import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.LocatorNotAvailableException;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
@@ -329,53 +327,13 @@ class StreamConsumer implements Consumer {
   }
 
   void waitForOffsetToBeStored(long expectedStoredOffset) {
-    CompletableFuture<Boolean> storedTask =
-        asyncRetry(
-                () -> {
-                  try {
-                    long lastStoredOffset = storedOffset();
-                    boolean stored = lastStoredOffset == expectedStoredOffset;
-                    LOGGER.debug(
-                        "Last stored offset from consumer {} on {} is {}, expecting {}",
-                        this.id,
-                        this.stream,
-                        lastStoredOffset,
-                        expectedStoredOffset);
-                    if (!stored) {
-                      throw new IllegalStateException();
-                    } else {
-                      return true;
-                    }
-                  } catch (StreamException e) {
-                    if (e.getCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-                      LOGGER.debug(
-                          "No stored offset for consumer {} on {}, expecting {}",
-                          this.id,
-                          this.stream,
-                          expectedStoredOffset);
-                      throw new IllegalStateException();
-                    } else {
-                      throw e;
-                    }
-                  }
-                })
-            .description(
-                "Last stored offset for consumer %s on stream %s must be %d",
-                this.name, this.stream, expectedStoredOffset)
-            .delayPolicy(fixedWithInitialDelay(ofMillis(200), ofMillis(200)))
-            .retry(exception -> exception instanceof IllegalStateException)
-            .scheduler(environment.scheduledExecutorService())
-            .build();
-
-    try {
-      storedTask.get(10, TimeUnit.SECONDS);
-      LOGGER.debug(
-          "Offset {} stored (consumer {}, stream {})", expectedStoredOffset, this.id, this.stream);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    } catch (ExecutionException | TimeoutException e) {
-      LOGGER.warn("Error while checking offset has been stored", e);
-    }
+    OffsetTrackingUtils.waitForOffsetToBeStored(
+        "consumer " + this.id,
+        this.environment.scheduledExecutorService(),
+        this::storedOffset,
+        this.name,
+        this.stream,
+        expectedStoredOffset);
   }
 
   void start() {
@@ -563,31 +521,7 @@ class StreamConsumer implements Consumer {
   long storedOffset(Supplier<Client> clientSupplier) {
     checkNotClosed();
     if (canTrack()) {
-      // the client can be null by now, so we catch any exception
-      QueryOffsetResponse response;
-      try {
-        response = clientSupplier.get().queryOffset(this.name, this.stream);
-      } catch (Exception e) {
-        throw new IllegalStateException(
-            format(
-                "Not possible to query offset for consumer %s on stream %s for now: %s",
-                this.name, this.stream, e.getMessage()),
-            e);
-      }
-      if (response.isOk()) {
-        return response.getOffset();
-      } else if (response.getResponseCode() == Constants.RESPONSE_CODE_NO_OFFSET) {
-        throw new NoOffsetException(
-            format(
-                "No offset stored for consumer %s on stream %s (%s)",
-                this.name, this.stream, Utils.formatConstant(response.getResponseCode())));
-      } else {
-        throw new StreamException(
-            format(
-                "QueryOffset for consumer %s on stream %s returned an error (%s)",
-                this.name, this.stream, Utils.formatConstant(response.getResponseCode())),
-            response.getResponseCode());
-      }
+      return OffsetTrackingUtils.storedOffset(clientSupplier, this.name, this.stream);
     } else if (this.name == null) {
       throw new UnsupportedOperationException(
           "Not possible to query stored offset for a consumer without a name");

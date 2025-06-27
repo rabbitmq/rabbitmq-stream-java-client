@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static org.assertj.core.api.Assertions.fail;
 
+import com.rabbitmq.stream.Constants;
 import java.time.Duration;
 import org.assertj.core.api.AbstractObjectAssert;
 
@@ -23,8 +24,48 @@ final class Assertions {
 
   private Assertions() {}
 
+  static ResponseAssert assertThat(Client.Response response) {
+    return new ResponseAssert(response);
+  }
+
   static SyncAssert assertThat(TestUtils.Sync sync) {
     return new SyncAssert(sync);
+  }
+
+  static class ResponseAssert extends AbstractObjectAssert<ResponseAssert, Client.Response> {
+
+    public ResponseAssert(Client.Response response) {
+      super(response, ResponseAssert.class);
+    }
+
+    ResponseAssert isOk() {
+      if (!actual.isOk()) {
+        fail(
+            "Response should be successful but was not, response code is: %s",
+            Utils.formatConstant(actual.getResponseCode()));
+      }
+      return this;
+    }
+
+    ResponseAssert isNotOk() {
+      if (actual.isOk()) {
+        fail("Response should not be successful but was, response code is: %s", actual);
+      }
+      return this;
+    }
+
+    ResponseAssert hasCode(short responseCode) {
+      if (actual.getResponseCode() != responseCode) {
+        fail(
+            "Response code should be %s but was %s",
+            Utils.formatConstant(responseCode), Utils.formatConstant(actual.getResponseCode()));
+      }
+      return this;
+    }
+
+    ResponseAssert hasCodeNoOffset() {
+      return hasCode(Constants.RESPONSE_CODE_NO_OFFSET);
+    }
   }
 
   static class SyncAssert extends AbstractObjectAssert<SyncAssert, TestUtils.Sync> {
