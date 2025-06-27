@@ -24,6 +24,7 @@ import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
 import java.net.UnknownHostException;
 import java.security.cert.X509Certificate;
@@ -62,6 +63,8 @@ final class Utils {
   static final String SUBSCRIPTION_PROPERTY_FILTER_PREFIX = "filter.";
   static final String SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED = "match-unfiltered";
 
+  static final boolean IS_NETTY_4_2;
+
   static {
     Map<Short, String> labels = new HashMap<>();
     Arrays.stream(Constants.class.getDeclaredFields())
@@ -77,6 +80,14 @@ final class Utils {
               }
             });
     CONSTANT_LABELS = copyOf(labels);
+
+    boolean netty4_2 = true;
+    try {
+      Class.forName("io.netty.channel.MultiThreadIoEventLoopGroup");
+    } catch (ClassNotFoundException e) {
+      netty4_2 = false;
+    }
+    IS_NETTY_4_2 = netty4_2;
   }
 
   static final AddressResolver DEFAULT_ADDRESS_RESOLVER = address -> address;
@@ -413,8 +424,15 @@ final class Utils {
         prefixes.get(clientConnectionType) + sequences.get(clientConnectionType).getAndIncrement();
   }
 
+  @SuppressWarnings("deprecation")
   static EventLoopGroup eventLoopGroup() {
-    return new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+    if (IS_NETTY_4_2) {
+      System.out.println("NETTY 4.2");
+      return new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+    } else {
+      System.out.println("NETTY 4.1");
+      return new NioEventLoopGroup();
+    }
   }
 
   static ByteBufAllocator byteBufAllocator() {
