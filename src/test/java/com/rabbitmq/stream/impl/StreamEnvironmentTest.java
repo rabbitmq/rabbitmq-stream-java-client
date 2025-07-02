@@ -82,11 +82,10 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@StreamTestInfrastructure
 public class StreamEnvironmentTest {
 
   EnvironmentBuilder environmentBuilder;
@@ -123,10 +122,14 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  void environmentCreationShouldFailWithUrlUsingWrongPort() {
+  void environmentCreationShouldFailWithUrlUsingWrongPort() throws Exception {
+    int initialThreadCound = threads().size();
     assertThatThrownBy(
             () ->
                 environmentBuilder
+                    .netty()
+                    .eventLoopGroup(null)
+                    .environmentBuilder()
                     .uri("rabbitmq-stream://guest:guest@localhost:4242/%2f")
                     .addressResolver(address -> new Address("localhost", 4242))
                     .build()
@@ -134,6 +137,8 @@ public class StreamEnvironmentTest {
         .isInstanceOf(StreamException.class)
         .hasCauseInstanceOf(ConnectException.class)
         .hasRootCauseMessage("Connection refused");
+    // no thread leak
+    waitAtMost(() -> threads().size() == initialThreadCound);
   }
 
   @Test

@@ -1183,4 +1183,8 @@ public final class TestUtils {
       return this.latch.get().getCount() == 0;
     }
   }
+
+  static Collection<Thread> threads() {
+    return Thread.getAllStackTraces().keySet();
+  }
 }
