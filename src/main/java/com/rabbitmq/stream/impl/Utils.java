@@ -427,10 +427,8 @@ final class Utils {
   @SuppressWarnings("deprecation")
   static EventLoopGroup eventLoopGroup() {
     if (IS_NETTY_4_2) {
-      System.out.println("NETTY 4.2");
       return new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
     } else {
-      System.out.println("NETTY 4.1");
       return new NioEventLoopGroup();
     }
   }
