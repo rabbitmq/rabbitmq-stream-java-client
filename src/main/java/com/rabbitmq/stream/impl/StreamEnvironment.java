@@ -204,122 +204,136 @@ class StreamEnvironment implements Environment {
             .collect(toList());
     this.locators = List.copyOf(lctrs);
 
-    this.executorServiceFactory =
-        new DefaultExecutorServiceFactory(
-            this.addresses.size(), 1, "rabbitmq-stream-locator-connection-");
+    ShutdownService shutdownService = new ShutdownService();
+    try {
+      this.executorServiceFactory =
+          new DefaultExecutorServiceFactory(
+              this.addresses.size(), 1, "rabbitmq-stream-locator-connection-");
+      shutdownService.wrap(this.executorServiceFactory::close);
 
-    if (clientParametersPrototype.eventLoopGroup == null) {
-      this.eventLoopGroup = Utils.eventLoopGroup();
-      this.clientParametersPrototype =
-          clientParametersPrototype.duplicate().eventLoopGroup(this.eventLoopGroup);
-    } else {
-      this.eventLoopGroup = null;
-      this.clientParametersPrototype =
-          clientParametersPrototype
-              .duplicate()
-              .eventLoopGroup(clientParametersPrototype.eventLoopGroup);
-    }
-    ScheduledExecutorService executorService;
-    if (scheduledExecutorService == null) {
-      int threads = AVAILABLE_PROCESSORS;
-      LOGGER.debug("Creating scheduled executor service with {} thread(s)", threads);
-      ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-scheduler-");
-      executorService = Executors.newScheduledThreadPool(threads, threadFactory);
-      this.privateScheduleExecutorService = true;
-    } else {
-      executorService = scheduledExecutorService;
-      this.privateScheduleExecutorService = false;
-    }
-    this.scheduledExecutorService = executorService;
+      if (clientParametersPrototype.eventLoopGroup == null) {
+        this.eventLoopGroup = Utils.eventLoopGroup();
+        shutdownService.wrap(() -> closeEventLoopGroup(this.eventLoopGroup));
+        this.clientParametersPrototype =
+            clientParametersPrototype.duplicate().eventLoopGroup(this.eventLoopGroup);
+      } else {
+        this.eventLoopGroup = null;
+        this.clientParametersPrototype =
+            clientParametersPrototype
+                .duplicate()
+                .eventLoopGroup(clientParametersPrototype.eventLoopGroup);
+      }
+      ScheduledExecutorService executorService;
+      if (scheduledExecutorService == null) {
+        int threads = AVAILABLE_PROCESSORS;
+        LOGGER.debug("Creating scheduled executor service with {} thread(s)", threads);
+        ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-scheduler-");
+        executorService = Executors.newScheduledThreadPool(threads, threadFactory);
+        shutdownService.wrap(executorService::shutdownNow);
+        this.privateScheduleExecutorService = true;
+      } else {
+        executorService = scheduledExecutorService;
+        this.privateScheduleExecutorService = false;
+      }
+      this.scheduledExecutorService = executorService;
 
-    this.producersCoordinator =
-        new ProducersCoordinator(
-            this,
-            maxProducersByConnection,
-            maxTrackingConsumersByConnection,
-            connectionNamingStrategy,
-            coordinatorClientFactory(this, producerNodeRetryDelay),
-            forceLeaderForProducers);
-    this.consumersCoordinator =
-        new ConsumersCoordinator(
-            this,
-            maxConsumersByConnection,
-            connectionNamingStrategy,
-            coordinatorClientFactory(this, consumerNodeRetryDelay),
-            forceReplicaForConsumers,
-            Utils.brokerPicker());
-    this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
+      this.producersCoordinator =
+          new ProducersCoordinator(
+              this,
+              maxProducersByConnection,
+              maxTrackingConsumersByConnection,
+              connectionNamingStrategy,
+              coordinatorClientFactory(this, producerNodeRetryDelay),
+              forceLeaderForProducers);
+      shutdownService.wrap(this.producersCoordinator::close);
+      this.consumersCoordinator =
+          new ConsumersCoordinator(
+              this,
+              maxConsumersByConnection,
+              connectionNamingStrategy,
+              coordinatorClientFactory(this, consumerNodeRetryDelay),
+              forceReplicaForConsumers,
+              Utils.brokerPicker());
+      shutdownService.wrap(this.consumersCoordinator::close);
+      this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
+      shutdownService.wrap(this.offsetTrackingCoordinator::close);
 
-    ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-locator-scheduler-");
-    this.locatorReconnectionScheduledExecutorService =
-        Executors.newScheduledThreadPool(this.locators.size(), threadFactory);
+      ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-locator-scheduler-");
+      this.locatorReconnectionScheduledExecutorService =
+          Executors.newScheduledThreadPool(this.locators.size(), threadFactory);
+      shutdownService.wrap(this.locatorReconnectionScheduledExecutorService::shutdownNow);
 
-    ClientParameters clientParametersForInit = locatorParametersCopy();
-    Runnable locatorInitSequence =
-        () -> {
-          RuntimeException lastException = null;
-          for (int i = 0; i < locators.size(); i++) {
-            Address address = addresses.get(i % addresses.size());
-            Locator locator = locator(i);
-            address = addressResolver.resolve(address);
-            String connectionName = connectionNamingStrategy.apply(ClientConnectionType.LOCATOR);
-            Client.ClientParameters locatorParameters =
-                clientParametersForInit
-                    .duplicate()
-                    .host(address.host())
-                    .port(address.port())
-                    .clientProperty("connection_name", connectionName)
-                    .shutdownListener(
-                        shutdownListener(locator, connectionNamingStrategy, clientFactory));
-            try {
-              Client client = clientFactory.apply(locatorParameters);
-              locator.client(client);
-              LOGGER.debug("Created locator connection '{}'", connectionName);
-              LOGGER.debug("Locator connected to {}", address);
-            } catch (RuntimeException e) {
-              LOGGER.debug("Error while try to connect to {}: {}", address, e.getMessage());
-              lastException = e;
+      ClientParameters clientParametersForInit = locatorParametersCopy();
+      Runnable locatorInitSequence =
+          () -> {
+            RuntimeException lastException = null;
+            for (int i = 0; i < locators.size(); i++) {
+              Address address = addresses.get(i % addresses.size());
+              Locator locator = locator(i);
+              address = addressResolver.resolve(address);
+              String connectionName = connectionNamingStrategy.apply(ClientConnectionType.LOCATOR);
+              Client.ClientParameters locatorParameters =
+                  clientParametersForInit
+                      .duplicate()
+                      .host(address.host())
+                      .port(address.port())
+                      .clientProperty("connection_name", connectionName)
+                      .shutdownListener(
+                          shutdownListener(locator, connectionNamingStrategy, clientFactory));
+              try {
+                Client client = clientFactory.apply(locatorParameters);
+                locator.client(client);
+                LOGGER.debug("Created locator connection '{}'", connectionName);
+                LOGGER.debug("Locator connected to {}", address);
+              } catch (RuntimeException e) {
+                LOGGER.debug("Error while try to connect to {}: {}", address, e.getMessage());
+                lastException = e;
+              }
             }
-          }
-          if (this.locators.stream().allMatch(Locator::isNotSet)) {
-            throw lastException == null
-                ? new StreamException("Not locator available")
-                : lastException;
-          } else {
-            this.locators.forEach(
-                l -> {
-                  if (l.isNotSet()) {
-                    ShutdownListener shutdownListener =
-                        shutdownListener(l, connectionNamingStrategy, clientFactory);
-                    Client.ClientParameters newLocatorParameters =
-                        this.locatorParametersCopy().shutdownListener(shutdownListener);
-                    scheduleLocatorConnection(
-                        newLocatorParameters,
-                        this.addressResolver,
-                        l,
-                        connectionNamingStrategy,
-                        clientFactory,
-                        this.locatorReconnectionScheduledExecutorService,
-                        this.recoveryBackOffDelayPolicy,
-                        l.label());
-                  }
-                });
-          }
-        };
-    if (lazyInit) {
-      this.locatorInitializationSequence = locatorInitSequence;
-    } else {
-      locatorInitSequence.run();
-      locatorsInitialized.set(true);
-      this.locatorInitializationSequence = () -> {};
+            if (this.locators.stream().allMatch(Locator::isNotSet)) {
+              throw lastException == null
+                  ? new StreamException("Not locator available")
+                  : lastException;
+            } else {
+              this.locators.forEach(
+                  l -> {
+                    if (l.isNotSet()) {
+                      ShutdownListener shutdownListener =
+                          shutdownListener(l, connectionNamingStrategy, clientFactory);
+                      Client.ClientParameters newLocatorParameters =
+                          this.locatorParametersCopy().shutdownListener(shutdownListener);
+                      scheduleLocatorConnection(
+                          newLocatorParameters,
+                          this.addressResolver,
+                          l,
+                          connectionNamingStrategy,
+                          clientFactory,
+                          this.locatorReconnectionScheduledExecutorService,
+                          this.recoveryBackOffDelayPolicy,
+                          l.label());
+                    }
+                  });
+            }
+          };
+      if (lazyInit) {
+        this.locatorInitializationSequence = locatorInitSequence;
+      } else {
+        locatorInitSequence.run();
+        locatorsInitialized.set(true);
+        this.locatorInitializationSequence = () -> {};
+      }
+      this.codec =
+          clientParametersPrototype.codec() == null
+              ? Codecs.DEFAULT
+              : clientParametersPrototype.codec();
+      this.clockRefreshFuture =
+          this.scheduledExecutorService.scheduleAtFixedRate(
+              namedRunnable(this.clock::refresh, "Background clock refresh"), 1, 1, SECONDS);
+      shutdownService.wrap(() -> this.clockRefreshFuture.cancel(false));
+    } catch (RuntimeException e) {
+      shutdownService.close();
+      throw e;
     }
-    this.codec =
-        clientParametersPrototype.codec() == null
-            ? Codecs.DEFAULT
-            : clientParametersPrototype.codec();
-    this.clockRefreshFuture =
-        this.scheduledExecutorService.scheduleAtFixedRate(
-            namedRunnable(this.clock::refresh, "Background clock refresh"), 1, 1, SECONDS);
   }
 
   private ShutdownListener shutdownListener(
@@ -717,20 +731,24 @@ class StreamEnvironment implements Environment {
       if (this.locatorReconnectionScheduledExecutorService != null) {
         this.locatorReconnectionScheduledExecutorService.shutdownNow();
       }
-      try {
-        if (this.eventLoopGroup != null
-            && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
-          LOGGER.debug("Closing Netty event loop group");
-          this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
-        }
-      } catch (InterruptedException e) {
-        LOGGER.info("Event loop group closing has been interrupted");
-        Thread.currentThread().interrupt();
-      } catch (ExecutionException e) {
-        LOGGER.info("Event loop group closing failed", e);
-      } catch (TimeoutException e) {
-        LOGGER.info("Could not close event loop group in 10 seconds");
+      closeEventLoopGroup(this.eventLoopGroup);
+    }
+  }
+
+  private static void closeEventLoopGroup(EventLoopGroup eventLoopGroup) {
+    try {
+      if (eventLoopGroup != null
+          && (!eventLoopGroup.isShuttingDown() || !eventLoopGroup.isShutdown())) {
+        LOGGER.debug("Closing Netty event loop group");
+        eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
       }
+    } catch (InterruptedException e) {
+      LOGGER.info("Event loop group closing has been interrupted");
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException e) {
+      LOGGER.info("Event loop group closing failed", e);
+    } catch (TimeoutException e) {
+      LOGGER.info("Could not close event loop group in 10 seconds");
     }
   }
 
