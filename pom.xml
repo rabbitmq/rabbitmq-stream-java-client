@@ -64,7 +64,7 @@
     <assertj.version>3.27.3</assertj.version>
     <mockito.version>5.18.0</mockito.version>
     <amqp-client.version>5.25.0</amqp-client.version>
-    <commons-lang3.version>3.17.0</commons-lang3.version>
+    <commons-lang3.version>3.18.0</commons-lang3.version>
     <commons-codec.version>1.18.0</commons-codec.version>
     <gson.version>2.13.1</gson.version>
     <vavr.version>0.10.6</vavr.version>
