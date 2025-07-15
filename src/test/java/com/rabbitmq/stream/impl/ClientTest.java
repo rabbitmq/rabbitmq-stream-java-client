@@ -38,7 +38,7 @@ import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfFilteringNotSupported;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.UnpooledByteBufAllocator;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ConnectTimeoutException;
 import java.io.ByteArrayOutputStream;
@@ -510,7 +510,7 @@ public class ClientTest {
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
   void publishAndConsume(boolean directBuffer) throws Exception {
-    ByteBufAllocator allocator = new UnpooledByteBufAllocator(directBuffer);
+    ByteBufAllocator allocator = new PooledByteBufAllocator(directBuffer);
     int publishCount = 1_000_000;
 
     CountDownLatch consumedLatch = new CountDownLatch(publishCount);
