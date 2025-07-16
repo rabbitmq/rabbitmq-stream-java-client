@@ -434,7 +434,6 @@ final class Utils {
 
   static ByteBufAllocator byteBufAllocator() {
     return ByteBufAllocator.DEFAULT;
-    //    return PooledByteBufAllocator.DEFAULT;
   }
 
   /*
