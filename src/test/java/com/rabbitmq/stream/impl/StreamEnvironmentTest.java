@@ -123,7 +123,7 @@ public class StreamEnvironmentTest {
 
   @Test
   void environmentCreationShouldFailWithUrlUsingWrongPort() throws Exception {
-    int initialThreadCound = threads().size();
+    Collection<Thread> initialThreads = threads();
     assertThatThrownBy(
             () ->
                 environmentBuilder
@@ -138,7 +138,13 @@ public class StreamEnvironmentTest {
         .hasCauseInstanceOf(ConnectException.class)
         .hasRootCauseMessage("Connection refused");
     // no thread leak
-    waitAtMost(() -> threads().size() == initialThreadCound);
+    waitAtMost(
+        Duration.ofSeconds(20),
+        () -> threads().size() == initialThreads.size(),
+        () ->
+            String.format(
+                "There should be no new threads, initial %s, current %s",
+                initialThreads, threads()));
   }
 
   @Test
