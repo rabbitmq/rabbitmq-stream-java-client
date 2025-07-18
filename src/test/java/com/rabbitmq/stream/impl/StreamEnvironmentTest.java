@@ -59,6 +59,7 @@ import io.netty.handler.ssl.SslHandler;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -140,11 +141,18 @@ public class StreamEnvironmentTest {
     // no thread leak
     waitAtMost(
         Duration.ofSeconds(20),
-        () -> threads().size() == initialThreads.size(),
-        () ->
-            String.format(
-                "There should be no new threads, initial %s, current %s",
-                initialThreads, threads()));
+        () -> threads().size() <= initialThreads.size(),
+        () -> {
+          Collection<Thread> current = threads();
+          Collection<Thread> diff = Collections.emptySet();
+          if (current.size() > initialThreads.size()) {
+            diff = new ArrayList<>(current);
+            diff.removeAll(initialThreads);
+          }
+          return String.format(
+              "There should be no new threads, initial %d, current %d (diff: %s)",
+              initialThreads.size(), current.size(), diff);
+        });
   }
 
   @Test

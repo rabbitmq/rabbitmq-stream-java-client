@@ -60,6 +60,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -74,6 +75,7 @@ public class ConsumersCoordinatorTest {
   private static final SubscriptionListener NO_OP_SUBSCRIPTION_LISTENER = subscriptionContext -> {};
   private static final Runnable NO_OP_TRACKING_CLOSING_CALLBACK = () -> {};
 
+  TestInfo info;
   @Mock StreamEnvironment environment;
   @Mock StreamConsumer consumer;
   @Mock Client locator;
@@ -113,7 +115,8 @@ public class ConsumersCoordinatorTest {
   }
 
   @BeforeEach
-  void init() {
+  void init(TestInfo info) {
+    this.info = info;
     Client.ClientParameters clientParameters =
         new Client.ClientParameters() {
           @Override
@@ -169,6 +172,7 @@ public class ConsumersCoordinatorTest {
 
   @AfterEach
   void tearDown() throws Exception {
+    this.info = null;
     if (coordinator != null) {
       // just taking the opportunity to check toString() generates valid JSON
       MonitoringTestUtils.extract(coordinator);
@@ -2155,15 +2159,16 @@ public class ConsumersCoordinatorTest {
     return this.messageListeners.get(messageListeners.size() - 1);
   }
 
-  private static ScheduledExecutorService createScheduledExecutorService() {
+  private ScheduledExecutorService createScheduledExecutorService() {
     return createScheduledExecutorService(1);
   }
 
-  private static ScheduledExecutorService createScheduledExecutorService(int nbThreads) {
+  private ScheduledExecutorService createScheduledExecutorService(int nbThreads) {
+    ThreadFactory tf = ThreadUtils.threadFactory(info.getTestMethod().get().getName() + "-");
     return new ScheduledExecutorServiceWrapper(
         nbThreads == 1
-            ? Executors.newSingleThreadScheduledExecutor()
-            : Executors.newScheduledThreadPool(nbThreads));
+            ? Executors.newSingleThreadScheduledExecutor(tf)
+            : Executors.newScheduledThreadPool(nbThreads, tf));
   }
 
   private static Response responseOk() {

@@ -714,7 +714,6 @@ public final class TestUtils {
             try {
               eventLoopGroup.shutdownGracefully(0, 0, SECONDS).get(10, SECONDS);
             } catch (InterruptedException e) {
-              // happens at the end of the test suite
               LOGGER.debug("Error while asynchronously closing Netty event loop group", e);
               Thread.currentThread().interrupt();
             } catch (Exception e) {
@@ -740,7 +739,8 @@ public final class TestUtils {
       private final ExecutorService executorService;
 
       private ExecutorServiceCloseableResourceWrapper() {
-        this.executorService = Executors.newCachedThreadPool();
+        ThreadFactory tf = ThreadUtils.threadFactory("closing-resource-");
+        this.executorService = Executors.newCachedThreadPool(tf);
       }
 
       @Override

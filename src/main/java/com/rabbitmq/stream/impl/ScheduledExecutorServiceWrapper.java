@@ -128,7 +128,7 @@ class ScheduledExecutorServiceWrapper implements ScheduledExecutorService {
 
   @Override
   public List<Runnable> shutdownNow() {
-    this.delegate.shutdownNow();
+    this.scheduler.shutdownNow();
     return this.delegate.shutdownNow();
   }
 

@@ -61,6 +61,7 @@ public class AsyncRetryTest {
     completableFuture.thenAccept(result::set);
     assertThat(result.get()).isEqualTo(42);
     verify(task, times(1)).call();
+    scheduler.shutdownNow();
   }
 
   @ParameterizedTest
@@ -82,6 +83,7 @@ public class AsyncRetryTest {
     assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
     assertThat(result.get()).isEqualTo(42);
     verify(task, times(3)).call();
+    scheduler.shutdownNow();
   }
 
   @ParameterizedTest
@@ -112,6 +114,7 @@ public class AsyncRetryTest {
     assertThat(acceptCalled.get()).isFalse();
     assertThat(exceptionallyCalled.get()).isTrue();
     verify(task, atLeast(5)).call();
+    scheduler.shutdownNow();
   }
 
   @ParameterizedTest
@@ -137,6 +140,7 @@ public class AsyncRetryTest {
     assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
     assertThat(result.get()).isEqualTo(42);
     verify(task, times(3)).call();
+    scheduler.shutdownNow();
   }
 
   @ParameterizedTest
@@ -171,6 +175,7 @@ public class AsyncRetryTest {
     assertThat(acceptCalled.get()).isFalse();
     assertThat(exceptionallyCalled.get()).isTrue();
     verify(task, times(3)).call();
+    scheduler.shutdownNow();
   }
 
   @ParameterizedTest
@@ -193,6 +198,7 @@ public class AsyncRetryTest {
         },
         scheduler);
     assertThat(sync).completes();
+    scheduler.shutdownNow();
   }
 
   static List<ScheduledExecutorService> schedulers() {
