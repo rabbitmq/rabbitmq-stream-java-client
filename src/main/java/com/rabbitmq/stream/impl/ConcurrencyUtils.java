@@ -28,24 +28,31 @@ final class ConcurrencyUtils {
   private static final ThreadFactory THREAD_FACTORY;
 
   static {
+    ThreadFactory tf;
     if (isJava21OrMore()) {
       LOGGER.debug("Running Java 21 or more, using virtual threads");
-      Class<?> builderClass =
-          Arrays.stream(Thread.class.getDeclaredClasses())
-              .filter(c -> "Builder".equals(c.getSimpleName()))
-              .findFirst()
-              .get();
-      // Reflection code is the same as:
-      // Thread.ofVirtual().factory();
       try {
+        Class<?> builderClass =
+            Arrays.stream(Thread.class.getDeclaredClasses())
+                .filter(c -> "Builder".equals(c.getSimpleName()))
+                .findFirst()
+                .get();
+        // Reflection code is the same as:
+        // Thread.ofVirtual().factory();
         Object builder = Thread.class.getDeclaredMethod("ofVirtual").invoke(null);
-        THREAD_FACTORY = (ThreadFactory) builderClass.getDeclaredMethod("factory").invoke(builder);
-      } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-        throw new RuntimeException(e);
+        tf = (ThreadFactory) builderClass.getDeclaredMethod("factory").invoke(builder);
+      } catch (IllegalAccessException
+          | InvocationTargetException
+          | NoSuchMethodException
+          | RuntimeException e) {
+        LOGGER.debug("Error when creating virtual thread factory on Java 21+: {}", e.getMessage());
+        LOGGER.debug("Falling back to default thread factory");
+        tf = Executors.defaultThreadFactory();
       }
     } else {
-      THREAD_FACTORY = Executors.defaultThreadFactory();
+      tf = Executors.defaultThreadFactory();
     }
+    THREAD_FACTORY = tf;
   }
 
   private ConcurrencyUtils() {}
