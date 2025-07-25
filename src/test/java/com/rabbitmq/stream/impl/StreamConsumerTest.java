@@ -267,6 +267,47 @@ public class StreamConsumerTest {
   }
 
   @Test
+  void asynchronousProcessingWithInMemoryQueue(TestInfo info) {
+    int messageCount = 100_000;
+    publishAndWaitForConfirms(cf, messageCount, stream);
+
+    CountDownLatch latch = new CountDownLatch(messageCount);
+    BlockingQueue<Tuples.Pair<MessageHandler.Context, Message>> queue =
+        new ArrayBlockingQueue<>(10_000);
+    Thread t =
+        ThreadUtils.newInternalThread(
+            info.getTestMethod().get().getName(),
+            () -> {
+              try {
+                while (!Thread.currentThread().isInterrupted()) {
+                  Tuples.Pair<MessageHandler.Context, Message> item =
+                      queue.poll(10, TimeUnit.SECONDS);
+                  if (item != null) {
+                    latch.countDown();
+                    item.v1().processed();
+                  }
+                }
+              } catch (InterruptedException e) {
+                // finish the thread
+              }
+            });
+    t.start();
+
+    try {
+      environment.consumerBuilder().stream(stream)
+          .offset(OffsetSpecification.first())
+          .flow()
+          .strategy(creditWhenHalfMessagesProcessed(1))
+          .builder()
+          .messageHandler((ctx, message) -> queue.add(Tuples.pair(ctx, message)))
+          .build();
+      org.assertj.core.api.Assertions.assertThat(latch).is(completed());
+    } finally {
+      t.interrupt();
+    }
+  }
+
+  @Test
   void closeOnCondition() throws Exception {
     int messageCount = 50_000;
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
