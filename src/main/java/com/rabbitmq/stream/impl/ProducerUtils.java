@@ -40,7 +40,8 @@ final class ProducerUtils {
       Clock clock,
       String stream,
       ObservationCollector<?> observationCollector,
-      StreamProducer producer) {
+      StreamProducer producer,
+      long producerId) {
     if (dynamicBatch) {
       return new DynamicBatchMessageAccumulator(
           subEntrySize,
@@ -55,7 +56,8 @@ final class ProducerUtils {
           compressionCodec,
           byteBufAllocator,
           observationCollector,
-          producer);
+          producer,
+          producerId);
     } else {
       if (subEntrySize <= 1) {
         return new SimpleMessageAccumulator(

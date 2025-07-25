@@ -357,7 +357,7 @@ public class Client implements AutoCloseable {
               });
       this.dispatchingExecutorService =
           Executors.newSingleThreadExecutor(
-              threadFactory("dispatching-" + clientConnectionName + "-"));
+              threadFactory("rabbitmq-stream-dispatching-" + clientConnectionName + "-"));
     } else {
       this.closeDispatchingExecutorService =
           Utils.makeIdempotent(

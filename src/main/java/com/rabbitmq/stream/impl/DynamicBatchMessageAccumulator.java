@@ -48,7 +48,8 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
       CompressionCodec compressionCodec,
       ByteBufAllocator byteBufAllocator,
       ObservationCollector<?> observationCollector,
-      StreamProducer producer) {
+      StreamProducer producer,
+      long producerId) {
     this.helper =
         new ProducerUtils.MessageAccumulatorHelper(
             codec,
@@ -61,6 +62,7 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
     this.producer = producer;
     this.observationCollector = (ObservationCollector<Object>) observationCollector;
     boolean shouldObserve = !this.observationCollector.isNoop();
+    String batchId = "rabbitmq-stream-dynamic-batch-producer-" + producerId;
     if (subEntrySize <= 1) {
       this.dynamicBatch =
           new DynamicBatch<>(
@@ -77,7 +79,8 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                 return result;
               },
               batchSize,
-              maxUnconfirmedMessages);
+              maxUnconfirmedMessages,
+              batchId);
     } else {
       byte compressionCode =
           compressionCodec == null ? Compression.NONE.code() : compressionCodec.code();
@@ -127,7 +130,8 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                 return result;
               },
               batchSize * subEntrySize,
-              maxUnconfirmedMessages);
+              maxUnconfirmedMessages,
+              batchId);
     }
   }
 

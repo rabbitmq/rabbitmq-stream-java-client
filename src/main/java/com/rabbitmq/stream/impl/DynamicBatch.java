@@ -35,7 +35,7 @@ final class DynamicBatch<T> implements AutoCloseable {
   private final int configuredBatchSize, minBatchSize, maxBatchSize;
   private final Thread thread;
 
-  DynamicBatch(BatchConsumer<T> consumer, int batchSize, int maxUnconfirmed) {
+  DynamicBatch(BatchConsumer<T> consumer, int batchSize, int maxUnconfirmed, String id) {
     this.consumer = consumer;
     if (batchSize < maxUnconfirmed) {
       this.minBatchSize = min(MIN_BATCH_SIZE, batchSize / 2);
@@ -44,7 +44,7 @@ final class DynamicBatch<T> implements AutoCloseable {
     }
     this.configuredBatchSize = batchSize;
     this.maxBatchSize = batchSize * 2;
-    this.thread = ConcurrencyUtils.defaultThreadFactory().newThread(this::loop);
+    this.thread = ThreadUtils.newInternalThread(id, this::loop);
     this.thread.start();
   }
 

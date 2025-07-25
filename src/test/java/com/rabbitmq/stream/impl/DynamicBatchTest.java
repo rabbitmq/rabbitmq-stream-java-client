@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 
 public class DynamicBatchTest {
 
@@ -58,7 +59,7 @@ public class DynamicBatchTest {
   }
 
   @Test
-  void itemAreProcessed() {
+  void itemAreProcessed(TestInfo info) {
     MetricRegistry metrics = new MetricRegistry();
     Histogram batchSizeMetrics = metrics.histogram("batch-size");
     int itemCount = 3000;
@@ -71,7 +72,7 @@ public class DynamicBatchTest {
           sync.down(items.size());
           return true;
         };
-    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100, 10_000)) {
+    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100, 10_000, batchId(info))) {
       RateLimiter rateLimiter = RateLimiter.create(10000);
       IntStream.range(0, itemCount)
           .forEach(
@@ -85,7 +86,7 @@ public class DynamicBatchTest {
   }
 
   @Test
-  void failedProcessingIsReplayed() throws Exception {
+  void failedProcessingIsReplayed(TestInfo info) throws Exception {
     int itemCount = 10000;
     AtomicInteger collected = new AtomicInteger(0);
     AtomicInteger processed = new AtomicInteger(0);
@@ -102,7 +103,7 @@ public class DynamicBatchTest {
           }
           return result;
         };
-    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100, 10_000)) {
+    try (DynamicBatch<String> batch = new DynamicBatch<>(action, 100, 10_000, batchId(info))) {
       int firstRoundCount = itemCount / 5;
       IntStream.range(0, firstRoundCount)
           .forEach(
@@ -123,7 +124,7 @@ public class DynamicBatchTest {
   }
 
   @Test
-  void lowThrottlingValueShouldStillHighPublishingRate() throws Exception {
+  void lowThrottlingValueShouldStillHighPublishingRate(TestInfo info) throws Exception {
     int batchSize = 10;
     Semaphore semaphore = new Semaphore(batchSize);
     DynamicBatch.BatchConsumer<Long> action =
@@ -132,7 +133,7 @@ public class DynamicBatchTest {
           return true;
         };
 
-    try (DynamicBatch<Long> batch = new DynamicBatch<>(action, batchSize, 10_000)) {
+    try (DynamicBatch<Long> batch = new DynamicBatch<>(action, batchSize, 10_000, batchId(info))) {
       MetricRegistry metrics = new MetricRegistry();
       Meter rate = metrics.meter("publishing-rate");
       AtomicBoolean keepGoing = new AtomicBoolean(true);
@@ -153,5 +154,9 @@ public class DynamicBatchTest {
           () ->
               System.nanoTime() - start > TimeUnit.SECONDS.toNanos(1) && rate.getMeanRate() > 1000);
     }
+  }
+
+  private static String batchId(TestInfo info) {
+    return info.getTestMethod().get().getName();
   }
 }

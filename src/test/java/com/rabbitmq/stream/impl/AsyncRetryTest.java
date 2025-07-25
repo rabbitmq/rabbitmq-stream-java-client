@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static com.rabbitmq.stream.impl.ThreadUtils.internalThreadFactory;
 import static java.time.Duration.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -204,7 +205,6 @@ public class AsyncRetryTest {
   static List<ScheduledExecutorService> schedulers() {
     return List.of(
         Executors.newSingleThreadScheduledExecutor(),
-        Executors.newScheduledThreadPool(
-            0, ThreadUtils.internalThreadFactory("async-retry-test-")));
+        Executors.newScheduledThreadPool(0, internalThreadFactory("async-retry-test-")));
   }
 }

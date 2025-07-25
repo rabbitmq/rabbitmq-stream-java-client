@@ -17,11 +17,9 @@ package com.rabbitmq.stream.impl;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
 import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,48 +29,30 @@ final class ThreadUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(ThreadUtils.class);
 
   private static final ThreadFactory THREAD_FACTORY;
-  private static final Function<String, ExecutorService> EXECUTOR_SERVICE_FACTORY;
   private static final Predicate<Thread> IS_VIRTUAL;
 
   static {
+    ThreadFactory tf;
     if (isJava21OrMore()) {
       LOGGER.debug("Running Java 21 or more, using virtual threads");
-      Class<?> builderClass =
-          Arrays.stream(Thread.class.getDeclaredClasses())
-              .filter(c -> "Builder".equals(c.getSimpleName()))
-              .findFirst()
-              .get();
-      // Reflection code is the same as:
-      // Thread.ofVirtual().factory();
       try {
+        Class<?> builderClass =
+            Arrays.stream(Thread.class.getDeclaredClasses())
+                .filter(c -> "Builder".equals(c.getSimpleName()))
+                .findFirst()
+                .get();
+        // Reflection code is the same as:
+        // Thread.ofVirtual().factory();
         Object builder = Thread.class.getDeclaredMethod("ofVirtual").invoke(null);
-        THREAD_FACTORY = (ThreadFactory) builderClass.getDeclaredMethod("factory").invoke(builder);
-      } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-        throw new RuntimeException(e);
+        tf = (ThreadFactory) builderClass.getDeclaredMethod("factory").invoke(builder);
+      } catch (IllegalAccessException
+          | InvocationTargetException
+          | NoSuchMethodException
+          | RuntimeException e) {
+        LOGGER.debug("Error when creating virtual thread factory on Java 21+: {}", e.getMessage());
+        LOGGER.debug("Falling back to default thread factory");
+        tf = Executors.defaultThreadFactory();
       }
-      EXECUTOR_SERVICE_FACTORY =
-          prefix -> {
-            try {
-              // Reflection code is the same as the 2 following lines:
-              // ThreadFactory factory = Thread.ofVirtual().name(prefix, 0).factory();
-              // Executors.newThreadPerTaskExecutor(factory);
-              Object builder = Thread.class.getDeclaredMethod("ofVirtual").invoke(null);
-              if (prefix != null) {
-                builder =
-                    builderClass
-                        .getDeclaredMethod("name", String.class, Long.TYPE)
-                        .invoke(builder, prefix, 0L);
-              }
-              ThreadFactory factory =
-                  (ThreadFactory) builderClass.getDeclaredMethod("factory").invoke(builder);
-              return (ExecutorService)
-                  Executors.class
-                      .getDeclaredMethod("newThreadPerTaskExecutor", ThreadFactory.class)
-                      .invoke(null, factory);
-            } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-              throw new RuntimeException(e);
-            }
-          };
       IS_VIRTUAL =
           thread -> {
             Method method = null;
@@ -85,14 +65,21 @@ final class ThreadUtils {
             }
           };
     } else {
-      THREAD_FACTORY = Executors.defaultThreadFactory();
-      EXECUTOR_SERVICE_FACTORY = prefix -> Executors.newCachedThreadPool(threadFactory(prefix));
+      tf = Executors.defaultThreadFactory();
       IS_VIRTUAL = ignored -> false;
     }
+    THREAD_FACTORY = tf;
   }
 
   private ThreadUtils() {}
 
+  /**
+   * Create a thread factory that prefixes thread names. Based on {@link
+   * java.util.concurrent.Executors#defaultThreadFactory()}, so always creates platform threads.
+   *
+   * @param prefix used to prefix thread names
+   * @return thread factory
+   */
   static ThreadFactory threadFactory(String prefix) {
     if (prefix == null) {
       return Executors.defaultThreadFactory();
@@ -101,8 +88,31 @@ final class ThreadUtils {
     }
   }
 
+  /**
+   * Returns a thread factory that creates virtual threads if available.
+   *
+   * @param prefix
+   * @return
+   */
   static ThreadFactory internalThreadFactory(String prefix) {
-    return new NamedThreadFactory(THREAD_FACTORY, prefix);
+    if (prefix == null) {
+      return THREAD_FACTORY;
+    } else {
+      return new NamedThreadFactory(THREAD_FACTORY, prefix);
+    }
+  }
+
+  /**
+   * Creates a virtual thread if available.
+   *
+   * @param name
+   * @param task
+   * @return
+   */
+  static Thread newInternalThread(String name, Runnable task) {
+    Thread t = THREAD_FACTORY.newThread(task);
+    t.setName(name);
+    return t;
   }
 
   static boolean isVirtual(Thread thread) {

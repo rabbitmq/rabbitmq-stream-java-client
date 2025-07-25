@@ -190,7 +190,8 @@ class StreamProducer implements Producer {
             environment.clock(),
             stream,
             environment.observationCollector(),
-            this);
+            this,
+            this.id);
 
     boolean backgroundBatchPublishingTaskRequired =
         !dynamicBatch && batchPublishingDelay.toMillis() > 0;
