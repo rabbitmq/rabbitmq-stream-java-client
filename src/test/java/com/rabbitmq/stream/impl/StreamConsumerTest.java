@@ -267,47 +267,6 @@ public class StreamConsumerTest {
   }
 
   @Test
-  void asynchronousProcessingWithInMemoryQueue(TestInfo info) {
-    int messageCount = 100_000;
-    publishAndWaitForConfirms(cf, messageCount, stream);
-
-    CountDownLatch latch = new CountDownLatch(messageCount);
-    BlockingQueue<Tuples.Pair<MessageHandler.Context, Message>> queue =
-        new ArrayBlockingQueue<>(10_000);
-    Thread t =
-        ThreadUtils.newInternalThread(
-            info.getTestMethod().get().getName(),
-            () -> {
-              try {
-                while (!Thread.currentThread().isInterrupted()) {
-                  Tuples.Pair<MessageHandler.Context, Message> item =
-                      queue.poll(10, TimeUnit.SECONDS);
-                  if (item != null) {
-                    latch.countDown();
-                    item.v1().processed();
-                  }
-                }
-              } catch (InterruptedException e) {
-                // finish the thread
-              }
-            });
-    t.start();
-
-    try {
-      environment.consumerBuilder().stream(stream)
-          .offset(OffsetSpecification.first())
-          .flow()
-          .strategy(creditWhenHalfMessagesProcessed(1))
-          .builder()
-          .messageHandler((ctx, message) -> queue.add(Tuples.pair(ctx, message)))
-          .build();
-      org.assertj.core.api.Assertions.assertThat(latch).is(completed());
-    } finally {
-      t.interrupt();
-    }
-  }
-
-  @Test
   void closeOnCondition() throws Exception {
     int messageCount = 50_000;
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
@@ -1087,5 +1046,90 @@ public class StreamConsumerTest {
 
     assertThat(sync).completes();
     consumer.close();
+  }
+
+  @Test
+  void asynchronousProcessingWithInMemoryQueue(TestInfo info) {
+    int messageCount = 100_000;
+    publishAndWaitForConfirms(cf, messageCount, stream);
+
+    CountDownLatch latch = new CountDownLatch(messageCount);
+
+    MessageHandler handler = (ctx, msg) -> latch.countDown();
+    DispatchingMessageHandler dispatchingHandler =
+        new DispatchingMessageHandler(
+            handler, ThreadUtils.threadFactory(info.getTestMethod().get().getName()));
+
+    try {
+      environment.consumerBuilder().stream(stream)
+          .offset(OffsetSpecification.first())
+          .flow()
+          .strategy(creditWhenHalfMessagesProcessed(1))
+          .builder()
+          .messageHandler(dispatchingHandler)
+          .build();
+      org.assertj.core.api.Assertions.assertThat(latch).is(completed());
+    } finally {
+      dispatchingHandler.close();
+    }
+  }
+
+  private static final class DispatchingMessageHandler implements MessageHandler, AutoCloseable {
+
+    private final MessageHandler delegate;
+    private final BlockingQueue<ContextMessageWrapper> queue = new ArrayBlockingQueue<>(10_000);
+    private final Thread t;
+
+    private DispatchingMessageHandler(MessageHandler delegate, ThreadFactory tf) {
+      this.delegate = delegate;
+      t =
+          tf.newThread(
+              () -> {
+                try {
+                  while (!Thread.currentThread().isInterrupted()) {
+                    ContextMessageWrapper item = queue.poll(10, TimeUnit.SECONDS);
+                    if (item != null) {
+                      try {
+                        this.delegate.handle(item.ctx, item.msg());
+                      } finally {
+                        item.ctx.processed();
+                      }
+                    }
+                  }
+                } catch (InterruptedException e) {
+                  // finish the thread
+                }
+              });
+      t.start();
+    }
+
+    @Override
+    public void handle(Context context, Message message) {
+      this.queue.add(new ContextMessageWrapper(context, message));
+    }
+
+    @Override
+    public void close() {
+      this.t.interrupt();
+    }
+  }
+
+  private static final class ContextMessageWrapper {
+
+    private final MessageHandler.Context ctx;
+    private final Message msg;
+
+    private ContextMessageWrapper(MessageHandler.Context ctx, Message msg) {
+      this.ctx = ctx;
+      this.msg = msg;
+    }
+
+    private MessageHandler.Context ctx() {
+      return this.ctx;
+    }
+
+    private Message msg() {
+      return this.msg;
+    }
   }
 }
