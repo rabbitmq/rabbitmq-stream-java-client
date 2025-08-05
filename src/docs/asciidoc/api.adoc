@@ -106,7 +106,7 @@ include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-tls
 Checking the identity of the server the client connects to is an important part of the TLS handshake.
 To make this work with the stream client library, it is critical the configured trusted certificates match the hosts returned by cluster nodes in the connection hints.
 Make sure to read the section on <<understanding-connection-logic, connection logic>>.
-You may have to configure the `advertised_tls_host` https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams#advertised-host-and-port[broker setting] in case of a mismatch between trusted certificates and the default connection hints cluster nodes return.
+You may have to configure the `advertised_host` https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams#advertised-host-and-port[broker setting] in case of a mismatch between trusted certificates and the default connection hints cluster nodes return.
 
 It is sometimes handy to trust any server certificates in development environments.
 `EnvironmentBuilder#tls` provides the `trustEverything` method to do so.
