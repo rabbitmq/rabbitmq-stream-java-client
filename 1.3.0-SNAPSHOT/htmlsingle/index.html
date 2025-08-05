@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.3.0-SNAPSHOT</span>
-<br><span id="revremark">(bff2eef)</span>
+<br><span id="revremark">(524fb28)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1394,15 +1394,14 @@ connect to a node:</p>
 username, password, and virtual host (<code>/</code>, which is encoded as <code>%2f</code>).
 The URI follows the same rules as the
 <a href="https://www.rabbitmq.com/uri-spec.html">AMQP 0.9.1 URI</a>,
-except the protocol must be <code>rabbitmq-stream</code>. <a href="#enabling-tls">TLS is enabled</a> by using
-the <code>rabbitmq-stream+tls</code> scheme in the URI.</p>
+except the protocol must be <code>rabbitmq-stream</code>.
+<a href="#enabling-tls">TLS is enabled</a> by using the <code>rabbitmq-stream+tls</code> scheme in the URI.</p>
 </div>
 <div class="paragraph">
 <p>When using one URI, the corresponding node will be the main entry point to connect to. The
 <code>Environment</code> will then use the stream protocol to find out more about streams topology
-(leaders and replicas) when asked to create <code>Producer</code> and <code>Consumer</code> instances. The <code>Environment</code>
-may become blind if this node goes down though, so it may be more appropriate to specify
-several other URIs to try in case of failure of a node:</p>
+(leaders and replicas) when asked to create <code>Producer</code> and <code>Consumer</code> instances.
+The <code>Environment</code> may become blind if this node goes down though, so it may be more appropriate to specify several other URIs to try in case of failure of a node:</p>
 </div>
 <div class="listingblock">
 <div class="title">Creating an environment with several URIs</div>
@@ -1437,7 +1436,8 @@ Creating publishers and consumers can cause problems as the client uses hints fr
 </div>
 <div class="paragraph">
 <p>These connection hints can be accurate or less appropriate depending on the infrastructure.
-If you hit some connection problems at some point – like hostnames impossible to resolve for client applications - this <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams">blog post</a> should help you understand what is going on and fix the issues.</p>
+If you hit connection problems at some point – like hostnames impossible to resolve for client applications - this <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams">blog post</a> should help you understand what is going on and fix the issues.
+Setting the <code>advertised_host</code> and <code>advertised_port</code> <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams#advertised-host-and-port">configuration entries</a> should solve the most common connection problems.</p>
 </div>
 <div class="paragraph">
 <p>To make the local development experience simple, the client library can choose to always use <code>localhost</code> for producers and consumers.
@@ -1454,14 +1454,11 @@ The default TLS port is 5551.</p>
 </div>
 <div class="paragraph">
 <p>Use the <code>EnvironmentBuilder#tls</code> method to configure TLS.
-The most important setting is a <code>io.netty.handler.ssl.SslContext</code> instance, which is created and configured with the
-<code>io.netty.handler.ssl.SslContext#forClient</code> method.
+The most important setting is a <code>io.netty.handler.ssl.SslContext</code> instance, which is created and configured with the <code>io.netty.handler.ssl.SslContext#forClient</code> method.
 Note hostname verification is enabled by default.</p>
 </div>
 <div class="paragraph">
-<p>The following snippet shows a common configuration, whereby
-the client is instructed to trust servers with certificates
-signed by the configured certificate authority (CA).</p>
+<p>The following snippet shows a common configuration, whereby the client is instructed to trust servers with certificates signed by the configured certificate authority (CA).</p>
 </div>
 <div class="listingblock">
 <div class="title">Creating an environment that uses TLS</div>
@@ -1505,10 +1502,15 @@ Environment environment = Environment.builder()
 </table>
 </div>
 <div class="paragraph">
-<p>It is sometimes handy to trust any server certificates
-in development environments. <code>EnvironmentBuilder#tls</code> provides the
-<code>trustEverything</code> method to do so. <strong>This should
-not be used in a production environment</strong>.</p>
+<p>Checking the identity of the server the client connects to is an important part of the TLS handshake.
+To make this work with the stream client library, it is critical the configured trusted certificates match the hosts returned by cluster nodes in the connection hints.
+Make sure to read the section on <a href="#understanding-connection-logic">connection logic</a>.
+You may have to configure the <code>advertised_tls_host</code> <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams#advertised-host-and-port">broker setting</a> in case of a mismatch between trusted certificates and the default connection hints cluster nodes return.</p>
+</div>
+<div class="paragraph">
+<p>It is sometimes handy to trust any server certificates in development environments.
+<code>EnvironmentBuilder#tls</code> provides the <code>trustEverything</code> method to do so.
+<strong>This should not be used in a production environment</strong>.</p>
 </div>
 <div class="listingblock">
 <div class="title">Creating a TLS environment that trusts all server certificates for development</div>
@@ -5004,7 +5006,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.3.0-SNAPSHOT<br>
-Last updated 2025-07-30 18:35:50 UTC
+Last updated 2025-08-05 07:34:24 UTC
 </div>
 </div>
 </body>
