@@ -49,14 +49,13 @@ The previous snippet uses a URI that specifies the following information: host, 
 username, password, and virtual host (`/`, which is encoded as `%2f`).
 The URI follows the same rules as the
 https://www.rabbitmq.com/uri-spec.html[AMQP 0.9.1 URI],
-except the protocol must be `rabbitmq-stream`. <<enabling-tls,TLS is enabled>> by using
-the `rabbitmq-stream+tls` scheme in the URI.
+except the protocol must be `rabbitmq-stream`.
+<<enabling-tls,TLS is enabled>> by using the `rabbitmq-stream+tls` scheme in the URI.
 
 When using one URI, the corresponding node will be the main entry point to connect to. The
 `Environment` will then use the stream protocol to find out more about streams topology
-(leaders and replicas) when asked to create `Producer` and `Consumer` instances. The `Environment`
-may become blind if this node goes down though, so it may be more appropriate to specify
-several other URIs to try in case of failure of a node:
+(leaders and replicas) when asked to create `Producer` and `Consumer` instances.
+The `Environment` may become blind if this node goes down though, so it may be more appropriate to specify several other URIs to try in case of failure of a node:
 
 .Creating an environment with several URIs
 [source,java,indent=0]
@@ -75,7 +74,8 @@ Creating the environment to connect to a cluster node works usually seamlessly.
 Creating publishers and consumers can cause problems as the client uses hints from the cluster to find the nodes where stream leaders and replicas are located to connect to the appropriate nodes.
 
 These connection hints can be accurate or less appropriate depending on the infrastructure.
-If you hit some connection problems at some point – like hostnames impossible to resolve for client applications - this https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams[blog post] should help you understand what is going on and fix the issues.
+If you hit connection problems at some point – like hostnames impossible to resolve for client applications - this https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams[blog post] should help you understand what is going on and fix the issues.
+Setting the `advertised_host` and `advertised_port` https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams#advertised-host-and-port[configuration entries] should solve the most common connection problems.
 
 To make the local development experience simple, the client library can choose to always use `localhost` for producers and consumers.
 This happens if the following conditions are met: the initial host to connect to is `localhost`, the user is `guest`, and no custom address resolver has been provided.
@@ -88,13 +88,10 @@ TLS can be enabled by using the `rabbitmq-stream+tls` scheme in the URI.
 The default TLS port is 5551.
 
 Use the `EnvironmentBuilder#tls` method to configure TLS.
-The most important setting is a `io.netty.handler.ssl.SslContext` instance, which is created and configured with the
-`io.netty.handler.ssl.SslContext#forClient` method.
+The most important setting is a `io.netty.handler.ssl.SslContext` instance, which is created and configured with the `io.netty.handler.ssl.SslContext#forClient` method.
 Note hostname verification is enabled by default.
 
-The following snippet shows a common configuration, whereby
-the client is instructed to trust servers with certificates
-signed by the configured certificate authority (CA).
+The following snippet shows a common configuration, whereby the client is instructed to trust servers with certificates signed by the configured certificate authority (CA).
 
 .Creating an environment that uses TLS
 [source,java,indent=0]
@@ -106,10 +103,14 @@ include::{test-examples}/EnvironmentUsage.java[tag=environment-creation-with-tls
 <3> Use TLS scheme in environment URI
 <4> Set `SslContext` in environment configuration
 
-It is sometimes handy to trust any server certificates
-in development environments. `EnvironmentBuilder#tls` provides the
-`trustEverything` method to do so. **This should
-not be used in a production environment**.
+Checking the identity of the server the client connects to is an important part of the TLS handshake.
+To make this work with the stream client library, it is critical the configured trusted certificates match the hosts returned by cluster nodes in the connection hints.
+Make sure to read the section on <<understanding-connection-logic, connection logic>>.
+You may have to configure the `advertised_tls_host` https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams#advertised-host-and-port[broker setting] in case of a mismatch between trusted certificates and the default connection hints cluster nodes return.
+
+It is sometimes handy to trust any server certificates in development environments.
+`EnvironmentBuilder#tls` provides the `trustEverything` method to do so.
+**This should not be used in a production environment**.
 
 .Creating a TLS environment that trusts all server certificates for development
 [source,java,indent=0]
