@@ -30,10 +30,8 @@ import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfAuthMechanismSslNotEnabled;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
-import io.netty.channel.Channel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
-import io.netty.handler.ssl.SslHandler;
 import java.io.File;
 import java.io.FileInputStream;
 import java.net.InetAddress;
@@ -50,12 +48,10 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
-import java.util.function.Consumer;
 import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
-import javax.net.ssl.SSLParameters;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -192,26 +188,32 @@ public class TlsTest {
   }
 
   @Test
-  void unverifiedConnectionWithSni() {
-    Consumer<Channel> channelCustomizer =
-        ch -> {
-          SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
-          if (sslHandler != null) {
-            SSLParameters sslParameters = sslHandler.engine().getSSLParameters();
-            sslParameters.setServerNames(Collections.singletonList(new SNIHostName("localhost")));
-            sslHandler.engine().setSSLParameters(sslParameters);
-          }
-        };
-    cf.get(
-        new ClientParameters()
-            .sslContext(alwaysTrustSslContext())
-            .channelCustomizer(channelCustomizer));
+  void verifiedConnectionWithCorrectServerCertificate() throws Exception {
+    // in server certificate SAN
+    String hostname = "localhost";
+    SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
+    cf.get(new ClientParameters().host(hostname).sslContext(context));
   }
 
   @Test
-  void verifiedConnectionWithCorrectServerCertificate() throws Exception {
+  void verifiedConnectionWithCorrectServerCertificateWithSni() throws Exception {
+    // not in server certificate SAN, but setting SNI makes it work
+    String hostname = "127.0.0.1";
+    SslContext context =
+        SslContextBuilder.forClient()
+            .trustManager(caCertificate())
+            .serverName(new SNIHostName("localhost"))
+            .build();
+    cf.get(new ClientParameters().host(hostname).sslContext(context));
+  }
+
+  @Test
+  void verifiedConnectionWithCorrectServerCertificateFailsIfHostnameNotInSan() throws Exception {
+    // not in server certificate SAN
+    String hostname = "127.0.0.1";
     SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
-    cf.get(new ClientParameters().sslContext(context));
+    assertThatThrownBy(() -> cf.get(new ClientParameters().host(hostname).sslContext(context)))
+        .hasCauseInstanceOf(SSLHandshakeException.class);
   }
 
   @Test
