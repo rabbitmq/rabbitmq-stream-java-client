@@ -32,6 +32,7 @@ import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
 import java.io.File;
 import java.io.FileInputStream;
 import java.net.InetAddress;
@@ -54,19 +55,26 @@ import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.EnumSource;
 
 @DisabledIfTlsNotEnabled
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@ParameterizedClass
+@EnumSource(names = {"JDK", "OPENSSL"})
 public class TlsTest {
+
+  @Parameter SslProvider sslProvider;
 
   String stream;
 
   TestUtils.ClientFactory cf;
   int credit = 10;
 
-  static SslContext alwaysTrustSslContext() {
+  SslContext alwaysTrustSslContext() {
     try {
-      return SslContextBuilder.forClient().trustManager(TRUST_EVERYTHING_TRUST_MANAGER).build();
+      return builder().trustManager(TRUST_EVERYTHING_TRUST_MANAGER).build();
     } catch (SSLException e) {
       throw new RuntimeException(e);
     }
@@ -191,7 +199,7 @@ public class TlsTest {
   void verifiedConnectionWithCorrectServerCertificate() throws Exception {
     // in server certificate SAN
     String hostname = "localhost";
-    SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
+    SslContext context = builder().trustManager(caCertificate()).build();
     cf.get(new ClientParameters().host(hostname).sslContext(context));
   }
 
@@ -200,10 +208,7 @@ public class TlsTest {
     // not in server certificate SAN, but setting SNI makes it work
     String hostname = "127.0.0.1";
     SslContext context =
-        SslContextBuilder.forClient()
-            .trustManager(caCertificate())
-            .serverName(new SNIHostName("localhost"))
-            .build();
+        builder().trustManager(caCertificate()).serverName(new SNIHostName("localhost")).build();
     cf.get(new ClientParameters().host(hostname).sslContext(context));
   }
 
@@ -211,14 +216,14 @@ public class TlsTest {
   void verifiedConnectionWithCorrectServerCertificateFailsIfHostnameNotInSan() throws Exception {
     // not in server certificate SAN
     String hostname = "127.0.0.1";
-    SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
+    SslContext context = builder().trustManager(caCertificate()).build();
     assertThatThrownBy(() -> cf.get(new ClientParameters().host(hostname).sslContext(context)))
         .hasCauseInstanceOf(SSLHandshakeException.class);
   }
 
   @Test
   void verifiedConnectionWithWrongServerCertificate() throws Exception {
-    SslContext context = SslContextBuilder.forClient().trustManager(clientCertificate()).build();
+    SslContext context = builder().trustManager(clientCertificate()).build();
     assertThatThrownBy(() -> cf.get(new ClientParameters().sslContext(context)))
         .isInstanceOf(StreamException.class)
         .hasCauseInstanceOf(SSLHandshakeException.class);
@@ -227,7 +232,7 @@ public class TlsTest {
   @Test
   void verifiedConnectionWithCorrectClientPrivateKey() throws Exception {
     SslContext context =
-        SslContextBuilder.forClient()
+        builder()
             .trustManager(caCertificate())
             .keyManager(clientKey(), clientCertificate())
             .build();
@@ -241,10 +246,7 @@ public class TlsTest {
   void saslExternalShouldSucceedWithUserForClientCertificate() throws Exception {
     X509Certificate clientCertificate = clientCertificate();
     SslContext context =
-        SslContextBuilder.forClient()
-            .trustManager(caCertificate())
-            .keyManager(clientKey(), clientCertificate)
-            .build();
+        builder().trustManager(caCertificate()).keyManager(clientKey(), clientCertificate).build();
 
     String username = clientCertificate.getSubjectX500Principal().getName();
     Cli.rabbitmqctlIgnoreError(format("delete_user %s", username));
@@ -268,10 +270,7 @@ public class TlsTest {
   void saslExternalShouldFailIfNoUserForClientCertificate() throws Exception {
     X509Certificate clientCertificate = clientCertificate();
     SslContext context =
-        SslContextBuilder.forClient()
-            .trustManager(caCertificate())
-            .keyManager(clientKey(), clientCertificate)
-            .build();
+        builder().trustManager(caCertificate()).keyManager(clientKey(), clientCertificate).build();
 
     String username = clientCertificate.getSubjectX500Principal().getName();
     Cli.rabbitmqctlIgnoreError(format("delete_user %s", username));
@@ -288,7 +287,7 @@ public class TlsTest {
 
   @Test
   void hostnameVerificationShouldFailWhenSettingHostToLoopbackInterface() throws Exception {
-    SslContext context = SslContextBuilder.forClient().trustManager(caCertificate()).build();
+    SslContext context = builder().trustManager(caCertificate()).build();
     assertThatThrownBy(() -> cf.get(new ClientParameters().sslContext(context).host("127.0.0.1")))
         .isInstanceOf(StreamException.class)
         .hasCauseInstanceOf(SSLHandshakeException.class);
@@ -298,10 +297,7 @@ public class TlsTest {
   void shouldConnectWhenSettingHostToLoopbackInterfaceAndDisablingHostnameVerification()
       throws Exception {
     SslContext context =
-        SslContextBuilder.forClient()
-            .endpointIdentificationAlgorithm(null)
-            .trustManager(caCertificate())
-            .build();
+        builder().endpointIdentificationAlgorithm(null).trustManager(caCertificate()).build();
     cf.get(new ClientParameters().sslContext(context).host("127.0.0.1"));
   }
 
@@ -325,7 +321,7 @@ public class TlsTest {
             .uri("rabbitmq-stream+tls://localhost")
             .addressResolver(addr -> new Address("localhost", Client.DEFAULT_TLS_PORT))
             .tls()
-            .sslContext(SslContextBuilder.forClient().trustManager(caCertificate()).build())
+            .sslContext(builder().trustManager(caCertificate()).build())
             .environmentBuilder()
             .build()) {
 
@@ -370,5 +366,9 @@ public class TlsTest {
 
   private static String tlsArtefactPath(String in) {
     return in.replace("$(hostname)", hostname()).replace("$(hostname -s)", hostname());
+  }
+
+  private SslContextBuilder builder() {
+    return SslContextBuilder.forClient().sslProvider(sslProvider);
   }
 }

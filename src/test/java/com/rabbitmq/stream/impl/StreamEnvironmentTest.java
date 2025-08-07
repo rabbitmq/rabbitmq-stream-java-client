@@ -52,9 +52,12 @@ import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.IoHandlerFactory;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.epoll.EpollIoHandler;
 import io.netty.channel.epoll.EpollSocketChannel;
+import io.netty.channel.kqueue.KQueueIoHandler;
+import io.netty.channel.kqueue.KQueueSocketChannel;
 import io.netty.handler.ssl.SslHandler;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
@@ -743,41 +746,14 @@ public class StreamEnvironmentTest {
   @EnabledOnOs(OS.LINUX)
   @EnabledIfSystemProperty(named = "os.arch", matches = "amd64")
   void nativeEpollWorksOnLinux() {
-    int messageCount = 10_000;
-    EventLoopGroup epollEventLoopGroup =
-        new MultiThreadIoEventLoopGroup(EpollIoHandler.newFactory());
-    try {
-      Set<Channel> channels = ConcurrentHashMap.newKeySet();
-      try (Environment env =
-          environmentBuilder
-              .netty()
-              .eventLoopGroup(epollEventLoopGroup)
-              .bootstrapCustomizer(b -> b.channel(EpollSocketChannel.class))
-              .channelCustomizer(ch -> channels.add(ch))
-              .environmentBuilder()
-              .build()) {
-        Producer producer = env.producerBuilder().stream(this.stream).build();
-        ConfirmationHandler handler = confirmationStatus -> {};
-        IntStream.range(0, messageCount)
-            .forEach(
-                i ->
-                    producer.send(
-                        producer
-                            .messageBuilder()
-                            .addData("hello".getBytes(StandardCharsets.UTF_8))
-                            .build(),
-                        handler));
-        CountDownLatch latch = new CountDownLatch(messageCount);
-        env.consumerBuilder().stream(this.stream)
-            .offset(OffsetSpecification.first())
-            .messageHandler((context, message) -> latch.countDown())
-            .build();
-        assertThat(latchAssert(latch)).completes();
-      }
-      assertThat(channels).isNotEmpty().allMatch(ch -> ch instanceof EpollSocketChannel);
-    } finally {
-      epollEventLoopGroup.shutdownGracefully(0, 0, SECONDS);
-    }
+    nativeIo(EpollIoHandler.newFactory(), EpollSocketChannel.class);
+  }
+
+  @Test
+  @EnabledOnOs(OS.MAC)
+  @EnabledIfSystemProperty(named = "os.arch", matches = "aarch64")
+  void nativeKqueueWorksOnMac() {
+    nativeIo(KQueueIoHandler.newFactory(), KQueueSocketChannel.class);
   }
 
   @Test
@@ -845,6 +821,43 @@ public class StreamEnvironmentTest {
       assertThat(client.queryOffset(ref, stream).getOffset()).isEqualTo(43);
       env.storeOffset(ref, stream, 0);
       assertThat(client.queryOffset(ref, stream).getOffset()).isEqualTo(0);
+    }
+  }
+
+  private void nativeIo(IoHandlerFactory ioHandlerFactory, Class<? extends Channel> chClass) {
+    int messageCount = 10_000;
+    EventLoopGroup epollEventLoopGroup = new MultiThreadIoEventLoopGroup(ioHandlerFactory);
+    try {
+      Set<Channel> channels = ConcurrentHashMap.newKeySet();
+      try (Environment env =
+          environmentBuilder
+              .netty()
+              .eventLoopGroup(epollEventLoopGroup)
+              .bootstrapCustomizer(b -> b.channel(chClass))
+              .channelCustomizer(channels::add)
+              .environmentBuilder()
+              .build()) {
+        Producer producer = env.producerBuilder().stream(this.stream).build();
+        ConfirmationHandler handler = confirmationStatus -> {};
+        IntStream.range(0, messageCount)
+            .forEach(
+                i ->
+                    producer.send(
+                        producer
+                            .messageBuilder()
+                            .addData("hello".getBytes(StandardCharsets.UTF_8))
+                            .build(),
+                        handler));
+        CountDownLatch latch = new CountDownLatch(messageCount);
+        env.consumerBuilder().stream(this.stream)
+            .offset(OffsetSpecification.first())
+            .messageHandler((context, message) -> latch.countDown())
+            .build();
+        assertThat(latchAssert(latch)).completes();
+      }
+      assertThat(channels).isNotEmpty().allMatch(ch -> ch.getClass().isAssignableFrom(chClass));
+    } finally {
+      epollEventLoopGroup.shutdownGracefully(0, 0, SECONDS);
     }
   }
 }
