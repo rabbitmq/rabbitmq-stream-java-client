@@ -228,6 +228,14 @@
 
     <dependency>
       <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-io_uring</artifactId>
+      <version>${netty.version}</version>
+      <classifier>linux-x86_64</classifier>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.netty</groupId>
       <artifactId>netty-tcnative-boringssl-static</artifactId>
       <version>${netty-tcnative.version}</version>
       <classifier>linux-x86_64</classifier>

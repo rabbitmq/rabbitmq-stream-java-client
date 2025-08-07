@@ -58,6 +58,8 @@ import io.netty.channel.epoll.EpollIoHandler;
 import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.kqueue.KQueueIoHandler;
 import io.netty.channel.kqueue.KQueueSocketChannel;
+import io.netty.channel.uring.IoUringIoHandler;
+import io.netty.channel.uring.IoUringSocketChannel;
 import io.netty.handler.ssl.SslHandler;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
@@ -747,6 +749,13 @@ public class StreamEnvironmentTest {
   @EnabledIfSystemProperty(named = "os.arch", matches = "amd64")
   void nativeEpollWorksOnLinux() {
     nativeIo(EpollIoHandler.newFactory(), EpollSocketChannel.class);
+  }
+
+  @Test
+  @EnabledOnOs(OS.LINUX)
+  @EnabledIfSystemProperty(named = "os.arch", matches = "amd64")
+  void nativeIoUringWorksOnLinux() {
+    nativeIo(IoUringIoHandler.newFactory(), IoUringSocketChannel.class);
   }
 
   @Test
