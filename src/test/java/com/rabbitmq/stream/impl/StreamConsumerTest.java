@@ -53,9 +53,13 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
 public class StreamConsumerTest {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(StreamConsumerTest.class);
 
   static final Duration RECOVERY_DELAY = Duration.ofSeconds(2);
   static final Duration TOPOLOGY_DELAY = Duration.ofSeconds(2);
@@ -1105,7 +1109,15 @@ public class StreamConsumerTest {
 
     @Override
     public void handle(Context context, Message message) {
-      this.queue.add(new ContextMessageWrapper(context, message));
+      try {
+        boolean inserted =
+            this.queue.offer(new ContextMessageWrapper(context, message), 10, TimeUnit.SECONDS);
+        if (!inserted) {
+          LOGGER.warn("Failed to insert message into queue");
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
     }
 
     @Override

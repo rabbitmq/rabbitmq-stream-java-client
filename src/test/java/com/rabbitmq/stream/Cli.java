@@ -260,16 +260,21 @@ public class Cli {
   }
 
   public static String rabbitmqctlCommand() {
-    String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
-    if (rabbitmqCtl == null) {
-      rabbitmqCtl = DOCKER_PREFIX + "rabbitmq";
-    }
+    String rabbitmqCtl = rabbitmqctlBin();
     if (rabbitmqCtl.startsWith(DOCKER_PREFIX)) {
       String containerId = rabbitmqCtl.split(":")[1];
       return "docker exec " + containerId + " rabbitmqctl";
     } else {
       return rabbitmqCtl;
     }
+  }
+
+  private static String rabbitmqctlBin() {
+    String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
+    if (rabbitmqCtl == null) {
+      rabbitmqCtl = DOCKER_PREFIX + "rabbitmq";
+    }
+    return rabbitmqCtl;
   }
 
   private static String rabbitmqStreamsCommand() {
@@ -330,11 +335,7 @@ public class Cli {
   }
 
   public static boolean isOnDocker() {
-    String rabbitmqCtl = System.getProperty("rabbitmqctl.bin");
-    if (rabbitmqCtl == null) {
-      throw new IllegalStateException("Please define the rabbitmqctl.bin system property");
-    }
-    return rabbitmqCtl.startsWith(DOCKER_PREFIX);
+    return rabbitmqctlBin().startsWith(DOCKER_PREFIX);
   }
 
   public static List<String> nodes() {
