@@ -19,18 +19,20 @@ import static com.rabbitmq.stream.oauth2.OAuth2TestUtils.waitAtMost;
 import static com.rabbitmq.stream.oauth2.TokenCredentialsManager.DEFAULT_REFRESH_DELAY_STRATEGY;
 import static java.time.Duration.ofMillis;
 import static java.time.Duration.ofSeconds;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
+import com.rabbitmq.stream.oauth2.CredentialsManager.Registration;
+import com.rabbitmq.stream.oauth2.OAuth2TestUtils.Pair;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import org.junit.jupiter.api.AfterEach;
@@ -72,22 +74,17 @@ public class TokenCredentialsManagerTest {
             this.requester, this.scheduledExecutorService, DEFAULT_REFRESH_DELAY_STRATEGY);
     int expectedRefreshCount = 3;
     AtomicInteger refreshCount = new AtomicInteger();
-    CountDownLatch refreshSync = new CountDownLatch(expectedRefreshCount);
-    CredentialsManager.Registration registration =
+    CountDownLatch refreshLatch = new CountDownLatch(expectedRefreshCount);
+    Registration registration =
         credentials.register(
             "",
             (u, p) -> {
               refreshCount.incrementAndGet();
-              refreshSync.countDown();
+              refreshLatch.countDown();
             });
     registration.connect(connectionCallback(() -> {}));
     assertThat(requestCount).hasValue(1);
-    try {
-      assertThat(refreshSync.await(ofSeconds(10).toMillis(), TimeUnit.MILLISECONDS)).isTrue();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new RuntimeException(e);
-    }
+    assertThat(refreshLatch.await(ofSeconds(10).toMillis(), MILLISECONDS)).isTrue();
     assertThat(requestCount).hasValue(expectedRefreshCount + 1);
     registration.close();
     assertThat(refreshCount).hasValue(expectedRefreshCount);
@@ -110,12 +107,12 @@ public class TokenCredentialsManagerTest {
     int expectedRefreshCountPerConnection = 3;
     int connectionCount = 10;
     AtomicInteger totalRefreshCount = new AtomicInteger();
-    List<OAuth2TestUtils.Pair<CredentialsManager.Registration, CountDownLatch>> registrations =
+    List<Pair<Registration, CountDownLatch>> registrations =
         range(0, connectionCount)
             .mapToObj(
                 ignored -> {
                   CountDownLatch sync = new CountDownLatch(expectedRefreshCountPerConnection);
-                  CredentialsManager.Registration r =
+                  Registration r =
                       credentials.register(
                           "",
                           (username, password) -> {
@@ -127,15 +124,8 @@ public class TokenCredentialsManagerTest {
             .collect(toList());
 
     registrations.forEach(r -> r.v1().connect(connectionCallback(() -> {})));
-    for (OAuth2TestUtils.Pair<CredentialsManager.Registration, CountDownLatch> registrationPair :
-        registrations) {
-      try {
-        assertThat(registrationPair.v2().await(ofSeconds(10).toMillis(), TimeUnit.MILLISECONDS))
-            .isTrue();
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new RuntimeException(e);
-      }
+    for (Pair<Registration, CountDownLatch> registrationPair : registrations) {
+      assertThat(registrationPair.v2().await(ofSeconds(10).toMillis(), MILLISECONDS)).isTrue();
     }
     // all connections have been refreshed once
     int refreshCountSnapshot = totalRefreshCount.get();
