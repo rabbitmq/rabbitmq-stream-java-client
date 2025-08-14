@@ -19,8 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.rabbitmq.stream.impl.HttpTestUtils;
-import com.rabbitmq.stream.impl.TestUtils;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -50,7 +48,7 @@ public class HttpTokenRequesterTest {
 
   @BeforeEach
   void init() throws IOException {
-    this.port = TestUtils.randomNetworkPort();
+    this.port = OAuth2TestUtils.randomNetworkPort();
   }
 
   @ParameterizedTest
@@ -61,7 +59,7 @@ public class HttpTokenRequesterTest {
     Consumer<HttpClient.Builder> clientBuilderConsumer;
     if (tls) {
       protocol = "https";
-      keyStore = HttpTestUtils.generateKeyPair();
+      keyStore = OAuth2TestUtils.generateKeyPair();
       SSLContext sslContext = SSLContext.getInstance("TLS");
       TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
       tmf.init(keyStore);
@@ -83,7 +81,7 @@ public class HttpTokenRequesterTest {
 
     Duration expiresIn = Duration.ofSeconds(60);
     server =
-        HttpTestUtils.startServer(
+        OAuth2TestUtils.startServer(
             port,
             contextPath,
             keyStore,

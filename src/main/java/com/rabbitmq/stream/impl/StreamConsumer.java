@@ -64,7 +64,7 @@ class StreamConsumer implements Consumer {
   private final boolean sac;
   private final OffsetSpecification initialOffsetSpecification;
   private final Lock lock = new ReentrantLock();
-  private volatile boolean consuming = false;
+  private volatile boolean consuming;
 
   @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamConsumer(

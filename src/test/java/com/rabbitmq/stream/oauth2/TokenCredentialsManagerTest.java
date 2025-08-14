@@ -14,9 +14,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.oauth2;
 
-import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.oauth2.OAuth2TestUtils.pair;
+import static com.rabbitmq.stream.oauth2.OAuth2TestUtils.waitAtMost;
 import static com.rabbitmq.stream.oauth2.TokenCredentialsManager.DEFAULT_REFRESH_DELAY_STRATEGY;
-import static com.rabbitmq.stream.oauth2.Tuples.pair;
 import static java.time.Duration.ofMillis;
 import static java.time.Duration.ofSeconds;
 import static java.util.stream.Collectors.toList;
@@ -24,14 +24,13 @@ import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import com.rabbitmq.stream.impl.Assertions;
-import com.rabbitmq.stream.impl.TestUtils;
-import com.rabbitmq.stream.impl.TestUtils.Sync;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import org.junit.jupiter.api.AfterEach;
@@ -73,17 +72,22 @@ public class TokenCredentialsManagerTest {
             this.requester, this.scheduledExecutorService, DEFAULT_REFRESH_DELAY_STRATEGY);
     int expectedRefreshCount = 3;
     AtomicInteger refreshCount = new AtomicInteger();
-    Sync refreshSync = TestUtils.sync(expectedRefreshCount);
+    CountDownLatch refreshSync = new CountDownLatch(expectedRefreshCount);
     CredentialsManager.Registration registration =
         credentials.register(
             "",
             (u, p) -> {
               refreshCount.incrementAndGet();
-              refreshSync.down();
+              refreshSync.countDown();
             });
     registration.connect(connectionCallback(() -> {}));
     assertThat(requestCount).hasValue(1);
-    Assertions.assertThat(refreshSync).completes();
+    try {
+      assertThat(refreshSync.await(ofSeconds(10).toMillis(), TimeUnit.MILLISECONDS)).isTrue();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException(e);
+    }
     assertThat(requestCount).hasValue(expectedRefreshCount + 1);
     registration.close();
     assertThat(refreshCount).hasValue(expectedRefreshCount);
@@ -106,24 +110,33 @@ public class TokenCredentialsManagerTest {
     int expectedRefreshCountPerConnection = 3;
     int connectionCount = 10;
     AtomicInteger totalRefreshCount = new AtomicInteger();
-    List<Tuples.Pair<CredentialsManager.Registration, Sync>> registrations =
+    List<OAuth2TestUtils.Pair<CredentialsManager.Registration, CountDownLatch>> registrations =
         range(0, connectionCount)
             .mapToObj(
                 ignored -> {
-                  Sync sync = TestUtils.sync(expectedRefreshCountPerConnection);
+                  CountDownLatch sync = new CountDownLatch(expectedRefreshCountPerConnection);
                   CredentialsManager.Registration r =
                       credentials.register(
                           "",
                           (username, password) -> {
                             totalRefreshCount.incrementAndGet();
-                            sync.down();
+                            sync.countDown();
                           });
                   return pair(r, sync);
                 })
             .collect(toList());
 
     registrations.forEach(r -> r.v1().connect(connectionCallback(() -> {})));
-    registrations.forEach(r -> Assertions.assertThat(r.v2()).completes());
+    for (OAuth2TestUtils.Pair<CredentialsManager.Registration, CountDownLatch> registrationPair :
+        registrations) {
+      try {
+        assertThat(registrationPair.v2().await(ofSeconds(10).toMillis(), TimeUnit.MILLISECONDS))
+            .isTrue();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException(e);
+      }
+    }
     // all connections have been refreshed once
     int refreshCountSnapshot = totalRefreshCount.get();
     assertThat(refreshCountSnapshot).isEqualTo(connectionCount * expectedRefreshCountPerConnection);
