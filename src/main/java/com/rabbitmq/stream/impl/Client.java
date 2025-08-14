@@ -48,6 +48,8 @@ import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
+import com.rabbitmq.stream.oauth2.CredentialsManager;
+import com.rabbitmq.stream.oauth2.CredentialsManager.Registration;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
 import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;
@@ -113,6 +115,7 @@ import org.slf4j.LoggerFactory;
  */
 public class Client implements AutoCloseable {
 
+  private static final AtomicLong ID_SEQUENCE = new AtomicLong(0);
   private static final Charset CHARSET = StandardCharsets.UTF_8;
   public static final int DEFAULT_PORT = 5552;
   public static final int DEFAULT_TLS_PORT = 5551;
@@ -168,7 +171,6 @@ public class Client implements AutoCloseable {
       };
   private final AtomicInteger correlationSequence = new AtomicInteger(0);
   private final SaslConfiguration saslConfiguration;
-  private final CredentialsProvider credentialsProvider;
   private final Runnable nettyClosing;
   private final int maxFrameSize;
   private final boolean frameSizeCapped;
@@ -188,6 +190,7 @@ public class Client implements AutoCloseable {
   private final Runnable streamStatsCommandVersionsCheck;
   private final boolean filteringSupported;
   private final Runnable superStreamManagementCommandVersionsCheck;
+  private final Registration credentialsRegistration;
 
   @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   public Client() {
@@ -204,7 +207,6 @@ public class Client implements AutoCloseable {
     this.creditNotification = parameters.creditNotification;
     this.codec = parameters.codec == null ? Codecs.DEFAULT : parameters.codec;
     this.saslConfiguration = parameters.saslConfiguration;
-    this.credentialsProvider = parameters.credentialsProvider;
     this.chunkChecksum = parameters.chunkChecksum;
     this.metricsCollector = parameters.metricsCollector;
     this.metadataListener = parameters.metadataListener;
@@ -379,8 +381,36 @@ public class Client implements AutoCloseable {
       debug(() -> "starting SASL handshake");
       this.saslMechanisms = getSaslMechanisms();
       debug(() -> "SASL mechanisms supported by server ({})", this.saslMechanisms);
+
+      CredentialsProvider credentialsProvider = parameters.credentialsProvider;
+      CredentialsManager credentialsManager = parameters.credentialsManager;
+      CredentialsManager.AuthenticationCallback authCallback, renewCallback;
+      String regName =
+          clientConnectionName.isBlank()
+              ? String.valueOf(ID_SEQUENCE.getAndIncrement())
+              : clientConnectionName + "-" + ID_SEQUENCE.getAndIncrement();
+      if (credentialsManager == null) {
+        this.credentialsRegistration = CredentialsManagerFactory.get();
+        authCallback = (u, p) -> this.authenticate(credentialsProvider);
+      } else {
+        renewCallback =
+            authCallback =
+                (u, p) -> {
+                  if (u == null && p == null) {
+                    // no username/password provided by the credentials manager
+                    // using the credentials manager
+                    this.authenticate(credentialsProvider);
+                  } else {
+                    // the credentials manager provides username/password (e.g. after token
+                    // retrieval)
+                    // we use them with a one-time credentials provider
+                    this.authenticate(new DefaultUsernamePasswordCredentialsProvider(u, p));
+                  }
+                };
+        this.credentialsRegistration = credentialsManager.register(regName, renewCallback);
+      }
       debug(() -> "starting authentication");
-      authenticate(this.credentialsProvider);
+      this.credentialsRegistration.connect(authCallback);
       debug(() -> "authenticated");
       this.tuneState.await(Duration.ofSeconds(10));
       this.maxFrameSize = this.tuneState.getMaxFrameSize();
@@ -1449,6 +1479,9 @@ public class Client implements AutoCloseable {
     if (reason != null) {
       this.shutdownListenerCallback.accept(reason);
     }
+    if (this.credentialsRegistration != null) {
+      this.credentialsRegistration.close();
+    }
     this.nettyClosing.run();
     if (this.closeDispatchingExecutorService != null) {
       this.closeDispatchingExecutorService.accept(this.dispatchingExecutorService);
@@ -2354,6 +2387,10 @@ public class Client implements AutoCloseable {
     }
   }
 
+  static ClientParameters cp() {
+    return new ClientParameters();
+  }
+
   public static class ClientParameters {
 
     private final Map<String, String> clientProperties = new ConcurrentHashMap<>();
@@ -2386,6 +2423,7 @@ public class Client implements AutoCloseable {
     private SaslConfiguration saslConfiguration = DefaultSaslConfiguration.PLAIN;
     private CredentialsProvider credentialsProvider =
         new DefaultUsernamePasswordCredentialsProvider(DEFAULT_USERNAME, "guest");
+    private CredentialsManager credentialsManager;
     private ChunkChecksum chunkChecksum = JdkChunkChecksum.CRC32_SINGLETON;
     private MetricsCollector metricsCollector = NoOpMetricsCollector.SINGLETON;
     private SslContext sslContext;
@@ -2465,6 +2503,11 @@ public class Client implements AutoCloseable {
 
     public ClientParameters credentialsProvider(CredentialsProvider credentialsProvider) {
       this.credentialsProvider = credentialsProvider;
+      return this;
+    }
+
+    public ClientParameters credentialsManager(CredentialsManager credentialsManager) {
+      this.credentialsManager = credentialsManager;
       return this;
     }
 

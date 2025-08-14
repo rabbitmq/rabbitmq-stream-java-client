@@ -31,8 +31,10 @@ import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
 import com.rabbitmq.stream.impl.OffsetTrackingCoordinator.Registration;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
+import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultOAuth2Configuration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
+import com.rabbitmq.stream.oauth2.CredentialsManager;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -103,6 +105,7 @@ class StreamEnvironment implements Environment {
       int maxTrackingConsumersByConnection,
       int maxConsumersByConnection,
       DefaultTlsConfiguration tlsConfiguration,
+      DefaultOAuth2Configuration oauth,
       ByteBufAllocator byteBufAllocator,
       boolean lazyInit,
       Function<ClientConnectionType, String> connectionNamingStrategy,
@@ -158,6 +161,7 @@ class StreamEnvironment implements Environment {
     }
 
     AddressResolver addressResolverToUse = addressResolver;
+    // trying to detect development environment
     if (this.addresses.size() == 1
         && "localhost".equals(this.addresses.get(0).host())
         && addressResolver == DEFAULT_ADDRESS_RESOLVER) {
@@ -211,18 +215,6 @@ class StreamEnvironment implements Environment {
               this.addresses.size(), 1, "rabbitmq-stream-locator-connection-");
       shutdownService.wrap(this.executorServiceFactory::close);
 
-      if (clientParametersPrototype.eventLoopGroup == null) {
-        this.eventLoopGroup = Utils.eventLoopGroup();
-        shutdownService.wrap(() -> closeEventLoopGroup(this.eventLoopGroup));
-        this.clientParametersPrototype =
-            clientParametersPrototype.duplicate().eventLoopGroup(this.eventLoopGroup);
-      } else {
-        this.eventLoopGroup = null;
-        this.clientParametersPrototype =
-            clientParametersPrototype
-                .duplicate()
-                .eventLoopGroup(clientParametersPrototype.eventLoopGroup);
-      }
       ScheduledExecutorService executorService;
       if (scheduledExecutorService == null) {
         int threads = AVAILABLE_PROCESSORS;
@@ -236,6 +228,25 @@ class StreamEnvironment implements Environment {
         this.privateScheduleExecutorService = false;
       }
       this.scheduledExecutorService = executorService;
+
+      CredentialsManager credentialsManager =
+          CredentialsManagerFactory.get(oauth, this.scheduledExecutorService);
+
+      clientParametersPrototype =
+          clientParametersPrototype.duplicate().credentialsManager(credentialsManager);
+
+      if (clientParametersPrototype.eventLoopGroup == null) {
+        this.eventLoopGroup = Utils.eventLoopGroup();
+        shutdownService.wrap(() -> closeEventLoopGroup(this.eventLoopGroup));
+        this.clientParametersPrototype =
+            clientParametersPrototype.duplicate().eventLoopGroup(this.eventLoopGroup);
+      } else {
+        this.eventLoopGroup = null;
+        this.clientParametersPrototype =
+            clientParametersPrototype
+                .duplicate()
+                .eventLoopGroup(clientParametersPrototype.eventLoopGroup);
+      }
 
       this.producersCoordinator =
           new ProducersCoordinator(

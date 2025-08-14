@@ -128,7 +128,18 @@ public class AuthenticationTest {
     try {
       addUser(username, password);
       setPermissions(username, "/", "^stream.*$");
-      Client client = cf.get(new Client.ClientParameters().username("stream").password(username));
+      Client client =
+          cf.get(
+              new Client.ClientParameters()
+                  .username("stream")
+                  .password(username)
+                  .shutdownListener(
+                      new Client.ShutdownListener() {
+                        @Override
+                        public void handle(Client.ShutdownContext context) {
+                          System.out.println("shutdown");
+                        }
+                      }));
       changePassword(username, newPassword);
       // OK
       client.authenticate(credentialsProvider(username, newPassword));
