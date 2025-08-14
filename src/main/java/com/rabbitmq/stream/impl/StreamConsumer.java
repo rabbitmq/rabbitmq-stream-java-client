@@ -64,6 +64,7 @@ class StreamConsumer implements Consumer {
   private final boolean sac;
   private final OffsetSpecification initialOffsetSpecification;
   private final Lock lock = new ReentrantLock();
+  private volatile boolean consuming;
 
   @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamConsumer(
@@ -249,6 +250,7 @@ class StreamConsumer implements Consumer {
       this.closed.set(true);
       throw e;
     }
+    this.consuming = true;
   }
 
   static OffsetSpecification getStoredOffset(
@@ -604,5 +606,17 @@ class StreamConsumer implements Consumer {
     } else {
       return client.clientConnectionName();
     }
+  }
+
+  void notConsuming() {
+    this.consuming = false;
+  }
+
+  void consuming() {
+    this.consuming = true;
+  }
+
+  boolean isConsuming() {
+    return this.consuming;
   }
 }
