@@ -496,10 +496,10 @@ public class Client implements AutoCloseable {
         throw new StreamException("Error when establishing stream connection", request.error());
       }
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException("Error while trying to exchange peer properties", e);
     }
   }
@@ -572,10 +572,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException("Error while trying to authenticate", e);
     }
   }
@@ -602,10 +602,10 @@ public class Client implements AutoCloseable {
       }
       return request.response.get().connectionProperties;
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException("Error during open command", e);
     }
   }
@@ -646,10 +646,10 @@ public class Client implements AutoCloseable {
                 + formatConstant(request.response.get().getResponseCode()));
       }
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException("Error while closing connection", e);
     }
   }
@@ -669,10 +669,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException("Error while exchanging SASL mechanisms", e);
     }
   }
@@ -699,10 +699,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(format("Error while creating stream '%s'", stream), e);
     }
   }
@@ -750,10 +750,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(format("Error while creating super stream '%s'", superStream), e);
     }
   }
@@ -776,10 +776,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(format("Error while deleting stream '%s'", superStream), e);
     }
   }
@@ -860,10 +860,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(format("Error while deleting stream '%s'", stream), e);
     }
   }
@@ -891,10 +891,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(
           format("Error while getting metadata for stream(s) '%s'", join(",", streams)), e);
     }
@@ -930,10 +930,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(
           format("Error while declaring publisher for stream '%s'", stream), e);
     }
@@ -955,10 +955,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException("Error while deleting publisher", e);
     }
   }
@@ -1293,10 +1293,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(
           format("Error while trying to subscribe to stream '%s'", stream), e);
     }
@@ -1351,10 +1351,10 @@ public class Client implements AutoCloseable {
       QueryOffsetResponse response = request.response.get();
       return response;
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(
           format(
               "Error while querying offset for reference '%s' on stream '%s'", reference, stream),
@@ -1397,10 +1397,10 @@ public class Client implements AutoCloseable {
       }
       return response.getSequence();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(
           format(
               "Error while querying publisher sequence for '%s' on stream '%s'",
@@ -1425,10 +1425,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException("Error while unsubscribing", e);
     }
   }
@@ -1450,11 +1450,30 @@ public class Client implements AutoCloseable {
       this.shutdownListenerCallback.accept(reason);
     }
     this.nettyClosing.run();
+    this.failOutstandingRequests();
     if (this.closeDispatchingExecutorService != null) {
       this.closeDispatchingExecutorService.accept(this.dispatchingExecutorService);
     }
     if (this.closeExecutorService != null) {
       this.closeExecutorService.accept(this.executorService);
+    }
+  }
+
+  private void failOutstandingRequests() {
+    try {
+      Exception cause = null;
+      for (OutstandingRequest<?> request : this.outstandingRequests.values()) {
+        if (cause == null) {
+          cause = new ConnectionStreamException("Connection is closed");
+        }
+        try {
+          request.completeExceptionally(cause);
+        } catch (Exception e) {
+          LOGGER.debug("Error while failing outstanding request: {}", e.getMessage());
+        }
+      }
+    } catch (Exception e) {
+      LOGGER.debug("Error while failing outstanding requests: {}", e.getMessage());
     }
   }
 
@@ -1567,10 +1586,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(
           format(
               "Error while querying route for routing key '%s' on super stream '%s'",
@@ -1600,10 +1619,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(
           format("Error while querying partitions for super stream '%s'", superStream), e);
     }
@@ -1632,10 +1651,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException("Error while exchanging command version", e);
     }
   }
@@ -1661,10 +1680,10 @@ public class Client implements AutoCloseable {
       request.block();
       return request.response.get();
     } catch (StreamException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
-      outstandingRequests.remove(correlationId);
+      this.handleRpcError(correlationId, e);
       throw new StreamException(
           format("Error while querying statistics for stream '%s'", stream), e);
     }
@@ -2948,6 +2967,13 @@ public class Client implements AutoCloseable {
   private void debug(Supplier<String> format, Object... args) {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Connection '" + this.clientConnectionName + "': " + format.get(), args);
+    }
+  }
+
+  private void handleRpcError(int correlationId, Exception e) {
+    OutstandingRequest<?> request = this.outstandingRequests.remove(correlationId);
+    if (request != null) {
+      request.completeExceptionally(e);
     }
   }
 }

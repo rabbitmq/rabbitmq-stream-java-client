@@ -41,14 +41,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @DisabledIfFilteringNotSupported
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@StreamTestInfrastructure
 public class FilteringTest {
 
   private static final Duration CONDITION_TIMEOUT = Duration.ofSeconds(5);
