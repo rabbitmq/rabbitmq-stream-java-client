@@ -209,6 +209,6 @@ public class AuthenticationTest {
   }
 
   private boolean connectionClosedOnUpdateSecretFailure() {
-    return Utils.versionCompare(brokerVersion, "4.1.4") >= 0;
+    return TestUtils.atLeastVersion("4.1.4", brokerVersion);
   }
 }
