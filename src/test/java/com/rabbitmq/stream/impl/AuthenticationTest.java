@@ -15,8 +15,10 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Cli.*;
+import static com.rabbitmq.stream.Cli.clearPermissions;
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_13_0;
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_1_4;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -197,6 +199,34 @@ public class AuthenticationTest {
   }
 
   @Test
+  @BrokerVersionAtLeast(RABBITMQ_4_1_4)
+  void updateSecretBrokerShouldCloseConnectionIfUnauthorizedVhost() {
+    String u = "stream";
+    String p = "stream";
+    try {
+      addUser(u, p);
+      setPermissions(u, "/", "^stream.*$");
+      TestUtils.Sync closedSync = TestUtils.sync();
+      Client client =
+          cf.get(
+              new Client.ClientParameters()
+                  .username(u)
+                  .password(p)
+                  .shutdownListener(shutdownContext -> closedSync.down()));
+      clearPermissions(u);
+      assertThatThrownBy(() -> client.authenticate(credentialsProvider(u, p)))
+          .isInstanceOf(StreamException.class)
+          .hasMessageContaining(
+              String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE));
+      assertThat(closedSync).completes();
+      assertThat(client.isOpen()).isFalse();
+      client.close();
+    } finally {
+      deleteUser(u);
+    }
+  }
+
+  @Test
   @BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_4_0_0)
   void anonymousAuthenticationShouldWork() {
     try (Client ignored =
@@ -209,6 +239,6 @@ public class AuthenticationTest {
   }
 
   private boolean connectionClosedOnUpdateSecretFailure() {
-    return TestUtils.atLeastVersion("4.1.4", brokerVersion);
+    return TestUtils.atLeastVersion(RABBITMQ_4_1_4.version(), brokerVersion);
   }
 }

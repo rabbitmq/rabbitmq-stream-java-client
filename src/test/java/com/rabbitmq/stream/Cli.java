@@ -239,6 +239,10 @@ public class Cli {
             vhost, username, permissions.get(0), permissions.get(1), permissions.get(2)));
   }
 
+  public static void clearPermissions(String username) {
+    rabbitmqctl(format("clear_permissions --vhost %s %s", "/", username));
+  }
+
   public static void changePassword(String username, String newPassword) {
     rabbitmqctl(format("change_password %s %s", username, newPassword));
   }
