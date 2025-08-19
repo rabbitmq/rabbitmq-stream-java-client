@@ -15,12 +15,15 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Cli.*;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_13_0;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.sasl.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -32,6 +35,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 public class AuthenticationTest {
 
   TestUtils.ClientFactory cf;
+  String brokerVersion;
 
   @Test
   void authenticateShouldPassWithValidCredentials() {
@@ -120,27 +124,19 @@ public class AuthenticationTest {
   }
 
   @Test
-  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
-  void updateSecret() throws Exception {
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
+  void updateSecretShouldSucceedWithNewCorrectPassword() {
     String username = "stream";
     String password = "stream";
     String newPassword = "new-password";
     try {
       addUser(username, password);
       setPermissions(username, "/", "^stream.*$");
-      Client client = cf.get(new Client.ClientParameters().username("stream").password(username));
+      Client client = cf.get(new Client.ClientParameters().username(username).password(password));
       changePassword(username, newPassword);
       // OK
       client.authenticate(credentialsProvider(username, newPassword));
-      // wrong password
-      assertThatThrownBy(() -> client.authenticate(credentialsProvider(username, "dummy")))
-          .isInstanceOf(AuthenticationFailureException.class)
-          .hasMessageContaining(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE));
-      // cannot change username
-      assertThatThrownBy(() -> client.authenticate(credentialsProvider("guest", "guest")))
-          .isInstanceOf(StreamException.class)
-          .hasMessageContaining(
-              String.valueOf(Constants.RESPONSE_CODE_SASL_CANNOT_CHANGE_USERNAME));
+      assertThat(client.isOpen()).isTrue();
       client.close();
     } finally {
       deleteUser(username);
@@ -148,7 +144,60 @@ public class AuthenticationTest {
   }
 
   @Test
-  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_4_0_0)
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
+  void updateSecretBrokerShouldCloseConnectionWithWrongPassword() {
+    String u = Utils.DEFAULT_USERNAME, p = u;
+    TestUtils.Sync closedSync = TestUtils.sync();
+    Client client =
+        cf.get(
+            new Client.ClientParameters()
+                .username(u)
+                .password(p)
+                .shutdownListener(shutdownContext -> closedSync.down()));
+    // wrong password
+    assertThatThrownBy(() -> client.authenticate(credentialsProvider(u, p + "foo")))
+        .isInstanceOf(AuthenticationFailureException.class)
+        .hasMessageContaining(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE));
+    if (connectionClosedOnUpdateSecretFailure()) {
+      assertThat(closedSync).completes();
+      assertThat(client.isOpen()).isFalse();
+    }
+    client.close();
+  }
+
+  @Test
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
+  void updateSecretBrokerShouldCloseConnectionWithUpdatedUsername() {
+    String username = "stream";
+    String password = "stream";
+    try {
+      addUser(username, password);
+      setPermissions(username, "/", "^stream.*$");
+      TestUtils.Sync closedSync = TestUtils.sync();
+      Client client =
+          cf.get(
+              new Client.ClientParameters()
+                  .username(username)
+                  .password(password)
+                  .shutdownListener(shutdownContext -> closedSync.down()));
+      // cannot change username
+      String u = Utils.DEFAULT_USERNAME, p = u;
+      assertThatThrownBy(() -> client.authenticate(credentialsProvider(u, p)))
+          .isInstanceOf(StreamException.class)
+          .hasMessageContaining(
+              String.valueOf(Constants.RESPONSE_CODE_SASL_CANNOT_CHANGE_USERNAME));
+      if (connectionClosedOnUpdateSecretFailure()) {
+        assertThat(closedSync).completes();
+        assertThat(client.isOpen()).isFalse();
+      }
+      client.close();
+    } finally {
+      deleteUser(username);
+    }
+  }
+
+  @Test
+  @BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_4_0_0)
   void anonymousAuthenticationShouldWork() {
     try (Client ignored =
         cf.get(
@@ -157,5 +206,9 @@ public class AuthenticationTest {
 
   private static CredentialsProvider credentialsProvider(String username, String password) {
     return new DefaultUsernamePasswordCredentialsProvider(username, password);
+  }
+
+  private boolean connectionClosedOnUpdateSecretFailure() {
+    return Utils.versionCompare(brokerVersion, "4.1.4") >= 0;
   }
 }
