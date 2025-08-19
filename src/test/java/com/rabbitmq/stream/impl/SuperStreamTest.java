@@ -43,9 +43,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@StreamTestInfrastructure
 public class SuperStreamTest {
 
   EventLoopGroup eventLoopGroup;

@@ -28,9 +28,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@StreamTestInfrastructure
 public class OutboundMappingCallbackTest {
 
   TestUtils.ClientFactory cf;
