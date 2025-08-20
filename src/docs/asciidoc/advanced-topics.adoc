@@ -86,6 +86,31 @@ A defined set of values shared across the messages is a good candidate: geograph
 Cardinality of filter values can be from a few to a few thousands.
 Extreme cardinality (a couple or dozens of thousands) can make filtering less efficient.
 
+=== OAuth 2 Support
+
+The client can authenticate against an OAuth 2 server like https://github.com/cloudfoundry/uaa[UAA].
+It uses the https://tools.ietf.org/html/rfc6749#section-4.4[OAuth 2 Client Credentials flow].
+The https://www.rabbitmq.com/docs/oauth2[OAuth 2 plugin] must be enabled on the server side and configured to use the same OAuth 2 server as the client.
+
+How to retrieve the OAuth 2 token is configured at the environment level:
+
+.Configuring OAuth 2 token retrieval
+[source,java,indent=0]
+--------
+include::{test-examples}/EnvironmentUsage.java[tag=oauth2]
+--------
+<1> Access the OAuth 2 configuration
+<2> Set the token endpoint URI
+<3> Authenticate the client application
+<4> Set the grant type
+<5> Set optional parameters (depends on the OAuth 2 server)
+<6> Set the SSL context (e.g. to verify and trust the identity of the OAuth 2 server)
+
+The environment retrieves tokens and uses them to create stream connections.
+It also takes care of refreshing the tokens before they expire and of re-authenticating existing connections so the broker does not close them when their token expires.
+
+The environment uses the same token for all the connections it maintains.
+
 === Using Native `epoll`
 
 The stream Java client uses the https://netty.io/[Netty] network framework and its Java NIO transport implementation by default.

@@ -20,11 +20,12 @@ import com.rabbitmq.stream.observation.micrometer.MicrometerObservationCollector
 import io.micrometer.observation.ObservationRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
-import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollIoHandler;
 import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+
+import javax.net.ssl.SSLContext;
 import java.io.FileInputStream;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -138,6 +139,22 @@ public class EnvironmentUsage {
         // tag::stream-deletion[]
         environment.deleteStream("my-stream");  // <1>
         // end::stream-deletion[]
+    }
+
+    void oauth2() {
+        SSLContext sslContext = null;
+        // tag::oauth2[]
+        Environment env = Environment.builder()
+            .oauth2()  // <1>
+            .tokenEndpointUri("https://localhost:8443/uaa/oauth/token/")  // <2>
+            .clientId("rabbitmq").clientSecret("rabbitmq")  // <3>
+            .grantType("password")  // <4>
+            .parameter("username", "rabbit_super")  // <5>
+            .parameter("password", "rabbit_super")  // <5>
+            .sslContext(sslContext)  // <6>
+            .environmentBuilder()
+            .build();
+        // end::oauth2[]
     }
 
     void nativeEpoll() {
