@@ -70,6 +70,8 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.GenericFutureListener;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
@@ -488,7 +490,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Map<String, String>> request = outstandingRequest();
       LOGGER.debug("Peer properties request has correlation ID {}", correlationId);
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       if (request.error() == null) {
         return request.response.get();
@@ -568,7 +570,7 @@ public class Client implements AutoCloseable {
       }
       OutstandingRequest<SaslAuthenticateResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -593,7 +595,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(virtualHost.getBytes(CHARSET));
       OutstandingRequest<OpenResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       if (!request.response.get().isOk()) {
         throw new StreamException(
@@ -635,7 +637,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(reason.getBytes(CHARSET));
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       if (!request.response.get().isOk()) {
         LOGGER.warn(
@@ -665,7 +667,7 @@ public class Client implements AutoCloseable {
       bb.writeInt(correlationId);
       OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -695,7 +697,7 @@ public class Client implements AutoCloseable {
       writeMap(bb, arguments);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -746,7 +748,7 @@ public class Client implements AutoCloseable {
       writeMap(bb, arguments);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -772,7 +774,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(superStream.getBytes(CHARSET));
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -856,7 +858,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(stream.getBytes(CHARSET));
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -887,7 +889,7 @@ public class Client implements AutoCloseable {
       writeArray(bb, streams);
       OutstandingRequest<Map<String, StreamMetadata>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -926,7 +928,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(stream.getBytes(CHARSET));
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -951,7 +953,7 @@ public class Client implements AutoCloseable {
       bb.writeByte(publisherId);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -1289,7 +1291,7 @@ public class Client implements AutoCloseable {
         subscriptionOffsets.add(
             new SubscriptionOffset(subscriptionId, offsetSpecification.getOffset()));
       }
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -1346,10 +1348,9 @@ public class Client implements AutoCloseable {
       bb.writeBytes(stream.getBytes(CHARSET));
       OutstandingRequest<QueryOffsetResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
-      QueryOffsetResponse response = request.response.get();
-      return response;
+      return request.response.get();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1387,7 +1388,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(stream.getBytes(CHARSET));
       OutstandingRequest<QueryPublisherSequenceResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       QueryPublisherSequenceResponse response = request.response.get();
       if (!response.isOk()) {
@@ -1421,7 +1422,7 @@ public class Client implements AutoCloseable {
       bb.writeByte(subscriptionId);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -1586,7 +1587,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(superStream.getBytes(CHARSET));
       OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -1619,7 +1620,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(superStream.getBytes(CHARSET));
       OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -1651,7 +1652,7 @@ public class Client implements AutoCloseable {
       }
       OutstandingRequest<List<FrameHandlerInfo>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -1680,7 +1681,7 @@ public class Client implements AutoCloseable {
       bb.writeBytes(stream.getBytes(CHARSET));
       OutstandingRequest<StreamStatsResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       request.block();
       return request.response.get();
     } catch (StreamException e) {
@@ -2972,10 +2973,37 @@ public class Client implements AutoCloseable {
     }
   }
 
-  private void handleRpcError(int correlationId, Exception e) {
-    OutstandingRequest<?> request = this.outstandingRequests.remove(correlationId);
+  private GenericFutureListener<Future<? super Void>> maybeFailRpc(int correlationId) {
+    return new FailRpcFuture(this.outstandingRequests, correlationId);
+  }
+
+  private void handleRpcError(int correlationId, Throwable e) {
+    handleRpcError(this.outstandingRequests, correlationId, e);
+  }
+
+  private static void handleRpcError(
+      Map<Integer, OutstandingRequest<?>> requests, int correlationId, Throwable e) {
+    OutstandingRequest<?> request = requests.remove(correlationId);
     if (request != null) {
       request.completeExceptionally(e);
+    }
+  }
+
+  private static final class FailRpcFuture implements GenericFutureListener<Future<? super Void>> {
+
+    private final Map<Integer, OutstandingRequest<?>> requests;
+    private final int correlationId;
+
+    private FailRpcFuture(Map<Integer, OutstandingRequest<?>> requests, int correlationId) {
+      this.requests = requests;
+      this.correlationId = correlationId;
+    }
+
+    @Override
+    public void operationComplete(Future<? super Void> f) {
+      if (!f.isSuccess()) {
+        handleRpcError(requests, correlationId, f.cause());
+      }
     }
   }
 }
