@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.3.0-SNAPSHOT</span>
-<br><span id="revremark">(ca55e27)</span>
+<br><span id="revremark">(80fa1fa)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -648,6 +648,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <li><a href="#considerations-on-filtering">Considerations on Filtering</a></li>
 </ul>
 </li>
+<li><a href="#oauth-2-support">OAuth 2 Support</a></li>
 <li><a href="#using-native-epoll">Using Native <code>epoll</code></a></li>
 </ul>
 </li>
@@ -4532,6 +4533,67 @@ Extreme cardinality (a couple or dozens of thousands) can make filtering less ef
 </div>
 </div>
 <div class="sect2">
+<h3 id="oauth-2-support"><a class="anchor" href="#oauth-2-support"></a>OAuth 2 Support</h3>
+<div class="paragraph">
+<p>The client can authenticate against an OAuth 2 server like <a href="https://github.com/cloudfoundry/uaa">UAA</a>.
+It uses the <a href="https://tools.ietf.org/html/rfc6749#section-4.4">OAuth 2 Client Credentials flow</a>.
+The <a href="https://www.rabbitmq.com/docs/oauth2">OAuth 2 plugin</a> must be enabled on the server side and configured to use the same OAuth 2 server as the client.</p>
+</div>
+<div class="paragraph">
+<p>How to retrieve the OAuth 2 token is configured at the environment level:</p>
+</div>
+<div class="listingblock">
+<div class="title">Configuring OAuth 2 token retrieval</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java">Environment env = Environment.builder()
+    .oauth2()  <i class="conum" data-value="1"></i><b>(1)</b>
+    .tokenEndpointUri(<span class="string"><span class="delimiter">&quot;</span><span class="content">https://localhost:8443/uaa/oauth/token/</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="2"></i><b>(2)</b>
+    .clientId(<span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq</span><span class="delimiter">&quot;</span></span>).clientSecret(<span class="string"><span class="delimiter">&quot;</span><span class="content">rabbitmq</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="3"></i><b>(3)</b>
+    .grantType(<span class="string"><span class="delimiter">&quot;</span><span class="content">password</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="4"></i><b>(4)</b>
+    .parameter(<span class="string"><span class="delimiter">&quot;</span><span class="content">username</span><span class="delimiter">&quot;</span></span>, <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbit_super</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="5"></i><b>(5)</b>
+    .parameter(<span class="string"><span class="delimiter">&quot;</span><span class="content">password</span><span class="delimiter">&quot;</span></span>, <span class="string"><span class="delimiter">&quot;</span><span class="content">rabbit_super</span><span class="delimiter">&quot;</span></span>)  <i class="conum" data-value="5"></i><b>(5)</b>
+    .sslContext(sslContext)  <i class="conum" data-value="6"></i><b>(6)</b>
+    .environmentBuilder()
+    .build();</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Access the OAuth 2 configuration</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Set the token endpoint URI</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Authenticate the client application</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Set the grant type</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Set optional parameters (depends on the OAuth 2 server)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>Set the SSL context (e.g. to verify and trust the identity of the OAuth 2 server)</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The environment retrieves tokens and uses them to create stream connections.
+It also takes care of refreshing the tokens before they expire and of re-authenticating existing connections so the broker does not close them when their token expires.</p>
+</div>
+<div class="paragraph">
+<p>The environment uses the same token for all the connections it maintains.</p>
+</div>
+</div>
+<div class="sect2">
 <h3 id="using-native-epoll"><a class="anchor" href="#using-native-epoll"></a>Using Native <code>epoll</code></h3>
 <div class="paragraph">
 <p>The stream Java client uses the <a href="https://netty.io/">Netty</a> network framework and its Java NIO transport implementation by default.
@@ -5006,7 +5068,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.3.0-SNAPSHOT<br>
-Last updated 2025-08-20 10:14:17 UTC
+Last updated 2025-08-21 12:30:46 UTC
 </div>
 </div>
 </body>
