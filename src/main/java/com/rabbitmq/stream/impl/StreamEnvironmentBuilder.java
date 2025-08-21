@@ -21,7 +21,9 @@ import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.metrics.MetricsCollector;
+import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
+import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
 import com.rabbitmq.stream.sasl.SaslConfiguration;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufAllocator;
@@ -32,13 +34,16 @@ import io.netty.handler.ssl.SslContextBuilder;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +56,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
   private final Client.ClientParameters clientParameters = new Client.ClientParameters();
   private final DefaultTlsConfiguration tls = new DefaultTlsConfiguration(this);
   private final DefaultNettyConfiguration netty = new DefaultNettyConfiguration(this);
+  private final DefaultOAuth2Configuration oauth2 = new DefaultOAuth2Configuration(this);
   private ScheduledExecutorService scheduledExecutorService;
   private List<URI> uris = Collections.emptyList();
   private BackOffDelayPolicy recoveryBackOffDelayPolicy =
@@ -295,6 +301,11 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this.netty;
   }
 
+  @Override
+  public OAuth2Configuration oauth2() {
+    return this.oauth2;
+  }
+
   StreamEnvironmentBuilder clientFactory(Function<Client.ClientParameters, Client> clientFactory) {
     this.clientFactory = clientFactory;
     return this;
@@ -348,6 +359,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
         maxTrackingConsumersByConnection,
         maxConsumersByConnection,
         tls,
+        oauth2,
         netty.byteBufAllocator,
         lazyInit,
         connectionNamingStrategy,
@@ -457,6 +469,112 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     @Override
     public EnvironmentBuilder environmentBuilder() {
       return this.environmentBuilder;
+    }
+  }
+
+  static class DefaultOAuth2Configuration implements OAuth2Configuration {
+
+    private final EnvironmentBuilder builder;
+    private final Map<String, String> parameters = new HashMap<>();
+    private String tokenEndpointUri;
+    private String clientId;
+    private String clientSecret;
+    private String grantType = "client_credentials";
+    private Function<Instant, Duration> refreshDelayStrategy =
+        TokenCredentialsManager.DEFAULT_REFRESH_DELAY_STRATEGY;
+    private SSLContext sslContext;
+
+    DefaultOAuth2Configuration(StreamEnvironmentBuilder builder) {
+      this.builder = builder;
+    }
+
+    @Override
+    public OAuth2Configuration tokenEndpointUri(String uri) {
+      this.builder.saslConfiguration(DefaultSaslConfiguration.PLAIN);
+      this.builder.credentialsProvider(null);
+      this.tokenEndpointUri = uri;
+      return this;
+    }
+
+    @Override
+    public OAuth2Configuration clientId(String clientId) {
+      this.clientId = clientId;
+      return this;
+    }
+
+    @Override
+    public OAuth2Configuration clientSecret(String clientSecret) {
+      this.clientSecret = clientSecret;
+      return this;
+    }
+
+    @Override
+    public OAuth2Configuration grantType(String grantType) {
+      this.grantType = grantType;
+      return this;
+    }
+
+    @Override
+    public OAuth2Configuration parameter(String name, String value) {
+      if (value == null) {
+        this.parameters.remove(name);
+      } else {
+        this.parameters.put(name, value);
+      }
+      return this;
+    }
+
+    @Override
+    public OAuth2Configuration sslContext(SSLContext sslContext) {
+      this.sslContext = sslContext;
+      return this;
+    }
+
+    @Override
+    public EnvironmentBuilder environmentBuilder() {
+      return this.builder;
+    }
+
+    DefaultOAuth2Configuration refreshDelayStrategy(
+        Function<Instant, Duration> refreshDelayStrategy) {
+      this.refreshDelayStrategy = refreshDelayStrategy;
+      return this;
+    }
+
+    Function<Instant, Duration> refreshDelayStrategy() {
+      return this.refreshDelayStrategy;
+    }
+
+    String tokenEndpointUri() {
+      return this.tokenEndpointUri;
+    }
+
+    String clientId() {
+      return this.clientId;
+    }
+
+    String clientSecret() {
+      return this.clientSecret;
+    }
+
+    String grantType() {
+      return this.grantType;
+    }
+
+    Map<String, String> parameters() {
+      return Map.copyOf(this.parameters);
+    }
+
+    SSLContext sslContext() {
+      return this.sslContext;
+    }
+
+    boolean enabled() {
+      return this.tokenEndpointUri != null;
+    }
+
+    boolean tlsEnabled() {
+      return this.sslContext != null;
     }
   }
 }

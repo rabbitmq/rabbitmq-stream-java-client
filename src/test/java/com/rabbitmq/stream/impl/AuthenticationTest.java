@@ -134,7 +134,7 @@ public class AuthenticationTest {
     try {
       addUser(username, password);
       setPermissions(username, "/", "^stream.*$");
-      Client client = cf.get(new Client.ClientParameters().username(username).password(password));
+      Client client = cf.get(new Client.ClientParameters().username("stream").password(username));
       changePassword(username, newPassword);
       // OK
       client.authenticate(credentialsProvider(username, newPassword));

@@ -51,6 +51,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
@@ -121,19 +122,31 @@ public final class TestUtils {
   public static Duration waitAtMost(
       Duration timeout, CallableBooleanSupplier condition, Supplier<String> message)
       throws Exception {
+    return waitAtMost(timeout, Duration.ofMillis(100), condition, message);
+  }
+
+  public static Duration waitAtMost(
+      Duration timeout, Duration waitTime, CallableBooleanSupplier condition) throws Exception {
+    return waitAtMost(timeout, waitTime, condition, null);
+  }
+
+  public static Duration waitAtMost(
+      Duration timeout,
+      Duration waitTime,
+      CallableBooleanSupplier condition,
+      Supplier<String> message)
+      throws Exception {
     if (condition.getAsBoolean()) {
       return Duration.ZERO;
     }
-    int waitTime = 100;
-    int waitedTime = 0;
-    int timeoutInMs = (int) timeout.toMillis();
+    Duration waitedTime = Duration.ZERO;
     Exception exception = null;
-    while (waitedTime <= timeoutInMs) {
-      Thread.sleep(waitTime);
-      waitedTime += waitTime;
+    while (waitedTime.compareTo(timeout) <= 0) {
+      Thread.sleep(waitTime.toMillis());
+      waitedTime = waitedTime.plus(waitTime);
       try {
         if (condition.getAsBoolean()) {
-          return Duration.ofMillis(waitedTime);
+          return waitedTime;
         }
         exception = null;
       } catch (Exception e) {
@@ -151,7 +164,7 @@ public final class TestUtils {
     } else {
       fail(msg, exception);
     }
-    return Duration.ofMillis(waitedTime);
+    return waitedTime;
   }
 
   public static Address localhost() {
@@ -521,6 +534,12 @@ public final class TestUtils {
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
+  @ExtendWith(DisabledIfOauth2AuthBackendNotEnabledCondition.class)
+  @interface DisabledIfOauth2AuthBackendNotEnabled {}
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
   @ExtendWith(DisabledIfTlsNotEnabledCondition.class)
   public @interface DisabledIfTlsNotEnabled {}
 
@@ -879,6 +898,16 @@ public final class TestUtils {
     }
   }
 
+  static class DisabledIfOauth2AuthBackendNotEnabledCondition
+      extends DisabledIfPluginNotEnabledCondition {
+
+    DisabledIfOauth2AuthBackendNotEnabledCondition() {
+      super(
+          "OAuth2 authentication backend",
+          output -> output.contains("rabbitmq_auth_backend_oauth2"));
+    }
+  }
+
   static class DisabledIfTlsNotEnabledCondition implements ExecutionCondition {
 
     @Override
@@ -1139,15 +1168,15 @@ public final class TestUtils {
     return AMQP_CF.newConnection();
   }
 
-  static Sync sync() {
+  public static Sync sync() {
     return sync(1);
   }
 
-  static Sync sync(int count) {
+  public static Sync sync(int count) {
     return new Sync(count);
   }
 
-  static class Sync {
+  public static class Sync {
 
     private final AtomicReference<CountDownLatch> latch = new AtomicReference<>();
 
@@ -1155,7 +1184,7 @@ public final class TestUtils {
       this.latch.set(new CountDownLatch(count));
     }
 
-    void down() {
+    public void down() {
       this.latch.get().countDown();
     }
 
@@ -1191,5 +1220,13 @@ public final class TestUtils {
 
   static Collection<Thread> threads() {
     return Thread.getAllStackTraces().keySet();
+  }
+
+  public static int randomNetworkPort() throws IOException {
+    ServerSocket socket = new ServerSocket();
+    socket.bind(null);
+    int port = socket.getLocalPort();
+    socket.close();
+    return port;
   }
 }

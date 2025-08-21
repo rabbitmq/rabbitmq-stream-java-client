@@ -506,6 +506,18 @@ final class ConsumersCoordinator implements AutoCloseable {
       return this.state.get();
     }
 
+    private void markConsuming() {
+      if (this.consumer != null) {
+        this.consumer.consuming();
+      }
+    }
+
+    private void markNotConsuming() {
+      if (this.consumer != null) {
+        this.consumer.notConsuming();
+      }
+    }
+
     String label() {
       return String.format(
           "[id=%d, stream=%s, name=%s, consumer=%d]",
@@ -700,6 +712,7 @@ final class ConsumersCoordinator implements AutoCloseable {
                   "Subscription connection has {} consumer(s) over {} stream(s) to recover",
                   this.subscriptionTrackers.stream().filter(Objects::nonNull).count(),
                   this.streamToStreamSubscriptions.size());
+              iterate(this.subscriptionTrackers, SubscriptionTracker::markNotConsuming);
               environment
                   .scheduledExecutorService()
                   .execute(
@@ -774,6 +787,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             }
 
             if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
+              iterate(affectedSubscriptions, SubscriptionTracker::markNotConsuming);
               environment
                   .scheduledExecutorService()
                   .execute(
@@ -1132,6 +1146,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           throw e;
         }
         subscriptionTracker.state(SubscriptionState.ACTIVE);
+        subscriptionTracker.markConsuming();
         LOGGER.debug("Subscribed to '{}'", subscriptionTracker.stream);
       } finally {
         this.subscriptionManagerLock.unlock();
@@ -1396,5 +1411,14 @@ final class ConsumersCoordinator implements AutoCloseable {
   static Broker pickBroker(
       Function<List<Broker>, Broker> picker, Collection<BrokerWrapper> candidates) {
     return picker.apply(keepReplicasIfPossible(candidates));
+  }
+
+  private static void iterate(
+      Collection<SubscriptionTracker> l, java.util.function.Consumer<SubscriptionTracker> c) {
+    for (SubscriptionTracker tracker : l) {
+      if (tracker != null) {
+        c.accept(tracker);
+      }
+    }
   }
 }

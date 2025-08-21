@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
+import javax.net.ssl.SSLContext;
 
 /**
  * API to configure and create an {@link Environment}.
@@ -509,6 +510,92 @@ public interface EnvironmentBuilder {
      * @return the Netty configuration helper
      */
     NettyConfiguration bootstrapCustomizer(Consumer<Bootstrap> bootstrapCustomizer);
+
+    /**
+     * Go back to the environment builder
+     *
+     * @return the environment builder
+     */
+    EnvironmentBuilder environmentBuilder();
+  }
+
+  /**
+   * OAuth 2 settings.
+   *
+   * @return OAuth 2 settings
+   * @see OAuth2Configuration
+   * @since 1.3.0
+   */
+  OAuth2Configuration oauth2();
+
+  /**
+   * Configuration to retrieve a token using the <a
+   * href="https://tools.ietf.org/html/rfc6749#section-4.4">OAuth 2 Client Credentials flow</a>.
+   *
+   * @since 1.3.0
+   */
+  interface OAuth2Configuration {
+
+    /**
+     * Set the URI to access to get the token.
+     *
+     * <p>TLS is supported by providing a <code>HTTPS</code> URI and setting a {@link
+     * javax.net.ssl.SSLContext}. See {@link #tls()} for more information. <em>Applications in
+     * production should always use HTTPS to retrieve tokens.</em>
+     *
+     * @param uri access URI
+     * @return OAuth 2 configuration
+     * @see #sslContext(javax.net.ssl.SSLContext)
+     */
+    OAuth2Configuration tokenEndpointUri(String uri);
+
+    /**
+     * Set the OAuth 2 client ID
+     *
+     * <p>The client ID usually identifies the application that requests a token.
+     *
+     * @param clientId client ID
+     * @return OAuth 2 configuration
+     */
+    OAuth2Configuration clientId(String clientId);
+
+    /**
+     * Set the secret (password) to use to get a token.
+     *
+     * @param clientSecret client secret
+     * @return OAuth 2 configuration
+     */
+    OAuth2Configuration clientSecret(String clientSecret);
+
+    /**
+     * Set the grant type to use when requesting the token.
+     *
+     * <p>The default is <code>client_credentials</code>, but some OAuth 2 servers can use
+     * non-standard grant types to request tokens with extra-information.
+     *
+     * @param grantType grant type
+     * @return OAuth 2 configuration
+     */
+    OAuth2Configuration grantType(String grantType);
+
+    /**
+     * Set a parameter to pass in the request.
+     *
+     * <p>The OAuth 2 server may require extra parameters to narrow down the identity of the user.
+     *
+     * @param name name of the parameter
+     * @param value value of the parameter
+     * @return OAuth 2 configuration
+     */
+    OAuth2Configuration parameter(String name, String value);
+
+    /**
+     * {@link javax.net.ssl.SSLContext} for HTTPS requests.
+     *
+     * @param sslContext the SSL context
+     * @return OAuth 2 configuration
+     */
+    OAuth2Configuration sslContext(SSLContext sslContext);
 
     /**
      * Go back to the environment builder
