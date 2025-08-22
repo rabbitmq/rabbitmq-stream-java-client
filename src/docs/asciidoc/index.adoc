@@ -6,15 +6,13 @@ ifndef::imagesdir[:imagesdir: images]
 ifndef::sourcedir[:sourcedir: ../../main/java]
 :source-highlighter: prettify
 
-The RabbitMQ Stream Java Client is a Java library to communicate with
-the https://rabbitmq.com/stream.html[RabbitMQ Stream Plugin].
-It allows creating and deleting streams, as well as publishing to and consuming from
-these streams. Learn more in the <<overview.adoc#stream-client-overview,client overview>>.
+The RabbitMQ Stream Java Client is a Java library for communicating with the https://rabbitmq.com/stream.html[RabbitMQ Stream Plugin].
+Use it to create and delete streams, publish messages, and consume from streams.
+Learn more in the <<overview.adoc#stream-client-overview,client overview>>.
 
 This library requires at least Java 11, but Java 21 or more is recommended.
 
 https://github.com/rabbitmq/rabbitmq-stream-perf-test[Stream PerfTest] is a performance testing tool based on this client library.
-
 
 include::overview.adoc[]
 

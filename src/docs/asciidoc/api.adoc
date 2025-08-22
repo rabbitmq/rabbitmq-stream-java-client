@@ -5,8 +5,8 @@
 
 === Overview
 
-This section describes the API to connect to the RabbitMQ Stream Plugin, publish messages, and
-consume messages. There are 3 main interfaces:
+This section covers the API for connecting to the RabbitMQ Stream Plugin and working with messages.
+The API provides three main interfaces:
 
 * `com.rabbitmq.stream.Environment` for connecting to a node and optionally
 managing streams.
@@ -17,9 +17,9 @@ managing streams.
 
 ==== Creating the Environment
 
-The environment is the main entry point to a node or a cluster of nodes. `Producer` and
-`Consumer` instances are created from an `Environment` instance. Here is the simplest
-way to create an `Environment` instance:
+The environment serves as the main entry point to a node or a cluster of nodes.
+`Producer` and `Consumer` instances are created from an `Environment` instance.
+Here is the simplest way to create an `Environment` instance:
 
 .Creating an environment with all the defaults
 [source,java,indent=0]
@@ -29,11 +29,10 @@ include::{test-examples}/EnvironmentUsage.java[tag=environment-creation]
 <1> Create an environment that will connect to localhost:5552
 <2> Close the environment after usage
 
-Note the environment must be closed to release resources when it is no
-longer needed.
+Always close the environment to release resources when finished.
 
-Consider the environment like a long-lived object. An application will usually
-create one `Environment` instance when it starts up and close it when it exits.
+Treat the environment as a long-lived object.
+An application will usually create one `Environment` instance when it starts up and close it when it exits.
 
 It is possible to use a URI to specify all the necessary information to
 connect to a node:
@@ -52,10 +51,11 @@ https://www.rabbitmq.com/uri-spec.html[AMQP 0.9.1 URI],
 except the protocol must be `rabbitmq-stream`.
 <<enabling-tls,TLS is enabled>> by using the `rabbitmq-stream+tls` scheme in the URI.
 
-When using one URI, the corresponding node will be the main entry point to connect to. The
-`Environment` will then use the stream protocol to find out more about streams topology
-(leaders and replicas) when asked to create `Producer` and `Consumer` instances.
-The `Environment` may become blind if this node goes down though, so it may be more appropriate to specify several other URIs to try in case of failure of a node:
+When using one URI, the corresponding node will be the main entry point to connect to.
+The `Environment` will then use the stream protocol to find out more about streams topology (leaders and replicas) when asked to create `Producer` and `Consumer` instances.
+
+If this node fails, the `Environment` will lose connectivity.
+To improve resilience, specify multiple URIs as fallback options:
 
 .Creating an environment with several URIs
 [source,java,indent=0]
@@ -70,11 +70,11 @@ will pick a new URI randomly in case of disconnection.
 [[understanding-connection-logic]]
 ==== Understanding Connection Logic
 
-Creating the environment to connect to a cluster node works usually seamlessly.
-Creating publishers and consumers can cause problems as the client uses hints from the cluster to find the nodes where stream leaders and replicas are located to connect to the appropriate nodes.
+Creating the environment to connect to a cluster node usually works seamlessly.
+Creating publishers and consumers may encounter connection issues because the client relies on cluster hints to locate stream leaders and replicas.
 
 These connection hints can be accurate or less appropriate depending on the infrastructure.
-If you hit connection problems at some point – like hostnames impossible to resolve for client applications - this https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams[blog post] should help you understand what is going on and fix the issues.
+If you encounter connection problems (such as unresolvable hostnames), this https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams[blog post] explains the root causes and solutions.
 Setting the `advertised_host` and `advertised_port` https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams#advertised-host-and-port[configuration entries] should solve the most common connection problems.
 
 To make the local development experience simple, the client library can choose to always use `localhost` for producers and consumers.
@@ -403,9 +403,8 @@ include::{test-examples}/ProducerUsage.java[tag=producer-creation]
 <3> Create the producer instance with `build()`
 <4> Close the producer after usage
 
-Consider a `Producer` instance like a long-lived object, do not create one
-to send just one message.
-
+Treat `Producer` instances as long-lived objects.
+Avoid creating a producer for single-message operations.
 
 [NOTE]
 .Producer thread safety
@@ -499,9 +498,7 @@ include::{test-examples}/ProducerUsage.java[tag=producer-publish]
 <2> Create the message with `Producer#messageBuilder()`
 <3> Define the behavior on publish confirmation
 
-Messages are not only made of a `byte[]` payload, we will see in
-<<working-with-complex-messages,the next section>>
-they can also carry pre-defined and application properties.
+Messages are not only made of a `byte[]` payload, as shown in <<working-with-complex-messages,the next section>> they can also carry pre-defined and application properties.
 
 [NOTE]
 .Use a `MessageBuilder` instance only once
@@ -511,11 +508,8 @@ need to create a new instance of `MessageBuilder` for every message
 you want to create.
 ====
 
-The `ConfirmationHandler` defines an asynchronous callback invoked
-when the client received from the broker the confirmation the message
-has been taken into account. The `ConfirmationHandler` is the place
-for any logic on publishing confirmation, including
-re-publishing the message if it is negatively acknowledged.
+The `ConfirmationHandler` defines an asynchronous callback invoked when the broker confirms message receipt.
+The `ConfirmationHandler` is the place for any logic on publishing confirmation, including re-publishing the message if it is negatively acknowledged.
 
 [WARNING]
 .Keep the confirmation callback as short as possible
@@ -532,7 +526,7 @@ a separate thread (e.g. with an asynchronous `ExecutorService`).
 
 The publishing example above showed that messages are made of
 a byte array payload, but it did not go much further. Messages in RabbitMQ Stream
-can actually be more sophisticated, as they comply to the
+can actually be more sophisticated, as they comply with the
 https://www.amqp.org/resources/specifications[AMQP 1.0 message format].
 
 In a nutshell, a message in RabbitMQ Stream has the following structure:
@@ -594,12 +588,12 @@ on 2 client-side elements: the _producer name_ and the _message publishing ID_.
 
 [[deduplication-multithreading]]
 [WARNING]
-.Only one publisher instance with a given name and no multithreading to guarantee deduplication
+.Deduplication Requirements: Single Publisher Instance and Single Thread
 ====
 We'll see below that deduplication works using a strictly increasing sequence for messages.
 This means messages must be published in order, so there must be only _one publisher instance with a given name_ and this instance must publish messages _within a single thread_.
 
-With several publisher instances with the same name, one instance can be "ahead" of the others for the sequence ID: if it publishes a message with sequence ID 100, any message from any instance with a smaller lower sequence ID will be filtered out.
+With several publisher instances with the same name, one instance can be "ahead" of the others for the sequence ID: if it publishes a message with sequence ID 100, any message from any instance with a lower sequence ID will be filtered out.
 
 If there is only one publisher instance with a given name, it should publish messages in a single thread.
 Even if messages are _created_ in order, with the proper sequence ID, they can get out of order if they are published in several threads, e.g. message 5 can be _published_ before message 2.
@@ -612,11 +606,8 @@ If you worry about performance, note it is possible to publish hundreds of thous
 [WARNING]
 .Deduplication is not guaranteed when using sub-entries batching
 ====
-It is not possible to guarantee deduplication when
-<<sub-entry-batching-and-compression, sub-entry batching>> is in use.
-Sub-entry batching is disabled by default and it does not prevent from
-batching messages in a single publish frame, which can already provide
-very high throughput.
+It is not possible to guarantee deduplication when <<sub-entry-batching-and-compression, sub-entry batching>> is in use.
+Sub-entry batching is disabled by default and it does not prevent batching messages in a single publish frame, which can already provide very high throughput.
 ====
 
 ===== Setting the Name of a Producer
@@ -820,7 +811,7 @@ include::{test-examples}/ConsumerUsage.java[tag=producer-creation]
 <5> Build the consumer
 <6> Close consumer after usage
 
-The broker start sending messages as soon as the `Consumer` instance is created.
+The broker starts sending messages as soon as the `Consumer` instance is created.
 
 [WARNING]
 .The message processing callback can take its time, but not too much
@@ -962,7 +953,7 @@ made of 2 chunks:
 ....
 
 Each chunk contains a timestamp of its creation time.
-This is this timestamp the broker uses to find the appropriate chunk to start from when using a timestamp specification.
+The broker uses this timestamp to find the appropriate chunk to start from when using a timestamp specification.
 The broker chooses the closest chunk _before_ the specified timestamp, that is why consumers may see messages published a bit before what they specified.
 
 [[consumer-offset-tracking]]
@@ -1037,7 +1028,7 @@ manual tracking.
 [[consumer-manual-offset-tracking]]
 ===== Manual Offset Tracking
 
-The manual tracking strategy lets the developer in charge of storing offsets
+The manual tracking strategy gives the developer control of storing offsets
 whenever they want, not only after a given number of messages has been received
 and supposedly processed, like automatic tracking does.
 
@@ -1082,7 +1073,7 @@ make the stream grow unnecessarily, as the broker persists offset
 tracking entries in the stream itself.
 
 A good rule of thumb is to store the offset every few thousands
-of messages. Of course, when the consumer will restart consuming in a new incarnation, the
+of messages. Of course, when the consumer restarts consuming in a new incarnation, the
 last tracked offset may be a little behind the very last message the previous incarnation
 actually processed, so the consumer may see some messages that have been already processed.
 
@@ -1091,8 +1082,9 @@ last duplicated messages.
 
 '''
 
-_Is the offset a reliable absolute value?_ Message offsets may not be contiguous.
-This implies that the message at offset 500 in a stream may
+_Is the offset a reliable absolute value?_
+Message offsets may not be contiguous.
+This means the message at offset 500 in a stream may
 not be the 501 message in the stream (offsets start at 0).
 There can be different types of entries in a stream storage, a message is
 just one of them. For example, storing an offset creates an offset tracking

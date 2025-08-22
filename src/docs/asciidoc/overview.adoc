@@ -7,50 +7,40 @@ consuming removes messages from the queue. In a RabbitMQ stream, consuming leave
 the stream intact. So the content of a stream can be read and re-read without
 impact or destructive effect.
 
-None of the stream or classical queue data structure is better than the other,
-they are usually suited for different use cases.
+A RabbitMQ stream is a persistent and replicated data structure that models an https://en.wikipedia.org/wiki/Append-only[append-only log].
+It differs from traditional RabbitMQ queues in how message consumption works:
+
+* **Traditional queue:** Consuming removes messages from the queue
+* **Stream:** Consuming leaves messages intact for future reads
+
+This allows stream content to be read and re-read multiple times without any destructive effects.
+
+Neither streams nor traditional queues are inherently better — they serve different use cases.
 
 == When to Use RabbitMQ Stream?
 
 RabbitMQ Stream was developed to cover the following messaging use cases:
 
-* _Large fan-outs:_ when several consumer applications need to read the same messages.
-* _Replay / Time-traveling:_ when consumer applications need to read the whole
-history of data or from a given point in a stream.
-* _Throughput performance:_ when higher throughput than with other protocols
-(AMQP, STOMP, MQTT) is required.
-* _Large logs:_ when large amount of data need to be stored, with minimal
-in-memory overhead.
+* **Large fan-outs:** Multiple consumer applications need to read the same messages
+* **Replay/Time-traveling:** Applications need to read message history or resume from a specific point
+* **High throughput:** Higher performance is required compared to other protocols (AMQP, STOMP, MQTT)
+* **Large logs:** Large amounts of data must be stored with minimal memory overhead
 
 == Other Way to Use Streams in RabbitMQ
 
-It is also possible to use the stream abstraction in RabbitMQ
-with the AMQP 0-9-1 protocol. Instead of consuming from a stream
-with the stream protocol, one consumes from a "stream-powered" queue with
-the AMQP 0-9-1 protocol. A "stream-powered" queue is a special type of queue that
-is backed up with a stream infrastructure layer and adapted to
-provide the stream semantics (mainly non-destructive reading).
+You can also use streams in RabbitMQ with any protocol RabbitMQ supports (AMQP, MQTT, STOMP).
+Instead of using the stream protocol directly, you consume from "stream-powered" queues using e.g. AMQP.
+These special queues are backed by stream infrastructure and provide stream semantics (primarily non-destructive reading).
 
-Using such a queue has the advantage to provide the features
-inherent to the stream abstraction (append-only structure, non-destructive
-reading) with any AMQP 0-9-1 client library. This is clearly
-interesting when considering the maturity of AMQP 0-9-1 client libraries
-and the ecosystem around AMQP 0-9-1.
+Stream-powered queues offer stream features (append-only structure, non-destructive reading) while still using your protocol of choice.
 
-But by using it, one does not benefit from the performance
-of the stream protocol, which has been designed for performance in mind,
-whereas AMQP 0-9-1 is a more general-purpose protocol.
-
-It is not possible to use "stream-powered" queues with the stream Java client,
-you need to use an AMQP 0-9-1 client library.
+But by using another protocol than the stream protocol, one may not benefit from the performance it provides, as it has been designed with high throughput in mind.
 
 == Guarantees
 
-RabbitMQ stream provides at-least-once guarantees thanks to the
-publisher confirm mechanism, which is supported by the stream Java client.
+RabbitMQ stream provides at-least-once guarantees thanks to the publisher confirm mechanism.
 
-Message <<api.adoc#outbound-message-deduplication,deduplication>>
-is also supported on the publisher side.
+Message <<api.adoc#outbound-message-deduplication,deduplication>> is also supported on the publisher side.
 
 [[stream-client-overview]]
 == Stream Client Overview
@@ -60,18 +50,14 @@ https://github.com/rabbitmq/rabbitmq-server/blob/v{broker-version}.x/deps/rabbit
 and avoids dealing with low-level concerns by providing high-level functionalities
 to build fast, efficient, and robust client applications.
 
-* _administrate streams (creation/deletion) directly from applications._ This
-can also be useful for development and testing.
-* _adapt publishing throughput_ thanks to the configurable batch size and flow control.
-* _avoid publishing duplicate messages_ thanks to message deduplication.
-* _consume asynchronously from streams and resume where left off_ thanks to
-automatic or manual offset tracking.
-* _enforce https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams/#client-workaround-with-a-load-balancer[best practices] to create client connections_ – to stream leaders for publishers to minimize inter-node traffic and to stream replicas for consumers to offload leaders.
-* _optimize resources_ thanks to automatic growing and shrinking of
-connections depending on the number of publishers and consumers.
-* _let the client handle network failure_ thanks to automatic connection
-recovery and automatic re-subscription for consumers.
-* _publish metrics_ to monitoring systems like https://prometheus.io/[Prometheus] and _ship spans_ to distributed tracing backends like https://zipkin.io/[OpenZipkin] or https://tanzu.vmware.com/observability[Wavefront] thanks to built-in support for https://micrometer.io/[Micrometer].
+* **Stream management:** Create and delete streams directly from applications
+* **Configurable throughput:** Adjust publishing performance with batch size and flow control
+* **Duplicate prevention:** Avoid duplicate messages with built-in deduplication
+* **Offset tracking:** Resume consumption from where you left off with automatic or manual tracking
+* **Optimized connections:** Connect publishers to stream leaders and consumers to replicas
+* **Resource efficiency:** Automatically scale connections based on publisher/consumer count
+* **Automatic recovery:** Handle network failures with connection recovery and consumer re-subscription
+* **Observability:** Built-in support for https://prometheus.io/[Prometheus] metrics and distributed tracing (https://zipkin.io/[OpenZipkin], https://tanzu.vmware.com/observability[Wavefront]) via https://micrometer.io/[Micrometer]
 
 == Versioning
 
@@ -84,15 +70,15 @@ The next section provides more details about the evolution of programming interf
 
 The client contains 2 sets of programming interfaces whose stability are of interest for application developers:
 
-* Application Programming Interfaces (API): those are the ones used to write application logic.
-They include the interfaces and classes in the `com.rabbitmq.stream` package (e.g. `Producer`, `Consumer`, `Message`).
-These API constitute the main programming model of the client and are kept as stable as possible.
-New features may require to add methods to existing interfaces.
-* Service Provider Interfaces (SPI): those are interfaces to implement mainly technical behavior in the client.
-They are not meant to be used to implement application logic.
-Application developers may have to refer to them in the configuration phase and if they want to customize some internal behavior of the client.
-SPI include interfaces and classes in the `com.rabbitmq.stream.codec`, `com.rabbitmq.stream.compression`, `com.rabbitmq.stream.metrics` packages, among others.
-_These SPI are susceptible to change, but this should have no impact on most applications_, as the changes are likely to be limited to the client internals.
+
+* **Application Programming Interfaces (API):** Used for writing application logic.
+Includes interfaces and classes in the `com.rabbitmq.stream` package (e.g., `Producer`, `Consumer`, `Message`).
+These APIs form the main programming model and remain as stable as possible.
+New features may add methods to existing interfaces.
+* **Service Provider Interfaces (SPI):** Used for implementing technical client behavior, not application logic.
+Developers may reference these during configuration or when customizing internal client behavior.
+SPIs include interfaces in `com.rabbitmq.stream.codec`, `com.rabbitmq.stream.compression`, `com.rabbitmq.stream.metrics`, and other packages.
+_These interfaces may change, but this typically won't affect most applications since changes are limited to client internals._
 
 == Pre-requisites
 
