@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.3.0-SNAPSHOT</span>
-<br><span id="revremark">(48d38ae)</span>
+<br><span id="revremark">(ec08b08)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -3612,12 +3612,12 @@ Super Streams require <strong>RabbitMQ 3.11</strong> or more.
 </table>
 </div>
 <div class="paragraph">
-<p>A super stream is a logical stream made of several individual streams.
-In essence, a super stream is a partitioned stream that brings scalability compared to a single stream.</p>
+<p>A super stream is a logical stream composed of multiple individual streams.
+It provides scalability through partitioning, distributing data across several streams instead of using a single stream.</p>
 </div>
 <div class="paragraph">
-<p>The stream Java client uses the same programming model for super streams as with individual streams, that is the <code>Producer</code>, <code>Consumer</code>, <code>Message</code>, etc API are still valid when super streams are in use.
-Application code should not be impacted whether it uses individual or super streams.</p>
+<p>The stream Java client maintains the same programming model for super streams as individual streams.
+The <code>Producer</code>, <code>Consumer</code>, <code>Message</code>, and other APIs remain unchanged when using super streams, so your application code requires minimal modifications.</p>
 </div>
 <div class="paragraph">
 <p>Consuming applications can use super streams and <a href="#single-active-consumer">single active consumer</a> at the same time.
@@ -3634,7 +3634,7 @@ In this configuration, super streams provide scalability and single active consu
 <div class="title">Super streams do not deprecate streams</div>
 <div class="paragraph">
 <p>Super streams are a <a href="https://en.wikipedia.org/wiki/Partition_(database)">partitioning</a> solution.
-They are not meant to replace individual streams, they sit on top of them to handle some use cases in a better way.
+They are not meant to replace individual streams; they sit on top of them to handle some use cases more effectively.
 If the stream data is likely to be large – hundreds of gigabytes or even terabytes, size remains relative – and even presents an obvious partition key (e.g. country), a super stream can be appropriate.
 It can help to cope with the data size and to take advantage of data locality for some processing use cases.
 Remember that partitioning always comes with complexity though, even if the implementation of super streams strives to make it as transparent as possible for the application developer.</p>
@@ -3646,9 +3646,9 @@ Remember that partitioning always comes with complexity though, even if the impl
 <div class="sect3">
 <h4 id="topology"><a class="anchor" href="#topology"></a>Topology</h4>
 <div class="paragraph">
-<p>A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
-The topology of a super stream is based on the <a href="https://www.rabbitmq.com/tutorials/amqp-concepts.html">AMQP 0.9.1 model</a>, that is exchange, queues, and bindings between them.
-This does not mean AMQP resources are used to transport or store stream messages, it means that they are used to <em>describe</em> the super stream topology, that is the streams it is made of.</p>
+<p>The topology of a super stream follows the <a href="https://www.rabbitmq.com/tutorials/amqp-concepts.html">AMQP 0.9.1 model</a>: exchanges, queues, and bindings.
+AMQP resources are not used to transport or store stream messages.
+Instead, they describe the super stream topology and define which streams compose the super stream.</p>
 </div>
 <div class="paragraph">
 <p>Let&#8217;s take the example of an <code>invoices</code> super stream made of 3 streams (i.e. partitions):</p>
@@ -3717,9 +3717,9 @@ Some logic must also be provided to extract routing information from messages.</
 </div>
 </div>
 <div class="paragraph">
-<p>The super stream partitions will be <code>invoices-0</code>, <code>invoices-1</code>, &#8230;&#8203;, <code>invoices-5</code>.
-We use this kind of topology when routing keys of outbound messages are hashed to pick the partition to publish them to.
-This way, if the routing key is the customer ID of the invoice, all the invoices for a given customer end up in the same partition, and they can be processed in the publishing order.</p>
+<p>The super stream partitions will be <code>invoices-0</code>, <code>invoices-1</code>, &#8230;&#8203;, <code>invoices-4</code>.
+This topology works by hashing routing keys to determine the target partition for each message.
+For example, if the routing key is a customer ID, all invoices for the same customer will be routed to the same partition, ensuring they are processed in publishing order.</p>
 </div>
 <div class="paragraph">
 <p>It is also possible to specify binding keys when creating a super stream:</p>
@@ -3795,10 +3795,10 @@ producer.close();  <i class="conum" data-value="4"></i><b>(4)</b></code></pre>
 </table>
 </div>
 <div class="paragraph">
-<p>Note that even though the <code>invoices</code> super stream is not an actual stream, its name must be used to declare the producer.
-Internally the client will figure out the streams that compose the super stream.
-The application code must provide the logic to extract a routing key from a message as a <code>Function&lt;Message, String&gt;</code>.
-The client will hash the routing key to determine the stream to send the message to (using partition list and a modulo operation).</p>
+<p>Although the <code>invoices</code> super stream is not a physical stream, you must use its name when declaring the producer.
+The client automatically discovers the individual streams that compose the super stream.
+Your application code must provide logic to extract a routing key from each message using a <code>Function&lt;Message, String&gt;</code>.
+The client hashes this routing key to determine the target stream using the partition list and a modulo operation.</p>
 </div>
 <div class="paragraph">
 <p>The client uses 32-bit <a href="https://en.wikipedia.org/wiki/MurmurHash">MurmurHash3</a> by default to hash the routing key.
@@ -3943,14 +3943,14 @@ Producer producer = environment.producerBuilder()
 <h5 id="deduplication"><a class="anchor" href="#deduplication"></a>Deduplication</h5>
 <div class="paragraph">
 <p>Deduplication for a super stream producer works the same way as with a <a href="#outbound-message-deduplication">single stream producer</a>.
-The publishing ID values are spread across the streams but this does affect the mechanism.</p>
+The publishing ID values are spread across the streams, but this does not affect the mechanism.</p>
 </div>
 </div>
 </div>
 <div class="sect3">
 <h4 id="consuming-from-a-super-stream"><a class="anchor" href="#consuming-from-a-super-stream"></a>Consuming From a Super Stream</h4>
 <div class="paragraph">
-<p>A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
+<p>A super stream consumer is a composite consumer: it looks up the super stream partitions and creates a consumer for each of them.
 The programming model is the same as with regular consumers for the application developer: their main job is to provide the application code to process messages, that is a <code>MessageHandler</code> instance.
 The configuration is different though and this section covers its subtleties.
 But let&#8217;s focus on the behavior of a super stream consumer first.</p>
@@ -4010,13 +4010,13 @@ consumer.close();  <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 </div>
 <div class="paragraph">
 <p>That&#8217;s all.
-The super stream consumer will take of the details (partitions lookup, coordination of the single consumers, etc).</p>
+The super stream consumer will take care of the details (partition lookup, coordination of individual consumers, etc.).</p>
 </div>
 </div>
 <div class="sect4">
 <h5 id="offset-tracking-2"><a class="anchor" href="#offset-tracking-2"></a>Offset Tracking</h5>
 <div class="paragraph">
-<p>The semantic of offset tracking for a super stream consumer are roughly the same as for an individual stream consumer.
+<p>The semantics of offset tracking for a super stream consumer are roughly the same as for an individual stream consumer.
 There are still some subtle differences, so a good understanding of <a href="#consumer-offset-tracking">offset tracking</a> in general and of the <a href="#consumer-automatic-offset-tracking">automatic</a> and <a href="#consumer-manual-offset-tracking">manual</a> offset tracking strategies is recommended.</p>
 </div>
 <div class="paragraph">
@@ -4026,9 +4026,8 @@ There are still some subtle differences, so a good understanding of <a href="#co
 <ul>
 <li>
 <p><strong>automatic offset tracking</strong>: internally, <em>the client divides the <code>messageCountBeforeStorage</code> setting by the number of partitions for each individual consumer</em>.
-Imagine a 3-partition super stream, <code>messageCountBeforeStorage</code> set to 10,000, and 10,000 messages coming in, perfectly balanced across the partitions (that is about 3,333 messages for each partition).
-In this case, the automatic offset tracking strategy will not kick in, because the expected count message has not been reached on any partition.
-Making the client divide <code>messageCountBeforeStorage</code> by the number of partitions can be considered "more accurate" if the message are well balanced across the partitions.
+Consider a 3-partition super stream with <code>messageCountBeforeStorage</code> set to 10,000. If 10,000 messages arrive evenly distributed (approximately 3,333 per partition), automatic offset tracking will not trigger because no individual partition reaches the threshold.
+Dividing <code>messageCountBeforeStorage</code> by the partition count provides more accurate tracking when messages are evenly distributed across partitions.
 A good rule of thumb is to then multiply the expected per-stream <code>messageCountBeforeStorage</code> by the number of partitions, to avoid storing offsets too often. So the default being 10,000, it can be set to 30,000 for a 3-partition super stream.</p>
 </li>
 <li>
@@ -4064,11 +4063,11 @@ Single Active Consumer requires <strong>RabbitMQ 3.11</strong> or more.
 <p>You have an application that creates a super stream consumer instance with single active consumer enabled.</p>
 </li>
 <li>
-<p>You start 3 instances of this application. An instance in this case is a JVM process, which can be in a Docker container, a virtual machine, or a bare-metal server.</p>
+<p>You start 3 instances of this application. Each instance is a JVM process running in a Docker container, virtual machine, or on bare-metal hardware.</p>
 </li>
 <li>
-<p>As the super stream has 3 partitions, each application instance will create a super stream consumer that maintains internally 3 consumer instances.
-That is 9 Java instances of consumer overall.
+<p>Since the super stream has 3 partitions, each application instance creates a super stream consumer that maintains 3 internal consumer instances.
+This results in 9 consumer instances total.
 Such a super stream consumer is a <em>composite consumer</em>.</p>
 </li>
 <li>
@@ -4351,8 +4350,7 @@ Filtering requires <strong>RabbitMQ 3.13</strong> or more.
 </table>
 </div>
 <div class="paragraph">
-<p>RabbitMQ Stream provides a server-side filtering feature that avoids reading all the messages of a stream and filtering only on the client side.
-This helps to save network bandwidth when a consuming application needs only a subset of messages, e.g. the messages from a given geographical region.</p>
+<p>RabbitMQ Stream&#8217;s server-side filtering saves network bandwidth by filtering messages on the server, so clients receive only a subset of the messages in a stream.</p>
 </div>
 <div class="paragraph">
 <p>The filtering feature works as follows:</p>
@@ -4378,15 +4376,15 @@ This helps to save network bandwidth when a consuming application needs only a s
 </ul>
 </div>
 <div class="paragraph">
-<p>Why does the consumer need to define some client-side filtering logic?
-Because the server-side filtering is probabilistic: messages that do not match the filter value(s) can still be sent to the consumer.
-The server uses a <a href="https://en.wikipedia.org/wiki/Bloom_filter">Bloom filter</a>, <em>a space-efficient probabilistic data structure</em>, where false positives are possible.
-Despite this, the filtering saves some bandwidth, which is its primary goal.</p>
+<p>Why is client-side filtering logic still needed?
+Server-side filtering is probabilistic — it may still send messages that don&#8217;t match your filter values.
+The server uses a <a href="https://en.wikipedia.org/wiki/Bloom_filter">Bloom filter</a> (a space-efficient probabilistic data structure) where false positives are possible.
+Despite this limitation, filtering significantly reduces network bandwidth.</p>
 </div>
 <div class="sect3">
 <h4 id="filtering-on-the-publishing-side"><a class="anchor" href="#filtering-on-the-publishing-side"></a>Filtering on the Publishing Side</h4>
 <div class="paragraph">
-<p>Filtering on the publishing side consists in defining some logic to extract the filter value from a message.
+<p>Publishers must define logic to extract filter values from messages.
 The following snippet shows how to extract the filter value from an application property:</p>
 </div>
 <div class="listingblock">
@@ -4403,13 +4401,12 @@ The following snippet shows how to extract the filter value from an application 
 <table>
 <tr>
 <td><i class="conum" data-value="1"></i><b>1</b></td>
-<td>Get filter value from <code>state</code> application property</td>
+<td>Extract filter value from <code>state</code> application property</td>
 </tr>
 </table>
 </div>
 <div class="paragraph">
-<p>Note the filter value can be null: the message is then published in a regular way.
-It is called in this context an <em>unfiltered</em> message.</p>
+<p>Filter values can be null, resulting in <em>unfiltered</em> messages that are published normally.</p>
 </div>
 </div>
 <div class="sect3">
@@ -4418,7 +4415,7 @@ It is called in this context an <em>unfiltered</em> message.</p>
 <p>A consumer needs to set up one or several filter values and some filtering logic to enable filtering.
 The filtering logic must be consistent with the filter values.
 In the next snippet, the consumer wants to process only messages from the state of California.
-It sets a filter value to <code>california</code> and a predicate that accepts a message only if the <code>state</code> application properties is <code>california</code>:</p>
+It sets a filter value to <code>california</code> and a predicate that accepts a message only if the <code>state</code> application property is <code>california</code>:</p>
 </div>
 <div class="listingblock">
 <div class="title">Declaring a consumer with a filter value and filtering logic</div>
@@ -4453,7 +4450,7 @@ It must return <code>true</code> if a message is accepted, following the same se
 </div>
 <div class="paragraph">
 <p>As stated above, not all messages must have an associated filter value.
-Many applications may not need some filtering, so they can publish messages the regular way.
+Many applications may not need filtering, so they can publish messages the regular way.
 So a stream can contain messages with and without an associated filter value.</p>
 </div>
 <div class="paragraph">
@@ -4498,35 +4495,63 @@ Consumer consumer = environment.consumerBuilder()
 </table>
 </div>
 <div class="paragraph">
-<p>In the example above, the filtering logic has been adapted to let pass <code>california</code> messages <em>and</em> messages without a state set as well.</p>
+<p>In the example above, the filtering logic allows both <code>california</code> messages <em>and</em> messages without a state set as well.</p>
 </div>
 </div>
 <div class="sect3">
 <h4 id="considerations-on-filtering"><a class="anchor" href="#considerations-on-filtering"></a>Considerations on Filtering</h4>
 <div class="paragraph">
-<p>As stated previously, the server can send messages that do not match the filter value(s) set by consumers.
-This is why application developers must be very careful with the filtering logic they define to avoid processing unwanted messages.</p>
+<p>Since the server may send non-matching messages due to the probabilistic nature of Bloom filters, the client-side filtering logic must be robust to avoid processing unwanted messages.</p>
 </div>
 <div class="paragraph">
-<p>What are good candidates for filter values?
-Unique identifiers are <em>not</em>: if you know a given message property will be unique in a stream, do not use it as a filter value.
-A defined set of values shared across the messages is a good candidate: geographical locations (e.g. countries, states), document types in a stream that stores document information (e.g. payslip, invoice, order), categories of products (e.g. book, luggage, toy).</p>
+<p><strong>Good filter value candidates:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Shared categorical values: geographical locations (countries, states), document types (payslip, invoice, order), product categories (book, luggage, toy)</p>
+</li>
+<li>
+<p>Values with reasonable cardinality (few to few thousand distinct values)</p>
+</li>
+</ul>
 </div>
 <div class="paragraph">
-<p>Cardinality of filter values can be from a few to a few thousands.
-Extreme cardinality (a couple or dozens of thousands) can make filtering less efficient.</p>
+<p><strong>Poor filter value candidates:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Unique identifiers (message IDs, timestamps, UUIDs)</p>
+</li>
+<li>
+<p>Values with extreme cardinality (tens of thousands of distinct values)</p>
+</li>
+</ul>
 </div>
 </div>
 </div>
 <div class="sect2">
 <h3 id="oauth-2-support"><a class="anchor" href="#oauth-2-support"></a>OAuth 2 Support</h3>
 <div class="paragraph">
-<p>The client can authenticate against an OAuth 2 server like <a href="https://github.com/cloudfoundry/uaa">UAA</a>.
-It uses the <a href="https://tools.ietf.org/html/rfc6749#section-4.4">OAuth 2 Client Credentials flow</a>.
-The <a href="https://www.rabbitmq.com/docs/oauth2">OAuth 2 plugin</a> must be enabled on the server side and configured to use the same OAuth 2 server as the client.</p>
+<p>The client supports OAuth 2 authentication using the <a href="https://tools.ietf.org/html/rfc6749#section-4.4">OAuth 2 Client Credentials flow</a>.
+Both the client and RabbitMQ server must be configured to use the same OAuth 2 server.</p>
 </div>
 <div class="paragraph">
-<p>How to retrieve the OAuth 2 token is configured at the environment level:</p>
+<p><strong>Prerequisites:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><a href="https://www.rabbitmq.com/docs/oauth2">OAuth 2 plugin</a> enabled on RabbitMQ</p>
+</li>
+<li>
+<p>OAuth 2 server (e.g. <a href="https://github.com/cloudfoundry/uaa">UAA</a>) configured and accessible</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Token retrieval is configured at the environment level:</p>
 </div>
 <div class="listingblock">
 <div class="title">Configuring OAuth 2 token retrieval</div>
@@ -4559,7 +4584,7 @@ The <a href="https://www.rabbitmq.com/docs/oauth2">OAuth 2 plugin</a> must be en
 </tr>
 <tr>
 <td><i class="conum" data-value="4"></i><b>4</b></td>
-<td>Set the grant type</td>
+<td>Use Client Credentials grant type for service-to-service authentication</td>
 </tr>
 <tr>
 <td><i class="conum" data-value="5"></i><b>5</b></td>
@@ -4572,30 +4597,42 @@ The <a href="https://www.rabbitmq.com/docs/oauth2">OAuth 2 plugin</a> must be en
 </table>
 </div>
 <div class="paragraph">
-<p>The environment retrieves tokens and uses them to create stream connections.
-It also takes care of refreshing the tokens before they expire and of re-authenticating existing connections so the broker does not close them when their token expires.</p>
+<p>The environment handles token management automatically:</p>
 </div>
-<div class="paragraph">
-<p>The environment uses the same token for all the connections it maintains.</p>
+<div class="ulist">
+<ul>
+<li>
+<p>Retrieves tokens for stream connections</p>
+</li>
+<li>
+<p>Refreshes tokens before expiration</p>
+</li>
+<li>
+<p>Re-authenticates existing connections to prevent broker disconnections</p>
+</li>
+<li>
+<p>Uses the same token for all maintained connections</p>
+</li>
+</ul>
 </div>
 </div>
 <div class="sect2">
 <h3 id="using-native-epoll"><a class="anchor" href="#using-native-epoll"></a>Using Native <code>epoll</code></h3>
 <div class="paragraph">
-<p>The stream Java client uses the <a href="https://netty.io/">Netty</a> network framework and its Java NIO transport implementation by default.
-This should be a reasonable default for most applications.</p>
+<p>The stream Java client uses <a href="https://netty.io/">Netty</a>'s Java NIO transport by default, which works well for most applications.</p>
 </div>
 <div class="paragraph">
-<p>Netty also allows using <a href="https://netty.io/wiki/native-transports.html">JNI transports</a>.
-They are less portable than Java NIO, but they can be more performant for some workloads (even though the RabbitMQ team has not seen any significant improvement in their own tests).</p>
+<p>For specialized performance requirements, Netty supports <a href="https://netty.io/wiki/native-transports.html">JNI-based transports</a>.
+These are less portable but may offer better performance for specific workloads.
+Note: The RabbitMQ team has not observed significant improvements in their testing.</p>
 </div>
 <div class="paragraph">
-<p>The <a href="https://en.wikipedia.org/wiki/Epoll">Linux <code>epoll</code> transport</a> is a popular choice, so we&#8217;ll see how to configure with the stream Java client.
-Other JNI transports can be configured in the same way.</p>
+<p>This example shows how to configure the popular <a href="https://en.wikipedia.org/wiki/Epoll">Linux <code>epoll</code> transport</a>.
+Other JNI transports follow the same configuration pattern.</p>
 </div>
 <div class="paragraph">
-<p>The native transport dependency must be added to the dependency manager.
-We must pull the native binaries compiled for our OS and architecture, in our example Linux x86-64, so we are using the <code>linux-x86_64</code> classifier.
+<p>Add the native transport dependency matching your OS and architecture.
+This example uses Linux x86-64 with the <code>linux-x86_64</code> classifier.
 Here is the declaration for Maven:</p>
 </div>
 <div class="listingblock">
@@ -5054,7 +5091,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.3.0-SNAPSHOT<br>
-Last updated 2025-08-22 14:11:18 UTC
+Last updated 2025-08-22 15:32:30 UTC
 </div>
 </div>
 </body>
