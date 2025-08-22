@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.3.0-SNAPSHOT</span>
-<br><span id="revremark">(80fa1fa)</span>
+<br><span id="revremark">(48d38ae)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -677,10 +677,9 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <div id="preamble">
 <div class="sectionbody">
 <div class="paragraph">
-<p>The RabbitMQ Stream Java Client is a Java library to communicate with
-the <a href="https://rabbitmq.com/stream.html">RabbitMQ Stream Plugin</a>.
-It allows creating and deleting streams, as well as publishing to and consuming from
-these streams. Learn more in the <a href="#stream-client-overview">client overview</a>.</p>
+<p>The RabbitMQ Stream Java Client is a Java library for communicating with the <a href="https://rabbitmq.com/stream.html">RabbitMQ Stream Plugin</a>.
+Use it to create and delete streams, publish messages, and consume from streams.
+Learn more in the <a href="#stream-client-overview">client overview</a>.</p>
 </div>
 <div class="paragraph">
 <p>This library requires at least Java 11, but Java 21 or more is recommended.</p>
@@ -702,8 +701,24 @@ the stream intact. So the content of a stream can be read and re-read without
 impact or destructive effect.</p>
 </div>
 <div class="paragraph">
-<p>None of the stream or classical queue data structure is better than the other,
-they are usually suited for different use cases.</p>
+<p>A RabbitMQ stream is a persistent and replicated data structure that models an <a href="https://en.wikipedia.org/wiki/Append-only">append-only log</a>.
+It differs from traditional RabbitMQ queues in how message consumption works:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Traditional queue:</strong> Consuming removes messages from the queue</p>
+</li>
+<li>
+<p><strong>Stream:</strong> Consuming leaves messages intact for future reads</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>This allows stream content to be read and re-read multiple times without any destructive effects.</p>
+</div>
+<div class="paragraph">
+<p>Neither streams nor traditional queues are inherently better — they serve different use cases.</p>
 </div>
 </div>
 </div>
@@ -716,19 +731,16 @@ they are usually suited for different use cases.</p>
 <div class="ulist">
 <ul>
 <li>
-<p><em>Large fan-outs:</em> when several consumer applications need to read the same messages.</p>
+<p><strong>Large fan-outs:</strong> Multiple consumer applications need to read the same messages</p>
 </li>
 <li>
-<p><em>Replay / Time-traveling:</em> when consumer applications need to read the whole
-history of data or from a given point in a stream.</p>
+<p><strong>Replay/Time-traveling:</strong> Applications need to read message history or resume from a specific point</p>
 </li>
 <li>
-<p><em>Throughput performance:</em> when higher throughput than with other protocols
-(AMQP, STOMP, MQTT) is required.</p>
+<p><strong>High throughput:</strong> Higher performance is required compared to other protocols (AMQP, STOMP, MQTT)</p>
 </li>
 <li>
-<p><em>Large logs:</em> when large amount of data need to be stored, with minimal
-in-memory overhead.</p>
+<p><strong>Large logs:</strong> Large amounts of data must be stored with minimal memory overhead</p>
 </li>
 </ul>
 </div>
@@ -738,28 +750,15 @@ in-memory overhead.</p>
 <h2 id="other-way-to-use-streams-in-rabbitmq"><a class="anchor" href="#other-way-to-use-streams-in-rabbitmq"></a>Other Way to Use Streams in RabbitMQ</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>It is also possible to use the stream abstraction in RabbitMQ
-with the AMQP 0-9-1 protocol. Instead of consuming from a stream
-with the stream protocol, one consumes from a "stream-powered" queue with
-the AMQP 0-9-1 protocol. A "stream-powered" queue is a special type of queue that
-is backed up with a stream infrastructure layer and adapted to
-provide the stream semantics (mainly non-destructive reading).</p>
+<p>You can also use streams in RabbitMQ with any protocol RabbitMQ supports (AMQP, MQTT, STOMP).
+Instead of using the stream protocol directly, you consume from "stream-powered" queues using e.g. AMQP.
+These special queues are backed by stream infrastructure and provide stream semantics (primarily non-destructive reading).</p>
 </div>
 <div class="paragraph">
-<p>Using such a queue has the advantage to provide the features
-inherent to the stream abstraction (append-only structure, non-destructive
-reading) with any AMQP 0-9-1 client library. This is clearly
-interesting when considering the maturity of AMQP 0-9-1 client libraries
-and the ecosystem around AMQP 0-9-1.</p>
+<p>Stream-powered queues offer stream features (append-only structure, non-destructive reading) while still using your protocol of choice.</p>
 </div>
 <div class="paragraph">
-<p>But by using it, one does not benefit from the performance
-of the stream protocol, which has been designed for performance in mind,
-whereas AMQP 0-9-1 is a more general-purpose protocol.</p>
-</div>
-<div class="paragraph">
-<p>It is not possible to use "stream-powered" queues with the stream Java client,
-you need to use an AMQP 0-9-1 client library.</p>
+<p>But by using another protocol than the stream protocol, one may not benefit from the performance it provides, as it has been designed with high throughput in mind.</p>
 </div>
 </div>
 </div>
@@ -767,12 +766,10 @@ you need to use an AMQP 0-9-1 client library.</p>
 <h2 id="guarantees"><a class="anchor" href="#guarantees"></a>Guarantees</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>RabbitMQ stream provides at-least-once guarantees thanks to the
-publisher confirm mechanism, which is supported by the stream Java client.</p>
+<p>RabbitMQ stream provides at-least-once guarantees thanks to the publisher confirm mechanism.</p>
 </div>
 <div class="paragraph">
-<p>Message <a href="#outbound-message-deduplication">deduplication</a>
-is also supported on the publisher side.</p>
+<p>Message <a href="#outbound-message-deduplication">deduplication</a> is also supported on the publisher side.</p>
 </div>
 </div>
 </div>
@@ -788,32 +785,28 @@ to build fast, efficient, and robust client applications.</p>
 <div class="ulist">
 <ul>
 <li>
-<p><em>administrate streams (creation/deletion) directly from applications.</em> This
-can also be useful for development and testing.</p>
+<p><strong>Stream management:</strong> Create and delete streams directly from applications</p>
 </li>
 <li>
-<p><em>adapt publishing throughput</em> thanks to the configurable batch size and flow control.</p>
+<p><strong>Configurable throughput:</strong> Adjust publishing performance with batch size and flow control</p>
 </li>
 <li>
-<p><em>avoid publishing duplicate messages</em> thanks to message deduplication.</p>
+<p><strong>Duplicate prevention:</strong> Avoid duplicate messages with built-in deduplication</p>
 </li>
 <li>
-<p><em>consume asynchronously from streams and resume where left off</em> thanks to
-automatic or manual offset tracking.</p>
+<p><strong>Offset tracking:</strong> Resume consumption from where you left off with automatic or manual tracking</p>
 </li>
 <li>
-<p><em>enforce <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams/#client-workaround-with-a-load-balancer">best practices</a> to create client connections</em> – to stream leaders for publishers to minimize inter-node traffic and to stream replicas for consumers to offload leaders.</p>
+<p><strong>Optimized connections:</strong> Connect publishers to stream leaders and consumers to replicas</p>
 </li>
 <li>
-<p><em>optimize resources</em> thanks to automatic growing and shrinking of
-connections depending on the number of publishers and consumers.</p>
+<p><strong>Resource efficiency:</strong> Automatically scale connections based on publisher/consumer count</p>
 </li>
 <li>
-<p><em>let the client handle network failure</em> thanks to automatic connection
-recovery and automatic re-subscription for consumers.</p>
+<p><strong>Automatic recovery:</strong> Handle network failures with connection recovery and consumer re-subscription</p>
 </li>
 <li>
-<p><em>publish metrics</em> to monitoring systems like <a href="https://prometheus.io/">Prometheus</a> and <em>ship spans</em> to distributed tracing backends like <a href="https://zipkin.io/">OpenZipkin</a> or <a href="https://tanzu.vmware.com/observability">Wavefront</a> thanks to built-in support for <a href="https://micrometer.io/">Micrometer</a>.</p>
+<p><strong>Observability:</strong> Built-in support for <a href="https://prometheus.io/">Prometheus</a> metrics and distributed tracing (<a href="https://zipkin.io/">OpenZipkin</a>, <a href="https://tanzu.vmware.com/observability">Wavefront</a>) via <a href="https://micrometer.io/">Micrometer</a></p>
 </li>
 </ul>
 </div>
@@ -839,17 +832,16 @@ recovery and automatic re-subscription for consumers.</p>
 <div class="ulist">
 <ul>
 <li>
-<p>Application Programming Interfaces (API): those are the ones used to write application logic.
-They include the interfaces and classes in the <code>com.rabbitmq.stream</code> package (e.g. <code>Producer</code>, <code>Consumer</code>, <code>Message</code>).
-These API constitute the main programming model of the client and are kept as stable as possible.
-New features may require to add methods to existing interfaces.</p>
+<p><strong>Application Programming Interfaces (API):</strong> Used for writing application logic.
+Includes interfaces and classes in the <code>com.rabbitmq.stream</code> package (e.g., <code>Producer</code>, <code>Consumer</code>, <code>Message</code>).
+These APIs form the main programming model and remain as stable as possible.
+New features may add methods to existing interfaces.</p>
 </li>
 <li>
-<p>Service Provider Interfaces (SPI): those are interfaces to implement mainly technical behavior in the client.
-They are not meant to be used to implement application logic.
-Application developers may have to refer to them in the configuration phase and if they want to customize some internal behavior of the client.
-SPI include interfaces and classes in the <code>com.rabbitmq.stream.codec</code>, <code>com.rabbitmq.stream.compression</code>, <code>com.rabbitmq.stream.metrics</code> packages, among others.
-<em>These SPI are susceptible to change, but this should have no impact on most applications</em>, as the changes are likely to be limited to the client internals.</p>
+<p><strong>Service Provider Interfaces (SPI):</strong> Used for implementing technical client behavior, not application logic.
+Developers may reference these during configuration or when customizing internal client behavior.
+SPIs include interfaces in <code>com.rabbitmq.stream.codec</code>, <code>com.rabbitmq.stream.compression</code>, <code>com.rabbitmq.stream.metrics</code>, and other packages.
+<em>These interfaces may change, but this typically won&#8217;t affect most applications since changes are limited to client internals.</em></p>
 </li>
 </ul>
 </div>
@@ -1315,8 +1307,8 @@ Sum: 49995000</pre>
 <div class="sect2">
 <h3 id="overview"><a class="anchor" href="#overview"></a>Overview</h3>
 <div class="paragraph">
-<p>This section describes the API to connect to the RabbitMQ Stream Plugin, publish messages, and
-consume messages. There are 3 main interfaces:</p>
+<p>This section covers the API for connecting to the RabbitMQ Stream Plugin and working with messages.
+The API provides three main interfaces:</p>
 </div>
 <div class="ulist">
 <ul>
@@ -1338,9 +1330,9 @@ managing streams.</p>
 <div class="sect3">
 <h4 id="creating-the-environment"><a class="anchor" href="#creating-the-environment"></a>Creating the Environment</h4>
 <div class="paragraph">
-<p>The environment is the main entry point to a node or a cluster of nodes. <code>Producer</code> and
-<code>Consumer</code> instances are created from an <code>Environment</code> instance. Here is the simplest
-way to create an <code>Environment</code> instance:</p>
+<p>The environment serves as the main entry point to a node or a cluster of nodes.
+<code>Producer</code> and <code>Consumer</code> instances are created from an <code>Environment</code> instance.
+Here is the simplest way to create an <code>Environment</code> instance:</p>
 </div>
 <div class="listingblock">
 <div class="title">Creating an environment with all the defaults</div>
@@ -1363,12 +1355,11 @@ environment.close(); <i class="conum" data-value="2"></i><b>(2)</b></code></pre>
 </table>
 </div>
 <div class="paragraph">
-<p>Note the environment must be closed to release resources when it is no
-longer needed.</p>
+<p>Always close the environment to release resources when finished.</p>
 </div>
 <div class="paragraph">
-<p>Consider the environment like a long-lived object. An application will usually
-create one <code>Environment</code> instance when it starts up and close it when it exits.</p>
+<p>Treat the environment as a long-lived object.
+An application will usually create one <code>Environment</code> instance when it starts up and close it when it exits.</p>
 </div>
 <div class="paragraph">
 <p>It is possible to use a URI to specify all the necessary information to
@@ -1399,10 +1390,12 @@ except the protocol must be <code>rabbitmq-stream</code>.
 <a href="#enabling-tls">TLS is enabled</a> by using the <code>rabbitmq-stream+tls</code> scheme in the URI.</p>
 </div>
 <div class="paragraph">
-<p>When using one URI, the corresponding node will be the main entry point to connect to. The
-<code>Environment</code> will then use the stream protocol to find out more about streams topology
-(leaders and replicas) when asked to create <code>Producer</code> and <code>Consumer</code> instances.
-The <code>Environment</code> may become blind if this node goes down though, so it may be more appropriate to specify several other URIs to try in case of failure of a node:</p>
+<p>When using one URI, the corresponding node will be the main entry point to connect to.
+The <code>Environment</code> will then use the stream protocol to find out more about streams topology (leaders and replicas) when asked to create <code>Producer</code> and <code>Consumer</code> instances.</p>
+</div>
+<div class="paragraph">
+<p>If this node fails, the <code>Environment</code> will lose connectivity.
+To improve resilience, specify multiple URIs as fallback options:</p>
 </div>
 <div class="listingblock">
 <div class="title">Creating an environment with several URIs</div>
@@ -1432,12 +1425,12 @@ will pick a new URI randomly in case of disconnection.</p>
 <div class="sect3">
 <h4 id="understanding-connection-logic"><a class="anchor" href="#understanding-connection-logic"></a>Understanding Connection Logic</h4>
 <div class="paragraph">
-<p>Creating the environment to connect to a cluster node works usually seamlessly.
-Creating publishers and consumers can cause problems as the client uses hints from the cluster to find the nodes where stream leaders and replicas are located to connect to the appropriate nodes.</p>
+<p>Creating the environment to connect to a cluster node usually works seamlessly.
+Creating publishers and consumers may encounter connection issues because the client relies on cluster hints to locate stream leaders and replicas.</p>
 </div>
 <div class="paragraph">
 <p>These connection hints can be accurate or less appropriate depending on the infrastructure.
-If you hit connection problems at some point – like hostnames impossible to resolve for client applications - this <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams">blog post</a> should help you understand what is going on and fix the issues.
+If you encounter connection problems (such as unresolvable hostnames), this <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams">blog post</a> explains the root causes and solutions.
 Setting the <code>advertised_host</code> and <code>advertised_port</code> <a href="https://www.rabbitmq.com/blog/2021/07/23/connecting-to-streams#advertised-host-and-port">configuration entries</a> should solve the most common connection problems.</p>
 </div>
 <div class="paragraph">
@@ -1975,8 +1968,8 @@ producer.close();  <i class="conum" data-value="4"></i><b>(4)</b></code></pre>
 </table>
 </div>
 <div class="paragraph">
-<p>Consider a <code>Producer</code> instance like a long-lived object, do not create one
-to send just one message.</p>
+<p>Treat <code>Producer</code> instances as long-lived objects.
+Avoid creating a producer for single-message operations.</p>
 </div>
 <div class="admonitionblock note">
 <table>
@@ -2126,9 +2119,7 @@ producer.send(
 </table>
 </div>
 <div class="paragraph">
-<p>Messages are not only made of a <code>byte[]</code> payload, we will see in
-<a href="#working-with-complex-messages">the next section</a>
-they can also carry pre-defined and application properties.</p>
+<p>Messages are not only made of a <code>byte[]</code> payload, as shown in <a href="#working-with-complex-messages">the next section</a> they can also carry pre-defined and application properties.</p>
 </div>
 <div class="admonitionblock note">
 <table>
@@ -2148,11 +2139,8 @@ you want to create.</p>
 </table>
 </div>
 <div class="paragraph">
-<p>The <code>ConfirmationHandler</code> defines an asynchronous callback invoked
-when the client received from the broker the confirmation the message
-has been taken into account. The <code>ConfirmationHandler</code> is the place
-for any logic on publishing confirmation, including
-re-publishing the message if it is negatively acknowledged.</p>
+<p>The <code>ConfirmationHandler</code> defines an asynchronous callback invoked when the broker confirms message receipt.
+The <code>ConfirmationHandler</code> is the place for any logic on publishing confirmation, including re-publishing the message if it is negatively acknowledged.</p>
 </div>
 <div class="admonitionblock warning">
 <table>
@@ -2179,7 +2167,7 @@ a separate thread (e.g. with an asynchronous <code>ExecutorService</code>).</p>
 <div class="paragraph">
 <p>The publishing example above showed that messages are made of
 a byte array payload, but it did not go much further. Messages in RabbitMQ Stream
-can actually be more sophisticated, as they comply to the
+can actually be more sophisticated, as they comply with the
 <a href="https://www.amqp.org/resources/specifications">AMQP 1.0 message format</a>.</p>
 </div>
 <div class="paragraph">
@@ -2302,13 +2290,13 @@ on 2 client-side elements: the <em>producer name</em> and the <em>message publis
 <i class="fa icon-warning" title="Warning"></i>
 </td>
 <td class="content">
-<div class="title">Only one publisher instance with a given name and no multithreading to guarantee deduplication</div>
+<div class="title">Deduplication Requirements: Single Publisher Instance and Single Thread</div>
 <div class="paragraph">
 <p>We&#8217;ll see below that deduplication works using a strictly increasing sequence for messages.
 This means messages must be published in order, so there must be only <em>one publisher instance with a given name</em> and this instance must publish messages <em>within a single thread</em>.</p>
 </div>
 <div class="paragraph">
-<p>With several publisher instances with the same name, one instance can be "ahead" of the others for the sequence ID: if it publishes a message with sequence ID 100, any message from any instance with a smaller lower sequence ID will be filtered out.</p>
+<p>With several publisher instances with the same name, one instance can be "ahead" of the others for the sequence ID: if it publishes a message with sequence ID 100, any message from any instance with a lower sequence ID will be filtered out.</p>
 </div>
 <div class="paragraph">
 <p>If there is only one publisher instance with a given name, it should publish messages in a single thread.
@@ -2332,11 +2320,8 @@ If you worry about performance, note it is possible to publish hundreds of thous
 <td class="content">
 <div class="title">Deduplication is not guaranteed when using sub-entries batching</div>
 <div class="paragraph">
-<p>It is not possible to guarantee deduplication when
-<a href="#sub-entry-batching-and-compression">sub-entry batching</a> is in use.
-Sub-entry batching is disabled by default and it does not prevent from
-batching messages in a single publish frame, which can already provide
-very high throughput.</p>
+<p>It is not possible to guarantee deduplication when <a href="#sub-entry-batching-and-compression">sub-entry batching</a> is in use.
+Sub-entry batching is disabled by default and it does not prevent batching messages in a single publish frame, which can already provide very high throughput.</p>
 </div>
 </td>
 </tr>
@@ -2737,7 +2722,7 @@ consumer.close();  <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
 </table>
 </div>
 <div class="paragraph">
-<p>The broker start sending messages as soon as the <code>Consumer</code> instance is created.</p>
+<p>The broker starts sending messages as soon as the <code>Consumer</code> instance is created.</p>
 </div>
 <div class="admonitionblock warning">
 <table>
@@ -2938,7 +2923,7 @@ made of 2 chunks:</p>
 </div>
 <div class="paragraph">
 <p>Each chunk contains a timestamp of its creation time.
-This is this timestamp the broker uses to find the appropriate chunk to start from when using a timestamp specification.
+The broker uses this timestamp to find the appropriate chunk to start from when using a timestamp specification.
 The broker chooses the closest chunk <em>before</em> the specified timestamp, that is why consumers may see messages published a bit before what they specified.</p>
 </div>
 </div>
@@ -3095,7 +3080,7 @@ manual tracking.</p>
 <div class="sect4">
 <h5 id="consumer-manual-offset-tracking"><a class="anchor" href="#consumer-manual-offset-tracking"></a>Manual Offset Tracking</h5>
 <div class="paragraph">
-<p>The manual tracking strategy lets the developer in charge of storing offsets
+<p>The manual tracking strategy gives the developer control of storing offsets
 whenever they want, not only after a given number of messages has been received
 and supposedly processed, like automatic tracking does.</p>
 </div>
@@ -3203,7 +3188,7 @@ tracking entries in the stream itself.</p>
 </div>
 <div class="paragraph">
 <p>A good rule of thumb is to store the offset every few thousands
-of messages. Of course, when the consumer will restart consuming in a new incarnation, the
+of messages. Of course, when the consumer restarts consuming in a new incarnation, the
 last tracked offset may be a little behind the very last message the previous incarnation
 actually processed, so the consumer may see some messages that have been already processed.</p>
 </div>
@@ -3213,8 +3198,9 @@ last duplicated messages.</p>
 </div>
 <hr>
 <div class="paragraph">
-<p><em>Is the offset a reliable absolute value?</em> Message offsets may not be contiguous.
-This implies that the message at offset 500 in a stream may
+<p><em>Is the offset a reliable absolute value?</em>
+Message offsets may not be contiguous.
+This means the message at offset 500 in a stream may
 not be the 501 message in the stream (offsets start at 0).
 There can be different types of entries in a stream storage, a message is
 just one of them. For example, storing an offset creates an offset tracking
@@ -5068,7 +5054,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.3.0-SNAPSHOT<br>
-Last updated 2025-08-21 12:30:46 UTC
+Last updated 2025-08-22 14:11:18 UTC
 </div>
 </div>
 </body>
