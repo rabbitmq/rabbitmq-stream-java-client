@@ -6,8 +6,7 @@
 
 WARNING: Filtering requires *RabbitMQ 3.13* or more.
 
-RabbitMQ Stream provides a server-side filtering feature that avoids reading all the messages of a stream and filtering only on the client side.
-This helps to save network bandwidth when a consuming application needs only a subset of messages, e.g. the messages from a given geographical region.
+RabbitMQ Stream's server-side filtering saves network bandwidth by filtering messages on the server, so clients receive only a subset of the messages in a stream.
 
 The filtering feature works as follows:
 
@@ -16,14 +15,14 @@ The filtering feature works as follows:
 ** define one or several filter values
 ** define some client-side filtering logic
 
-Why does the consumer need to define some client-side filtering logic?
-Because the server-side filtering is probabilistic: messages that do not match the filter value(s) can still be sent to the consumer.
-The server uses a https://en.wikipedia.org/wiki/Bloom_filter[Bloom filter], _a space-efficient probabilistic data structure_, where false positives are possible.
-Despite this, the filtering saves some bandwidth, which is its primary goal.
+Why is client-side filtering logic still needed?
+Server-side filtering is probabilistic — it may still send messages that don't match your filter values.
+The server uses a https://en.wikipedia.org/wiki/Bloom_filter[Bloom filter] (a space-efficient probabilistic data structure) where false positives are possible.
+Despite this limitation, filtering significantly reduces network bandwidth.
 
 ==== Filtering on the Publishing Side
 
-Filtering on the publishing side consists in defining some logic to extract the filter value from a message.
+Publishers must define logic to extract filter values from messages.
 The following snippet shows how to extract the filter value from an application property:
 
 .Declaring a producer with logic to extract a filter value from each message
@@ -31,17 +30,16 @@ The following snippet shows how to extract the filter value from an application 
 --------
 include::{test-examples}/FilteringUsage.java[tag=producer-simple]
 --------
-<1> Get filter value from `state` application property
+<1> Extract filter value from `state` application property
 
-Note the filter value can be null: the message is then published in a regular way.
-It is called in this context an _unfiltered_ message.
+Filter values can be null, resulting in _unfiltered_ messages that are published normally.
 
 ==== Filtering on the Consuming Side
 
 A consumer needs to set up one or several filter values and some filtering logic to enable filtering.
 The filtering logic must be consistent with the filter values.
 In the next snippet, the consumer wants to process only messages from the state of California.
-It sets a filter value to `california` and a predicate that accepts a message only if the `state` application properties is `california`:
+It sets a filter value to `california` and a predicate that accepts a message only if the `state` application property is `california`:
 
 .Declaring a consumer with a filter value and filtering logic
 [source,java,indent=0]
@@ -55,7 +53,7 @@ The filter logic is a `Predicate<Message>`.
 It must return `true` if a message is accepted, following the same semantics as `java.util.stream.Stream#filter(Predicate)`.
 
 As stated above, not all messages must have an associated filter value.
-Many applications may not need some filtering, so they can publish messages the regular way.
+Many applications may not need filtering, so they can publish messages the regular way.
 So a stream can contain messages with and without an associated filter value.
 
 By default, messages without a filter value (a.k.a _unfiltered_ messages) are not sent to a consumer that enabled filtering.
@@ -72,27 +70,33 @@ include::{test-examples}/FilteringUsage.java[tag=consumer-match-unfiltered]
 <2> Request messages without a filter value as well
 <3> Let both types of messages pass
 
-In the example above, the filtering logic has been adapted to let pass `california` messages _and_ messages without a state set as well.
+In the example above, the filtering logic allows both `california` messages _and_ messages without a state set as well.
 
 ==== Considerations on Filtering
 
-As stated previously, the server can send messages that do not match the filter value(s) set by consumers.
-This is why application developers must be very careful with the filtering logic they define to avoid processing unwanted messages.
+Since the server may send non-matching messages due to the probabilistic nature of Bloom filters, the client-side filtering logic must be robust to avoid processing unwanted messages.
 
-What are good candidates for filter values?
-Unique identifiers are _not_: if you know a given message property will be unique in a stream, do not use it as a filter value.
-A defined set of values shared across the messages is a good candidate: geographical locations (e.g. countries, states), document types in a stream that stores document information (e.g. payslip, invoice, order), categories of products (e.g. book, luggage, toy).
+**Good filter value candidates:**
 
-Cardinality of filter values can be from a few to a few thousands.
-Extreme cardinality (a couple or dozens of thousands) can make filtering less efficient.
+* Shared categorical values: geographical locations (countries, states), document types (payslip, invoice, order), product categories (book, luggage, toy)
+* Values with reasonable cardinality (few to few thousand distinct values)
+
+**Poor filter value candidates:**
+
+* Unique identifiers (message IDs, timestamps, UUIDs)
+* Values with extreme cardinality (tens of thousands of distinct values)
 
 === OAuth 2 Support
 
-The client can authenticate against an OAuth 2 server like https://github.com/cloudfoundry/uaa[UAA].
-It uses the https://tools.ietf.org/html/rfc6749#section-4.4[OAuth 2 Client Credentials flow].
-The https://www.rabbitmq.com/docs/oauth2[OAuth 2 plugin] must be enabled on the server side and configured to use the same OAuth 2 server as the client.
+The client supports OAuth 2 authentication using the https://tools.ietf.org/html/rfc6749#section-4.4[OAuth 2 Client Credentials flow].
+Both the client and RabbitMQ server must be configured to use the same OAuth 2 server.
 
-How to retrieve the OAuth 2 token is configured at the environment level:
+**Prerequisites:**
+
+* https://www.rabbitmq.com/docs/oauth2[OAuth 2 plugin] enabled on RabbitMQ
+* OAuth 2 server (e.g. https://github.com/cloudfoundry/uaa[UAA]) configured and accessible
+
+Token retrieval is configured at the environment level:
 
 .Configuring OAuth 2 token retrieval
 [source,java,indent=0]
@@ -102,28 +106,30 @@ include::{test-examples}/EnvironmentUsage.java[tag=oauth2]
 <1> Access the OAuth 2 configuration
 <2> Set the token endpoint URI
 <3> Authenticate the client application
-<4> Set the grant type
+<4> Use Client Credentials grant type for service-to-service authentication
 <5> Set optional parameters (depends on the OAuth 2 server)
 <6> Set the SSL context (e.g. to verify and trust the identity of the OAuth 2 server)
 
-The environment retrieves tokens and uses them to create stream connections.
-It also takes care of refreshing the tokens before they expire and of re-authenticating existing connections so the broker does not close them when their token expires.
+The environment handles token management automatically:
 
-The environment uses the same token for all the connections it maintains.
+* Retrieves tokens for stream connections
+* Refreshes tokens before expiration
+* Re-authenticates existing connections to prevent broker disconnections
+* Uses the same token for all maintained connections
 
 === Using Native `epoll`
 
-The stream Java client uses the https://netty.io/[Netty] network framework and its Java NIO transport implementation by default.
-This should be a reasonable default for most applications.
+The stream Java client uses https://netty.io/[Netty]'s Java NIO transport by default, which works well for most applications.
 
-Netty also allows using https://netty.io/wiki/native-transports.html[JNI transports].
-They are less portable than Java NIO, but they can be more performant for some workloads (even though the RabbitMQ team has not seen any significant improvement in their own tests).
+For specialized performance requirements, Netty supports https://netty.io/wiki/native-transports.html[JNI-based transports].
+These are less portable but may offer better performance for specific workloads.
+Note: The RabbitMQ team has not observed significant improvements in their testing.
 
-The https://en.wikipedia.org/wiki/Epoll[Linux `epoll` transport] is a popular choice, so we'll see how to configure with the stream Java client.
-Other JNI transports can be configured in the same way.
+This example shows how to configure the popular https://en.wikipedia.org/wiki/Epoll[Linux `epoll` transport].
+Other JNI transports follow the same configuration pattern.
 
-The native transport dependency must be added to the dependency manager.
-We must pull the native binaries compiled for our OS and architecture, in our example Linux x86-64, so we are using the `linux-x86_64` classifier.
+Add the native transport dependency matching your OS and architecture.
+This example uses Linux x86-64 with the `linux-x86_64` classifier.
 Here is the declaration for Maven:
 
 .Declaring the Linux x86-64 native `epoll` transport dependency with Maven

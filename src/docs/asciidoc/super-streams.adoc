@@ -5,11 +5,11 @@
 
 WARNING: Super Streams require *RabbitMQ 3.11* or more.
 
-A super stream is a logical stream made of several individual streams.
-In essence, a super stream is a partitioned stream that brings scalability compared to a single stream.
+A super stream is a logical stream composed of multiple individual streams.
+It provides scalability through partitioning, distributing data across several streams instead of using a single stream.
 
-The stream Java client uses the same programming model for super streams as with individual streams, that is the `Producer`, `Consumer`, `Message`, etc API are still valid when super streams are in use.
-Application code should not be impacted whether it uses individual or super streams.
+The stream Java client maintains the same programming model for super streams as individual streams.
+The `Producer`, `Consumer`, `Message`, and other APIs remain unchanged when using super streams, so your application code requires minimal modifications.
 
 Consuming applications can use super streams and <<api.adoc#single-active-consumer, single active consumer>> at the same time.
 The 2 features combined make sure only one consumer instance consumes from an individual stream at a time.
@@ -19,7 +19,7 @@ In this configuration, super streams provide scalability and single active consu
 .Super streams do not deprecate streams
 ====
 Super streams are a https://en.wikipedia.org/wiki/Partition_(database)[partitioning] solution.
-They are not meant to replace individual streams, they sit on top of them to handle some use cases in a better way.
+They are not meant to replace individual streams; they sit on top of them to handle some use cases more effectively.
 If the stream data is likely to be large – hundreds of gigabytes or even terabytes, size remains relative – and even presents an obvious partition key (e.g. country), a super stream can be appropriate.
 It can help to cope with the data size and to take advantage of data locality for some processing use cases.
 Remember that partitioning always comes with complexity though, even if the implementation of super streams strives to make it as transparent as possible for the application developer.
@@ -28,9 +28,9 @@ Remember that partitioning always comes with complexity though, even if the impl
 
 ==== Topology
 
-A super stream is made of several individual streams, so it can be considered a logical entity rather than an actual physical entity.
-The topology of a super stream is based on the https://www.rabbitmq.com/tutorials/amqp-concepts.html[AMQP 0.9.1 model], that is exchange, queues, and bindings between them.
-This does not mean AMQP resources are used to transport or store stream messages, it means that they are used to _describe_ the super stream topology, that is the streams it is made of.
+The topology of a super stream follows the https://www.rabbitmq.com/tutorials/amqp-concepts.html[AMQP 0.9.1 model]: exchanges, queues, and bindings.
+AMQP resources are not used to transport or store stream messages.
+Instead, they describe the super stream topology and define which streams compose the super stream.
 
 Let's take the example of an `invoices` super stream made of 3 streams (i.e. partitions):
 
@@ -79,9 +79,9 @@ Here is how to create an `invoices` super stream with 5 partitions:
 include::{test-examples}/SuperStreamUsage.java[tag=creation-partitions]
 --------
 
-The super stream partitions will be `invoices-0`, `invoices-1`, ..., `invoices-5`.
-We use this kind of topology when routing keys of outbound messages are hashed to pick the partition to publish them to.
-This way, if the routing key is the customer ID of the invoice, all the invoices for a given customer end up in the same partition, and they can be processed in the publishing order.
+The super stream partitions will be `invoices-0`, `invoices-1`, ..., `invoices-4`.
+This topology works by hashing routing keys to determine the target partition for each message.
+For example, if the routing key is a customer ID, all invoices for the same customer will be routed to the same partition, ensuring they are processed in publishing order.
 
 It is also possible to specify binding keys when creating a super stream:
 
@@ -122,10 +122,10 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-simple]
 <3> Create the producer instance
 <4> Close the producer when it's no longer necessary
 
-Note that even though the `invoices` super stream is not an actual stream, its name must be used to declare the producer.
-Internally the client will figure out the streams that compose the super stream.
-The application code must provide the logic to extract a routing key from a message as a `Function<Message, String>`.
-The client will hash the routing key to determine the stream to send the message to (using partition list and a modulo operation).
+Although the `invoices` super stream is not a physical stream, you must use its name when declaring the producer.
+The client automatically discovers the individual streams that compose the super stream.
+Your application code must provide logic to extract a routing key from each message using a `Function<Message, String>`.
+The client hashes this routing key to determine the target stream using the partition list and a modulo operation.
 
 The client uses 32-bit https://en.wikipedia.org/wiki/MurmurHash[MurmurHash3] by default to hash the routing key.
 This hash function provides good uniformity, performance, and portability, making it a good default choice, but it is possible to specify a custom hash function:
@@ -214,16 +214,14 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-custom-routing-strat
 <1> No need to set the routing key extraction logic
 <2> Set the custom routing strategy
 
-
-
 ===== Deduplication
 
 Deduplication for a super stream producer works the same way as with a <<api.adoc#outbound-message-deduplication, single stream producer>>.
-The publishing ID values are spread across the streams but this does affect the mechanism.
+The publishing ID values are spread across the streams, but this does not affect the mechanism.
 
 ==== Consuming From a Super Stream
 
-A super stream consumer is a composite consumer: it will look up the super stream partitions and create a consumer for each or them.
+A super stream consumer is a composite consumer: it looks up the super stream partitions and creates a consumer for each of them.
 The programming model is the same as with regular consumers for the application developer: their main job is to provide the application code to process messages, that is a `MessageHandler` instance.
 The configuration is different though and this section covers its subtleties.
 But let's focus on the behavior of a super stream consumer first.
@@ -259,19 +257,18 @@ include::{test-examples}/SuperStreamUsage.java[tag=consumer-simple]
 <2> Close the consumer when it is no longer necessary
 
 That's all.
-The super stream consumer will take of the details (partitions lookup, coordination of the single consumers, etc).
+The super stream consumer will take care of the details (partition lookup, coordination of individual consumers, etc.).
 
 ===== Offset Tracking
 
-The semantic of offset tracking for a super stream consumer are roughly the same as for an individual stream consumer.
+The semantics of offset tracking for a super stream consumer are roughly the same as for an individual stream consumer.
 There are still some subtle differences, so a good understanding of <<api.adoc#consumer-offset-tracking, offset tracking>> in general and of the <<api.adoc#consumer-automatic-offset-tracking,automatic>> and <<api.adoc#consumer-manual-offset-tracking,manual>> offset tracking strategies is recommended.
 
 Here are the main differences for the automatic/manual offset tracking strategies between single and super stream consuming:
 
 * *automatic offset tracking*: internally, _the client divides the `messageCountBeforeStorage` setting by the number of partitions for each individual consumer_.
-Imagine a 3-partition super stream, `messageCountBeforeStorage` set to 10,000, and 10,000 messages coming in, perfectly balanced across the partitions (that is about 3,333 messages for each partition).
-In this case, the automatic offset tracking strategy will not kick in, because the expected count message has not been reached on any partition.
-Making the client divide `messageCountBeforeStorage` by the number of partitions can be considered "more accurate" if the message are well balanced across the partitions.
+Consider a 3-partition super stream with `messageCountBeforeStorage` set to 10,000. If 10,000 messages arrive evenly distributed (approximately 3,333 per partition), automatic offset tracking will not trigger because no individual partition reaches the threshold.
+Dividing `messageCountBeforeStorage` by the partition count provides more accurate tracking when messages are evenly distributed across partitions.
 A good rule of thumb is to then multiply the expected per-stream `messageCountBeforeStorage` by the number of partitions, to avoid storing offsets too often. So the default being 10,000, it can be set to 30,000 for a 3-partition super stream.
 * *manual offset tracking*: the `MessageHandler.Context#storeOffset()` method must be used, the `Consumer#store(long)` will fail, because an offset value has a meaning only in one stream, not in other streams.
 A call to `MessageHandler.Context#storeOffset()` will store the current message offset in _its_ stream, but also the offset of the last dispatched message for the other streams of the super stream.
@@ -286,9 +283,9 @@ As <<super-stream-consumer-in-practice, stated previously>>, super stream consum
 Let's take an example with a 3-partition super stream:
 
 * You have an application that creates a super stream consumer instance with single active consumer enabled.
-* You start 3 instances of this application. An instance in this case is a JVM process, which can be in a Docker container, a virtual machine, or a bare-metal server.
-* As the super stream has 3 partitions, each application instance will create a super stream consumer that maintains internally 3 consumer instances.
-That is 9 Java instances of consumer overall.
+* You start 3 instances of this application. Each instance is a JVM process running in a Docker container, virtual machine, or on bare-metal hardware.
+* Since the super stream has 3 partitions, each application instance creates a super stream consumer that maintains 3 internal consumer instances.
+This results in 9 consumer instances total.
 Such a super stream consumer is a _composite consumer_.
 * The broker and the different application instances coordinate so that only 1 consumer instance for a given partition receives messages at a time.
 So among these 9 consumer instances, only 3 are actually _active_, the other ones are idle or _inactive_.
