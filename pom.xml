@@ -72,7 +72,7 @@
     <micrometer-tracing-test.version>1.5.3</micrometer-tracing-test.version>
     <bouncycastle.version>1.81</bouncycastle.version>
     <micrometer-docs-generator.version>1.0.4</micrometer-docs-generator.version>
-    <netty-tcnative.version>2.0.72.Final</netty-tcnative.version>
+    <netty-tcnative.version>2.0.73.Final</netty-tcnative.version>
     <maven.compiler.plugin.version>3.14.0</maven.compiler.plugin.version>
     <maven-surefire-plugin.version>3.5.3</maven-surefire-plugin.version>
     <maven-dependency-plugin.version>3.8.1</maven-dependency-plugin.version>
