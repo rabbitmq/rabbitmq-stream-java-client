@@ -15,7 +15,9 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.*;
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_2_0;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
+import static com.rabbitmq.stream.impl.TestUtils.atLeastVersion;
 import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,11 +46,10 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
+@StreamTestInfrastructure
 public class AmqpInteroperabilityTest {
 
   static final Charset UTF8 = StandardCharsets.UTF_8;
@@ -166,7 +167,10 @@ public class AmqpInteroperabilityTest {
                             .doesNotContainKeys("x-basic-priority")),
                 ptc(
                     b -> b.replyTo("reply to"),
-                    m -> assertThat(m.getProperties().getReplyTo()).isEqualTo("reply to")),
+                    m -> {
+                      String expected = brokerVersion42Ormore() ? "/queues/reply%20to" : "reply to";
+                      assertThat(m.getProperties().getReplyTo()).isEqualTo(expected);
+                    }),
                 ptc(
                     b -> b.timestamp(timestamp),
                     m ->
@@ -680,6 +684,10 @@ public class AmqpInteroperabilityTest {
 
       assertThat(latchAssert(consumeLatch)).completes();
     }
+  }
+
+  private boolean brokerVersion42Ormore() {
+    return atLeastVersion(RABBITMQ_4_2_0.version(), brokerVersion);
   }
 
   private static class PropertiesTestConfiguration {
