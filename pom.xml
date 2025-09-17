@@ -70,7 +70,7 @@
     <vavr.version>0.10.7</vavr.version>
     <paho.version>1.2.5</paho.version>
     <micrometer-tracing-test.version>1.5.4</micrometer-tracing-test.version>
-    <bouncycastle.version>1.81</bouncycastle.version>
+    <bouncycastle.version>1.82</bouncycastle.version>
     <micrometer-docs-generator.version>1.0.4</micrometer-docs-generator.version>
     <netty-tcnative.version>2.0.73.Final</netty-tcnative.version>
     <maven.compiler.plugin.version>3.14.0</maven.compiler.plugin.version>
