@@ -95,7 +95,7 @@
     <spotless.version>2.46.1</spotless.version>
     <google-java-format.version>1.28.0</google-java-format.version>
     <jacoco.version>0.8.13</jacoco.version>
-    <spotbugs-maven-plugin.version>4.9.5.0</spotbugs-maven-plugin.version>
+    <spotbugs-maven-plugin.version>4.9.6.0</spotbugs-maven-plugin.version>
     <spotbugs.version>4.9.5</spotbugs.version>
     <!-- for documentation -->
     <broker.version>4.1</broker.version>
