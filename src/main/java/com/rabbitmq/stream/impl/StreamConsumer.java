@@ -443,8 +443,8 @@ final class StreamConsumer extends ResourceBase implements Consumer {
 
   boolean canTrack() {
     // closing is OK e.g. when flushing on closing
-    return ((this.state() == OPENING || this.state() == OPEN || this.state() == CLOSING)
-            || (this.trackingClient == null && this.state() == RECOVERING))
+    return (this.state() == OPENING || this.state() == OPEN || this.state() == CLOSING)
+        && (this.trackingClient != null && this.state() != RECOVERING)
         && this.name != null;
   }
 
