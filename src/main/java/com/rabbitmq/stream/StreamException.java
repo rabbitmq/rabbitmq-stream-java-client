@@ -25,8 +25,8 @@ public class StreamException extends RuntimeException {
 
   private final short code;
 
-  public StreamException(String message) {
-    super(message);
+  public StreamException(String format, Object... args) {
+    super(String.format(format, args));
     this.code = -1;
   }
 

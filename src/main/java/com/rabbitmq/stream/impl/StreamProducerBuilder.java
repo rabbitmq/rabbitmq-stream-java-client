@@ -17,12 +17,15 @@ package com.rabbitmq.stream.impl;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder;
+import com.rabbitmq.stream.Resource;
 import com.rabbitmq.stream.RoutingStrategy;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
@@ -58,6 +61,8 @@ class StreamProducerBuilder implements ProducerBuilder {
   private Function<Message, String> filterValueExtractor;
 
   private boolean dynamicBatch = DEFAULT_DYNAMIC_BATCH;
+
+  private final List<Resource.StateListener> listeners = new ArrayList<>();
 
   StreamProducerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -159,6 +164,16 @@ class StreamProducerBuilder implements ProducerBuilder {
   }
 
   @Override
+  public ProducerBuilder listeners(Resource.StateListener... listeners) {
+    if (listeners == null || listeners.length == 0) {
+      this.listeners.clear();
+    } else {
+      this.listeners.addAll(List.of(listeners));
+    }
+    return this;
+  }
+
+  @Override
   public RoutingConfiguration routing(Function<Message, String> routingKeyExtractor) {
     this.routingConfiguration = new DefaultRoutingConfiguration(this);
     this.routingConfiguration.routingKeyExtractor = routingKeyExtractor;
@@ -219,6 +234,7 @@ class StreamProducerBuilder implements ProducerBuilder {
               enqueueTimeout,
               retryOnRecovery,
               filterValueExtractor,
+              listeners,
               environment);
       this.environment.addProducer((StreamProducer) producer);
     } else {

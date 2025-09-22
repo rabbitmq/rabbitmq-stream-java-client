@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.Cli.listLocatorConnections;
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.*;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
@@ -432,9 +433,8 @@ public class StreamEnvironmentTest {
 
       Supplier<List<String>> locatorConnectionNamesSupplier =
           () ->
-              Cli.listConnections().stream()
+              listLocatorConnections().stream()
                   .map(ConnectionInfo::clientProvidedName)
-                  .filter(name -> name != null && name.contains("-locator-"))
                   .collect(toList());
       List<String> locatorConnectionNames = locatorConnectionNamesSupplier.get();
       assertThat(locatorConnectionNames).hasSameSizeAs(uris);

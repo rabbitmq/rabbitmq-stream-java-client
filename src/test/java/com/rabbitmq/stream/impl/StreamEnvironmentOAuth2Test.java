@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.*;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.Resource;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultOAuth2Configuration;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfOauth2AuthBackendNotEnabled;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
@@ -95,14 +96,7 @@ public class StreamEnvironmentOAuth2Test {
     Sync tokenRefreshedSync = sync(2);
     HttpHandler httpHandler =
         oAuth2TokenHttpHandler(
-            () -> {
-              //          if (serverCallCount.getAndIncrement() == 0) {
-              return currentTimeMillis() + tokenLifetime.toMillis();
-              //          } else {
-              //            return currentTimeMillis() - 100;
-              //          }
-            },
-            tokenRefreshedSync::down);
+            () -> currentTimeMillis() + tokenLifetime.toMillis(), tokenRefreshedSync::down);
     this.server = start(httpHandler, null);
 
     try (Environment env =
@@ -124,7 +118,7 @@ public class StreamEnvironmentOAuth2Test {
       producer.send(producer.messageBuilder().build(), ctx -> {});
       assertThat(consumeSync).completes();
       assertThat(tokenRefreshedSync).completes();
-      org.assertj.core.api.Assertions.assertThat(consumer.isConsuming());
+      org.assertj.core.api.Assertions.assertThat(consumer.state() == Resource.State.OPEN);
 
       // stopping the token server, there won't be attempts to re-authenticate
       this.server.stop(0);
@@ -157,7 +151,7 @@ public class StreamEnvironmentOAuth2Test {
       org.assertj.core.api.Assertions.assertThat(lastResponseCode)
           .hasValue(CODE_PRODUCER_NOT_AVAILABLE);
 
-      waitAtMost(() -> !consumer.isConsuming());
+      waitAtMost(() -> consumer.state() != Resource.State.OPEN);
     }
   }
 

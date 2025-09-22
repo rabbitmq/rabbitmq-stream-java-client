@@ -154,6 +154,26 @@ public class Cli {
     return connectionInfoList;
   }
 
+  public static List<ConnectionInfo> listLocatorConnections() {
+    return listConnections().stream()
+        .filter(c -> c.clientProvidedName() != null && c.clientProvidedName().contains("-locator-"))
+        .collect(Collectors.toList());
+  }
+
+  public static List<ConnectionInfo> listConsumerConnections() {
+    return listConnections().stream()
+        .filter(
+            c -> c.clientProvidedName() != null && c.clientProvidedName().contains("-consumer-"))
+        .collect(Collectors.toList());
+  }
+
+  public static List<ConnectionInfo> listProducerConnections() {
+    return listConnections().stream()
+        .filter(
+            c -> c.clientProvidedName() != null && c.clientProvidedName().contains("-producer-"))
+        .collect(Collectors.toList());
+  }
+
   private static Map<String, String> buildClientProperties(String[] fields) {
     String clientPropertiesString = fields[1];
     clientPropertiesString =

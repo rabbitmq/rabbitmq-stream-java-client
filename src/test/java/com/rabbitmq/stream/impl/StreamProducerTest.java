@@ -23,7 +23,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.rabbitmq.stream.*;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
-import com.rabbitmq.stream.impl.StreamProducer.Status;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ConnectTimeoutException;
@@ -282,7 +281,7 @@ public class StreamProducerTest {
 
     Cli.killConnection("rabbitmq-stream-producer-0");
 
-    waitAtMost(() -> ((StreamProducer) producer).status() == Status.NOT_AVAILABLE);
+    waitAtMost(() -> ((StreamProducer) producer).state() == Resource.State.RECOVERING);
     canPublish.set(false);
 
     assertThat(confirmed.get()).isPositive();
@@ -302,7 +301,7 @@ public class StreamProducerTest {
                 (published.get() - (confirmed.get() + errored.get()))));
     assertThat(confirmed.get() + errored.get()).isEqualTo(published.get());
 
-    waitAtMost(() -> ((StreamProducer) producer).status() == StreamProducer.Status.RUNNING);
+    waitAtMost(() -> ((StreamProducer) producer).state() == Resource.State.OPEN);
 
     int confirmedAfterUnavailability = confirmed.get();
     int errorAfterUnavailability = errored.get();
