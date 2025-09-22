@@ -127,6 +127,15 @@ public interface ConsumerBuilder {
   ConsumerBuilder subscriptionListener(SubscriptionListener subscriptionListener);
 
   /**
+   * Add {@link Resource.StateListener}s to the consumer.
+   *
+   * @param listeners listeners
+   * @return this builder instance
+   * @since 1.3.0
+   */
+  ConsumerBuilder listeners(Resource.StateListener... listeners);
+
+  /**
    * Enable {@link ManualTrackingStrategy}.
    *
    * @return the manual tracking strategy

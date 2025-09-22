@@ -15,6 +15,10 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.*;
+import static com.rabbitmq.stream.Resource.State.CLOSED;
+import static com.rabbitmq.stream.Resource.State.CLOSING;
+import static com.rabbitmq.stream.Resource.State.OPEN;
+import static com.rabbitmq.stream.Resource.State.RECOVERING;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
@@ -50,7 +54,7 @@ import java.util.function.ToLongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class StreamProducer implements Producer {
+final class StreamProducer extends ResourceBase implements Producer {
 
   private static final AtomicLong ID_SEQUENCE = new AtomicLong(0);
 
@@ -77,7 +81,6 @@ class StreamProducer implements Producer {
   private final boolean retryOnRecovery;
   private volatile Client client;
   private volatile byte publisherId;
-  private volatile Status status;
   private volatile ScheduledFuture<?> confirmTimeoutFuture;
   private final short publishVersion;
   private final Lock lock = new ReentrantLock();
@@ -96,7 +99,9 @@ class StreamProducer implements Producer {
       Duration enqueueTimeout,
       boolean retryOnRecovery,
       Function<Message, String> filterValueExtractor,
+      List<StateListener> listeners,
       StreamEnvironment environment) {
+    super(listeners);
     if (filterValueExtractor != null && !environment.filteringSupported()) {
       throw new IllegalArgumentException(
           "Filtering is not supported by the broker "
@@ -204,7 +209,7 @@ class StreamProducer implements Producer {
             if (canSend()) {
               this.accumulator.flush(false);
             }
-            if (status != Status.CLOSED) {
+            if (this.state() != CLOSED) {
               environment
                   .scheduledExecutorService()
                   .schedule(
@@ -242,7 +247,7 @@ class StreamProducer implements Producer {
               LOGGER.info("Error while executing confirm timeout check task: {}", e.getCause());
             }
 
-            if (this.status != Status.CLOSED) {
+            if (this.state() != CLOSED) {
               this.confirmTimeoutFuture =
                   this.environment
                       .scheduledExecutorService()
@@ -269,7 +274,7 @@ class StreamProducer implements Producer {
                   confirmTimeout.toMillis(),
                   TimeUnit.MILLISECONDS);
     }
-    this.status = Status.RUNNING;
+    this.state(State.OPEN);
   }
 
   private Runnable confirmTimeoutTask(Duration confirmTimeout) {
@@ -408,10 +413,10 @@ class StreamProducer implements Producer {
   }
 
   private void failPublishing(Message message, ConfirmationHandler confirmationHandler) {
-    if (this.status == Status.NOT_AVAILABLE) {
+    if (this.state() == RECOVERING) {
       confirmationHandler.handle(
           new ConfirmationStatus(message, false, CODE_PRODUCER_NOT_AVAILABLE));
-    } else if (this.status == Status.CLOSED) {
+    } else if (this.state() == CLOSED) {
       confirmationHandler.handle(new ConfirmationStatus(message, false, CODE_PRODUCER_CLOSED));
     } else {
       confirmationHandler.handle(
@@ -420,13 +425,14 @@ class StreamProducer implements Producer {
   }
 
   boolean canSend() {
-    return this.status == Status.RUNNING;
+    return this.state() == OPEN;
   }
 
   @Override
   public void close() {
     if (this.closed.compareAndSet(false, true)) {
-      if (this.status == Status.RUNNING && this.client != null) {
+      this.state(CLOSING);
+      if (this.state() == OPEN && this.client != null) {
         LOGGER.debug("Deleting producer {}", this.publisherId);
         Response response = this.client.deletePublisher(this.publisherId);
         if (!response.isOk()) {
@@ -449,7 +455,7 @@ class StreamProducer implements Producer {
     this.closingCallback.run();
     cancelConfirmTimeoutTask();
     this.closed.set(true);
-    this.status = Status.CLOSED;
+    this.state(CLOSED);
     LOGGER.debug("Closed publisher {} successfully", this.publisherId);
   }
 
@@ -467,7 +473,7 @@ class StreamProducer implements Producer {
       }
       cancelConfirmTimeoutTask();
       this.environment.removeProducer(this);
-      this.status = Status.CLOSED;
+      this.state(CLOSED);
     }
   }
 
@@ -491,7 +497,7 @@ class StreamProducer implements Producer {
   }
 
   void unavailable() {
-    this.status = Status.NOT_AVAILABLE;
+    this.state(RECOVERING);
   }
 
   void running() {
@@ -560,7 +566,7 @@ class StreamProducer implements Producer {
             }
           }
         });
-    this.status = Status.RUNNING;
+    this.state(OPEN);
   }
 
   void setClient(Client client) {
@@ -569,16 +575,6 @@ class StreamProducer implements Producer {
 
   void setPublisherId(byte publisherId) {
     this.executeInLock(() -> this.publisherId = publisherId);
-  }
-
-  Status status() {
-    return this.status;
-  }
-
-  enum Status {
-    RUNNING,
-    NOT_AVAILABLE,
-    CLOSED
   }
 
   @Override
