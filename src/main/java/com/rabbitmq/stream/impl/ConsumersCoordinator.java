@@ -506,15 +506,15 @@ final class ConsumersCoordinator implements AutoCloseable {
       return this.state.get();
     }
 
-    private void markConsuming() {
+    private void markOpen() {
       if (this.consumer != null) {
-        this.consumer.consuming();
+        this.consumer.markOpen();
       }
     }
 
-    private void markNotConsuming() {
+    private void markRecovering() {
       if (this.consumer != null) {
-        this.consumer.notConsuming();
+        this.consumer.markRecovering();
       }
     }
 
@@ -712,7 +712,7 @@ final class ConsumersCoordinator implements AutoCloseable {
                   "Subscription connection has {} consumer(s) over {} stream(s) to recover",
                   this.subscriptionTrackers.stream().filter(Objects::nonNull).count(),
                   this.streamToStreamSubscriptions.size());
-              iterate(this.subscriptionTrackers, SubscriptionTracker::markNotConsuming);
+              iterate(this.subscriptionTrackers, SubscriptionTracker::markRecovering);
               environment
                   .scheduledExecutorService()
                   .execute(
@@ -787,7 +787,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             }
 
             if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
-              iterate(affectedSubscriptions, SubscriptionTracker::markNotConsuming);
+              iterate(affectedSubscriptions, SubscriptionTracker::markRecovering);
               environment
                   .scheduledExecutorService()
                   .execute(
@@ -1146,7 +1146,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           throw e;
         }
         subscriptionTracker.state(SubscriptionState.ACTIVE);
-        subscriptionTracker.markConsuming();
+        subscriptionTracker.markOpen();
         LOGGER.debug("Subscribed to '{}'", subscriptionTracker.stream);
       } finally {
         this.subscriptionManagerLock.unlock();

@@ -15,18 +15,22 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
+import static com.rabbitmq.stream.Resource.State.CLOSED;
+import static com.rabbitmq.stream.Resource.State.CLOSING;
+import static com.rabbitmq.stream.Resource.State.OPEN;
+import static com.rabbitmq.stream.Resource.State.OPENING;
+import static com.rabbitmq.stream.Resource.State.RECOVERING;
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
 import static java.lang.String.format;
 
 import com.rabbitmq.stream.*;
-import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.LocatorNotAvailableException;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.*;
@@ -41,7 +45,7 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class StreamConsumer implements Consumer {
+final class StreamConsumer extends ResourceBase implements Consumer {
 
   private static final AtomicLong ID_SEQUENCE = new AtomicLong(0);
 
@@ -57,16 +61,13 @@ class StreamConsumer implements Consumer {
   private volatile Runnable closingCallback;
   private volatile Client trackingClient;
   private volatile Client subscriptionClient;
-  private volatile Status status;
   private volatile long lastRequestedStoredOffset = 0;
   private final AtomicBoolean nothingStoredYet = new AtomicBoolean(true);
   private volatile boolean sacActive;
   private final boolean sac;
   private final OffsetSpecification initialOffsetSpecification;
   private final Lock lock = new ReentrantLock();
-  private volatile boolean consuming;
 
-  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamConsumer(
       String stream,
       OffsetSpecification offsetSpecification,
@@ -78,7 +79,9 @@ class StreamConsumer implements Consumer {
       SubscriptionListener subscriptionListener,
       Map<String, String> subscriptionProperties,
       ConsumerUpdateListener consumerUpdateListener,
-      ConsumerFlowStrategy flowStrategy) {
+      ConsumerFlowStrategy flowStrategy,
+      List<StateListener> listeners) {
+    super(listeners);
     if (Utils.filteringEnabled(subscriptionProperties) && !environment.filteringSupported()) {
       throw new IllegalArgumentException(
           "Filtering is not supported by the broker "
@@ -103,7 +106,7 @@ class StreamConsumer implements Consumer {
 
         trackingClosingCallback = trackingConsumerRegistration.closingCallback();
 
-        java.util.function.Consumer<Context> postMessageProcessingCallback =
+        java.util.function.Consumer<MessageHandler.Context> postMessageProcessingCallback =
             trackingConsumerRegistration.postMessageProcessingCallback();
         if (postMessageProcessingCallback == null) {
           // no callback, no need to decorate
@@ -225,7 +228,7 @@ class StreamConsumer implements Consumer {
 
       Runnable init =
           () -> {
-            this.status = Status.INITIALIZING;
+            this.state(State.OPENING);
             this.closingCallback =
                 environment.registerConsumer(
                     this,
@@ -237,8 +240,7 @@ class StreamConsumer implements Consumer {
                     closedAwareMessageHandler,
                     Map.copyOf(subscriptionProperties),
                     flowStrategy);
-
-            this.status = Status.RUNNING;
+            this.state(OPEN);
           };
       if (lazyInit) {
         this.initCallback = init;
@@ -250,7 +252,6 @@ class StreamConsumer implements Consumer {
       this.closed.set(true);
       throw e;
     }
-    this.consuming = true;
   }
 
   static OffsetSpecification getStoredOffset(
@@ -441,14 +442,16 @@ class StreamConsumer implements Consumer {
   }
 
   boolean canTrack() {
-    return ((this.status == Status.INITIALIZING || this.status == Status.RUNNING)
-            || (this.trackingClient == null && this.status == Status.NOT_AVAILABLE))
+    // closing is OK e.g. when flushing on closing
+    return (this.state() == OPENING || this.state() == OPEN || this.state() == CLOSING)
+        && (this.trackingClient != null && this.state() != RECOVERING)
         && this.name != null;
   }
 
   @Override
   public void close() {
     if (closed.compareAndSet(false, true)) {
+      this.state(CLOSING);
       this.environment.removeConsumer(this);
       closeFromEnvironment();
     }
@@ -459,7 +462,7 @@ class StreamConsumer implements Consumer {
     LOGGER.debug("Calling consumer {} closing callback (stream {})", this.id, this.stream);
     this.closingCallback.run();
     closed.set(true);
-    this.status = Status.CLOSED;
+    this.state(CLOSED);
     LOGGER.debug("Closed consumer successfully");
   }
 
@@ -467,7 +470,7 @@ class StreamConsumer implements Consumer {
     if (closed.compareAndSet(false, true)) {
       this.maybeNotifyActiveToInactiveSac();
       this.environment.removeConsumer(this);
-      this.status = Status.CLOSED;
+      this.state(CLOSED);
     }
   }
 
@@ -499,11 +502,11 @@ class StreamConsumer implements Consumer {
     }
   }
 
-  synchronized void unavailable() {
+  void unavailable() {
     Utils.lock(
         this.lock,
         () -> {
-          this.status = Status.NOT_AVAILABLE;
+          this.state(RECOVERING);
           this.trackingClient = null;
         });
   }
@@ -517,7 +520,7 @@ class StreamConsumer implements Consumer {
   }
 
   void running() {
-    this.status = Status.RUNNING;
+    this.state(OPEN);
   }
 
   long storedOffset(Supplier<Client> clientSupplier) {
@@ -530,8 +533,8 @@ class StreamConsumer implements Consumer {
     } else {
       throw new IllegalStateException(
           format(
-              "Not possible to query offset for consumer %s on stream %s for now, consumer status is %s",
-              this.name, this.stream, this.status.name()));
+              "Not possible to query offset for consumer %s on stream %s for now, consumer state is %s",
+              this.name, this.stream, this.state().name()));
     }
   }
 
@@ -542,13 +545,6 @@ class StreamConsumer implements Consumer {
 
   String stream() {
     return this.stream;
-  }
-
-  enum Status {
-    INITIALIZING,
-    RUNNING,
-    NOT_AVAILABLE,
-    CLOSED
   }
 
   @Override
@@ -589,12 +585,6 @@ class StreamConsumer implements Consumer {
         + "}";
   }
 
-  private void checkNotClosed() {
-    if (this.status == Status.CLOSED) {
-      throw new IllegalStateException("This producer instance has been closed");
-    }
-  }
-
   long id() {
     return this.id;
   }
@@ -608,15 +598,18 @@ class StreamConsumer implements Consumer {
     }
   }
 
-  void notConsuming() {
-    this.consuming = false;
+  void markRecovering() {
+    state(RECOVERING);
   }
 
-  void consuming() {
-    this.consuming = true;
+  void markOpen() {
+    state(OPEN);
   }
 
-  boolean isConsuming() {
-    return this.consuming;
+  private void checkNotClosed() {
+    if (state() == CLOSED) {
+      // will throw the appropriate exception
+      checkOpen();
+    }
   }
 }

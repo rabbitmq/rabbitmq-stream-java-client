@@ -193,6 +193,15 @@ public interface ProducerBuilder {
   ProducerBuilder filterValue(Function<Message, String> filterValueExtractor);
 
   /**
+   * Add {@link Resource.StateListener}s to the producer.
+   *
+   * @param listeners listeners
+   * @return this builder instance
+   * @since 1.3.0
+   */
+  ProducerBuilder listeners(Resource.StateListener... listeners);
+
+  /**
    * Create the {@link Producer} instance.
    *
    * @return the configured producer

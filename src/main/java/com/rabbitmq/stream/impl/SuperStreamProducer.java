@@ -120,7 +120,6 @@ class SuperStreamProducer implements Producer {
         producer(streams.get(0)).send(message, confirmationHandler);
       } else {
         for (int i = 0; i < streams.size(); i++) {
-          Producer producer = producer(streams.get(i));
           producer(streams.get(i)).send(messageInterceptor.apply(i, message), confirmationHandler);
         }
       }

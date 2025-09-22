@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static java.util.Collections.emptyList;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -184,6 +185,7 @@ public class StreamProducerUnitTest {
             Duration.ofSeconds(10),
             true,
             null,
+            emptyList(),
             env);
 
     range(0, messageCount)
@@ -235,6 +237,7 @@ public class StreamProducerUnitTest {
             enqueueTimeout,
             true,
             null,
+            emptyList(),
             env);
 
     AtomicBoolean confirmCalled = new AtomicBoolean(false);
@@ -276,6 +279,7 @@ public class StreamProducerUnitTest {
             enqueueTimeout,
             true,
             null,
+            emptyList(),
             env);
 
     AtomicBoolean confirmCalled = new AtomicBoolean(false);

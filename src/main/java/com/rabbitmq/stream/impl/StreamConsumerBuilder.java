@@ -22,6 +22,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +49,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   private final DefaultFlowConfiguration flowConfiguration = new DefaultFlowConfiguration(this);
   private ConsumerUpdateListener consumerUpdateListener;
   private DefaultFilterConfiguration filterConfiguration;
+  private final List<Resource.StateListener> listeners = new ArrayList<>();
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
@@ -109,6 +111,16 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       throw new IllegalArgumentException("The subscription listener cannot be null");
     }
     this.subscriptionListener = subscriptionListener;
+    return this;
+  }
+
+  @Override
+  public ConsumerBuilder listeners(Resource.StateListener... listeners) {
+    if (listeners == null || listeners.length == 0) {
+      this.listeners.clear();
+    } else {
+      this.listeners.addAll(List.of(listeners));
+    }
     return this;
   }
 
@@ -241,7 +253,8 @@ class StreamConsumerBuilder implements ConsumerBuilder {
               this.subscriptionListener,
               this.subscriptionProperties,
               this.consumerUpdateListener,
-              this.flowConfiguration.strategy);
+              this.flowConfiguration.strategy,
+              this.listeners);
       environment.addConsumer((StreamConsumer) consumer);
     } else {
       if (Utils.isSac(this.subscriptionProperties)) {
