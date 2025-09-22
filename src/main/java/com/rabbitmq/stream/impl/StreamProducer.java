@@ -27,7 +27,6 @@ import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.ProducerUtils.AccumulatedEntity;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBuf;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -85,7 +84,6 @@ final class StreamProducer extends ResourceBase implements Producer {
   private final short publishVersion;
   private final Lock lock = new ReentrantLock();
 
-  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamProducer(
       String name,
       String stream,

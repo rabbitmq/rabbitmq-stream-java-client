@@ -29,7 +29,6 @@ import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironment.LocatorNotAvailableException;
 import com.rabbitmq.stream.impl.StreamEnvironment.TrackingConsumerRegistration;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +68,6 @@ final class StreamConsumer extends ResourceBase implements Consumer {
   private final OffsetSpecification initialOffsetSpecification;
   private final Lock lock = new ReentrantLock();
 
-  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamConsumer(
       String stream,
       OffsetSpecification offsetSpecification,
