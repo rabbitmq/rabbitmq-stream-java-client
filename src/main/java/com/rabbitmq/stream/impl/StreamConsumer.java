@@ -352,7 +352,7 @@ final class StreamConsumer extends ResourceBase implements Consumer {
 
   @Override
   public void store(long offset) {
-    checkOpen();
+    checkNotClosed();
     trackingCallback.accept(offset);
     if (canTrack()) {
       if (offsetBefore(this.lastRequestedStoredOffset, offset)
@@ -444,8 +444,8 @@ final class StreamConsumer extends ResourceBase implements Consumer {
   }
 
   boolean canTrack() {
-    // FIXME check the condition to be able to track
-    return ((this.state() == OPENING || this.state() == OPEN)
+    // closing is OK e.g. when flushing on closing
+    return ((this.state() == OPENING || this.state() == OPEN || this.state() == CLOSING)
             || (this.trackingClient == null && this.state() == RECOVERING))
         && this.name != null;
   }
@@ -526,7 +526,7 @@ final class StreamConsumer extends ResourceBase implements Consumer {
   }
 
   long storedOffset(Supplier<Client> clientSupplier) {
-    checkOpen();
+    checkNotClosed();
     if (canTrack()) {
       return OffsetTrackingUtils.storedOffset(clientSupplier, this.name, this.stream);
     } else if (this.name == null) {
@@ -606,5 +606,12 @@ final class StreamConsumer extends ResourceBase implements Consumer {
 
   void markOpen() {
     state(OPEN);
+  }
+
+  private void checkNotClosed() {
+    if (state() == CLOSED) {
+      // will throw the appropriate exception
+      checkOpen();
+    }
   }
 }

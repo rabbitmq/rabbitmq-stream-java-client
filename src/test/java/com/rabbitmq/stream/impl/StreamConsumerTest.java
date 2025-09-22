@@ -971,7 +971,7 @@ public class StreamConsumerTest {
     ThrowingCallable[] calls =
         new ThrowingCallable[] {() -> consumer.store(1), () -> consumer.storedOffset()};
     Arrays.stream(calls)
-        .forEach(call -> assertThatThrownBy(call).isInstanceOf(IllegalStateException.class));
+        .forEach(call -> assertThatThrownBy(call).isInstanceOf(ResourceClosedException.class));
   }
 
   @Test
