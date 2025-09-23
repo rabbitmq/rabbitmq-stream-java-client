@@ -129,6 +129,12 @@ public interface ConsumerBuilder {
   /**
    * Add {@link Resource.StateListener}s to the consumer.
    *
+   * <p>A consumer uses one connection for consuming and another connection for server-side offset
+   * tracking (if activated by setting a name with {@link #name(String)}). A {@link
+   * Resource.StateListener} receives state updates for both connections, so a consumer can still be
+   * consuming messages after it receives a {@link Resource.State#RECOVERING} state update, as the
+   * update may be related to the offset tracking connection.
+   *
    * @param listeners listeners
    * @return this builder instance
    * @since 1.3.0
