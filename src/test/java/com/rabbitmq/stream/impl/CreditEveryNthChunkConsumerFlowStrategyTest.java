@@ -38,7 +38,7 @@ public class CreditEveryNthChunkConsumerFlowStrategyTest {
 
   @ParameterizedTest
   @CsvSource({"10,5", "5,2", "2,1"})
-  void test(int initialCredits, int limit) {
+  void shouldGrantCreditsEveryNthChunk(int initialCredits, int limit) {
     ConsumerFlowStrategy strategy = build(initialCredits, limit);
     range(0, limit - 1)
         .forEach(
