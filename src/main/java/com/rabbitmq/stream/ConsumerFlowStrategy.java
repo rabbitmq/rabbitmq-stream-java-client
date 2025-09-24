@@ -118,9 +118,6 @@ public interface ConsumerFlowStrategy {
    *
    * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
    *
-   * <p>Consider using {@link #creditEveryNthChunk(int, int)} instead as it generates less network
-   * traffic.
-   *
    * @param initialCredits number of initial credits
    * @return flow strategy
    * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(int)
@@ -175,11 +172,12 @@ public interface ConsumerFlowStrategy {
    * Strategy that provides the specified number of initial credits and <code>n</code> credits every
    * <code>n</code> chunks.
    *
-   * <p>This strategy generates less network traffic than {@link
-   * com.rabbitmq.stream.ConsumerFlowStrategy.CreditOnChunkArrivalConsumerFlowStrategy} and should
-   * be used instead, unless <code>n</code> is equal to 1.
+   * <p>This strategy can improve throughput for streams with small chunks (less than 30 messages
+   * per chunk).
    *
-   * <p>A rule of thumb is to set <code>n</code> to half the value of initial credits.
+   * <p>The number of initial credits must be at least twice as big as <code>n</code>.
+   *
+   * <p>A rule of thumb is to set <code>n</code> to a third of the value of initial credits.
    *
    * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
    *
@@ -195,9 +193,10 @@ public interface ConsumerFlowStrategy {
    * Strategy that provides the specified number of initial credits and <code>n</code> credits every
    * <code>n</code> chunks.
    *
-   * <p>This strategy generates less network traffic than {@link
-   * com.rabbitmq.stream.ConsumerFlowStrategy.CreditOnChunkArrivalConsumerFlowStrategy} and should
-   * be used instead, unless <code>n</code> is equal to 1.
+   * <p>This strategy can improve throughput for streams with small chunks (less than 30 messages
+   * per chunk).
+   *
+   * <p>The number of initial credits must be at least twice as big as <code>n</code>.
    *
    * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
    */
@@ -213,9 +212,9 @@ public interface ConsumerFlowStrategy {
       if (n <= 0) {
         throw new IllegalArgumentException("The n argument must be greater than 0");
       }
-      if (initialCredits <= n) {
+      if (n * 2 > initialCredits) {
         throw new IllegalArgumentException(
-            "The number of initial credits must be greater than the limit");
+            "The number of initial credits must be at least twice as big as n");
       }
       this.initialCredits = initialCredits;
       this.n = n;

@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.ConsumerFlowStrategy;
+import com.rabbitmq.stream.ConsumerFlowStrategy.Context;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -29,18 +29,17 @@ public class CreditEveryNthChunkConsumerFlowStrategyTest {
 
   AtomicInteger requestedCredits = new AtomicInteger();
 
-  @Test
-  void invalidArguments() {
-    assertThatThrownBy(() -> build(1, 1)).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> build(1, 0)).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> build(10, 0)).isInstanceOf(IllegalArgumentException.class);
+  @ParameterizedTest
+  @CsvSource({"10,6", "1,1", "1,0", "10,0"})
+  void invalidArguments(int initialCredits, int limit) {
+    assertThatThrownBy(() -> build(initialCredits, limit))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @ParameterizedTest
   @CsvSource({"10,5", "5,2", "2,1"})
   void test(int initialCredits, int limit) {
     ConsumerFlowStrategy strategy = build(initialCredits, limit);
-
     range(0, limit - 1)
         .forEach(
             ignored -> {
@@ -55,9 +54,9 @@ public class CreditEveryNthChunkConsumerFlowStrategyTest {
     return creditEveryNthChunk(initial, limit);
   }
 
-  ConsumerFlowStrategy.Context context() {
+  Context context() {
     requestedCredits.set(0);
-    return new ConsumerFlowStrategy.Context() {
+    return new Context() {
       @Override
       public void credits(int credits) {
         requestedCredits.addAndGet(credits);
