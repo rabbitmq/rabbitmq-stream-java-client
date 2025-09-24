@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.ConsumerFlowStrategy.creditEveryNthChunk;
 import static com.rabbitmq.stream.ConsumerFlowStrategy.creditWhenHalfMessagesProcessed;
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.*;
@@ -53,6 +54,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -160,8 +162,9 @@ public class StreamConsumerTest {
     consumer.close();
   }
 
-  @Test
-  void consume() throws Exception {
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void consume(boolean creditEveryNthChunk) throws Exception {
     int messageCount = 100_000;
     CountDownLatch publishLatch = new CountDownLatch(messageCount);
     Client client =
@@ -183,15 +186,18 @@ public class StreamConsumerTest {
     CountDownLatch consumeLatch = new CountDownLatch(messageCount);
 
     AtomicLong chunkTimestamp = new AtomicLong();
-    Consumer consumer =
+    ConsumerBuilder builder =
         environment.consumerBuilder().stream(stream)
             .offset(OffsetSpecification.first())
             .messageHandler(
                 (context, message) -> {
                   chunkTimestamp.set(context.timestamp());
                   consumeLatch.countDown();
-                })
-            .build();
+                });
+    if (creditEveryNthChunk) {
+      builder.flow().strategy(creditEveryNthChunk(10, 5));
+    }
+    Consumer consumer = builder.build();
 
     org.assertj.core.api.Assertions.assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
     org.assertj.core.api.Assertions.assertThat(chunkTimestamp.get()).isNotZero();

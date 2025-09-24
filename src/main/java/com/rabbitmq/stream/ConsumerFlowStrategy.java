@@ -118,6 +118,9 @@ public interface ConsumerFlowStrategy {
    *
    * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
    *
+   * <p>Consider using {@link #creditEveryNthChunk(int, int)} instead as it generates less network
+   * traffic.
+   *
    * @param initialCredits number of initial credits
    * @return flow strategy
    * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(int)
@@ -169,11 +172,78 @@ public interface ConsumerFlowStrategy {
   }
 
   /**
+   * Strategy that provides the specified number of initial credits and <code>n</code> credits every
+   * <code>n</code> chunks.
+   *
+   * <p>This strategy generates less network traffic than {@link
+   * com.rabbitmq.stream.ConsumerFlowStrategy.CreditOnChunkArrivalConsumerFlowStrategy} and should
+   * be used instead, unless <code>n</code> is equal to 1.
+   *
+   * <p>A rule of thumb is to set <code>n</code> to half the value of initial credits.
+   *
+   * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
+   *
+   * @param initialCredits number of initial credits
+   * @param n number of chunks and number of credits
+   * @return flow strategy
+   */
+  static ConsumerFlowStrategy creditEveryNthChunk(int initialCredits, int n) {
+    return new CreditEveryNthChunkConsumerFlowStrategy(initialCredits, n);
+  }
+
+  /**
+   * Strategy that provides the specified number of initial credits and <code>n</code> credits every
+   * <code>n</code> chunks.
+   *
+   * <p>This strategy generates less network traffic than {@link
+   * com.rabbitmq.stream.ConsumerFlowStrategy.CreditOnChunkArrivalConsumerFlowStrategy} and should
+   * be used instead, unless <code>n</code> is equal to 1.
+   *
+   * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
+   */
+  final class CreditEveryNthChunkConsumerFlowStrategy implements ConsumerFlowStrategy {
+
+    private static final MessageProcessedCallback CALLBACK = v -> {};
+
+    private final int initialCredits;
+    private final AtomicLong chunkCount = new AtomicLong(0);
+    private final int n;
+
+    private CreditEveryNthChunkConsumerFlowStrategy(int initialCredits, int n) {
+      if (n <= 0) {
+        throw new IllegalArgumentException("The n argument must be greater than 0");
+      }
+      if (initialCredits <= n) {
+        throw new IllegalArgumentException(
+            "The number of initial credits must be greater than the limit");
+      }
+      this.initialCredits = initialCredits;
+      this.n = n;
+    }
+
+    @Override
+    public int initialCredits() {
+      this.chunkCount.set(0);
+      return this.initialCredits;
+    }
+
+    @Override
+    public MessageProcessedCallback start(Context context) {
+      if (chunkCount.incrementAndGet() % n == 0) {
+        context.credits(n);
+      }
+      return CALLBACK;
+    }
+  }
+
+  /**
    * Strategy that provides the specified number of initial credits and a credit on each new chunk.
    *
    * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
    */
-  class CreditOnChunkArrivalConsumerFlowStrategy implements ConsumerFlowStrategy {
+  final class CreditOnChunkArrivalConsumerFlowStrategy implements ConsumerFlowStrategy {
+
+    private static final MessageProcessedCallback CALLBACK = v -> {};
 
     private final int initialCredits;
 
@@ -189,7 +259,7 @@ public interface ConsumerFlowStrategy {
     @Override
     public MessageProcessedCallback start(Context context) {
       context.credits(1);
-      return value -> {};
+      return CALLBACK;
     }
   }
 
@@ -200,7 +270,7 @@ public interface ConsumerFlowStrategy {
    * <p>Make sure to call {@link MessageHandler.Context#processed()} on every message when using
    * this strategy, otherwise the broker may stop sending messages to the consumer.
    */
-  class MessageCountConsumerFlowStrategy implements ConsumerFlowStrategy {
+  final class MessageCountConsumerFlowStrategy implements ConsumerFlowStrategy {
 
     private final int initialCredits;
     private final double ratio;
