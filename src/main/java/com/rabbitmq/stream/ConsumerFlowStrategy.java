@@ -172,8 +172,8 @@ public interface ConsumerFlowStrategy {
    * Strategy that provides the specified number of initial credits and <code>n</code> credits every
    * <code>n</code> chunks.
    *
-   * <p>This strategy can improve throughput for streams with small chunks (less than 30 messages
-   * per chunk).
+   * <p>This strategy can improve throughput for some workloads, it is possible to experiment with
+   * it if hitting problems with other flow strategies.
    *
    * <p>The number of initial credits must be at least twice as big as <code>n</code>.
    *
@@ -193,8 +193,8 @@ public interface ConsumerFlowStrategy {
    * Strategy that provides the specified number of initial credits and <code>n</code> credits every
    * <code>n</code> chunks.
    *
-   * <p>This strategy can improve throughput for streams with small chunks (less than 30 messages
-   * per chunk).
+   * <p>This strategy can improve throughput for some workloads, it is possible to experiment with
+   * it if hitting problems with other flow strategies.
    *
    * <p>The number of initial credits must be at least twice as big as <code>n</code>.
    *
