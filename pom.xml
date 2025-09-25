@@ -92,7 +92,7 @@
     <asciidoctorj.diagram.ditaamini.version>1.0.3</asciidoctorj.diagram.ditaamini.version>
     <buildnumber.plugin.version>3.2.1</buildnumber.plugin.version>
     <jmh.version>1.37</jmh.version>
-    <spotless.version>2.46.1</spotless.version>
+    <spotless.version>3.0.0</spotless.version>
     <google-java-format.version>1.28.0</google-java-format.version>
     <jacoco.version>0.8.13</jacoco.version>
     <spotbugs-maven-plugin.version>4.9.6.0</spotbugs-maven-plugin.version>
@@ -598,6 +598,7 @@
               <version>${google-java-format.version}</version>
               <style>GOOGLE</style>
             </googleJavaFormat>
+            <removeUnusedImports />
           </java>
           <ratchetFrom>origin/main</ratchetFrom>
           <licenseHeader> <!-- specify either content or file, but not both -->
