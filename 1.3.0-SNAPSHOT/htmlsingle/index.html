@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.3.0-SNAPSHOT</span>
-<br><span id="revremark">(238c5d5)</span>
+<br><span id="revremark">(081a6cb)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1104,12 +1104,59 @@ a consumer to make some computations out of them. The
 <div class="listingblock">
 <div class="title">Imports for the sample application</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="java"><span class="keyword">import</span> <span class="include">com.rabbitmq.stream</span>.*;
-<span class="keyword">import</span> <span class="include">java.util.UUID</span>;
-<span class="keyword">import</span> <span class="include">java.util.concurrent.CountDownLatch</span>;
-<span class="keyword">import</span> <span class="include">java.util.concurrent.TimeUnit</span>;
-<span class="keyword">import</span> <span class="include">java.util.concurrent.atomic.AtomicLong</span>;
-<span class="keyword">import</span> <span class="include">java.util.stream.IntStream</span>;</code></pre>
+<pre class="CodeRay highlight"><code data-lang="java"><span class="keyword">import</span> <span class="include">com.rabbitmq.stream.Consumer</span>;
+<span class="keyword">import</span> <span class="include">com.rabbitmq.stream.Environment</span>;
+<span class="keyword">import</span> <span class="include">com.rabbitmq.stream.OffsetSpecification</span>;
+<span class="keyword">import</span> <span class="include">com.rabbitmq.stream.Producer</span>;
+
+<span class="directive">public</span> <span class="type">class</span> <span class="class">SampleApplication</span> {
+
+    <span class="directive">public</span> <span class="directive">static</span> <span class="type">void</span> main(<span class="predefined-type">String</span><span class="type">[]</span> args) <span class="directive">throws</span> <span class="exception">Exception</span> {
+        <span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Connecting...</span><span class="delimiter">&quot;</span></span>);
+        Environment environment = Environment.builder().build();  <i class="conum" data-value="1"></i><b>(1)</b>
+        <span class="predefined-type">String</span> stream = <span class="predefined-type">UUID</span>.randomUUID().toString();
+        environment.streamCreator().stream(stream).create();  <i class="conum" data-value="2"></i><b>(2)</b>
+        <span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting publishing...</span><span class="delimiter">&quot;</span></span>);
+        <span class="type">int</span> messageCount = <span class="integer">10000</span>;
+        <span class="predefined-type">CountDownLatch</span> publishConfirmLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
+        Producer producer = environment.producerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+                .stream(stream)
+                .build();
+        IntStream.range(<span class="integer">0</span>, messageCount)
+                .forEach(i -&gt; producer.send(  <i class="conum" data-value="2"></i><b>(2)</b>
+                        producer.messageBuilder()                    <i class="conum" data-value="3"></i><b>(3)</b>
+                            .addData(<span class="predefined-type">String</span>.valueOf(i).getBytes())   <i class="conum" data-value="3"></i><b>(3)</b>
+                            .build(),                                <i class="conum" data-value="3"></i><b>(3)</b>
+                        confirmationStatus -&gt; publishConfirmLatch.countDown()  <i class="conum" data-value="4"></i><b>(4)</b>
+                ));
+        publishConfirmLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="5"></i><b>(5)</b>
+        producer.close();  <i class="conum" data-value="6"></i><b>(6)</b>
+        <span class="predefined-type">System</span>.out.printf(<span class="string"><span class="delimiter">&quot;</span><span class="content">Published %,d messages%n</span><span class="delimiter">&quot;</span></span>, messageCount);
+
+        <span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Starting consuming...</span><span class="delimiter">&quot;</span></span>);
+        <span class="predefined-type">AtomicLong</span> sum = <span class="keyword">new</span> <span class="predefined-type">AtomicLong</span>(<span class="integer">0</span>);
+        <span class="predefined-type">CountDownLatch</span> consumeLatch = <span class="keyword">new</span> <span class="predefined-type">CountDownLatch</span>(messageCount);
+        Consumer consumer = environment.consumerBuilder()  <i class="conum" data-value="1"></i><b>(1)</b>
+                .stream(stream)
+                .offset(OffsetSpecification.first()) <i class="conum" data-value="2"></i><b>(2)</b>
+                .messageHandler((offset, message) -&gt; {  <i class="conum" data-value="3"></i><b>(3)</b>
+                    sum.addAndGet(<span class="predefined-type">Long</span>.parseLong(<span class="keyword">new</span> <span class="predefined-type">String</span>(message.getBodyAsBinary())));  <i class="conum" data-value="4"></i><b>(4)</b>
+                    consumeLatch.countDown();  <i class="conum" data-value="5"></i><b>(5)</b>
+                })
+                .build();
+
+        consumeLatch.await(<span class="integer">10</span>, <span class="predefined-type">TimeUnit</span>.SECONDS);  <i class="conum" data-value="6"></i><b>(6)</b>
+
+        <span class="predefined-type">System</span>.out.println(<span class="string"><span class="delimiter">&quot;</span><span class="content">Sum: </span><span class="delimiter">&quot;</span></span> + sum.get());  <i class="conum" data-value="7"></i><b>(7)</b>
+
+        consumer.close();  <i class="conum" data-value="8"></i><b>(8)</b>
+
+        environment.deleteStream(stream);  <i class="conum" data-value="1"></i><b>(1)</b>
+        environment.close();  <i class="conum" data-value="2"></i><b>(2)</b>
+    }
+
+
+}</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -5091,7 +5138,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.3.0-SNAPSHOT<br>
-Last updated 2025-09-25 07:02:50 UTC
+Last updated 2025-09-26 14:03:51 UTC
 </div>
 </div>
 </body>
