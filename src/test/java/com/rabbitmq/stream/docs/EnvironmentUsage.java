@@ -14,9 +14,19 @@
 
 package com.rabbitmq.stream.docs;
 
-import com.rabbitmq.stream.*;
+import java.io.FileInputStream;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.time.Duration;
+import java.util.Arrays;
 
+import javax.net.ssl.SSLContext;
+
+import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.ByteCapacity;
+import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.observation.micrometer.MicrometerObservationCollectorBuilder;
+
 import io.micrometer.observation.ObservationRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
@@ -24,13 +34,6 @@ import io.netty.channel.epoll.EpollIoHandler;
 import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
-
-import javax.net.ssl.SSLContext;
-import java.io.FileInputStream;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
-import java.time.Duration;
-import java.util.Arrays;
 
 public class EnvironmentUsage {
 

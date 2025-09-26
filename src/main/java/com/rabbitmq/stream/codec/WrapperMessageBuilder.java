@@ -17,10 +17,18 @@ package com.rabbitmq.stream.codec;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.Properties;
-import com.rabbitmq.stream.amqp.*;
+import com.rabbitmq.stream.amqp.Symbol;
+import com.rabbitmq.stream.amqp.UnsignedByte;
+import com.rabbitmq.stream.amqp.UnsignedInteger;
+import com.rabbitmq.stream.amqp.UnsignedLong;
+import com.rabbitmq.stream.amqp.UnsignedShort;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class WrapperMessageBuilder implements MessageBuilder {

@@ -14,7 +14,11 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import io.netty.buffer.ByteBufAllocator;
 import java.util.ArrayList;

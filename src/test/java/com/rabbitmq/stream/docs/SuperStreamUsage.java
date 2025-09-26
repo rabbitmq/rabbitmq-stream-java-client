@@ -14,15 +14,16 @@
 
 package com.rabbitmq.stream.docs;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.RoutingStrategy;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class SuperStreamUsage {
 

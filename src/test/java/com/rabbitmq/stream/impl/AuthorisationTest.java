@@ -14,11 +14,20 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Cli.*;
-import static com.rabbitmq.stream.Constants.*;
+import static com.rabbitmq.stream.Cli.addUser;
+import static com.rabbitmq.stream.Cli.addVhost;
+import static com.rabbitmq.stream.Cli.changePassword;
+import static com.rabbitmq.stream.Cli.deleteUser;
+import static com.rabbitmq.stream.Cli.deleteVhost;
+import static com.rabbitmq.stream.Cli.setPermissions;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_OK;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_PUBLISHER_DOES_NOT_EXIST;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_DOES_NOT_EXIST;
 import static com.rabbitmq.stream.OffsetSpecification.first;
-import static com.rabbitmq.stream.impl.TestUtils.*;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
+import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static com.rabbitmq.stream.impl.TestUtils.wrap;
 import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,7 +38,11 @@ import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;

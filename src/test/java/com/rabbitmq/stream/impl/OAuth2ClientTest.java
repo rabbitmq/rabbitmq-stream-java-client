@@ -14,7 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.Assertions.*;
+import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.Client.cp;
 import static com.rabbitmq.stream.impl.HttpTestUtils.generateKeyPair;
 import static com.rabbitmq.stream.impl.HttpTestUtils.oAuth2TokenHttpHandler;

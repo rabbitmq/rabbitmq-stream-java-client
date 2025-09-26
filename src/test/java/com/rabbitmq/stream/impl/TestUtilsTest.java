@@ -22,35 +22,27 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 public class TestUtilsTest {
 
-    @ParameterizedTest
-    @CsvSource(
-        {
-            "3.9.6,3.9.5,false",
-            "3.9.6,3.9.0-alpha-stream.232,true",
-            "3.9.6,3.9.6-alpha.28,true",
-        }
-    )
-    void atLeastVersion(
-        String expectedVersion,
-        String currentVersion,
-        boolean expected
-    ) {
-        assertThat(
-            TestUtils.atLeastVersion(expectedVersion, currentVersion)
-        ).isEqualTo(expected);
+  @ParameterizedTest
+  @CsvSource({
+    "3.9.6,3.9.5,false",
+    "3.9.6,3.9.0-alpha-stream.232,true",
+    "3.9.6,3.9.6-alpha.28,true",
+  })
+  void atLeastVersion(String expectedVersion, String currentVersion, boolean expected) {
+    assertThat(TestUtils.atLeastVersion(expectedVersion, currentVersion)).isEqualTo(expected);
+  }
+
+  private static class DelegatingExecutor implements Executor {
+
+    private final Executor delegate;
+
+    private DelegatingExecutor(Executor delegate) {
+      this.delegate = delegate;
     }
 
-    private static class DelegatingExecutor implements Executor {
-
-        private final Executor delegate;
-
-        private DelegatingExecutor(Executor delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        public void execute(Runnable command) {
-            delegate.execute(command);
-        }
+    @Override
+    public void execute(Runnable command) {
+      delegate.execute(command);
     }
+  }
 }

@@ -14,7 +14,11 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.metrics;
 
-import io.micrometer.core.instrument.*;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tag;
+import io.micrometer.core.instrument.Tags;
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicLong;
 

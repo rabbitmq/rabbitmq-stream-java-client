@@ -24,7 +24,14 @@ import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.Cli;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfAuthMechanismSslNotEnabled;

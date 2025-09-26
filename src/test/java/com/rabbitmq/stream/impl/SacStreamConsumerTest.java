@@ -15,11 +15,20 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
-import static com.rabbitmq.stream.impl.TestUtils.*;
+import static com.rabbitmq.stream.impl.TestUtils.namedConsumer;
+import static com.rabbitmq.stream.impl.TestUtils.publishAndWaitForConfirms;
+import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Cli;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
+import com.rabbitmq.stream.impl.TestUtils.Sync;
 import io.netty.channel.EventLoopGroup;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

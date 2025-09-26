@@ -14,8 +14,11 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Cli.*;
+import static com.rabbitmq.stream.Cli.addUser;
+import static com.rabbitmq.stream.Cli.changePassword;
 import static com.rabbitmq.stream.Cli.clearPermissions;
+import static com.rabbitmq.stream.Cli.deleteUser;
+import static com.rabbitmq.stream.Cli.setPermissions;
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_13_0;
 import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_1_4;
@@ -26,7 +29,12 @@ import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
-import com.rabbitmq.stream.sasl.*;
+import com.rabbitmq.stream.sasl.CredentialsProvider;
+import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
+import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;
+import com.rabbitmq.stream.sasl.JdkSaslConfiguration;
+import com.rabbitmq.stream.sasl.PlainSaslMechanism;
+import com.rabbitmq.stream.sasl.SaslMechanism;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;

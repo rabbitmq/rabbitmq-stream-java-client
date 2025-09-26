@@ -14,13 +14,14 @@
 
 package com.rabbitmq.stream.docs;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.UUID;
+
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.compression.Compression;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.UUID;
 
 public class ProducerUsage {
 

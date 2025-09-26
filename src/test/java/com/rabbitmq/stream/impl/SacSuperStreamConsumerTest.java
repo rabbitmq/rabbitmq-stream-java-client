@@ -15,14 +15,25 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
-import static com.rabbitmq.stream.impl.TestUtils.*;
+import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
+import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
+import static com.rabbitmq.stream.impl.TestUtils.namedBiConsumer;
+import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Cli;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.NoOffsetException;
+import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
 import com.rabbitmq.stream.impl.TestUtils.CallableBooleanSupplier;
 import com.rabbitmq.stream.impl.TestUtils.SingleActiveConsumer;
+import com.rabbitmq.stream.impl.TestUtils.Sync;
 import com.rabbitmq.stream.impl.Utils.CompositeConsumerUpdateListener;
 import io.netty.channel.EventLoopGroup;
 import java.util.ArrayList;

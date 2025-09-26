@@ -14,7 +14,12 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.*;
+import static com.rabbitmq.stream.Constants.CODE_MESSAGE_ENQUEUEING_FAILED;
+import static com.rabbitmq.stream.Constants.CODE_PRODUCER_CLOSED;
+import static com.rabbitmq.stream.Constants.CODE_PRODUCER_NOT_AVAILABLE;
+import static com.rabbitmq.stream.Constants.CODE_PUBLISH_CONFIRM_TIMEOUT;
+import static com.rabbitmq.stream.Constants.VERSION_1;
+import static com.rabbitmq.stream.Constants.VERSION_2;
 import static com.rabbitmq.stream.Resource.State.CLOSED;
 import static com.rabbitmq.stream.Resource.State.CLOSING;
 import static com.rabbitmq.stream.Resource.State.OPEN;
@@ -22,7 +27,14 @@ import static com.rabbitmq.stream.Resource.State.RECOVERING;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.Response;

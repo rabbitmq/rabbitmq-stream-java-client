@@ -15,12 +15,27 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
-import static com.rabbitmq.stream.impl.TestUtils.*;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.localhost;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
+import static com.rabbitmq.stream.impl.TestUtils.sync;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Address;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.Cli;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.Resource;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
 import com.rabbitmq.stream.impl.TestUtils.Sync;

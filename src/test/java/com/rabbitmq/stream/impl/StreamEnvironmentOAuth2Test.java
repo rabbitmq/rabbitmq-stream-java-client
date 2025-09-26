@@ -24,7 +24,6 @@ import static com.rabbitmq.stream.impl.TestUtils.sync;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.lang.System.currentTimeMillis;
 import static java.time.Duration.ofSeconds;
-import static org.assertj.core.api.Assertions.*;
 
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;

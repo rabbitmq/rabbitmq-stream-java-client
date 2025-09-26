@@ -14,14 +14,18 @@
 
 package com.rabbitmq.stream.docs;
 
-// tag::sample-imports[]
-import com.rabbitmq.stream.*;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 // end::sample-imports[]
+
+// tag::sample-imports[]
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Producer;
 
 public class SampleApplication {
 

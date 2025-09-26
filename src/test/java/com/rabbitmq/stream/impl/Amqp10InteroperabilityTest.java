@@ -14,7 +14,6 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.ClientFactory;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,6 +26,7 @@ import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import com.rabbitmq.stream.impl.TestUtils.ClientFactory;
 import com.swiftmq.amqp.AMQPContext;
 import com.swiftmq.amqp.v100.client.Connection;
 import com.swiftmq.amqp.v100.client.Producer;

@@ -14,6 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream;
 
+import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
+
 import java.time.Duration;
 
 /**

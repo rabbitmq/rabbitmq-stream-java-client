@@ -14,7 +14,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.observation.micrometer;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.ObservationCollector;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.slf4j.Logger;

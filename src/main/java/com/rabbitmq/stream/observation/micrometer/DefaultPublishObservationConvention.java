@@ -14,7 +14,9 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.observation.micrometer;
 
-import static com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation.HighCardinalityTags.*;
+import static com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation.HighCardinalityTags.MESSAGING_DESTINATION_NAME;
+import static com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation.HighCardinalityTags.MESSAGING_MESSAGE_PAYLOAD_SIZE_BYTES;
+import static com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation.HighCardinalityTags.MESSAGING_SOURCE_NAME;
 
 import com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation.LowCardinalityTags;
 import io.micrometer.common.KeyValues;

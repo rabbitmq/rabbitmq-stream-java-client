@@ -14,9 +14,16 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Cli.*;
-import static com.rabbitmq.stream.Constants.*;
-import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.*;
+import static com.rabbitmq.stream.Cli.addUser;
+import static com.rabbitmq.stream.Cli.deleteUser;
+import static com.rabbitmq.stream.Cli.setPermissions;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_ACCESS_REFUSED;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_ALREADY_EXISTS;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
+import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.Arrays.asList;

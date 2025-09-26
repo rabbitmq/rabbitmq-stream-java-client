@@ -14,15 +14,22 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.TestUtils.*;
 import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_2_0;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
 import static com.rabbitmq.stream.impl.TestUtils.atLeastVersion;
+import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
+import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.client.*;
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.Delivery;
+import com.rabbitmq.client.LongString;
 import com.rabbitmq.client.impl.LongStringHelper;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
@@ -33,9 +40,17 @@ import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;

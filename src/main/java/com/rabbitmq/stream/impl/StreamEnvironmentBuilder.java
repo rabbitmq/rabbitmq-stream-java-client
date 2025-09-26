@@ -17,7 +17,14 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.DEFAULT_ADDRESS_RESOLVER;
 import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.AddressResolver;
+import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.ChunkChecksum;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.ObservationCollector;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.metrics.MetricsCollector;

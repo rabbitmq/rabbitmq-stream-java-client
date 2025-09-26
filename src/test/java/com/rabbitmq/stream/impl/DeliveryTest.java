@@ -16,7 +16,11 @@ package com.rabbitmq.stream.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.ChunkChecksum;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.impl.ServerFrameHandler.DeliverVersion1FrameHandler;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
 import io.netty.buffer.ByteBuf;

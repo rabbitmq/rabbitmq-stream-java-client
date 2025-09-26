@@ -14,9 +14,12 @@
 
 package com.rabbitmq.stream.docs;
 
-import com.rabbitmq.stream.*;
 import java.time.Duration;
-import org.assertj.core.data.Offset;
+
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerFlowStrategy;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.OffsetSpecification;
 
 public class ConsumerUsage {
 

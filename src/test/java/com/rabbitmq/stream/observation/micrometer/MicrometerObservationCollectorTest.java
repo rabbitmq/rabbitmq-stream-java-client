@@ -20,7 +20,11 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static io.micrometer.tracing.test.simple.SpanAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.Environment;
+import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.ObservationCollector;
+import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.codec.QpidProtonCodec;
 import com.rabbitmq.stream.codec.SwiftMqCodec;
 import com.rabbitmq.stream.impl.TestUtils;

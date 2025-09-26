@@ -17,7 +17,16 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_FILTER_PREFIX;
 import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.ConsumerFlowStrategy;
+import com.rabbitmq.stream.ConsumerUpdateListener;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageHandler;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Resource;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.SubscriptionListener;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;

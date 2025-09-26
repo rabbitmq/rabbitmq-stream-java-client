@@ -16,7 +16,14 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 
-import com.rabbitmq.stream.*;
+import com.rabbitmq.stream.Codec;
+import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
+import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.Producer;
+import com.rabbitmq.stream.RoutingStrategy;
 import com.rabbitmq.stream.RoutingStrategy.Metadata;
 import java.util.List;
 import java.util.Map;

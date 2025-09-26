@@ -18,7 +18,10 @@ import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.sync;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 
-import com.codahale.metrics.*;
+import com.codahale.metrics.Histogram;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Snapshot;
 import com.google.common.util.concurrent.RateLimiter;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
 import java.util.Locale;
