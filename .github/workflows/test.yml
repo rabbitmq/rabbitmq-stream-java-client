@@ -6,9 +6,6 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -55,8 +52,6 @@ jobs:
         run: ./mvnw test -Dtest="*ClusterTest" -Drabbitmqctl.bin=DOCKER:rabbitmq0
       - name: Stop cluster
         run: docker compose --file ci/cluster/docker-compose.yml down
-      - name: Upload Codecov report
-        run: bash <(curl -s https://codecov.io/bash)
       - name: Publish snapshot
         run: ./mvnw clean deploy -Psnapshots -DskipITs -DskipTests
         env:
