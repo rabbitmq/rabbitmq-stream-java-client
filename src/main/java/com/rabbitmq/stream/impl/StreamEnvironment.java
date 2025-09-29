@@ -87,6 +87,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongConsumer;
@@ -103,6 +104,7 @@ class StreamEnvironment implements Environment {
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamEnvironment.class);
 
   private final EventLoopGroup eventLoopGroup;
+  private final boolean privateEventLoopGroup;
   private final ScheduledExecutorService scheduledExecutorService;
   private final ScheduledExecutorService locatorReconnectionScheduledExecutorService;
   private final boolean privateScheduleExecutorService;
@@ -272,16 +274,15 @@ class StreamEnvironment implements Environment {
 
       if (clientParametersPrototype.eventLoopGroup == null) {
         this.eventLoopGroup = Utils.eventLoopGroup();
+        this.privateEventLoopGroup = true;
         shutdownService.wrap(() -> closeEventLoopGroup(this.eventLoopGroup));
-        this.clientParametersPrototype =
-            clientParametersPrototype.duplicate().eventLoopGroup(this.eventLoopGroup);
       } else {
-        this.eventLoopGroup = null;
-        this.clientParametersPrototype =
-            clientParametersPrototype
-                .duplicate()
-                .eventLoopGroup(clientParametersPrototype.eventLoopGroup);
+        this.eventLoopGroup = clientParametersPrototype.eventLoopGroup;
+        this.privateEventLoopGroup = false;
       }
+
+      this.clientParametersPrototype =
+          clientParametersPrototype.duplicate().eventLoopGroup(this.eventLoopGroup);
 
       this.producersCoordinator =
           new ProducersCoordinator(
@@ -357,7 +358,7 @@ class StreamEnvironment implements Environment {
                           this.locatorReconnectionScheduledExecutorService,
                           this.recoveryBackOffDelayPolicy,
                           l.label(),
-                          this.closed);
+                          this::shouldTryLocatorConnection);
                     }
                   });
             }
@@ -365,7 +366,7 @@ class StreamEnvironment implements Environment {
       if (lazyInit) {
         this.locatorInitializationSequence =
             () -> {
-              if (!this.closed.get()) {
+              if (this.shouldTryLocatorConnection()) {
                 locatorInitSequence.run();
               }
             };
@@ -397,7 +398,7 @@ class StreamEnvironment implements Environment {
         shutdownContext -> {
           String label = locator.label();
           LOGGER.debug("Locator {} disconnected", label);
-          if (shutdownContext.isShutdownUnexpected() && !this.closed.get()) {
+          if (shutdownContext.isShutdownUnexpected()) {
             locator.client(null);
             BackOffDelayPolicy delayPolicy = recoveryBackOffDelayPolicy;
             LOGGER.debug(
@@ -415,7 +416,7 @@ class StreamEnvironment implements Environment {
                 this.locatorReconnectionScheduledExecutorService,
                 delayPolicy,
                 label,
-                this.closed);
+                this::shouldTryLocatorConnection);
           } else {
             LOGGER.debug("Locator connection '{}' closing normally", label);
           }
@@ -433,7 +434,7 @@ class StreamEnvironment implements Environment {
       ScheduledExecutorService scheduler,
       BackOffDelayPolicy delayPolicy,
       String locatorLabel,
-      AtomicBoolean closed) {
+      BooleanSupplier shouldRetry) {
     LOGGER.debug(
         "Scheduling locator '{}' connection with delay policy {}", locatorLabel, delayPolicy);
     try {
@@ -460,7 +461,7 @@ class StreamEnvironment implements Environment {
           .description("Locator '%s' connection", locatorLabel)
           .scheduler(scheduler)
           .delayPolicy(delayPolicy)
-          .retry(ignored -> !closed.get())
+          .retry(ignored -> shouldRetry.getAsBoolean())
           .build()
           .thenAccept(locator::client)
           .exceptionally(
@@ -786,14 +787,19 @@ class StreamEnvironment implements Environment {
       if (this.locatorReconnectionScheduledExecutorService != null) {
         this.locatorReconnectionScheduledExecutorService.shutdownNow();
       }
-      closeEventLoopGroup(this.eventLoopGroup);
+      if (this.privateEventLoopGroup) {
+        closeEventLoopGroup(this.eventLoopGroup);
+      }
     }
+  }
+
+  private boolean shouldTryLocatorConnection() {
+    return !this.closed.get() && !this.eventLoopGroup.isShuttingDown();
   }
 
   private static void closeEventLoopGroup(EventLoopGroup eventLoopGroup) {
     try {
-      if (eventLoopGroup != null
-          && (!eventLoopGroup.isShuttingDown() || !eventLoopGroup.isShutdown())) {
+      if (!eventLoopGroup.isShuttingDown()) {
         LOGGER.debug("Closing Netty event loop group");
         eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
       }
