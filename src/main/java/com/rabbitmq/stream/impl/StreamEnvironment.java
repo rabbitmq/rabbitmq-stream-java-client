@@ -356,13 +356,19 @@ class StreamEnvironment implements Environment {
                           clientFactory,
                           this.locatorReconnectionScheduledExecutorService,
                           this.recoveryBackOffDelayPolicy,
-                          l.label());
+                          l.label(),
+                          this.closed);
                     }
                   });
             }
           };
       if (lazyInit) {
-        this.locatorInitializationSequence = locatorInitSequence;
+        this.locatorInitializationSequence =
+            () -> {
+              if (!this.closed.get()) {
+                locatorInitSequence.run();
+              }
+            };
       } else {
         locatorInitSequence.run();
         locatorsInitialized.set(true);
@@ -391,7 +397,7 @@ class StreamEnvironment implements Environment {
         shutdownContext -> {
           String label = locator.label();
           LOGGER.debug("Locator {} disconnected", label);
-          if (shutdownContext.isShutdownUnexpected()) {
+          if (shutdownContext.isShutdownUnexpected() && !this.closed.get()) {
             locator.client(null);
             BackOffDelayPolicy delayPolicy = recoveryBackOffDelayPolicy;
             LOGGER.debug(
@@ -408,7 +414,8 @@ class StreamEnvironment implements Environment {
                 clientFactory,
                 this.locatorReconnectionScheduledExecutorService,
                 delayPolicy,
-                label);
+                label,
+                this.closed);
           } else {
             LOGGER.debug("Locator connection '{}' closing normally", label);
           }
@@ -425,7 +432,8 @@ class StreamEnvironment implements Environment {
       Function<Client.ClientParameters, Client> clientFactory,
       ScheduledExecutorService scheduler,
       BackOffDelayPolicy delayPolicy,
-      String locatorLabel) {
+      String locatorLabel,
+      AtomicBoolean closed) {
     LOGGER.debug(
         "Scheduling locator '{}' connection with delay policy {}", locatorLabel, delayPolicy);
     try {
@@ -452,6 +460,7 @@ class StreamEnvironment implements Environment {
           .description("Locator '%s' connection", locatorLabel)
           .scheduler(scheduler)
           .delayPolicy(delayPolicy)
+          .retry(ignored -> !closed.get())
           .build()
           .thenAccept(locator::client)
           .exceptionally(
