@@ -39,11 +39,14 @@ import com.rabbitmq.stream.compression.DefaultCompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.OutboundEntityWriteCallback;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import java.time.Duration;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -70,7 +73,7 @@ public class StreamProducerUnitTest {
   @Mock Channel channel;
   @Mock ChannelFuture channelFuture;
 
-  Set<ByteBuf> buffers = ConcurrentHashMap.newKeySet();
+  Queue<ByteBuf> buffers = new ConcurrentLinkedQueue<>();
 
   ScheduledExecutorService executorService;
   Clock clock = new Clock();
@@ -82,15 +85,16 @@ public class StreamProducerUnitTest {
   void init() {
     mocks = MockitoAnnotations.openMocks(this);
     executorService = Executors.newScheduledThreadPool(2);
-    when(channel.alloc()).thenReturn(Utils.byteBufAllocator());
+    ByteBufAllocator allocator = new UnpooledByteBufAllocator(false);
+    when(channel.alloc()).thenReturn(allocator);
     when(channel.writeAndFlush(Mockito.any())).thenReturn(channelFuture);
     when(client.allocateNoCheck(any(ByteBufAllocator.class), anyInt()))
         .thenAnswer(
             (Answer<ByteBuf>)
                 invocation -> {
-                  ByteBufAllocator allocator = invocation.getArgument(0);
+                  ByteBufAllocator alloc = invocation.getArgument(0);
                   int capacity = invocation.getArgument(1);
-                  ByteBuf buffer = allocator.buffer(capacity);
+                  ByteBuf buffer = alloc.buffer(capacity);
                   buffers.add(buffer);
                   return buffer;
                 });

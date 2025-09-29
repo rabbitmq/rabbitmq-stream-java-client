@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -57,7 +58,12 @@ public class DedupIdempotencyTest {
   void init() {
     EnvironmentBuilder environmentBuilder =
         Environment.builder().netty().eventLoopGroup(eventLoopGroup).environmentBuilder();
-    environment = environmentBuilder.build();
+    this.environment = environmentBuilder.build();
+  }
+
+  @AfterEach
+  void tearDown() {
+    this.environment.close();
   }
 
   @Test
