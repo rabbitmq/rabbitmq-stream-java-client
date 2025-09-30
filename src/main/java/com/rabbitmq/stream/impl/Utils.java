@@ -600,7 +600,7 @@ final class Utils {
   }
 
   static String jsonField(String name, Enum<?> value) {
-    return quote(name) + " : " + value.name();
+    return quote(name) + " : " + (value == null ? "null" : value.name());
   }
 
   static String jsonField(String name, String value) {
