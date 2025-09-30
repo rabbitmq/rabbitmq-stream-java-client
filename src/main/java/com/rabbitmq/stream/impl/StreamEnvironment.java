@@ -61,7 +61,6 @@ import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.oauth2.CredentialsManager;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.handler.ssl.SslContext;
@@ -130,7 +129,6 @@ final class StreamEnvironment implements Environment {
   private final ObservationCollector<?> observationCollector;
   private final Duration rpcTimeout;
 
-  @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
       Client.ClientParameters clientParametersPrototype,
