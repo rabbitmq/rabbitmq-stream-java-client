@@ -14,6 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.CoordinatorUtils.ClientClosedException;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
 import static com.rabbitmq.stream.impl.Tuples.pair;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
 import static com.rabbitmq.stream.impl.Utils.callAndMaybeRetry;
@@ -31,7 +33,6 @@ import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.MetadataListener;
@@ -193,22 +194,18 @@ final class ProducersCoordinator implements AutoCloseable {
         this.managers.add(pickedManager);
       } catch (IllegalStateException e) {
         pickedManager = null;
-      } catch (ConnectionStreamException | ClientClosedException | StreamNotAvailableException e) {
-        // manager connection is dead or stream not available
-        // scheduling manager closing if necessary in another thread to avoid blocking this one
-        if (pickedManager.isEmpty()) {
-          ClientProducersManager manager = pickedManager;
-          this.environment.execute(
-              () -> {
-                manager.closeIfEmpty();
-              },
-              "Producer manager closing after timeout, producer %d on stream '%s'",
-              tracker.uniqueId(),
-              tracker.stream());
-        }
-        throw e;
       } catch (RuntimeException e) {
-        if (pickedManager != null) {
+        if (shouldRefreshCandidates(e)) {
+          // manager connection is dead or stream not available
+          // scheduling manager closing if necessary in another thread to avoid blocking this one
+          if (pickedManager.isEmpty()) {
+            this.environment.execute(
+                pickedManager::closeIfEmpty,
+                "Producer manager closing after timeout, producer %d on stream '%s'",
+                tracker.uniqueId(),
+                tracker.stream());
+          }
+        } else {
           pickedManager.closeIfEmpty();
         }
         throw e;
@@ -337,12 +334,14 @@ final class ProducersCoordinator implements AutoCloseable {
                   managerBuilder.append(
                       m.producers.values().stream()
                           .map(
-                              p -> {
-                                StringBuilder producerBuilder = new StringBuilder("{");
-                                producerBuilder.append(jsonField("stream", p.stream())).append(",");
-                                producerBuilder.append(jsonField("producer_id", p.publisherId));
-                                return producerBuilder.append("}").toString();
-                              })
+                              p ->
+                                  "{"
+                                      + jsonField("stream", p.stream())
+                                      + ","
+                                      + jsonField("producer_id", p.publisherId)
+                                      + ","
+                                      + jsonField("state", p.producer.state())
+                                      + "}")
                           .collect(Collectors.joining(",")));
                   managerBuilder.append("],");
                   managerBuilder.append("\"tracking_consumers\" : [");
@@ -832,33 +831,33 @@ final class ProducersCoordinator implements AutoCloseable {
                 tracker.stream());
           }
           reassignmentCompleted = true;
-        } catch (ConnectionStreamException
-            | ClientClosedException
-            | StreamNotAvailableException e) {
-          LOGGER.debug(
-              "{} re-assignment on stream {} (ID {}) timed out or connection closed or stream not available, "
-                  + "refreshing candidate leader and retrying",
-              tracker.type(),
-              tracker.identifiable() ? tracker.id() : "N/A",
-              tracker.stream());
-          // maybe not a good candidate, let's refresh and retry for this one
-          Pair<Broker, List<BrokerWrapper>> brokerAndCandidates =
-              callAndMaybeRetry(
-                  () -> {
-                    List<BrokerWrapper> cs = findCandidateNodes(tracker.stream(), forceLeader);
-                    return pair(pickBroker(cs), cs);
-                  },
-                  ex -> !(ex instanceof StreamDoesNotExistException),
-                  environment.recoveryBackOffDelayPolicy(),
-                  "Candidate lookup for %s on stream '%s'",
-                  tracker.type(),
-                  tracker.stream());
-          node = brokerAndCandidates.v1();
-          candidates = brokerAndCandidates.v2();
         } catch (Exception e) {
-          LOGGER.warn(
-              "Error while re-assigning {} (stream '{}')", tracker.type(), tracker.stream(), e);
-          reassignmentCompleted = true;
+          if (shouldRefreshCandidates(e)) {
+            LOGGER.debug(
+                "{} re-assignment on stream {} (ID {}) timed out or connection closed or stream not available, "
+                    + "refreshing candidate leader and retrying",
+                tracker.type(),
+                tracker.identifiable() ? tracker.id() : "N/A",
+                tracker.stream());
+            // maybe not a good candidate, let's refresh and retry for this one
+            Pair<Broker, List<BrokerWrapper>> brokerAndCandidates =
+                callAndMaybeRetry(
+                    () -> {
+                      List<BrokerWrapper> cs = findCandidateNodes(tracker.stream(), forceLeader);
+                      return pair(pickBroker(cs), cs);
+                    },
+                    ex -> !(ex instanceof StreamDoesNotExistException),
+                    environment.recoveryBackOffDelayPolicy(),
+                    "Candidate lookup for %s on stream '%s'",
+                    tracker.type(),
+                    tracker.stream());
+            node = brokerAndCandidates.v1();
+            candidates = brokerAndCandidates.v2();
+          } else {
+            LOGGER.warn(
+                "Error while re-assigning {} (stream '{}')", tracker.type(), tracker.stream(), e);
+            reassignmentCompleted = true;
+          }
         }
       }
     }
@@ -1021,13 +1020,6 @@ final class ProducersCoordinator implements AutoCloseable {
 
   private static final Predicate<Exception> RETRY_ON_TIMEOUT =
       e -> e instanceof TimeoutStreamException;
-
-  private static class ClientClosedException extends StreamException {
-
-    public ClientClosedException() {
-      super("Client already closed");
-    }
-  }
 
   static <T> int pickSlot(ConcurrentMap<Byte, T> map, T tracker, AtomicInteger sequence) {
     int index = -1;

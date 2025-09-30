@@ -608,7 +608,7 @@ final class StreamProducer extends ResourceBase implements Producer {
   public String toString() {
     Client client = this.client;
     return "{ "
-        + "\"id\" : "
+        + "\"producer_id\" : "
         + id
         + ","
         + "\"stream\" : \""
@@ -676,5 +676,9 @@ final class StreamProducer extends ResourceBase implements Producer {
     } finally {
       this.unlock();
     }
+  }
+
+  long id() {
+    return this.id;
   }
 }

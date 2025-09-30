@@ -99,7 +99,7 @@ import javax.net.ssl.SSLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-class StreamEnvironment implements Environment {
+final class StreamEnvironment implements Environment {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamEnvironment.class);
 

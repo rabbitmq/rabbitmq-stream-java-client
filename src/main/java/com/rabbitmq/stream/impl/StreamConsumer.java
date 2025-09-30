@@ -579,7 +579,7 @@ final class StreamConsumer extends ResourceBase implements Consumer {
     Client subscriptionClient = this.subscriptionClient;
     Client trackingClient = this.trackingClient;
     return "{ "
-        + "\"id\" : "
+        + "\"consumer_id\" : "
         + id
         + ","
         + "\"stream\" : \""

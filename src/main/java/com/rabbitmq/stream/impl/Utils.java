@@ -599,6 +599,10 @@ final class Utils {
     return quote(name) + " : " + value.longValue();
   }
 
+  static String jsonField(String name, Enum<?> value) {
+    return quote(name) + " : " + value.name();
+  }
+
   static String jsonField(String name, String value) {
     return quote(name) + " : " + quote(value);
   }

@@ -40,6 +40,7 @@ import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ProducerBuilder;
+import com.rabbitmq.stream.Resource;
 import com.rabbitmq.stream.StreamCreator;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfNotCluster;
@@ -55,6 +56,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -190,13 +192,39 @@ public class RecoveryClusterTest {
             .maxProducersByConnection(producerCount / 4)
             .maxConsumersByConnection(consumerCount / 4)
             .build();
+    String streamPrefix = "rec-" + new Random().nextInt(1000);
     List<String> streams =
-        range(0, streamCount)
-            .mapToObj(i -> TestUtils.streamName(testInfo) + "-" + i)
-            .collect(toList());
-    streams.forEach(s -> environment.streamCreator().stream(s).create());
+        range(0, streamCount).mapToObj(i -> streamPrefix + "-" + i).collect(toList());
+    streams.forEach(
+        s -> {
+          try {
+            environment.deleteStream(s);
+          } catch (Exception e) {
+            // ok
+          }
+          environment.streamCreator().stream(s).create();
+        });
     List<ProducerState> producers = Collections.emptyList();
     List<ConsumerState> consumers = Collections.emptyList();
+    java.util.function.Consumer<List<ProducerState>> producerInfo =
+        ps -> {
+          ps.forEach(
+              p ->
+                  LOGGER.info(
+                      "Producer {} to stream '{}', state {} (last exception: '{}')",
+                      p.id(),
+                      p.stream(),
+                      p.state(),
+                      p.lastException));
+        };
+    java.util.function.Consumer<List<ConsumerState>> consumerInfo =
+        cs -> {
+          cs.forEach(
+              c -> {
+                LOGGER.info(
+                    "Consumer {} from stream '{}', state {}", c.id(), c.stream(), c.state());
+              });
+        };
     try {
       producers =
           range(0, producerCount)
@@ -224,30 +252,34 @@ public class RecoveryClusterTest {
       syncs = consumers.stream().map(c -> c.waitForNewMessages(100)).collect(toList());
       syncs.forEach(s -> assertThat(s).completes());
 
+      LOGGER.info("Producer information before cluster restart:");
+      producerInfo.accept(producers);
+
+      LOGGER.info("Consumer information before cluster restart:");
+      consumerInfo.accept(consumers);
+
       restartCluster();
 
       Thread.sleep(BACK_OFF_DELAY_POLICY.delay(0).toMillis());
 
-      List<Pair<String, Sync>> streamsSyncs =
-          producers.stream()
-              .map(p -> pair(p.stream(), p.waitForNewMessages(1000)))
-              .collect(toList());
-      streamsSyncs.forEach(
+      List<Pair<ProducerState, Sync>> pSyncs =
+          producers.stream().map(p -> pair(p, p.waitForNewMessages(1000))).collect(toList());
+      pSyncs.forEach(
           p -> {
-            LOGGER.info("Checking publisher to {} still publishes", p.v1());
+            LOGGER.info(
+                "Checking publisher {} to {} still publishes", p.v1().id(), p.v1().stream());
             assertThat(p.v2()).completes(ASSERTION_TIMEOUT);
             LOGGER.info("Publisher to {} still publishes", p.v1());
           });
 
-      streamsSyncs =
-          consumers.stream()
-              .map(c -> pair(c.stream(), c.waitForNewMessages(1000)))
-              .collect(toList());
-      streamsSyncs.forEach(
+      List<Pair<ConsumerState, Sync>> cSyncs =
+          consumers.stream().map(c -> pair(c, c.waitForNewMessages(1000))).collect(toList());
+      cSyncs.forEach(
           p -> {
-            LOGGER.info("Checking consumer from {} still consumes", p.v1());
+            LOGGER.info(
+                "Checking consumer {} from {} still consumes", p.v1().id(), p.v1().stream());
             assertThat(p.v2()).completes(ASSERTION_TIMEOUT);
-            LOGGER.info("Consumer from {} still consumes", p.v1());
+            LOGGER.info("Consumer {} from {} still consumes", p.v1().id(), p.v1().stream());
           });
 
       Map<String, Long> committedChunkIdPerStream = new LinkedHashMap<>(streamCount);
@@ -270,10 +302,10 @@ public class RecoveryClusterTest {
       System.out.println(TestUtils.jsonPrettyPrint(environment.toString()));
 
       LOGGER.info("Producer information:");
-      producers.forEach(
-          p -> {
-            LOGGER.info("Producer to '{}' (last exception: '{}')", p.stream(), p.lastException);
-          });
+      producerInfo.accept(producers);
+
+      LOGGER.info("Consumer information:");
+      consumerInfo.accept(consumers);
 
       LOGGER.info("Closing producers");
       producers.forEach(
@@ -510,6 +542,14 @@ public class RecoveryClusterTest {
       return this.stream;
     }
 
+    long id() {
+      return ((StreamProducer) this.producer).id();
+    }
+
+    Resource.State state() {
+      return ((StreamProducer) this.producer).state();
+    }
+
     String lastException() {
       if (this.lastException.get() == null) {
         return "no exception";
@@ -574,6 +614,14 @@ public class RecoveryClusterTest {
 
     String stream() {
       return this.stream;
+    }
+
+    long id() {
+      return ((StreamConsumer) this.consumer).id();
+    }
+
+    Resource.State state() {
+      return ((StreamConsumer) this.consumer).state();
     }
 
     @Override
