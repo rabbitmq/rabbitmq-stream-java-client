@@ -573,7 +573,11 @@ public class Client implements AutoCloseable {
       if (request.error() == null) {
         return request.response.get();
       } else {
-        throw new StreamException("Error when establishing stream connection", request.error());
+        if (request.error() instanceof StreamException) {
+          throw (StreamException) request.error();
+        } else {
+          throw new StreamException("Error when establishing stream connection", request.error());
+        }
       }
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
