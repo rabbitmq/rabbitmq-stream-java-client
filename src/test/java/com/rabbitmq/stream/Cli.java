@@ -303,7 +303,8 @@ public class Cli {
     if (rabbitmqCtl == null) {
       rabbitmqCtl = DOCKER_PREFIX + "rabbitmq";
     }
-    return rabbitmqCtl;
+    return DOCKER_PREFIX + "rabbitmq0";
+    //    return rabbitmqCtl;
   }
 
   private static String rabbitmqStreamsCommand() {

@@ -12,6 +12,8 @@ updates:
         versions: [ "[2.0,)" ]
       - dependency-name: "ch.qos.logback:logback-classic"
         versions: [ "[1.3,)" ]
+      - dependency-name: "org.junit:*"
+        versions: [ "[6.0,)" ]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
