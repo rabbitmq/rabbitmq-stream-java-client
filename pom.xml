@@ -75,7 +75,7 @@
     <netty-tcnative.version>2.0.74.Final</netty-tcnative.version>
     <maven.compiler.plugin.version>3.14.1</maven.compiler.plugin.version>
     <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
-    <maven-dependency-plugin.version>3.8.1</maven-dependency-plugin.version>
+    <maven-dependency-plugin.version>3.9.0</maven-dependency-plugin.version>
     <checksum.maven.plugin.version>1.11</checksum.maven.plugin.version>
     <maven.gpg.plugin.version>3.2.8</maven.gpg.plugin.version>
     <buildnumber.plugin.version>3.2.1</buildnumber.plugin.version>
