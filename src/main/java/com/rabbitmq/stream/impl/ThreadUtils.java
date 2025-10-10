@@ -28,13 +28,18 @@ final class ThreadUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ThreadUtils.class);
 
+  static final boolean VIRTUAL_THREADS_ON =
+      Boolean.parseBoolean(System.getProperty("rabbitmq.stream.threads.virtual.enabled", "false"));
+
   private static final ThreadFactory THREAD_FACTORY;
   private static final Predicate<Thread> IS_VIRTUAL;
 
   static {
     ThreadFactory tf;
-    if (isJava21OrMore()) {
-      LOGGER.debug("Running Java 21 or more, using virtual threads");
+    LOGGER.debug("Virtual threads enabled: {}", VIRTUAL_THREADS_ON);
+    LOGGER.debug("Java 21 or more: {}", isJava21OrMore());
+    if (VIRTUAL_THREADS_ON && isJava21OrMore()) {
+      LOGGER.debug("Using virtual threads");
       try {
         Class<?> builderClass =
             Arrays.stream(Thread.class.getDeclaredClasses())
