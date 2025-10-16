@@ -1,6 +1,6 @@
 = RabbitMQ Stream Java Client
 
-image:https://maven-badges.herokuapp.com/maven-central/com.rabbitmq/stream-client/badge.svg["Maven Central", link="https://maven-badges.herokuapp.com/maven-central/com.rabbitmq/stream-client"]
+image:https://maven-badges.sml.io/sonatype-central/com.rabbitmq/stream-client/badge.svg?subject=maven["Maven Central", link="https://maven-badges.sml.io/sonatype-central/com.rabbitmq/stream-client/"]
 image:https://github.com/rabbitmq/rabbitmq-stream-java-client/actions/workflows/test.yml/badge.svg["Build Status", link="https://github.com/rabbitmq/rabbitmq-stream-java-client/actions/workflows/test.yml"]
 
 The RabbitMQ Stream Java Client is a Java library to communicate with
