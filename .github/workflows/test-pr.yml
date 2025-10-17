@@ -4,6 +4,12 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - src/**
+      - '!src/docs/**'
+      - '!/src/test/java/com/rabbitmq/stream/docs/*'
+      - pom.xml
+      - ci/**
 
 jobs:
   build:

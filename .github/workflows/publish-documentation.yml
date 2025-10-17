@@ -1,6 +1,13 @@
 name: Publish documentation
 
-on: workflow_dispatch
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - src/docs/**
+      - /src/test/java/com/rabbitmq/stream/docs/*
+  workflow_dispatch:
 
 jobs:
   build:

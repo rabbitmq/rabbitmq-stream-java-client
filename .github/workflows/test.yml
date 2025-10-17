@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - src/**
+      - '!src/docs/**'
+      - '!/src/test/java/com/rabbitmq/stream/docs/*'
+      - pom.xml
+      - ci/**
   workflow_dispatch:
 
 jobs:
@@ -58,8 +64,3 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-      - name: Publish Documentation
-        run: |
-          git config user.name "rabbitmq-ci"
-          git config user.email "rabbitmq-ci@users.noreply.github.com"
-          ci/publish-documentation-to-github-pages.sh
