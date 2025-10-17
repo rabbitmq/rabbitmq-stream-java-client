@@ -5,8 +5,9 @@ on:
     branches:
       - main
     paths:
+      - src/main/java/com/rabbitmq/stream/**
       - src/docs/**
-      - /src/test/java/com/rabbitmq/stream/docs/*
+      - src/test/java/com/rabbitmq/stream/docs/*
   workflow_dispatch:
 
 jobs:

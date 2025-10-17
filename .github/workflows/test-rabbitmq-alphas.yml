@@ -9,7 +9,7 @@ on:
     paths:
       - src/**
       - '!src/docs/**'
-      - '!/src/test/java/com/rabbitmq/stream/docs/*'
+      - '!src/test/java/com/rabbitmq/stream/docs/*'
       - pom.xml
       - ci/**
   workflow_dispatch:
