@@ -95,7 +95,7 @@
     <spotless.version>3.0.0</spotless.version>
     <google-java-format.version>1.30.0</google-java-format.version>
     <spotbugs-maven-plugin.version>4.9.8.1</spotbugs-maven-plugin.version>
-    <spotbugs.version>4.9.7</spotbugs.version>
+    <spotbugs.version>4.9.8</spotbugs.version>
     <!-- for documentation -->
     <broker.version>4.1</broker.version>
     <!-- to sign artifacts when releasing -->
