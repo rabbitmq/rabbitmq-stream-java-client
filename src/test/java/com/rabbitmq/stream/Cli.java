@@ -125,21 +125,26 @@ public class Cli {
 
   public static ProcessState killConnection(String connectionName) {
     List<ConnectionInfo> cs = listConnections();
-    if (cs.stream().filter(c -> connectionName.equals(c.clientProvidedName())).count() != 1) {
-      throw new IllegalArgumentException(
-          format(
-              "Could not find 1 connection '%s' in stream connections: %s",
-              connectionName,
-              cs.stream()
-                  .map(ConnectionInfo::clientProvidedName)
-                  .collect(Collectors.joining(", "))));
-    }
-    return rabbitmqctl("eval 'rabbit_stream:kill_connection(\"" + connectionName + "\").'");
+    String pid =
+        cs.stream()
+            .filter(c -> connectionName.equals(c.clientProvidedName()))
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        format(
+                            "Could not find 1 connection '%s' in stream connections: %s",
+                            connectionName,
+                            cs.stream()
+                                .map(ConnectionInfo::clientProvidedName)
+                                .collect(Collectors.joining(", ")))))
+            .pid;
+    return rabbitmqctl(String.format("eval 'exit(rabbit_misc:string_to_pid(\"%s\"), kill).'", pid));
   }
 
   public static List<ConnectionInfo> listConnections() {
     ProcessState process =
-        rabbitmqctl("list_stream_connections -q --formatter table conn_name,client_properties");
+        rabbitmqctl("list_stream_connections -q --formatter table conn_name,pid,client_properties");
     List<ConnectionInfo> connectionInfoList = Collections.emptyList();
     String content = process.output();
     String[] lines = content.split(System.lineSeparator());
@@ -149,11 +154,12 @@ public class Cli {
         String line = lines[i];
         String[] fields = line.split("\t");
         String connectionName = fields[0];
+        String pid = fields[1];
         Map<String, String> clientProperties = Collections.emptyMap();
-        if (fields.length > 1 && fields[1].length() > 1) {
+        if (fields.length > 2 && fields[2].length() > 1) {
           clientProperties = buildClientProperties(fields);
         }
-        connectionInfoList.add(new ConnectionInfo(connectionName, clientProperties));
+        connectionInfoList.add(new ConnectionInfo(connectionName, pid, clientProperties));
       }
     }
     return connectionInfoList;
@@ -180,7 +186,7 @@ public class Cli {
   }
 
   private static Map<String, String> buildClientProperties(String[] fields) {
-    String clientPropertiesString = fields[1];
+    String clientPropertiesString = fields[2];
     clientPropertiesString =
         clientPropertiesString
             .replace("[", "")
@@ -446,11 +452,12 @@ public class Cli {
 
   public static class ConnectionInfo {
 
-    private final String name;
+    private final String name, pid;
     private final Map<String, String> clientProperties;
 
-    public ConnectionInfo(String name, Map<String, String> clientProperties) {
+    public ConnectionInfo(String name, String pid, Map<String, String> clientProperties) {
       this.name = name;
+      this.pid = pid;
       this.clientProperties = clientProperties;
     }
 
