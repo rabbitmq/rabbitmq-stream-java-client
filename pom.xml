@@ -66,7 +66,7 @@
     <mockito.version>5.20.0</mockito.version>
     <amqp-client.version>5.27.1</amqp-client.version>
     <commons-lang3.version>3.19.0</commons-lang3.version>
-    <commons-codec.version>1.19.0</commons-codec.version>
+    <commons-codec.version>1.20.0</commons-codec.version>
     <vavr.version>0.10.7</vavr.version>
     <paho.version>1.2.5</paho.version>
     <micrometer-tracing-test.version>1.5.5</micrometer-tracing-test.version>
