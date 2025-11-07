@@ -87,7 +87,7 @@
     <build-helper-maven-plugin.version>3.4.0</build-helper-maven-plugin.version>
     <maven-site-plugin.version>3.21.0</maven-site-plugin.version>
     <asciidoctor.maven.plugin.version>3.2.0</asciidoctor.maven.plugin.version>
-    <asciidoctorj.version>3.0.0</asciidoctorj.version>
+    <asciidoctorj.version>3.0.1</asciidoctorj.version>
     <asciidoctorj.diagram.version>3.0.1</asciidoctorj.diagram.version>
     <asciidoctorj.diagram.ditaamini.version>1.0.3</asciidoctorj.diagram.ditaamini.version>
     <buildnumber.plugin.version>3.2.1</buildnumber.plugin.version>
