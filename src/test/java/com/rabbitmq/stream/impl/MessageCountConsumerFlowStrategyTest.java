@@ -70,6 +70,11 @@ public class MessageCountConsumerFlowStrategyTest {
       public long messageCount() {
         return messageCount;
       }
+
+      @Override
+      public long chunkId() {
+        return 0;
+      }
     };
   }
 }

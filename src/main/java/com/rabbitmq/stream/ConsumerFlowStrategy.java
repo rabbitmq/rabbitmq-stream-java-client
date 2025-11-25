@@ -67,7 +67,8 @@ public interface ConsumerFlowStrategy {
     /**
      * Provide credits for the subscription.
      *
-     * <p>{@link ConsumerFlowStrategy} implementation should always provide 1 credit a given chunk.
+     * <p>{@link ConsumerFlowStrategy} implementation should always provide 1 credit for a given
+     * chunk.
      *
      * @param credits the number of credits provided, usually 1
      */
@@ -79,6 +80,13 @@ public interface ConsumerFlowStrategy {
      * @return number of messages in the chunk
      */
     long messageCount();
+
+    /**
+     * The offset of the first message in the chunk, aka chunk ID.
+     *
+     * @return offset of the first message in the chunk (chunk ID)
+     */
+    long chunkId();
   }
 
   /** Behavior for {@link MessageHandler.Context#processed()} calls. */
