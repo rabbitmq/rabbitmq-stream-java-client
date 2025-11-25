@@ -66,6 +66,11 @@ public class CreditEveryNthChunkConsumerFlowStrategyTest {
       public long messageCount() {
         throw new UnsupportedOperationException();
       }
+
+      @Override
+      public long chunkId() {
+        throw new UnsupportedOperationException();
+      }
     };
   }
 }
