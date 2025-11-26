@@ -15,7 +15,7 @@
 package com.rabbitmq.stream.compression;
 
 import com.github.luben.zstd.Zstd;
-import com.github.luben.zstd.ZstdInputStream;
+import com.github.luben.zstd.ZstdInputStreamNoFinalizer;
 import com.github.luben.zstd.ZstdOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -101,7 +101,7 @@ public final class CompressionUtils {
     @Override
     public InputStream decompress(InputStream inputStream) {
       try {
-        return new ZstdInputStream(inputStream);
+        return new ZstdInputStreamNoFinalizer(inputStream);
       } catch (IOException e) {
         throw new CompressionException("Error while creating Zstd compression input stream", e);
       }

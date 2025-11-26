@@ -562,16 +562,23 @@ class ServerFrameHandler {
           if (comp.code() != Compression.NONE.code()) {
             CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
             ByteBuf outBb = client.channel.alloc().heapBuffer(uncompressedDataSize);
-            ByteBuf slice = message.slice(message.readerIndex(), dataSize);
-            InputStream inputStream = compressionCodec.decompress(new ByteBufInputStream(slice));
             byte[] inBuffer = new byte[Math.min(uncompressedDataSize, 1024)];
             int n;
+            ByteBuf slice = message.slice(message.readerIndex(), dataSize);
+            InputStream inputStream = compressionCodec.decompress(new ByteBufInputStream(slice));
             try {
               while (-1 != (n = inputStream.read(inBuffer))) {
                 outBb.writeBytes(inBuffer, 0, n);
               }
             } catch (IOException e) {
               throw new StreamException("Error while uncompressing sub-entry", e);
+            } finally {
+              try {
+                inputStream.close();
+              } catch (IOException e) {
+                throw new StreamException(
+                    "Error while closing sub-entry compressed input stream", e);
+              }
             }
             message.readerIndex(message.readerIndex() + dataSize);
             bbToReadFrom = outBb;
