@@ -106,6 +106,7 @@
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <gpg.skip>true</gpg.skip>
     <jose4j.version>0.9.6</jose4j.version>
+    <bucket4j.version>8.15.0</bucket4j.version>
   </properties>
 
   <dependencies>
@@ -359,6 +360,13 @@
       <artifactId>spotbugs-annotations</artifactId>
       <version>${spotbugs.version}</version>
       <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>com.bucket4j</groupId>
+      <artifactId>bucket4j_jdk11-core</artifactId>
+      <version>${bucket4j.version}</version>
+      <scope>test</scope>
     </dependency>
 
   </dependencies>

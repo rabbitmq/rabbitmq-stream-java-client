@@ -24,6 +24,7 @@ import static com.rabbitmq.stream.impl.TestUtils.deleteSuperStreamTopology;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
+import static java.time.Duration.ofSeconds;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,6 +39,7 @@ import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast311Condition;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
+import io.github.bucket4j.Bucket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -480,7 +482,7 @@ public class SacClientTest {
 
   @Test
   void superStreamRebalancingShouldWorkWhilePublishing(TestInfo info) throws Exception {
-    Map<Byte, Boolean> consumerStates = consumerStates(3 * 3);
+    Map<Byte, Boolean> consumerStates = consumerStates(2);
     String superStream = streamName(info);
     String consumerName = "foo";
     Client configurationClient = cf.get();
@@ -495,7 +497,18 @@ public class SacClientTest {
       publisher.declarePublisher(b(0), null, partitionInUse);
       new Thread(
               () -> {
+                long rate = 20_000;
+                Bucket bucket =
+                    Bucket.builder()
+                        .addLimit(limit -> limit.capacity(rate).refillGreedy(rate, ofSeconds(1)))
+                        .build();
                 while (keepPublishing.get()) {
+                  try {
+                    bucket.asBlocking().consume(1);
+                  } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                  }
                   publisher.publish(
                       b(0),
                       Collections.singletonList(
@@ -503,7 +516,6 @@ public class SacClientTest {
                               .messageBuilder()
                               .addData("hello".getBytes(StandardCharsets.UTF_8))
                               .build()));
-                  TestUtils.waitMs(1);
                 }
               })
           .start();
@@ -526,7 +538,7 @@ public class SacClientTest {
       // we keep track of credit errors
       // with the amount of initial credit and the rebalancing,
       // the first subscriber is likely to have in-flight credit commands
-      // when it becomes inactive. The server should then sends some credit
+      // when it becomes inactive. The server should then send some credit
       // notifications to tell the client it's not supposed to ask for credits
       // for this subscription.
       CreditNotification creditNotification =
@@ -603,7 +615,7 @@ public class SacClientTest {
   @DisabledIfRabbitMqCtlNotSet
   @BrokerVersionAtLeast(RABBITMQ_3_11_14)
   void connectionShouldBeClosedIfConsumerUpdateTakesTooLong() throws Exception {
-    Duration timeout = Duration.ofSeconds(1);
+    Duration timeout = ofSeconds(1);
     try {
       Cli.setEnv("request_timeout", String.valueOf(timeout.getSeconds()));
       CountDownLatch shutdownLatch = new CountDownLatch(1);
