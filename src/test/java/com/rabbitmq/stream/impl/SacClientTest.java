@@ -497,7 +497,7 @@ public class SacClientTest {
       publisher.declarePublisher(b(0), null, partitionInUse);
       new Thread(
               () -> {
-                long rate = 20_000;
+                long rate = 50_000;
                 Bucket bucket =
                     Bucket.builder()
                         .addLimit(limit -> limit.capacity(rate).refillGreedy(rate, ofSeconds(1)))
