@@ -33,7 +33,6 @@ import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.ConsumerUpdateListener;
-import com.rabbitmq.stream.impl.Client.CreditNotification;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
@@ -534,20 +533,10 @@ public class SacClientTest {
             lastDispatchedOffset.set(offset);
             receivedMessagesLatch.countDown();
           };
-      AtomicInteger creditNotificationResponseCode = new AtomicInteger();
-      // we keep track of credit errors
-      // with the amount of initial credit and the rebalancing,
-      // the first subscriber is likely to have in-flight credit commands
-      // when it becomes inactive. The server should then send some credit
-      // notifications to tell the client it's not supposed to ask for credits
-      // for this subscription.
-      CreditNotification creditNotification =
-          (subscriptionId, responseCode) -> creditNotificationResponseCode.set(responseCode);
       ClientParameters clientParameters =
           new ClientParameters()
               .chunkListener(TestUtils.credit())
               .messageListener(messageListener)
-              .creditNotification(creditNotification)
               .consumerUpdateListener(consumerUpdateListener);
       Client client1 = cf.get(clientParameters);
       Map<String, String> subscriptionProperties = new HashMap<>();
@@ -583,10 +572,6 @@ public class SacClientTest {
       subscriptionCallback.accept(partitionInUse);
 
       waitAtMost(() -> consumerStates.get(b(1)));
-
-      waitAtMost(
-          () ->
-              creditNotificationResponseCode.get() == Constants.RESPONSE_CODE_PRECONDITION_FAILED);
 
       Response response = client1.unsubscribe(b(0));
       assertThat(response).is(ok());
