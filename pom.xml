@@ -49,7 +49,6 @@
   <properties>
     <spotless.check.skip>true</spotless.check.skip>
     <slf4j.version>1.7.36</slf4j.version>
-    <logback.version>1.2.13</logback.version>
     <netty.version>4.2.7.Final</netty.version>
     <proton-j.version>0.34.1</proton-j.version>
     <metrics.version>4.2.37</metrics.version>
@@ -107,6 +106,7 @@
     <gpg.skip>true</gpg.skip>
     <jose4j.version>0.9.6</jose4j.version>
     <bucket4j.version>8.15.0</bucket4j.version>
+    <log4j.version>2.23.1</log4j.version>
   </properties>
 
   <dependencies>
@@ -313,6 +313,12 @@
       <artifactId>micrometer-docs-generator</artifactId>
       <version>${micrometer-docs-generator.version}</version>
       <scope>test</scope>
+        <exclusions>
+            <exclusion>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>*</artifactId>
+            </exclusion>
+        </exclusions>
     </dependency>
 
     <dependency>
@@ -341,12 +347,28 @@
       <version>${jmh.version}</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-classic</artifactId>
-      <version>${logback.version}</version>
-      <scope>test</scope>
-    </dependency>
+
+      <dependency>
+          <groupId>org.apache.logging.log4j</groupId>
+          <artifactId>log4j-slf4j-impl</artifactId>
+          <version>${log4j.version}</version>
+          <scope>test</scope>
+      </dependency>
+
+      <dependency>
+          <groupId>org.apache.logging.log4j</groupId>
+          <artifactId>log4j-core</artifactId>
+          <version>${log4j.version}</version>
+          <scope>test</scope>
+      </dependency>
+
+      <dependency>
+          <groupId>org.apache.logging.log4j</groupId>
+          <artifactId>log4j-api</artifactId>
+          <version>${log4j.version}</version>
+          <scope>test</scope>
+      </dependency>
+
     <!-- add explicitly to update automatically with dependabot -->
     <dependency>
       <groupId>com.google.googlejavaformat</groupId>

@@ -16,7 +16,6 @@ package com.rabbitmq.stream.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.concurrent.Executor;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -30,19 +29,5 @@ public class TestUtilsTest {
   })
   void atLeastVersion(String expectedVersion, String currentVersion, boolean expected) {
     assertThat(TestUtils.atLeastVersion(expectedVersion, currentVersion)).isEqualTo(expected);
-  }
-
-  private static class DelegatingExecutor implements Executor {
-
-    private final Executor delegate;
-
-    private DelegatingExecutor(Executor delegate) {
-      this.delegate = delegate;
-    }
-
-    @Override
-    public void execute(Runnable command) {
-      delegate.execute(command);
-    }
   }
 }

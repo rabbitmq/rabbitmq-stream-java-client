@@ -22,7 +22,6 @@ import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import ch.qos.logback.classic.Level;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -78,6 +77,9 @@ import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.assertj.core.api.AssertDelegateTarget;
 import org.assertj.core.api.Assertions;
 import org.assertj.core.api.Condition;
@@ -1078,10 +1080,9 @@ public final class TestUtils {
   }
 
   static Level newLoggerLevel(Class<?> c, Level level) {
-    ch.qos.logback.classic.Logger logger =
-        (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(c);
-    Level initialLevel = logger.getEffectiveLevel();
-    logger.setLevel(level);
+    org.apache.logging.log4j.Logger logger = LogManager.getLogger(c);
+    Level initialLevel = logger.getLevel();
+    Configurator.setLevel(c.getName(), level);
     return initialLevel;
   }
 

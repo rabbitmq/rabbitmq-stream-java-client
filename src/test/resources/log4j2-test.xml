@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+
+    <Appenders>
+        <Console name="STDOUT" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %c{36} - %msg%n"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+
+        <Logger name="com.rabbitmq.stream" level="warn" />
+        <Logger name="com.rabbitmq.stream.impl.Utils" level="warn" />
+        <Logger name="com.rabbitmq.stream.impl.StreamEnvironment" level="warn" />
+        <Logger name="com.rabbitmq.stream.impl.ConsumersCoordinator" level="warn" />
+        <Logger name="com.rabbitmq.stream.impl.ProducersCoordinator" level="warn" />
+        <Logger name="com.rabbitmq.stream.impl.RecoveryClusterTest" level="info" />
+        <Logger name="com.rabbitmq.stream.oauth2" level="warn" />
+        <Logger name="com.rabbitmq.stream.perf.Version" level="error" />
+
+        <Root level="info">
+            <AppenderRef ref="STDOUT"/>
+        </Root>
+
+    </Loggers>
+
+</Configuration>
