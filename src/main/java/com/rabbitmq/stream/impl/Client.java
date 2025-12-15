@@ -1749,7 +1749,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  StreamStatsResponse streamStats(String stream) {
+  public StreamStatsResponse streamStats(String stream) {
     this.streamStatsCommandVersionsCheck.run();
     if (stream == null) {
       throw new IllegalArgumentException("stream must not be null");
@@ -2346,7 +2346,7 @@ public class Client implements AutoCloseable {
     }
   }
 
-  static class StreamStatsResponse extends Response {
+  public static class StreamStatsResponse extends Response {
 
     private final Map<String, Long> info;
 
