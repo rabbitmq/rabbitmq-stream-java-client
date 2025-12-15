@@ -66,7 +66,7 @@
     <amqp-client.version>5.28.0</amqp-client.version>
     <commons-lang3.version>3.20.0</commons-lang3.version>
     <commons-codec.version>1.20.0</commons-codec.version>
-    <vavr.version>0.10.7</vavr.version>
+    <vavr.version>0.11.0</vavr.version>
     <paho.version>1.2.5</paho.version>
     <micrometer-tracing-test.version>1.6.1</micrometer-tracing-test.version>
     <bouncycastle.version>1.83</bouncycastle.version>
