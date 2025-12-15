@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         distribution: [ 'temurin' ]
-        version: [ '11', '17', '21' ]
+        version: [ '11', '17', '21', '25', '26-ea' ]
     name:  Test against Java ${{ matrix.distribution }} ${{ matrix.version }}
     steps:
       - uses: actions/checkout@v6
