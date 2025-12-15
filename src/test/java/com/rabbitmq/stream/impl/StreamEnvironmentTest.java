@@ -703,7 +703,7 @@ public class StreamEnvironmentTest {
         cp ->
             new Client(cp) {
               @Override
-              StreamStatsResponse streamStats(String stream) {
+              public StreamStatsResponse streamStats(String stream) {
                 throw new UnsupportedOperationException();
               }
 
