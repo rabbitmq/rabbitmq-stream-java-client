@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.5.0-SNAPSHOT</span>
-<br><span id="revremark">(cfebbb2)</span>
+<br><span id="revremark">(c30e6cf)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -653,7 +653,23 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 </ul>
 </li>
 <li><a href="#building-the-client">Building the Client</a></li>
-<li><a href="#micrometer-observation">Appendix A: Micrometer Observation</a></li>
+<li><a href="#micrometer-observation">Appendix A: Micrometer Observation</a>
+<ul class="sectlevel2">
+<li><a href="#observability-conventions">Observability - Conventions</a></li>
+<li><a href="#observability-spans">Observability - Spans</a>
+<ul class="sectlevel3">
+<li><a href="#observability-spans-process-observation">Process Observation Span</a></li>
+<li><a href="#observability-spans-publish-observation">Publish Observation Span</a></li>
+</ul>
+</li>
+<li><a href="#observability-metrics">Observability - Metrics</a>
+<ul class="sectlevel3">
+<li><a href="#observability-metrics-process-observation">Process Observation</a></li>
+<li><a href="#observability-metrics-publish-observation">Publish Observation</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </div>
 </div>
@@ -4674,7 +4690,7 @@ Here is the declaration for Maven:</p>
   <span class="tag">&lt;dependency&gt;</span>
     <span class="tag">&lt;groupId&gt;</span>io.netty<span class="tag">&lt;/groupId&gt;</span>
     <span class="tag">&lt;artifactId&gt;</span>netty-transport-native-epoll<span class="tag">&lt;/artifactId&gt;</span>
-    <span class="tag">&lt;version&gt;</span>4.2.8.Final<span class="tag">&lt;/version&gt;</span>
+    <span class="tag">&lt;version&gt;</span>4.2.9.Final<span class="tag">&lt;/version&gt;</span>
     <span class="tag">&lt;classifier&gt;</span>linux-x86_64<span class="tag">&lt;/classifier&gt;</span>
   <span class="tag">&lt;/dependency&gt;</span>
 
@@ -4688,7 +4704,7 @@ Here is the declaration for Maven:</p>
 <div class="title">Declaring the Linux x86-64 native <code>epoll</code> transport dependency with Gradle</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">io.netty:netty-transport-native-epoll:4.2.8.Final:linux-x86_64</span><span class="delimiter">&quot;</span></span>
+  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">io.netty:netty-transport-native-epoll:4.2.9.Final:linux-x86_64</span><span class="delimiter">&quot;</span></span>
 }</code></pre>
 </div>
 </div>
@@ -4795,10 +4811,326 @@ The following snippet shows how to create and set up the Micrometer <code>Observ
 <p>The next sections document the conventions, spans, and metrics made available by the instrumentation.
 They are automatically generated from the source code with the <a href="https://github.com/micrometer-metrics/micrometer-docs-generator">Micrometer documentation generator</a>.</p>
 </div>
+<div class="sect2">
+<h3 id="observability-conventions"><a class="anchor" href="#observability-conventions"></a>Observability - Conventions</h3>
 <div class="paragraph">
-<p>Unresolved directive in appendixes.adoc - include::/home/runner/work/rabbitmq-stream-java-client/rabbitmq-stream-java-client/target/micrometer-observation-docs/_conventions.adoc[]
-Unresolved directive in appendixes.adoc - include::/home/runner/work/rabbitmq-stream-java-client/rabbitmq-stream-java-client/target/micrometer-observation-docs/_spans.adoc[]
-Unresolved directive in appendixes.adoc - include::/home/runner/work/rabbitmq-stream-java-client/rabbitmq-stream-java-client/target/micrometer-observation-docs/_metrics.adoc[]</p>
+<p>Below you can find a list of all <code>GlobalObservationConvention</code> and <code>ObservationConvention</code> declared by this project.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 1. ObservationConvention implementations</caption>
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ObservationConvention Class Name</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Applicable ObservationContext Class Name</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>com.rabbitmq.stream.observation.micrometer.DefaultProcessObservationConvention</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ProcessContext</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>com.rabbitmq.stream.observation.micrometer.ProcessObservationConvention</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ProcessContext</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>com.rabbitmq.stream.observation.micrometer.DefaultPublishObservationConvention</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>PublishContext</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>com.rabbitmq.stream.observation.micrometer.PublishObservationConvention</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>PublishContext</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="observability-spans"><a class="anchor" href="#observability-spans"></a>Observability - Spans</h3>
+<div class="paragraph">
+<p>Below you can find a list of all spans declared by this project.</p>
+</div>
+<div class="sect3">
+<h4 id="observability-spans-process-observation"><a class="anchor" href="#observability-spans-process-observation"></a>Process Observation Span</h4>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>Observation for processing a message.</p>
+</div>
+</blockquote>
+</div>
+<div class="paragraph">
+<p><strong>Span name</strong> <code>rabbitmq.stream.process</code> (defined by convention class <code>com.rabbitmq.stream.observation.micrometer.DefaultProcessObservationConvention</code>).</p>
+</div>
+<div class="paragraph">
+<p>Fully qualified name of the enclosing class <code>com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation</code>.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 2. Tag Keys</caption>
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Name</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Description</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>messaging.operation</code> <em>(required)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A string identifying the kind of messaging operation.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>messaging.system</code> <em>(required)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A string identifying the messaging system.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>net.protocol.name</code> <em>(required)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A string identifying the protocol (RabbitMQ Stream).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>net.protocol.version</code> <em>(required)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A string identifying the protocol version (1.0).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect3">
+<h4 id="observability-spans-publish-observation"><a class="anchor" href="#observability-spans-publish-observation"></a>Publish Observation Span</h4>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>Observation for publishing a message.</p>
+</div>
+</blockquote>
+</div>
+<div class="paragraph">
+<p><strong>Span name</strong> <code>rabbitmq.stream.publish</code> (defined by convention class <code>com.rabbitmq.stream.observation.micrometer.DefaultPublishObservationConvention</code>).</p>
+</div>
+<div class="paragraph">
+<p>Fully qualified name of the enclosing class <code>com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation</code>.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 3. Tag Keys</caption>
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Name</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Description</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>messaging.operation</code> <em>(required)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A string identifying the kind of messaging operation.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>messaging.system</code> <em>(required)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A string identifying the messaging system.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>net.protocol.name</code> <em>(required)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A string identifying the protocol (RabbitMQ Stream).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>net.protocol.version</code> <em>(required)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A string identifying the protocol version (1.0).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="observability-metrics"><a class="anchor" href="#observability-metrics"></a>Observability - Metrics</h3>
+<div class="paragraph">
+<p>Below you can find a list of all metrics declared by this project.</p>
+</div>
+<div class="sect3">
+<h4 id="observability-metrics-process-observation"><a class="anchor" href="#observability-metrics-process-observation"></a>Process Observation</h4>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>Observation for processing a message.</p>
+</div>
+</blockquote>
+</div>
+<div class="paragraph">
+<p><strong>Metric name</strong> <code>rabbitmq.stream.process</code> (defined by convention class <code>com.rabbitmq.stream.observation.micrometer.DefaultProcessObservationConvention</code>). <strong>Type</strong> <code>timer</code>.</p>
+</div>
+<div class="paragraph">
+<p><strong>Metric name</strong> <code>rabbitmq.stream.process.active</code> (defined by convention class <code>com.rabbitmq.stream.observation.micrometer.DefaultProcessObservationConvention</code>). <strong>Type</strong> <code>long task timer</code>.</p>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+KeyValues that are added after starting the Observation might be missing from the *.active metrics.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, each backend determines the actual baseunit. (i.e. Prometheus uses seconds)
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Fully qualified name of the enclosing class <code>com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation</code>.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 4. Low cardinality Keys</caption>
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>Name</p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>Description</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p><code>messaging.operation</code> <em>(required)</em></p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A string identifying the kind of messaging operation.</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p><code>messaging.system</code> <em>(required)</em></p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A string identifying the messaging system.</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p><code>net.protocol.name</code> <em>(required)</em></p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A string identifying the protocol (RabbitMQ Stream).</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p><code>net.protocol.version</code> <em>(required)</em></p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A string identifying the protocol version (1.0).</p>
+</div></div></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect3">
+<h4 id="observability-metrics-publish-observation"><a class="anchor" href="#observability-metrics-publish-observation"></a>Publish Observation</h4>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>Observation for publishing a message.</p>
+</div>
+</blockquote>
+</div>
+<div class="paragraph">
+<p><strong>Metric name</strong> <code>rabbitmq.stream.publish</code> (defined by convention class <code>com.rabbitmq.stream.observation.micrometer.DefaultPublishObservationConvention</code>). <strong>Type</strong> <code>timer</code>.</p>
+</div>
+<div class="paragraph">
+<p><strong>Metric name</strong> <code>rabbitmq.stream.publish.active</code> (defined by convention class <code>com.rabbitmq.stream.observation.micrometer.DefaultPublishObservationConvention</code>). <strong>Type</strong> <code>long task timer</code>.</p>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+KeyValues that are added after starting the Observation might be missing from the *.active metrics.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, each backend determines the actual baseunit. (i.e. Prometheus uses seconds)
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Fully qualified name of the enclosing class <code>com.rabbitmq.stream.observation.micrometer.StreamObservationDocumentation</code>.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 5. Low cardinality Keys</caption>
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>Name</p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>Description</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p><code>messaging.operation</code> <em>(required)</em></p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A string identifying the kind of messaging operation.</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p><code>messaging.system</code> <em>(required)</em></p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A string identifying the messaging system.</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p><code>net.protocol.name</code> <em>(required)</em></p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A string identifying the protocol (RabbitMQ Stream).</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p><code>net.protocol.version</code> <em>(required)</em></p>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A string identifying the protocol version (1.0).</p>
+</div></div></td>
+</tr>
+</tbody>
+</table>
+</div>
 </div>
 </div>
 </div>
@@ -4806,7 +5138,7 @@ Unresolved directive in appendixes.adoc - include::/home/runner/work/rabbitmq-st
 <div id="footer">
 <div id="footer-text">
 Version 1.5.0-SNAPSHOT<br>
-Last updated 2025-12-15 14:57:34 UTC
+Last updated 2025-12-22 09:37:01 UTC
 </div>
 </div>
 </body>
