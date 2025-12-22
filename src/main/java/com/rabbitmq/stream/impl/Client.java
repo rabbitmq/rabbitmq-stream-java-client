@@ -119,6 +119,7 @@ import java.lang.reflect.Field;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -2465,6 +2466,11 @@ public class Client implements AutoCloseable {
 
   static ClientParameters cp() {
     return new ClientParameters();
+  }
+
+  public static ClientParameters maybeSetUpClientParametersFromUris(
+      List<URI> uris, ClientParameters clientParametersPrototype) {
+    return Utils.maybeSetUpClientParametersFromUris(uris, clientParametersPrototype);
   }
 
   public static class ClientParameters {

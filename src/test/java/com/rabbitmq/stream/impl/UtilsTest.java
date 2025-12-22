@@ -20,7 +20,9 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
 import static com.rabbitmq.stream.impl.Utils.defaultConnectionNamingStrategy;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.offsetBefore;
+import static java.net.URI.create;
 import static java.util.Collections.emptyList;
+import static java.util.List.of;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -34,7 +36,10 @@ import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
 import com.rabbitmq.stream.impl.Utils.ConditionalClientFactory;
+import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;
+import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.stream.IntStream;
@@ -125,5 +130,36 @@ public class UtilsTest {
   })
   void is_3_11_OrMore(String input, boolean expected) {
     assertThat(Utils.is3_11_OrMore(input)).isEqualTo(expected);
+  }
+
+  @Test
+  void maybeSetUpClientParametersFromUrisShouldKeepCredentialsIfNotInUri() {
+    String u = UUID.randomUUID().toString();
+    String p = UUID.randomUUID().toString();
+    UsernamePasswordCredentialsProvider provider =
+        new DefaultUsernamePasswordCredentialsProvider(u, p);
+    ClientParameters cp = new ClientParameters().credentialsProvider(provider);
+    cp =
+        Utils.maybeSetUpClientParametersFromUris(of(create("rabbitmq-stream://host1:5552/vh")), cp);
+
+    provider = (UsernamePasswordCredentialsProvider) cp.credentialsProvider();
+    assertThat(provider.getUsername()).isEqualTo(u);
+    assertThat(provider.getPassword()).isEqualTo(p);
+  }
+
+  @Test
+  void maybeSetUpClientParametersFromUrisShouldOverrideCredentialsIfInUri() {
+    String u = UUID.randomUUID().toString();
+    String p = UUID.randomUUID().toString();
+    UsernamePasswordCredentialsProvider provider =
+        new DefaultUsernamePasswordCredentialsProvider(u, p);
+    ClientParameters cp = new ClientParameters().credentialsProvider(provider);
+    cp =
+        Utils.maybeSetUpClientParametersFromUris(
+            of(create("rabbitmq-stream://foo:bar@host1:5552/vh")), cp);
+
+    provider = (UsernamePasswordCredentialsProvider) cp.credentialsProvider();
+    assertThat(provider.getUsername()).isNotEqualTo(u).isEqualTo("foo");
+    assertThat(provider.getPassword()).isNotEqualTo(p).isEqualTo("bar");
   }
 }

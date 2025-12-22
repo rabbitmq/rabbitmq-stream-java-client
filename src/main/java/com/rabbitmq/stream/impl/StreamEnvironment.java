@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Client.DEFAULT_RPC_TIMEOUT;
+import static com.rabbitmq.stream.impl.Client.maybeSetUpClientParametersFromUris;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
 import static com.rabbitmq.stream.impl.Utils.DEFAULT_ADDRESS_RESOLVER;
@@ -65,9 +66,7 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
-import java.io.IOException;
 import java.net.URI;
-import java.net.URLDecoder;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -474,57 +473,6 @@ final class StreamEnvironment implements Environment {
 
   private Locator locator(int i) {
     return this.locators.get(i);
-  }
-
-  private static String uriDecode(String s) {
-    try {
-      // URLDecode decodes '+' to a space, as for
-      // form encoding. So protect plus signs.
-      return URLDecoder.decode(s.replace("+", "%2B"), "US-ASCII");
-    } catch (IOException e) {
-      throw new IllegalArgumentException(e);
-    }
-  }
-
-  Client.ClientParameters maybeSetUpClientParametersFromUris(
-      List<URI> uris, Client.ClientParameters clientParametersPrototype) {
-    if (uris.isEmpty()) {
-      return clientParametersPrototype;
-    } else {
-      URI uri = uris.get(0);
-      clientParametersPrototype = clientParametersPrototype.duplicate();
-      String host = uri.getHost();
-      if (host != null) {
-        clientParametersPrototype.host(host);
-      }
-
-      int port = uri.getPort();
-      if (port != -1) {
-        clientParametersPrototype.port(port);
-      }
-
-      String userInfo = uri.getRawUserInfo();
-      if (userInfo != null) {
-        String[] userPassword = userInfo.split(":");
-        if (userPassword.length > 2) {
-          throw new IllegalArgumentException("Bad user info in URI " + userInfo);
-        }
-
-        clientParametersPrototype.username(uriDecode(userPassword[0]));
-        if (userPassword.length == 2) {
-          clientParametersPrototype.password(uriDecode(userPassword[1]));
-        }
-      }
-
-      String path = uri.getRawPath();
-      if (path != null && path.length() > 0) {
-        if (path.indexOf('/', 1) != -1) {
-          throw new IllegalArgumentException("Multiple segments in path of URI: " + path);
-        }
-        clientParametersPrototype.virtualHost(uriDecode(uri.getPath().substring(1)));
-      }
-      return clientParametersPrototype;
-    }
   }
 
   public ByteBufAllocator byteBufAllocator() {
