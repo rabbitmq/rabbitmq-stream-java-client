@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static java.lang.String.format;
+import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.util.Map.copyOf;
 
 import com.rabbitmq.stream.Address;
@@ -33,6 +34,8 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -532,6 +535,51 @@ final class Utils {
 
   static boolean is3_11_OrMore(String brokerVersion) {
     return versionCompare(currentVersion(brokerVersion), "3.11.0") >= 0;
+  }
+
+  static Client.ClientParameters maybeSetUpClientParametersFromUris(
+      List<URI> uris, Client.ClientParameters clientParametersPrototype) {
+    if (!uris.isEmpty()) {
+      URI uri = uris.get(0);
+      clientParametersPrototype = clientParametersPrototype.duplicate();
+      String host = uri.getHost();
+      if (host != null) {
+        clientParametersPrototype.host(host);
+      }
+
+      int port = uri.getPort();
+      if (port != -1) {
+        clientParametersPrototype.port(port);
+      }
+
+      String userInfo = uri.getRawUserInfo();
+      if (userInfo != null) {
+        String[] userPassword = userInfo.split(":");
+        if (userPassword.length > 2) {
+          throw new IllegalArgumentException("Bad user info in URI " + userInfo);
+        }
+
+        clientParametersPrototype.username(uriDecode(userPassword[0]));
+        if (userPassword.length == 2) {
+          clientParametersPrototype.password(uriDecode(userPassword[1]));
+        }
+      }
+
+      String path = uri.getRawPath();
+      if (path != null && path.length() > 0) {
+        if (path.indexOf('/', 1) != -1) {
+          throw new IllegalArgumentException("Multiple segments in path of URI: " + path);
+        }
+        clientParametersPrototype.virtualHost(uriDecode(uri.getPath().substring(1)));
+      }
+    }
+    return clientParametersPrototype;
+  }
+
+  private static String uriDecode(String s) {
+    // URLDecode decodes '+' to a space, as for
+    // form encoding. So protect plus signs.
+    return URLDecoder.decode(s.replace("+", "%2B"), US_ASCII);
   }
 
   static StreamException convertCodeToException(
