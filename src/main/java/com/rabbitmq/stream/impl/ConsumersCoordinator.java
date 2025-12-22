@@ -717,16 +717,18 @@ final class ConsumersCoordinator implements AutoCloseable {
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             if (subscriptionTracker != null) {
               // message at the beginning of the first chunk is ignored
-              // we "simulate" the processing
-              MessageHandlerContext messageHandlerContext =
-                  new MessageHandlerContext(
-                      offset,
-                      chunkTimestamp,
-                      committedChunkId,
-                      subscriptionTracker.consumer,
-                      (ConsumerFlowStrategy.MessageProcessedCallback) chunkContext);
-              ((ConsumerFlowStrategy.MessageProcessedCallback) chunkContext)
-                  .processed(messageHandlerContext);
+              // we "simulate" the processing if possible
+              if (chunkContext != null) {
+                MessageHandlerContext messageHandlerContext =
+                    new MessageHandlerContext(
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        subscriptionTracker.consumer,
+                        (ConsumerFlowStrategy.MessageProcessedCallback) chunkContext);
+                ((ConsumerFlowStrategy.MessageProcessedCallback) chunkContext)
+                    .processed(messageHandlerContext);
+              }
             } else {
               LOGGER.debug(
                   "Could not find stream subscription {} in manager {}, node {} for message ignored listener",
