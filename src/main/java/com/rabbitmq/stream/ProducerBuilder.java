@@ -110,23 +110,18 @@ public interface ProducerBuilder {
    *
    * <p>Set this flag to <code>true</code> if you want as little delay as possible between calling
    * {@link Producer#send(Message, ConfirmationHandler)} and the message being sent to the broker.
-   * Consumers should provide enough initial credits (between 5 and 10, depending on the workload),
-   * see {@link ConsumerBuilder#flow()} and {@link
-   * ConsumerBuilder.FlowConfiguration#initialCredits(int)}.
    *
    * <p>Set this flag to <code>false</code> if latency is not critical for your use case and you
-   * want the highest throughput possible for both publishing and consuming. Consumers can provide 1
-   * initial credit (depending on the workload), see {@link ConsumerBuilder#flow()} and {@link
-   * ConsumerBuilder.FlowConfiguration#initialCredits(int)}.
+   * want the highest throughput possible for both publishing and consuming.
    *
    * <p>Dynamic batch is activated by default (<code>dynamicBatch = true</code>).
    *
    * @param dynamicBatch
    * @return this builder instance
    * @since 0.20.0
-   * @see ConsumerBuilder#flow()
-   * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(int)
+   * @deprecated dynamic/adaptive will be the default and only option in future releases
    */
+  @Deprecated
   ProducerBuilder dynamicBatch(boolean dynamicBatch);
 
   /**

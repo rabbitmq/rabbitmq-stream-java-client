@@ -40,17 +40,9 @@ jobs:
         run: ci/start-broker.sh
         env:
           RABBITMQ_IMAGE: ${{ matrix.rabbitmq-image }}
-      - name: Test (no dynamic-batch publishing)
-        run: |
-          ./mvnw verify -Drabbitmqctl.bin=DOCKER:rabbitmq \
-            -Drabbitmq.stream.producer.dynamic.batch=false \
-            -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
-            -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
-            -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
-      - name: Test (dynamic-batch publishing)
+      - name: Test
         run: |
           ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq \
-          -Drabbitmq.stream.producer.dynamic.batch=true \
           -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
           -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
           -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
