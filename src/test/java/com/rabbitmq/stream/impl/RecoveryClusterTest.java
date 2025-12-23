@@ -231,8 +231,7 @@ public class RecoveryClusterTest {
               .mapToObj(
                   i -> {
                     String s = streams.get(i % streams.size());
-                    boolean dynamicBatch = i % 2 == 0;
-                    return new ProducerState(s, dynamicBatch, environment);
+                    return new ProducerState(s, environment);
                   })
               .collect(toList());
       consumers =
@@ -369,7 +368,7 @@ public class RecoveryClusterTest {
       }
       sCreator.create();
 
-      pState = new ProducerState(s, true, superStream, environment);
+      pState = new ProducerState(s, superStream, environment);
       pState.start();
 
       Map<Integer, Boolean> consumerStatus = new ConcurrentHashMap<>();
@@ -476,14 +475,13 @@ public class RecoveryClusterTest {
     final AtomicReference<Throwable> lastException = new AtomicReference<>();
     final AtomicReference<Instant> lastExceptionInstant = new AtomicReference<>();
 
-    private ProducerState(String stream, boolean dynamicBatch, Environment environment) {
-      this(stream, dynamicBatch, false, environment);
+    private ProducerState(String stream, Environment environment) {
+      this(stream, false, environment);
     }
 
-    private ProducerState(
-        String stream, boolean dynamicBatch, boolean superStream, Environment environment) {
+    private ProducerState(String stream, boolean superStream, Environment environment) {
       this.stream = stream;
-      ProducerBuilder builder = environment.producerBuilder().dynamicBatch(dynamicBatch);
+      ProducerBuilder builder = environment.producerBuilder();
       if (superStream) {
         builder.superStream(stream).routing(m -> m.getProperties().getMessageIdAsString());
       } else {
