@@ -112,6 +112,7 @@ class StreamProducerBuilder implements ProducerBuilder {
   }
 
   @Override
+  @SuppressWarnings("deprecation")
   public ProducerBuilder dynamicBatch(boolean dynamicBatch) {
     this.dynamicBatch = dynamicBatch;
     return this;
