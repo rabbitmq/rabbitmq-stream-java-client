@@ -75,7 +75,7 @@ public class StreamEnvironmentUnitTest {
           }
 
           @Override
-          Client.ClientParameters duplicate() {
+          public Client.ClientParameters duplicate() {
             return cpReference.get();
           }
         };

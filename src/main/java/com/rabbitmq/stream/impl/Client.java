@@ -158,8 +158,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>It is not meant for public usage and can change at any time.</b>
  *
- * <p>Users are encouraged to use the {@link Environment}, {@link Producer}, {@link
- * com.rabbitmq.stream.Consumer} API, and their respective builders to interact with the broker.
+ * <p>Users are encouraged to use the {@link Environment}, {@link Producer}, {@link com.rabbitmq.stream.Consumer} API, and their respective builders to interact with the broker.
  *
  * <p>People wanting very fine control over their interaction with the broker can use {@link Client}
  * but at their own risk.
@@ -2188,7 +2187,7 @@ public class Client implements AutoCloseable {
       return shutdownReason;
     }
 
-    boolean isShutdownUnexpected() {
+    public boolean isShutdownUnexpected() {
       return getShutdownReason() == ShutdownReason.HEARTBEAT_FAILURE
           || getShutdownReason() == ShutdownReason.UNKNOWN;
     }
@@ -2726,7 +2725,7 @@ public class Client implements AutoCloseable {
       return this.rpcTimeout;
     }
 
-    ClientParameters duplicate() {
+    public ClientParameters duplicate() {
       ClientParameters duplicate = new ClientParameters();
       for (Field field : ClientParameters.class.getDeclaredFields()) {
         field.setAccessible(true);
