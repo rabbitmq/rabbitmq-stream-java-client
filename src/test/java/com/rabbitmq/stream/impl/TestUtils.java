@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -1115,7 +1115,8 @@ public final class TestUtils {
     RABBITMQ_4_0_0("4.0.0"),
     RABBITMQ_4_1_2("4.1.2"),
     RABBITMQ_4_1_4("4.1.4"),
-    RABBITMQ_4_2_0("4.2.0");
+    RABBITMQ_4_2_0("4.2.0"),
+    RABBITMQ_4_3_0("4.3.0");
 
     final String value;
 

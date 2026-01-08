@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -557,10 +557,14 @@ final class StreamEnvironment implements Environment {
           };
       LongSupplier firstOffsetSupplier =
           offsetSupplierLogic.apply("first_chunk_id", "No first offset for stream " + stream);
-      LongSupplier committedOffsetSupplier =
+      LongSupplier committedChunkIdSupplier =
           offsetSupplierLogic.apply(
               "committed_chunk_id", "No committed chunk ID for stream " + stream);
-      return new DefaultStreamStats(firstOffsetSupplier, committedOffsetSupplier);
+      LongSupplier committedOffsetSupplier =
+          offsetSupplierLogic.apply("committed_offset", "No committed offset for stream " + stream);
+
+      return new DefaultStreamStats(
+          firstOffsetSupplier, committedChunkIdSupplier, committedOffsetSupplier);
     } else {
       throw convertCodeToException(
           response.getResponseCode(),
@@ -629,22 +633,32 @@ final class StreamEnvironment implements Environment {
 
   private static class DefaultStreamStats implements StreamStats {
 
-    private final LongSupplier firstOffsetSupplier, committedOffsetSupplier;
+    private final LongSupplier firstOffsetSupplier,
+        committedChunkIdSupplier,
+        committedOffsetSupplier;
 
     private DefaultStreamStats(
-        LongSupplier firstOffsetSupplier, LongSupplier committedOffsetSupplier) {
+        LongSupplier firstOffsetSupplier,
+        LongSupplier committedChunkIdSupplier,
+        LongSupplier committedOffsetSupplier) {
       this.firstOffsetSupplier = firstOffsetSupplier;
+      this.committedChunkIdSupplier = committedChunkIdSupplier;
       this.committedOffsetSupplier = committedOffsetSupplier;
     }
 
     @Override
     public long firstOffset() {
-      return firstOffsetSupplier.getAsLong();
+      return this.firstOffsetSupplier.getAsLong();
     }
 
     @Override
     public long committedChunkId() {
-      return committedOffsetSupplier.getAsLong();
+      return this.committedChunkIdSupplier.getAsLong();
+    }
+
+    @Override
+    public long committedOffset() {
+      return this.committedOffsetSupplier.getAsLong();
     }
 
     @Override
@@ -652,8 +666,10 @@ final class StreamEnvironment implements Environment {
       return "StreamStats{"
           + "firstOffset="
           + firstOffset()
-          + ", committedOffset="
+          + ", committedChunkId="
           + committedChunkId()
+          + ", committedOffset="
+          + committedOffset()
           + '}';
     }
   }
