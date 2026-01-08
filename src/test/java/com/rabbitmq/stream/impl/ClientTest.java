@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_3_0;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
@@ -94,6 +95,7 @@ public class ClientTest {
 
   String stream;
   TestUtils.ClientFactory cf;
+  String brokerVersion;
 
   static boolean await(CountDownLatch latch, Duration timeout) {
     try {
@@ -907,10 +909,10 @@ public class ClientTest {
     int publishCount = 20_000;
     CountDownLatch latch = new CountDownLatch(publishCount);
 
-    AtomicLong committedOffset = new AtomicLong();
+    AtomicLong committedChunkId = new AtomicLong();
     Client.MessageListener messageListener =
-        (corr, offset, chkTimestamp, committedOfft, chunkContext, message) -> {
-          committedOffset.set(committedOfft);
+        (corr, offset, chkTimestamp, committedChkId, chunkContext, message) -> {
+          committedChunkId.set(committedChkId);
           latch.countDown();
         };
     Client client =
@@ -920,11 +922,22 @@ public class ClientTest {
                 .messageListener(messageListener));
     StreamStatsResponse response = client.streamStats(stream);
     assertThat(response.getInfo()).containsEntry("first_chunk_id", -1L);
+    assertThat(response.getInfo()).containsEntry("last_chunk_id", -1L);
     assertThat(response.getInfo()).containsEntry("committed_chunk_id", -1L);
+
+    if (brokerVersion43Ormore()) {
+      assertThat(response.getInfo()).containsEntry("committed_offset", -1L);
+    }
+
     TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
     response = client.streamStats(stream);
     assertThat(response.getInfo()).containsEntry("first_chunk_id", 0L);
-    assertThat(response.getInfo().get("committed_chunk_id")).isNotEqualTo(-1L);
+    assertThat(response.getInfo().get("last_chunk_id")).isPositive();
+    assertThat(response.getInfo().get("committed_chunk_id")).isPositive();
+
+    if (brokerVersion43Ormore()) {
+      assertThat(response.getInfo()).containsEntry("committed_offset", (long) (publishCount - 1));
+    }
 
     client.exchangeCommandVersions();
 
@@ -933,8 +946,8 @@ public class ClientTest {
     assertThat(subscribeResponse.isOk()).isTrue();
 
     assertThat(latch.await(10, SECONDS)).isTrue();
-    assertThat(committedOffset.get()).isPositive();
-    assertThat(committedOffset).hasValue(response.getInfo().get("committed_chunk_id"));
+    assertThat(committedChunkId.get()).isPositive();
+    assertThat(committedChunkId).hasValue(response.getInfo().get("committed_chunk_id"));
   }
 
   @Test
@@ -1116,5 +1129,9 @@ public class ClientTest {
     waitAtMost(() -> filteredConsumedMessageCount.get() == expectedCount);
     // we should get messages only from the "second" part of the stream
     assertThat(consumedMessageCount).hasValueLessThan(messageCount * 2);
+  }
+
+  private boolean brokerVersion43Ormore() {
+    return TestUtils.atLeastVersion(RABBITMQ_4_3_0.version(), brokerVersion);
   }
 }
