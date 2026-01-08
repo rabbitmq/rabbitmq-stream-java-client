@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Cli.listLocatorConnections;
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_3_0;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
@@ -111,6 +112,7 @@ public class StreamEnvironmentTest {
   String stream;
   TestUtils.ClientFactory cf;
   EventLoopGroup eventLoopGroup;
+  String brokerVersion;
 
   @BeforeEach
   void init() {
@@ -636,6 +638,7 @@ public class StreamEnvironmentTest {
       StreamStats stats = env.queryStreamStats(stream);
       assertThatThrownBy(stats::firstOffset).isInstanceOf(NoOffsetException.class);
       assertThatThrownBy(stats::committedChunkId).isInstanceOf(NoOffsetException.class);
+      assertThatThrownBy(stats::committedOffset).isInstanceOf(NoOffsetException.class);
 
       int publishCount = 20_000;
       TestUtils.publishAndWaitForConfirms(cf, publishCount, stream);
@@ -643,6 +646,11 @@ public class StreamEnvironmentTest {
       StreamStats stats2 = env.queryStreamStats(stream);
       assertThat(stats2.firstOffset()).isZero();
       assertThat(stats2.committedChunkId()).isPositive();
+      if (brokerVersion43Ormore()) {
+        assertThat(stats2.committedOffset()).isEqualTo(publishCount - 1);
+      } else {
+        assertThatThrownBy(stats::committedOffset).isInstanceOf(NoOffsetException.class);
+      }
 
       CountDownLatch latch = new CountDownLatch(publishCount);
       AtomicLong committedChunkId = new AtomicLong();
@@ -879,5 +887,9 @@ public class StreamEnvironmentTest {
     } finally {
       epollEventLoopGroup.shutdownGracefully(0, 0, SECONDS);
     }
+  }
+
+  private boolean brokerVersion43Ormore() {
+    return TestUtils.atLeastVersion(RABBITMQ_4_3_0.version(), brokerVersion);
   }
 }

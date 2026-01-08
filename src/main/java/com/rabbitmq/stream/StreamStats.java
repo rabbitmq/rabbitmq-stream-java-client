@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -46,4 +46,6 @@ public interface StreamStats {
    * @throws NoOffsetException if there is no committed chunk yet
    */
   long committedChunkId();
+
+  long committedOffset();
 }
