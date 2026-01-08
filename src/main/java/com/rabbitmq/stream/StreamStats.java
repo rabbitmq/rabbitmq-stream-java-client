@@ -41,11 +41,25 @@ public interface StreamStats {
    * given time. The value can be stale as soon as the application reads it though, as the committed
    * chunk ID for a stream that is published to changes all the time.
    *
+   * <p>Use {@link #committedChunkId()} instead if the last offset in the stream is needed.
+   *
    * @return committed offset in this stream
    * @see Context#committedChunkId()
+   * @see #committedOffset()
    * @throws NoOffsetException if there is no committed chunk yet
    */
   long committedChunkId();
 
+  /**
+   * The offset of the last committed message in the stream.
+   *
+   * <p>The value can be stale as soon as the application reads it though, as the last committed
+   * offset for a stream that is published to changes all the time.
+   *
+   * <p>Requires RabbitMQ 4.3 or more.
+   *
+   * @return last committed offset
+   * @throws NoOffsetException if there is no committed message yet or if the value is not available
+   */
   long committedOffset();
 }
