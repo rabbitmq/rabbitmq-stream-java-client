@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -18,10 +18,11 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
 import java.util.function.ToIntFunction;
 
+/** <b>This class is not meant for public usage and can change at any time.</b> */
 @SuppressFBWarnings({"SF_SWITCH_FALLTHROUGH", "SF_SWITCH_NO_DEFAULT"})
-final class HashUtils {
+public final class HashUtils {
 
-  static final ToIntFunction<String> MURMUR3 = new Murmur3();
+  public static final ToIntFunction<String> MURMUR3 = new Murmur3();
 
   private HashUtils() {}
 
