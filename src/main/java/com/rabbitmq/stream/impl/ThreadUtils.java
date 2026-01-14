@@ -125,7 +125,26 @@ final class ThreadUtils {
   }
 
   private static boolean isJava21OrMore() {
-    return Runtime.version().compareTo(Runtime.Version.parse("21")) >= 0;
+    try {
+      String javaVersion = System.getProperty("java.version", "");
+      // Handle old versioning like 1.8.0 where major version is 8
+      if (javaVersion.startsWith("1.")) {
+        return false; // Java 8 or earlier, definitely not 21+
+      }
+      // Extract major version from strings like "21", "21.0.1", "21-ea"
+      int majorEnd = 0;
+      while (majorEnd < javaVersion.length() && Character.isDigit(javaVersion.charAt(majorEnd))) {
+        majorEnd++;
+      }
+      if (majorEnd == 0) {
+        return false; // No digits found (e.g., Android returns "0"), not Java 21+
+      }
+      int major = Integer.parseInt(javaVersion.substring(0, majorEnd));
+      return major >= 21;
+    } catch (Exception e) {
+      // If anything goes wrong, assume not Java 21+
+      return false;
+    }
   }
 
   private static class NamedThreadFactory implements ThreadFactory {
