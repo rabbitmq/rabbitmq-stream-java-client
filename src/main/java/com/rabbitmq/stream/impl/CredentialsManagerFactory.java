@@ -19,10 +19,7 @@ import com.rabbitmq.stream.oauth2.CredentialsManager;
 import com.rabbitmq.stream.oauth2.GsonTokenParser;
 import com.rabbitmq.stream.oauth2.HttpTokenRequester;
 import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
-import java.net.http.HttpClient;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.function.Consumer;
-import javax.net.ssl.SSLContext;
 
 final class CredentialsManagerFactory {
 
@@ -43,13 +40,6 @@ final class CredentialsManagerFactory {
   static CredentialsManager get(
       DefaultOAuth2Configuration oauth2, ScheduledExecutorService scheduledExecutorService) {
     if (oauth2 != null && oauth2.enabled()) {
-      Consumer<HttpClient.Builder> clientBuilderConsumer;
-      if (oauth2.tlsEnabled()) {
-        SSLContext sslContext = oauth2.sslContext();
-        clientBuilderConsumer = b -> b.sslContext(sslContext);
-      } else {
-        clientBuilderConsumer = ignored -> {};
-      }
       HttpTokenRequester tokenRequester =
           new HttpTokenRequester(
               oauth2.tokenEndpointUri(),
@@ -57,8 +47,7 @@ final class CredentialsManagerFactory {
               oauth2.clientSecret(),
               oauth2.grantType(),
               oauth2.parameters(),
-              clientBuilderConsumer,
-              null,
+              oauth2.sslContext(),
               new GsonTokenParser());
       return new TokenCredentialsManager(
           tokenRequester, scheduledExecutorService, oauth2.refreshDelayStrategy());
