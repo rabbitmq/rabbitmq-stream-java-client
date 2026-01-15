@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -23,7 +23,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.http.HttpClient;
+import java.net.HttpURLConnection;
 import java.security.KeyStore;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,6 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -56,7 +57,7 @@ public class HttpTokenRequesterTest {
   void requestToken(boolean tls) throws Exception {
     String protocol;
     KeyStore keyStore;
-    Consumer<HttpClient.Builder> clientBuilderConsumer;
+    Consumer<HttpURLConnection> connectionConfigurator;
     if (tls) {
       protocol = "https";
       keyStore = OAuth2TestUtils.generateKeyPair();
@@ -64,11 +65,16 @@ public class HttpTokenRequesterTest {
       TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
       tmf.init(keyStore);
       sslContext.init(null, tmf.getTrustManagers(), null);
-      clientBuilderConsumer = b -> b.sslContext(sslContext);
+      connectionConfigurator =
+          c -> {
+            if (c instanceof HttpsURLConnection) {
+              ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
+            }
+          };
     } else {
       protocol = "http";
       keyStore = null;
-      clientBuilderConsumer = b -> {};
+      connectionConfigurator = b -> {};
     }
     String uri = String.format("%s://localhost:%d%s", protocol, port, contextPath);
     AtomicReference<String> httpMethod = new AtomicReference<>();
@@ -116,7 +122,7 @@ public class HttpTokenRequesterTest {
             "rabbit_secret",
             "password",
             Map.of("username", "rabbit_username", "password", "rabbit_password"),
-            clientBuilderConsumer,
+            connectionConfigurator,
             null,
             StringToken::new);
 

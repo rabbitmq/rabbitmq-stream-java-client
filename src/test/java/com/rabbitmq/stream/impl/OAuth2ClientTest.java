@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2025-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -40,6 +40,7 @@ import java.util.Collections;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Function;
+import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -161,8 +162,8 @@ public class OAuth2ClientTest {
             "client_credentials",
             Collections.emptyMap(),
             c -> {
-              if (sslContext != null) {
-                c.sslContext(sslContext);
+              if (sslContext != null && c instanceof HttpsURLConnection) {
+                ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
               }
             },
             null,
