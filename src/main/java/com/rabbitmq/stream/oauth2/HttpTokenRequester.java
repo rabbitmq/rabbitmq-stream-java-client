@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,22 +16,26 @@ package com.rabbitmq.stream.oauth2;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Token requester using HTTP(S) to request an OAuth2 Access token.
  *
- * <p>Uses {@link HttpClient} for the HTTP operations.
+ * <p>Uses {@link HttpURLConnection} for the HTTP operations.
  */
 public final class HttpTokenRequester implements TokenRequester {
 
@@ -45,8 +49,8 @@ public final class HttpTokenRequester implements TokenRequester {
 
   private final Map<String, String> parameters;
 
-  private final HttpClient client;
-  private final Consumer<HttpRequest.Builder> requestBuilderConsumer;
+  private final Consumer<HttpURLConnection> connectionConfigurator;
+  private final Consumer<HttpURLConnection> requestConfigurator;
 
   private final TokenParser parser;
 
@@ -56,8 +60,8 @@ public final class HttpTokenRequester implements TokenRequester {
       String clientSecret,
       String grantType,
       Map<String, String> parameters,
-      Consumer<HttpClient.Builder> clientBuilderConsumer,
-      Consumer<HttpRequest.Builder> requestBuilderConsumer,
+      Consumer<HttpURLConnection> connectionConfigurator,
+      Consumer<HttpURLConnection> requestConfigurator,
       TokenParser parser) {
     try {
       this.tokenEndpointUri = new URI(tokenEndpointUri);
@@ -69,26 +73,17 @@ public final class HttpTokenRequester implements TokenRequester {
     this.grantType = grantType;
     this.parameters = Map.copyOf(parameters);
     this.parser = parser;
-    if (requestBuilderConsumer == null) {
-      this.requestBuilderConsumer =
-          requestBuilder ->
-              requestBuilder
-                  .timeout(REQUEST_TIMEOUT)
-                  .setHeader("authorization", authorization(this.clientId, this.clientSecret));
+    this.connectionConfigurator = connectionConfigurator;
+    if (requestConfigurator == null) {
+      this.requestConfigurator =
+          connection -> {
+            connection.setReadTimeout((int) REQUEST_TIMEOUT.toMillis());
+            connection.setRequestProperty(
+                "Authorization", authorization(this.clientId, this.clientSecret));
+          };
     } else {
-      this.requestBuilderConsumer = requestBuilderConsumer;
+      this.requestConfigurator = requestConfigurator;
     }
-
-    HttpClient.Builder builder =
-        HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_1_1)
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .connectTimeout(CONNECT_TIMEOUT);
-    if (clientBuilderConsumer != null) {
-      clientBuilderConsumer.accept(builder);
-    }
-    this.client = builder.build();
-    // TODO handle HTTPS configuration
   }
 
   @Override
@@ -100,25 +95,36 @@ public final class HttpTokenRequester implements TokenRequester {
     }
     byte[] postData = urlParameters.toString().getBytes(UTF_8);
 
-    HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(this.tokenEndpointUri);
-    requestBuilder.header("content-type", "application/x-www-form-urlencoded");
-    requestBuilder.header("charset", UTF_8.name());
-    requestBuilder.header("accept", "application/json");
-
-    requestBuilderConsumer.accept(requestBuilder);
-    HttpRequest request =
-        requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(postData)).build();
-
     try {
-      HttpResponse<String> response =
-          this.client.send(request, HttpResponse.BodyHandlers.ofString(UTF_8));
-      checkStatusCode(response.statusCode());
-      checkContentType(response.headers().firstValue("content-type").orElse(null));
-      return this.parser.parse(response.body());
+      URL url = this.tokenEndpointUri.toURL();
+      HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+      connection.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
+      connection.setRequestMethod("POST");
+      connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+      connection.setRequestProperty("Charset", UTF_8.name());
+      connection.setRequestProperty("Accept", "application/json");
+      connection.setDoOutput(true);
+
+      if (this.connectionConfigurator != null) {
+        this.connectionConfigurator.accept(connection);
+      }
+      this.requestConfigurator.accept(connection);
+
+      try (OutputStream os = connection.getOutputStream()) {
+        os.write(postData);
+      }
+
+      int responseCode = connection.getResponseCode();
+      checkStatusCode(responseCode);
+      checkContentType(connection.getContentType());
+
+      try (InputStream is = connection.getInputStream();
+          BufferedReader reader = new BufferedReader(new InputStreamReader(is, UTF_8))) {
+        String responseBody = reader.lines().collect(Collectors.joining("\n"));
+        return this.parser.parse(responseBody);
+      }
+
     } catch (IOException e) {
-      throw new OAuth2Exception("Error while retrieving OAuth 2 token", e);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
       throw new OAuth2Exception("Error while retrieving OAuth 2 token", e);
     }
   }
