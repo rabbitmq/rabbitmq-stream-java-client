@@ -60,7 +60,7 @@ echo "Running RabbitMQ ${RABBITMQ_IMAGE}"
 
 docker rm -f rabbitmq 2>/dev/null || echo "rabbitmq was not running"
 docker run -d --name rabbitmq \
-    --network host \
+    -p 5671:5671 -p 5672:5672 -p 5551:5551 -p 5552:5552 -p 61613:61613 -p 1883:1883 \
     -v "${PWD}"/rabbitmq-configuration:/etc/rabbitmq \
     "${RABBITMQ_IMAGE}"
 
