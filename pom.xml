@@ -89,7 +89,7 @@
     <asciidoctorj.version>3.0.1</asciidoctorj.version>
     <asciidoctorj.diagram.version>3.1.0</asciidoctorj.diagram.version>
     <asciidoctorj.diagram.ditaamini.version>1.0.3</asciidoctorj.diagram.ditaamini.version>
-    <buildnumber.plugin.version>3.2.1</buildnumber.plugin.version>
+    <buildnumber.plugin.version>3.3.0</buildnumber.plugin.version>
     <jmh.version>1.37</jmh.version>
     <spotless.version>3.1.0</spotless.version>
     <google-java-format.version>1.33.0</google-java-format.version>
