@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -48,10 +48,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.SortedMap;
-import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -73,8 +71,7 @@ final class StreamProducer extends ResourceBase implements Producer {
   private static final ConfirmationHandler NO_OP_CONFIRMATION_HANDLER = confirmationStatus -> {};
   private final long id;
   private final MessageAccumulator accumulator;
-  // FIXME investigate a more optimized data structure to handle pending messages
-  private final ConcurrentMap<Long, AccumulatedEntity> unconfirmedMessages;
+  private final ConcurrentNavigableMap<Long, AccumulatedEntity> unconfirmedMessages;
   private final int batchSize;
   private final String name;
   private final String stream;
@@ -148,7 +145,7 @@ final class StreamProducer extends ResourceBase implements Producer {
 
     this.maxUnconfirmedMessages = maxUnconfirmedMessages;
     this.unconfirmedMessagesSemaphore = new Semaphore(maxUnconfirmedMessages, true);
-    this.unconfirmedMessages = new ConcurrentHashMap<>(this.maxUnconfirmedMessages, 0.75f, 2);
+    this.unconfirmedMessages = new ConcurrentSkipListMap<>();
 
     if (filterValueExtractor == null) {
       this.publishVersion = VERSION_1;
@@ -290,10 +287,8 @@ final class StreamProducer extends ResourceBase implements Producer {
   private Runnable confirmTimeoutTask(Duration confirmTimeout) {
     return () -> {
       long limit = this.environment.clock().time() - confirmTimeout.toNanos();
-      SortedMap<Long, AccumulatedEntity> unconfirmedSnapshot =
-          new TreeMap<>(this.unconfirmedMessages);
       int count = 0;
-      for (Entry<Long, AccumulatedEntity> unconfirmedEntry : unconfirmedSnapshot.entrySet()) {
+      for (Entry<Long, AccumulatedEntity> unconfirmedEntry : this.unconfirmedMessages.entrySet()) {
         if (unconfirmedEntry.getValue().time() < limit) {
           if (Thread.currentThread().isInterrupted()) {
             return;
@@ -522,7 +517,7 @@ final class StreamProducer extends ResourceBase implements Producer {
                 "Re-publishing {} unconfirmed message(s)", this.unconfirmedMessages.size());
             if (!this.unconfirmedMessages.isEmpty()) {
               Map<Long, AccumulatedEntity> messagesToResend =
-                  new TreeMap<>(this.unconfirmedMessages);
+                  new ConcurrentSkipListMap<>(this.unconfirmedMessages);
               this.unconfirmedMessages.clear();
               Iterator<Entry<Long, AccumulatedEntity>> resendIterator =
                   messagesToResend.entrySet().iterator();
@@ -550,7 +545,8 @@ final class StreamProducer extends ResourceBase implements Producer {
             LOGGER.debug(
                 "Skipping republishing of {} unconfirmed messages",
                 this.unconfirmedMessages.size());
-            Map<Long, AccumulatedEntity> messagesToFail = new TreeMap<>(this.unconfirmedMessages);
+            Map<Long, AccumulatedEntity> messagesToFail =
+                new ConcurrentSkipListMap<>(this.unconfirmedMessages);
             this.unconfirmedMessages.clear();
             for (AccumulatedEntity accumulatedEntity : messagesToFail.values()) {
               try {
