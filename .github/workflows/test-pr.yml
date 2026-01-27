@@ -30,8 +30,6 @@ jobs:
           cache: 'maven'
       - name: Start broker
         run: ci/start-broker.sh
-        env:
-          RABBITMQ_IMAGE: pivotalrabbitmq/rabbitmq:pr-15225-otp28
       - name: Test
         run: |
           ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq \
