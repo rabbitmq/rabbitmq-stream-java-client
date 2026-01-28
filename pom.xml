@@ -91,7 +91,7 @@
     <asciidoctorj.diagram.ditaamini.version>1.0.3</asciidoctorj.diagram.ditaamini.version>
     <buildnumber.plugin.version>3.3.0</buildnumber.plugin.version>
     <jmh.version>1.37</jmh.version>
-    <spotless.version>3.2.0</spotless.version>
+    <spotless.version>3.2.1</spotless.version>
     <google-java-format.version>1.33.0</google-java-format.version>
     <spotbugs-maven-plugin.version>4.9.8.2</spotbugs-maven-plugin.version>
     <spotbugs.version>4.9.8</spotbugs.version>
