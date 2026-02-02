@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -75,6 +75,7 @@ public final class Constants {
   public static final short COMMAND_STREAM_STATS = 28;
   public static final short COMMAND_CREATE_SUPER_STREAM = 29;
   public static final short COMMAND_DELETE_SUPER_STREAM = 30;
+  public static final short COMMAND_RESOLVE_OFFSET_SPEC = 31;
 
   public static final short VERSION_1 = 1;
   public static final short VERSION_2 = 2;

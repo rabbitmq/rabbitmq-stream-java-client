@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -35,6 +35,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_CONFIRM;
 import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH_ERROR;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
+import static com.rabbitmq.stream.Constants.COMMAND_RESOLVE_OFFSET_SPEC;
 import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
@@ -66,6 +67,7 @@ import com.rabbitmq.stream.impl.Client.OpenResponse;
 import com.rabbitmq.stream.impl.Client.OutstandingRequest;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.QueryPublisherSequenceResponse;
+import com.rabbitmq.stream.impl.Client.ResolveOffsetSpecResponse;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.SaslAuthenticateResponse;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
@@ -145,6 +147,7 @@ class ServerFrameHandler {
     handlers.put(COMMAND_STREAM_STATS, new StreamStatsFrameHandler());
     handlers.put(COMMAND_CREATE_SUPER_STREAM, RESPONSE_FRAME_HANDLER);
     handlers.put(COMMAND_DELETE_SUPER_STREAM, RESPONSE_FRAME_HANDLER);
+    handlers.put(COMMAND_RESOLVE_OFFSET_SPEC, new ResolveOffsetSpecFrameHandler());
     HANDLERS = new FrameHandler[maxCommandKey + 1][];
     handlers
         .entrySet()
@@ -1256,6 +1259,30 @@ class ServerFrameHandler {
         logMissingOutstandingRequest(correlationId);
       } else {
         outstandingRequest.response().set(new StreamStatsResponse(responseCode, info));
+        outstandingRequest.countDown();
+      }
+      return read;
+    }
+  }
+
+  private static class ResolveOffsetSpecFrameHandler extends BaseFrameHandler {
+
+    @Override
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      int correlationId = message.readInt();
+      int read = 4;
+      short responseCode = message.readShort();
+      read += 2;
+      long offset = message.readLong();
+      read += 8;
+
+      OutstandingRequest<ResolveOffsetSpecResponse> outstandingRequest =
+          remove(client.outstandingRequests, correlationId, ResolveOffsetSpecResponse.class);
+      if (outstandingRequest == null) {
+        logMissingOutstandingRequest(correlationId);
+      } else {
+        ResolveOffsetSpecResponse response = new ResolveOffsetSpecResponse(responseCode, offset);
+        outstandingRequest.response().set(response);
         outstandingRequest.countDown();
       }
       return read;
