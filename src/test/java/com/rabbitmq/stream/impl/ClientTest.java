@@ -81,6 +81,7 @@ import java.util.function.LongConsumer;
 import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -1133,5 +1134,72 @@ public class ClientTest {
 
   private boolean brokerVersion43Ormore() {
     return TestUtils.atLeastVersion(RABBITMQ_4_3_0.version(), brokerVersion);
+  }
+
+  @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_4_3_0)
+  @Disabled
+  void resolveOffsetSpecShouldReturnResolvedOffset() {
+    Client client = cf.get();
+    doResolveOffsetSpecShouldReturnResolvedOffset(cf, client, stream);
+  }
+
+  static void doResolveOffsetSpecShouldReturnResolvedOffset(
+      TestUtils.ClientFactory cf, Client client, String stream) {
+    // Test resolve_offset_spec on empty stream
+    Client.ResolveOffsetSpecResponse response =
+        client.resolveOffsetSpec(stream, OffsetSpecification.first());
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isEqualTo(0);
+
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.last());
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isEqualTo(0);
+
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.next());
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isEqualTo(0);
+
+    // Publish some messages
+    int messageCount = 10;
+    TestUtils.publishAndWaitForConfirms(cf, messageCount, stream);
+
+    // Test resolve_offset_spec after publishing
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.first());
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isEqualTo(0);
+
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.last());
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isGreaterThanOrEqualTo(0);
+    assertThat(response.offset()).isLessThan(messageCount);
+
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.next());
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isEqualTo(messageCount);
+
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.offset(0));
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isEqualTo(0);
+
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.offset(5));
+    assertThat(response).is(ok());
+    // it should attach at the beginning of the chunk
+    assertThat(response.offset()).isLessThanOrEqualTo(5);
+
+    // Test with timestamp (far future should return next offset)
+    long futureTimestamp = System.currentTimeMillis() + 3600000;
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.timestamp(futureTimestamp));
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isEqualTo(messageCount);
+
+    response = client.resolveOffsetSpec(stream, OffsetSpecification.offset(messageCount * 2));
+    assertThat(response).is(ok());
+    assertThat(response.offset()).isEqualTo(messageCount);
+
+    // Test on non-existent stream
+    response = client.resolveOffsetSpec("non_existent_stream", OffsetSpecification.first());
+    assertThat(response).is(ko());
+    assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
   }
 }

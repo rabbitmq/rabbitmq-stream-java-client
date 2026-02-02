@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -32,6 +32,7 @@ import static com.rabbitmq.stream.Constants.COMMAND_PEER_PROPERTIES;
 import static com.rabbitmq.stream.Constants.COMMAND_PUBLISH;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_OFFSET;
 import static com.rabbitmq.stream.Constants.COMMAND_QUERY_PUBLISHER_SEQUENCE;
+import static com.rabbitmq.stream.Constants.COMMAND_RESOLVE_OFFSET_SPEC;
 import static com.rabbitmq.stream.Constants.COMMAND_ROUTE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_AUTHENTICATE;
 import static com.rabbitmq.stream.Constants.COMMAND_SASL_HANDSHAKE;
@@ -158,7 +159,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>It is not meant for public usage and can change at any time.</b>
  *
- * <p>Users are encouraged to use the {@link Environment}, {@link Producer}, {@link com.rabbitmq.stream.Consumer} API, and their respective builders to interact with the broker.
+ * <p>Users are encouraged to use the {@link Environment}, {@link Producer}, {@link
+ * com.rabbitmq.stream.Consumer} API, and their respective builders to interact with the broker.
  *
  * <p>People wanting very fine control over their interaction with the broker can use {@link Client}
  * but at their own risk.
@@ -240,6 +242,7 @@ public class Client implements AutoCloseable {
   private final Runnable streamStatsCommandVersionsCheck;
   private final boolean filteringSupported;
   private final Runnable superStreamManagementCommandVersionsCheck;
+  private final Runnable resolveOffsetSpecCommandVersionsCheck;
   private final Registration credentialsRegistration;
 
   @SuppressFBWarnings("CT_CONSTRUCTOR_THROW")
@@ -474,6 +477,7 @@ public class Client implements AutoCloseable {
       AtomicBoolean streamStatsSupported = new AtomicBoolean(false);
       AtomicBoolean filteringSupportedReference = new AtomicBoolean(false);
       AtomicBoolean superStreamManagementSupported = new AtomicBoolean(false);
+      AtomicBoolean resolveOffsetSpecSupported = new AtomicBoolean(false);
       supportedCommands.forEach(
           c -> {
             if (c.getKey() == COMMAND_STREAM_STATS) {
@@ -484,6 +488,9 @@ public class Client implements AutoCloseable {
             }
             if (c.getKey() == COMMAND_CREATE_SUPER_STREAM) {
               superStreamManagementSupported.set(true);
+            }
+            if (c.getKey() == COMMAND_RESOLVE_OFFSET_SPEC) {
+              resolveOffsetSpecSupported.set(true);
             }
           });
       this.streamStatsCommandVersionsCheck =
@@ -500,6 +507,13 @@ public class Client implements AutoCloseable {
               : () -> {
                 throw new UnsupportedOperationException(
                     "Super stream management is available only on RabbitMQ 3.13 or more.");
+              };
+      this.resolveOffsetSpecCommandVersionsCheck =
+          streamStatsSupported.get()
+              ? () -> {}
+              : () -> {
+                throw new UnsupportedOperationException(
+                    "ResolveOffsetSpec is available only on RabbitMQ 4.3 or more.");
               };
       started.set(true);
       this.metricsCollector.openConnection();
@@ -1445,6 +1459,83 @@ public class Client implements AutoCloseable {
     }
   }
 
+  /**
+   * Resolve an offset specification to a numeric offset.
+   *
+   * @param stream the stream to query
+   * @param offsetSpecification the offset specification to resolve
+   * @return the response containing the response code and the resolved offset
+   */
+  public ResolveOffsetSpecResponse resolveOffsetSpec(
+      String stream, OffsetSpecification offsetSpecification) {
+    return this.resolveOffsetSpec(stream, offsetSpecification, Collections.emptyMap());
+  }
+
+  /**
+   * Resolve an offset specification to a numeric offset.
+   *
+   * @param stream the stream to query
+   * @param offsetSpecification the offset specification to resolve
+   * @param properties optional properties for filter specification
+   * @return the response containing the response code and the resolved offset
+   */
+  public ResolveOffsetSpecResponse resolveOffsetSpec(
+      String stream, OffsetSpecification offsetSpecification, Map<String, String> properties) {
+    this.resolveOffsetSpecCommandVersionsCheck.run();
+    if (stream == null || stream.isEmpty()) {
+      throw new IllegalArgumentException("Stream cannot be null or empty");
+    }
+    if (offsetSpecification == null) {
+      throw new IllegalArgumentException("Offset specification cannot be null");
+    }
+
+    int length =
+        2
+            + 2
+            + 4
+            + 2
+            + stream.length()
+            + 2; // API code, version, correlation ID, stream, offset type
+    if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
+      length += 8;
+    }
+    int propertiesSize = 0;
+    if (properties != null && !properties.isEmpty()) {
+      propertiesSize = mapSize(properties);
+    }
+    length += propertiesSize;
+
+    int correlationId = nextCorrelationId();
+    try {
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(encodeRequestCode(COMMAND_RESOLVE_OFFSET_SPEC));
+      bb.writeShort(VERSION_1);
+      bb.writeInt(correlationId);
+      bb.writeShort(stream.length());
+      bb.writeBytes(stream.getBytes(CHARSET));
+      bb.writeShort(offsetSpecification.getType());
+      if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
+        bb.writeLong(offsetSpecification.getOffset());
+      }
+      if (properties != null && !properties.isEmpty()) {
+        writeMap(bb, properties);
+      }
+      OutstandingRequest<ResolveOffsetSpecResponse> request = outstandingRequest();
+      outstandingRequests.put(correlationId, request);
+      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
+      request.block();
+      return request.response.get();
+    } catch (StreamException e) {
+      this.handleRpcError(correlationId, e);
+      throw e;
+    } catch (RuntimeException e) {
+      this.handleRpcError(correlationId, e);
+      throw new StreamException(
+          format("Error while resolving offset spec for stream '%s'", stream), e);
+    }
+  }
+
   public long queryPublisherSequence(String publisherReference, String stream) {
     if (publisherReference == null
         || publisherReference.isEmpty()
@@ -2328,6 +2419,20 @@ public class Client implements AutoCloseable {
     }
 
     public long getOffset() {
+      return offset;
+    }
+  }
+
+  public static class ResolveOffsetSpecResponse extends Response {
+
+    private final long offset;
+
+    ResolveOffsetSpecResponse(short responseCode, long offset) {
+      super(responseCode);
+      this.offset = offset;
+    }
+
+    public long offset() {
       return offset;
     }
   }
