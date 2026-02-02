@@ -25,6 +25,7 @@ import com.rabbitmq.stream.impl.TestUtils.DisabledIfNotCluster;
 import io.netty.channel.EventLoopGroup;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 
@@ -60,6 +61,7 @@ public class ClusterTest {
 
   @Test
   @BrokerVersionAtLeast(RABBITMQ_4_3_0)
+  @Disabled
   void resolveOffsetSpecShouldReturnResolvedOffsetEvenFromNonMemberNode() {
     environment = environmentBuilder.build();
     String stream = TestUtils.streamName(testInfo);

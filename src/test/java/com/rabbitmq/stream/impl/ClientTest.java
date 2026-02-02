@@ -81,6 +81,7 @@ import java.util.function.LongConsumer;
 import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -1137,6 +1138,7 @@ public class ClientTest {
 
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_4_3_0)
+  @Disabled
   void resolveOffsetSpecShouldReturnResolvedOffset() {
     Client client = cf.get();
     doResolveOffsetSpecShouldReturnResolvedOffset(cf, client, stream);

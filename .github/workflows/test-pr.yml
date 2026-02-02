@@ -30,8 +30,6 @@ jobs:
           cache: 'maven'
       - name: Start broker
         run: ci/start-broker.sh
-        env:
-          RABBITMQ_IMAGE: 'pivotalrabbitmq/rabbitmq:pr-15381-otp28'
       - name: Test
         run: |
           ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq \
@@ -42,8 +40,6 @@ jobs:
         run: docker stop rabbitmq && docker rm rabbitmq
       - name: Start cluster
         run: ci/start-cluster.sh
-        env:
-          RABBITMQ_IMAGE: 'pivotalrabbitmq/rabbitmq:pr-15381-otp28'
       - name: Test against cluster
         run: ./mvnw test -Dtest="*ClusterTest" -Drabbitmqctl.bin=DOCKER:rabbitmq0
       - name: Stop cluster
