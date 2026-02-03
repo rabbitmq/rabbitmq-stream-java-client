@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,10 +14,17 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.Resource.State.CLOSED;
+import static com.rabbitmq.stream.Resource.State.CLOSING;
+import static com.rabbitmq.stream.Resource.State.OPEN;
+import static com.rabbitmq.stream.Resource.State.OPENING;
+import static com.rabbitmq.stream.Resource.State.RECOVERING;
 import static com.rabbitmq.stream.impl.StreamConsumer.getStoredOffsetSafely;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
@@ -27,8 +34,16 @@ import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.ConsumerFlowStrategy;
+import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.NoOffsetException;
+import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.Resource;
+import com.rabbitmq.stream.SubscriptionListener;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import org.junit.jupiter.api.AfterEach;
@@ -138,5 +153,85 @@ public class StreamConsumerUnitTest {
     verify(environment, times(1)).scheduledExecutorService();
     verify(environment, times(1)).locator();
     verify(consumer, times(1)).storedOffset(any());
+  }
+
+  @Test
+  void stateShouldRecoverWhenSubAndTrackingAreBack() {
+    List<Resource.State> states = new ArrayList<>();
+    Resource.StateListener lst = context -> states.add(context.currentState());
+    StreamConsumer c = csrLst(lst);
+
+    assertThat(states).containsExactly(OPENING, OPEN);
+    // sub connection goes down
+    c.markRecovering();
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING);
+    // tracking connection goes down
+    c.unavailable();
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING);
+    // sub connection comes back
+    c.markOpen();
+    // still in "recovering" state, as the tracking connection is still down
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING);
+    // tracking connection comes back
+    c.running();
+    // now back to open
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING, OPEN);
+
+    c.close();
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING, OPEN, CLOSING, CLOSED);
+  }
+
+  @Test
+  void stateShouldRecoverWhenConnectionsAreBack() {
+    List<Resource.State> states = new ArrayList<>();
+    Resource.StateListener lst = context -> states.add(context.currentState());
+    StreamConsumer c = csrLst(lst);
+
+    assertThat(states).containsExactly(OPENING, OPEN);
+    // sub connection goes down
+    c.markRecovering();
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING);
+    // sub connection comes back
+    c.markOpen();
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING, OPEN);
+
+    // tracking connection goes down
+    c.unavailable();
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING, OPEN, RECOVERING);
+    // tracking connection comes back
+    c.running();
+    assertThat(states).containsExactly(OPENING, OPEN, RECOVERING, OPEN, RECOVERING, OPEN);
+
+    c.close();
+    assertThat(states)
+        .containsExactly(OPENING, OPEN, RECOVERING, OPEN, RECOVERING, OPEN, CLOSING, CLOSED);
+  }
+
+  private StreamConsumer csrLst(Resource.StateListener lst) {
+    when(environment.registerConsumer(
+            any(StreamConsumer.class),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyString(),
+            any(SubscriptionListener.class),
+            any(Runnable.class),
+            any(MessageHandler.class),
+            anyMap(),
+            any(ConsumerFlowStrategy.class)))
+        .thenReturn(() -> {});
+    return new StreamConsumer(
+        "s",
+        OffsetSpecification.first(),
+        (ctx, msg) -> {},
+        "app",
+        environment,
+        new StreamConsumerBuilder.TrackingConfiguration(
+            false, false, -1, Duration.ZERO, Duration.ZERO),
+        false,
+        ctx -> {},
+        Collections.emptyMap(),
+        null,
+        ConsumerFlowStrategy.creditOnChunkArrival(10),
+        List.of(lst));
   }
 }
