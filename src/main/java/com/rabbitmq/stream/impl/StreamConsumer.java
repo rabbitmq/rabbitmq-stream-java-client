@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -58,8 +58,19 @@ import org.slf4j.LoggerFactory;
 final class StreamConsumer extends ResourceBase implements Consumer {
 
   private static final AtomicLong ID_SEQUENCE = new AtomicLong(0);
+  static final String COMPONENT_SUBSCRIPTION = "subscription";
+  static final String COMPONENT_TRACKING = "tracking";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamConsumer.class);
+
+  private static String[] componentIds(TrackingConfiguration trackingConfiguration) {
+    if (trackingConfiguration.enabled()) {
+      return new String[] {COMPONENT_SUBSCRIPTION, COMPONENT_TRACKING};
+    } else {
+      return new String[] {COMPONENT_SUBSCRIPTION};
+    }
+  }
+
   private final long id;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final String name;
@@ -91,7 +102,7 @@ final class StreamConsumer extends ResourceBase implements Consumer {
       ConsumerUpdateListener consumerUpdateListener,
       ConsumerFlowStrategy flowStrategy,
       List<StateListener> listeners) {
-    super(listeners);
+    super(listeners, componentIds(trackingConfiguration));
     if (Utils.filteringEnabled(subscriptionProperties) && !environment.filteringSupported()) {
       throw new IllegalArgumentException(
           "Filtering is not supported by the broker "
@@ -238,7 +249,6 @@ final class StreamConsumer extends ResourceBase implements Consumer {
 
       Runnable init =
           () -> {
-            this.state(State.OPENING);
             this.closingCallback =
                 environment.registerConsumer(
                     this,
@@ -250,7 +260,10 @@ final class StreamConsumer extends ResourceBase implements Consumer {
                     closedAwareMessageHandler,
                     Map.copyOf(subscriptionProperties),
                     flowStrategy);
-            this.state(OPEN);
+            componentReady(COMPONENT_SUBSCRIPTION);
+            if (trackingConfiguration.enabled()) {
+              componentReady(COMPONENT_TRACKING);
+            }
           };
       if (lazyInit) {
         this.initCallback = init;
@@ -516,8 +529,8 @@ final class StreamConsumer extends ResourceBase implements Consumer {
     Utils.lock(
         this.lock,
         () -> {
-          this.state(RECOVERING);
           this.trackingClient = null;
+          componentUnavailable(COMPONENT_TRACKING);
         });
   }
 
@@ -530,7 +543,7 @@ final class StreamConsumer extends ResourceBase implements Consumer {
   }
 
   void running() {
-    this.state(OPEN);
+    componentReady(COMPONENT_TRACKING);
   }
 
   long storedOffset(Supplier<Client> clientSupplier) {
@@ -609,11 +622,11 @@ final class StreamConsumer extends ResourceBase implements Consumer {
   }
 
   void markRecovering() {
-    state(RECOVERING);
+    componentUnavailable(COMPONENT_SUBSCRIPTION);
   }
 
   void markOpen() {
-    state(OPEN);
+    componentReady(COMPONENT_SUBSCRIPTION);
   }
 
   private void checkNotClosed() {

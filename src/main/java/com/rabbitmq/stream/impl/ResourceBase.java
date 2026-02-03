@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -15,22 +15,41 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Resource.State.CLOSED;
+import static com.rabbitmq.stream.Resource.State.CLOSING;
 import static com.rabbitmq.stream.Resource.State.OPEN;
 import static com.rabbitmq.stream.Resource.State.OPENING;
+import static com.rabbitmq.stream.Resource.State.RECOVERING;
 
 import com.rabbitmq.stream.InvalidStateException;
 import com.rabbitmq.stream.Resource;
 import com.rabbitmq.stream.ResourceClosedException;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 abstract class ResourceBase implements Resource {
 
   private final AtomicReference<State> state = new AtomicReference<>();
   private final StateEventSupport stateEventSupport;
+  private final ConcurrentMap<String, Boolean> componentReadyState;
+  private final boolean multiComponent;
+  private final Lock stateLock = new ReentrantLock();
 
-  ResourceBase(List<StateListener> listeners) {
+  ResourceBase(List<StateListener> listeners, String... componentIds) {
     this.stateEventSupport = new StateEventSupport(listeners);
+    if (componentIds != null && componentIds.length > 0) {
+      this.multiComponent = true;
+      this.componentReadyState = new ConcurrentHashMap<>();
+      for (String id : componentIds) {
+        componentReadyState.put(id, Boolean.FALSE);
+      }
+    } else {
+      this.multiComponent = false;
+      this.componentReadyState = null;
+    }
     this.state(OPENING);
   }
 
@@ -52,6 +71,46 @@ abstract class ResourceBase implements Resource {
     if (state != previousState) {
       this.dispatch(previousState, state);
     }
+  }
+
+  protected void componentUnavailable(String componentId) {
+    if (!multiComponent) {
+      throw new IllegalStateException("Resource is not configured for multi-component tracking");
+    }
+    Utils.lock(
+        stateLock,
+        () -> {
+          componentReadyState.put(componentId, Boolean.FALSE);
+          computeAndSetState();
+        });
+  }
+
+  protected void componentReady(String componentId) {
+    if (!multiComponent) {
+      throw new IllegalStateException("Resource is not configured for multi-component tracking");
+    }
+    Utils.lock(
+        stateLock,
+        () -> {
+          componentReadyState.put(componentId, Boolean.TRUE);
+          computeAndSetState();
+        });
+  }
+
+  private void computeAndSetState() {
+    State currentState = this.state.get();
+    if (currentState == CLOSING || currentState == CLOSED) {
+      return;
+    }
+    boolean allReady = componentReadyState.values().stream().allMatch(Boolean::booleanValue);
+    if (currentState == OPENING) {
+      if (allReady) {
+        this.state(OPEN);
+      }
+      return;
+    }
+    Resource.State newState = allReady ? OPEN : RECOVERING;
+    this.state(newState);
   }
 
   private void dispatch(State previous, State current) {

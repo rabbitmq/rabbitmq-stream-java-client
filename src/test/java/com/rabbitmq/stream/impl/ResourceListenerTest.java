@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2025-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -62,7 +62,7 @@ public class ResourceListenerTest {
   @Test
   void publisherListenersShouldBeCalledDuringLifecycle() {
     Queue<Resource.State> states = new ConcurrentLinkedQueue<>();
-    TestUtils.Sync sync = TestUtils.sync(2);
+    TestUtils.Sync sync = TestUtils.sync(1);
     Producer producer =
         environment.producerBuilder().stream(stream)
             .listeners(
@@ -73,6 +73,9 @@ public class ResourceListenerTest {
                   }
                 })
             .build();
+
+    assertThat(sync).completes();
+    sync.reset(1);
 
     Cli.listProducerConnections().forEach(c -> Cli.killConnection(c.clientProvidedName()));
 
@@ -85,7 +88,7 @@ public class ResourceListenerTest {
   @Test
   void consumerListenersShouldBeCalledDuringLifecycle() {
     Queue<Resource.State> states = new ConcurrentLinkedQueue<>();
-    TestUtils.Sync sync = TestUtils.sync(2);
+    TestUtils.Sync sync = TestUtils.sync(1);
     Consumer consumer =
         environment.consumerBuilder().stream(stream)
             .messageHandler((ctx, msg) -> {})
@@ -97,6 +100,9 @@ public class ResourceListenerTest {
                   }
                 })
             .build();
+
+    assertThat(sync).completes();
+    sync.reset(1);
 
     Cli.listConsumerConnections().forEach(c -> Cli.killConnection(c.clientProvidedName()));
 
@@ -109,7 +115,7 @@ public class ResourceListenerTest {
   @Test
   void listenersForNamedConsumerShouldBeCalledDuringLifecycle() {
     Queue<Resource.State> states = new ConcurrentLinkedQueue<>();
-    TestUtils.Sync sync = TestUtils.sync(2);
+    TestUtils.Sync sync = TestUtils.sync(1);
     Consumer consumer =
         environment.consumerBuilder().stream(stream)
             .name("app-1")
@@ -122,6 +128,9 @@ public class ResourceListenerTest {
                   }
                 })
             .build();
+
+    assertThat(sync).completes();
+    sync.reset(1);
 
     Cli.listProducerConnections().forEach(c -> Cli.killConnection(c.clientProvidedName()));
 
