@@ -68,7 +68,7 @@
     <commons-codec.version>1.21.0</commons-codec.version>
     <vavr.version>0.11.0</vavr.version>
     <paho.version>1.2.5</paho.version>
-    <micrometer-tracing-test.version>1.6.2</micrometer-tracing-test.version>
+    <micrometer-tracing-test.version>1.6.3</micrometer-tracing-test.version>
     <bouncycastle.version>1.83</bouncycastle.version>
     <micrometer-docs-generator.version>1.0.4</micrometer-docs-generator.version>
     <netty-tcnative.version>2.0.75.Final</netty-tcnative.version>
