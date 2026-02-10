@@ -384,7 +384,6 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     private final EnvironmentBuilder environmentBuilder;
 
     private boolean enabled = false;
-    private boolean hostnameVerification = true;
     private SslContext sslContext;
 
     private DefaultTlsConfiguration(EnvironmentBuilder environmentBuilder) {

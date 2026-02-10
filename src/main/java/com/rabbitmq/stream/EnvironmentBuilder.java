@@ -78,7 +78,7 @@ public interface EnvironmentBuilder {
    *
    * <pre>
    * Environment.builder()
-   *   .addressResolver(address -> address)
+   *   .addressResolver(address -&gt; address)
    *   .build();
    * </pre>
    *
