@@ -428,10 +428,6 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       return enabled;
     }
 
-    public boolean hostnameVerificationEnabled() {
-      return hostnameVerification;
-    }
-
     public SslContext sslContext() {
       return sslContext;
     }
