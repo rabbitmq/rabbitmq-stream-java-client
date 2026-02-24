@@ -1273,6 +1273,8 @@ class ServerFrameHandler {
       int read = 4;
       short responseCode = message.readShort();
       read += 2;
+      short offsetType = message.readShort();
+      read += 2;
       long offset = message.readLong();
       read += 8;
 
@@ -1281,7 +1283,8 @@ class ServerFrameHandler {
       if (outstandingRequest == null) {
         logMissingOutstandingRequest(correlationId);
       } else {
-        ResolveOffsetSpecResponse response = new ResolveOffsetSpecResponse(responseCode, offset);
+        ResolveOffsetSpecResponse response =
+            new ResolveOffsetSpecResponse(responseCode, offsetType, offset);
         outstandingRequest.response().set(response);
         outstandingRequest.countDown();
       }

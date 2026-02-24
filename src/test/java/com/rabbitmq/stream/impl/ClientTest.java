@@ -1146,18 +1146,22 @@ public class ClientTest {
 
   static void doResolveOffsetSpecShouldReturnResolvedOffset(
       TestUtils.ClientFactory cf, Client client, String stream) {
+    short typeOffset = OffsetSpecification.offset(0).getType();
     // Test resolve_offset_spec on empty stream
     Client.ResolveOffsetSpecResponse response =
         client.resolveOffsetSpec(stream, OffsetSpecification.first());
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isEqualTo(0);
 
     response = client.resolveOffsetSpec(stream, OffsetSpecification.last());
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isEqualTo(0);
 
     response = client.resolveOffsetSpec(stream, OffsetSpecification.next());
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isEqualTo(0);
 
     // Publish some messages
@@ -1167,23 +1171,28 @@ public class ClientTest {
     // Test resolve_offset_spec after publishing
     response = client.resolveOffsetSpec(stream, OffsetSpecification.first());
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isEqualTo(0);
 
     response = client.resolveOffsetSpec(stream, OffsetSpecification.last());
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isGreaterThanOrEqualTo(0);
     assertThat(response.offset()).isLessThan(messageCount);
 
     response = client.resolveOffsetSpec(stream, OffsetSpecification.next());
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isEqualTo(messageCount);
 
     response = client.resolveOffsetSpec(stream, OffsetSpecification.offset(0));
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isEqualTo(0);
 
     response = client.resolveOffsetSpec(stream, OffsetSpecification.offset(5));
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     // it should attach at the beginning of the chunk
     assertThat(response.offset()).isLessThanOrEqualTo(5);
 
@@ -1191,10 +1200,12 @@ public class ClientTest {
     long futureTimestamp = System.currentTimeMillis() + 3600000;
     response = client.resolveOffsetSpec(stream, OffsetSpecification.timestamp(futureTimestamp));
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isEqualTo(messageCount);
 
     response = client.resolveOffsetSpec(stream, OffsetSpecification.offset(messageCount * 2));
     assertThat(response).is(ok());
+    assertThat(response.offsetType()).isEqualTo(typeOffset);
     assertThat(response.offset()).isEqualTo(messageCount);
 
     // Test on non-existent stream

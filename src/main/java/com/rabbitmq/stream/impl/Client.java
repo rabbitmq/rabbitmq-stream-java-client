@@ -2425,11 +2425,17 @@ public class Client implements AutoCloseable {
 
   public static class ResolveOffsetSpecResponse extends Response {
 
+    private final short offsetType;
     private final long offset;
 
-    ResolveOffsetSpecResponse(short responseCode, long offset) {
+    ResolveOffsetSpecResponse(short responseCode, short offsetType, long offset) {
       super(responseCode);
+      this.offsetType = offsetType;
       this.offset = offset;
+    }
+
+    public short offsetType() {
+      return offsetType;
     }
 
     public long offset() {
