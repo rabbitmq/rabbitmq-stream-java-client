@@ -63,7 +63,7 @@
     <junit.jupiter.version>5.14.3</junit.jupiter.version>
     <assertj.version>3.27.7</assertj.version>
     <mockito.version>5.21.0</mockito.version>
-    <amqp-client.version>5.28.0</amqp-client.version>
+    <amqp-client.version>5.29.0</amqp-client.version>
     <commons-lang3.version>3.20.0</commons-lang3.version>
     <commons-codec.version>1.21.0</commons-codec.version>
     <vavr.version>1.0.0</vavr.version>
