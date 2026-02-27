@@ -1309,7 +1309,7 @@ public class Client implements AutoCloseable {
     bb.writeShort(VERSION_1);
     bb.writeByte(subscriptionId);
     bb.writeShort((short) credit);
-    channel.writeAndFlush(bb);
+    channel.writeAndFlush(bb, channel.voidPromise());
   }
 
   /**
@@ -1418,7 +1418,7 @@ public class Client implements AutoCloseable {
     bb.writeShort(stream.length());
     bb.writeBytes(stream.getBytes(CHARSET));
     bb.writeLong(offset);
-    channel.writeAndFlush(bb);
+    channel.writeAndFlush(bb, channel.voidPromise());
   }
 
   public QueryOffsetResponse queryOffset(String reference, String stream) {
@@ -1890,7 +1890,7 @@ public class Client implements AutoCloseable {
     if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
       bb.writeLong(offsetSpecification.getOffset());
     }
-    channel.writeAndFlush(bb);
+    channel.writeAndFlush(bb, channel.voidPromise());
   }
 
   void shutdownReason(ShutdownReason reason) {
