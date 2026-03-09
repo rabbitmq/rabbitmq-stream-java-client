@@ -114,7 +114,6 @@ import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.net.ConnectException;
@@ -2177,8 +2176,7 @@ public class Client implements AutoCloseable {
     public void close() {
       int maxCompressedLength = codec.maxCompressedLength(this.uncompressedByteSize);
       this.buffer = allocator.buffer(maxCompressedLength);
-      OutputStream outputStream = this.codec.compress(new ByteBufOutputStream(buffer));
-      try {
+      try (OutputStream outputStream = this.codec.compress(new ByteBufOutputStream(buffer))) {
         for (int i = 0; i < messages.size(); i++) {
           final int size = messages.get(i).getSize();
           outputStream.write((size >>> 24) & 0xFF);
@@ -2188,8 +2186,9 @@ public class Client implements AutoCloseable {
           outputStream.write(messages.get(i).getData(), 0, size);
         }
         outputStream.flush();
-        outputStream.close();
-      } catch (IOException e) {
+      } catch (Throwable e) {
+        // compression codecs may use native libraries, so we can end up
+        // with throwables or errors
         throw new StreamException("Error while closing compressing output stream", e);
       }
     }

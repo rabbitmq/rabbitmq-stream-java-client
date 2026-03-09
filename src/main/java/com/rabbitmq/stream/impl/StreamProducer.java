@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -355,6 +355,14 @@ final class StreamProducer extends ResourceBase implements Producer {
       this.unconfirmedMessagesSemaphore.release(nackedCount);
     } else {
       unconfirmedMessagesSemaphore.release();
+    }
+  }
+
+  void errorBeforePublish(List<Object> items, short errorCode) {
+    for (Object msg : items) {
+      AccumulatedEntity entity = (AccumulatedEntity) msg;
+      int count = entity.confirmationCallback().handle(false, errorCode);
+      this.unconfirmedMessagesSemaphore.release(count);
     }
   }
 
