@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -37,11 +37,15 @@ import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.Resource;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.CompressionCodec;
+import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ProducerInfo;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -691,5 +695,51 @@ public class StreamProducerTest {
                     producer.messageBuilder().addData(new byte[messageSize]).build(),
                     confirmationStatus -> {}))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void subEntryBatchingThrowableFromCodecShouldNackMessages() {
+    Compression compression = Compression.GZIP;
+    CompressionCodec codec =
+        new CompressionCodec() {
+          @Override
+          public int maxCompressedLength(int sourceLength) {
+            return 10;
+          }
+
+          @Override
+          public OutputStream compress(OutputStream target) {
+            throw new Error("problem with native library (simulated exception)");
+          }
+
+          @Override
+          public InputStream decompress(InputStream source) {
+            return null;
+          }
+
+          @Override
+          public byte code() {
+            return compression.code();
+          }
+        };
+    CompressionCodecFactory compressionCodecFactory = compression1 -> codec;
+    try (Environment env =
+        environmentBuilder().compressionCodecFactory(compressionCodecFactory).build()) {
+      Producer producer =
+          env.producerBuilder().stream(stream).subEntrySize(10).compression(compression).build();
+      Sync sync = sync();
+      AtomicBoolean confirmed = new AtomicBoolean(true);
+      AtomicInteger code = new AtomicInteger(-1);
+      producer.send(
+          producer.messageBuilder().addData("hello".getBytes(StandardCharsets.UTF_8)).build(),
+          ctx -> {
+            confirmed.set(ctx.isConfirmed());
+            code.set(ctx.getCode());
+            sync.down();
+          });
+      assertThat(sync).completes();
+      assertThat(confirmed).isFalse();
+      assertThat(code).hasValue(Constants.CODE_MESSAGE_ENQUEUEING_FAILED);
+    }
   }
 }

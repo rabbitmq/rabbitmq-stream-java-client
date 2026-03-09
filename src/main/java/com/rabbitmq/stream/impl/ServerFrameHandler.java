@@ -568,19 +568,24 @@ class ServerFrameHandler {
             byte[] inBuffer = new byte[Math.min(uncompressedDataSize, 1024)];
             int n;
             ByteBuf slice = message.slice(message.readerIndex(), dataSize);
-            InputStream inputStream = compressionCodec.decompress(new ByteBufInputStream(slice));
+            InputStream inputStream = null;
             try {
+              inputStream = compressionCodec.decompress(new ByteBufInputStream(slice));
               while (-1 != (n = inputStream.read(inBuffer))) {
                 outBb.writeBytes(inBuffer, 0, n);
               }
-            } catch (IOException e) {
+            } catch (Throwable e) {
+              // compression codecs may use native libraries, so we can end up
+              // with throwables or errors
               throw new StreamException("Error while uncompressing sub-entry", e);
             } finally {
-              try {
-                inputStream.close();
-              } catch (IOException e) {
-                throw new StreamException(
-                    "Error while closing sub-entry compressed input stream", e);
+              if (inputStream != null) {
+                try {
+                  inputStream.close();
+                } catch (IOException e) {
+                  throw new StreamException(
+                      "Error while closing sub-entry compressed input stream", e);
+                }
               }
             }
             message.readerIndex(message.readerIndex() + dataSize);

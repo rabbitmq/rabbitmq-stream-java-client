@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.compression.Compression;
@@ -26,8 +27,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 final class DynamicBatchMessageAccumulator implements MessageAccumulator {
+
+  private static final Logger LOGGER =
+      LoggerFactory.getLogger(DynamicBatchMessageAccumulator.class);
 
   private final DynamicBatch<Object> dynamicBatch;
   private final ObservationCollector<Object> observationCollector;
@@ -103,7 +109,15 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                   if (count == subEntrySize) {
                     batch.time = lastMessageInBatch.time();
                     batch.publishingId = lastMessageInBatch.publishingId();
-                    batch.encodedMessageBatch.close();
+                    try {
+                      batch.encodedMessageBatch.close();
+                    } catch (Exception e) {
+                      LOGGER.warn(
+                          "Error while closing message sub-entry batch: {}", e.getMessage());
+                      this.producer.errorBeforePublish(
+                          items, Constants.CODE_MESSAGE_ENQUEUEING_FAILED);
+                      return true;
+                    }
                     subBatches.add(batch);
                     lastMessageInBatch = null;
                     batch =
@@ -116,7 +130,14 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
                 if (!batch.isEmpty() && count < subEntrySize) {
                   batch.time = lastMessageInBatch.time();
                   batch.publishingId = lastMessageInBatch.publishingId();
-                  batch.encodedMessageBatch.close();
+                  try {
+                    batch.encodedMessageBatch.close();
+                  } catch (Exception e) {
+                    LOGGER.warn("Error while closing message sub-entry batch: {}", e.getMessage());
+                    this.producer.errorBeforePublish(
+                        items, Constants.CODE_MESSAGE_ENQUEUEING_FAILED);
+                    return true;
+                  }
                   subBatches.add(batch);
                 }
                 boolean result = this.publish(subBatches);

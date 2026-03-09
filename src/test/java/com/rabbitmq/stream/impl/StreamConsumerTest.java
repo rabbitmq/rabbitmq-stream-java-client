@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -46,6 +46,9 @@ import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.ResourceClosedException;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.compression.Compression;
+import com.rabbitmq.stream.compression.CompressionCodec;
+import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
@@ -55,6 +58,8 @@ import com.rabbitmq.stream.impl.TestUtils.Sync;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.channel.EventLoopGroup;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -1116,6 +1121,65 @@ public class StreamConsumerTest {
       org.assertj.core.api.Assertions.assertThat(latch).is(completed());
     } finally {
       dispatchingHandler.close();
+    }
+  }
+
+  @Test
+  void subEntryBatchingThrowableFromCodecShouldKeepGoing() {
+    Compression compression = Compression.GZIP;
+    CompressionCodec codec =
+        new CompressionCodec() {
+          @Override
+          public int maxCompressedLength(int sourceLength) {
+            return 10;
+          }
+
+          @Override
+          public OutputStream compress(OutputStream target) {
+            return null;
+          }
+
+          @Override
+          public InputStream decompress(InputStream source) {
+            throw new Error("problem with native library (simulated exception)");
+          }
+
+          @Override
+          public byte code() {
+            return compression.code();
+          }
+        };
+    CompressionCodecFactory compressionCodecFactory = compression1 -> codec;
+    Producer producer =
+        environment.producerBuilder().stream(stream)
+            .subEntrySize(10)
+            .compression(compression)
+            .build();
+    Sync sync = sync(2);
+    ConfirmationHandler confirmationHandler = ctx -> sync.down();
+    producer.send(
+        producer.messageBuilder().properties().messageId(1L).messageBuilder().build(),
+        confirmationHandler);
+    producer = environment.producerBuilder().stream(stream).build();
+    producer.send(
+        producer.messageBuilder().properties().messageId(2L).messageBuilder().build(),
+        confirmationHandler);
+    assertThat(sync).completes();
+    sync.reset(1);
+    try (Environment env =
+        environmentBuilder().compressionCodecFactory(compressionCodecFactory).build()) {
+      AtomicReference<Message> msg = new AtomicReference<>();
+      env.consumerBuilder().offset(OffsetSpecification.first()).stream(stream)
+          .messageHandler(
+              (context, message) -> {
+                sync.down();
+                msg.set(message);
+              })
+          .build();
+      assertThat(sync).completes();
+      // we don't get the first message, just the second one
+      org.assertj.core.api.Assertions.assertThat(msg.get().getProperties().getMessageIdAsLong())
+          .isEqualTo(2L);
     }
   }
 
