@@ -711,6 +711,7 @@ public final class TestUtils {
           Client client =
               new Client(new Client.ClientParameters().eventLoopGroup(eventLoopGroup(context)));
           brokerVersion = currentVersion(client.brokerVersion());
+          client.close();
         }
         context.getRoot().getStore(Namespace.GLOBAL).put("brokerVersion", brokerVersion);
         field.setAccessible(true);
