@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -58,10 +58,8 @@ import org.assertj.core.api.ObjectAssert;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
-@TestUtils.DisabledIfAmqp10NotEnabled
+@StreamTestInfrastructure
 public class Amqp10InteroperabilityTest {
 
   String stream;
@@ -93,7 +91,7 @@ public class Amqp10InteroperabilityTest {
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishToStreamQueueConsumeFromStream() throws Exception {
-    Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
+    Producer p = session.createProducer("/queues/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
     Properties properties = new Properties();
     properties.setContentType(new AMQPSymbol("text/plain"));
@@ -135,7 +133,7 @@ public class Amqp10InteroperabilityTest {
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishAmqpValueToStreamQueueConsumeFromStream() throws Exception {
-    Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
+    Producer p = session.createProducer("/queues/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
     message.setAmqpValue(new AmqpValue(new AMQPString("hello")));
     p.send(message);
@@ -151,7 +149,7 @@ public class Amqp10InteroperabilityTest {
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishDataSectionsToStreamQueueConsumeFromStream() throws Exception {
-    Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
+    Producer p = session.createProducer("/queues/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
     String body = "hello brave new world";
     Arrays.stream(body.split(" "))
@@ -173,7 +171,7 @@ public class Amqp10InteroperabilityTest {
   @Test
   @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_9)
   void publishSequenceSectionsToStreamQueueConsumeFromStream() throws Exception {
-    Producer p = session.createProducer("/amq/queue/" + stream, QoS.AT_LEAST_ONCE);
+    Producer p = session.createProducer("/queues/" + stream, QoS.AT_LEAST_ONCE);
     AMQPMessage message = new AMQPMessage();
     List<AMQPType> sequence = new ArrayList<>();
     sequence.add(new AMQPString("hello"));

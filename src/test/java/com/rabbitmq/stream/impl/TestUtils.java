@@ -542,12 +542,6 @@ public final class TestUtils {
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
-  @ExtendWith(DisabledIfAmqp10NotEnabledCondition.class)
-  @interface DisabledIfAmqp10NotEnabled {}
-
-  @Target({ElementType.TYPE, ElementType.METHOD})
-  @Retention(RetentionPolicy.RUNTIME)
-  @Documented
   @ExtendWith(DisabledIfAuthMechanismSslNotEnabledCondition.class)
   @interface DisabledIfAuthMechanismSslNotEnabled {}
 
@@ -908,14 +902,6 @@ public final class TestUtils {
       super(
           "X509 authentication mechanism",
           output -> output.contains("rabbitmq_auth_mechanism_ssl"));
-    }
-  }
-
-  static class DisabledIfAmqp10NotEnabledCondition extends DisabledIfPluginNotEnabledCondition {
-
-    DisabledIfAmqp10NotEnabledCondition() {
-      super(
-          "AMQP 1.0", output -> output.contains("rabbitmq_amqp1_0") && output.contains("AMQP 1.0"));
     }
   }
 
