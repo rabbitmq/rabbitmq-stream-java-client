@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -118,6 +118,7 @@ public class UtilsTest {
     "3.9.21,false",
     "3.9.22-alpha.13,false",
     "3.10.6,false",
+    "tanzu+rabbitmq.v3.10.6.dev.1.179.g335e26b,false",
     "3.11.0-alpha.15,true",
     "3.11.0,true",
     "3.11.1,true",
@@ -127,9 +128,31 @@ public class UtilsTest {
     "4.1.0-alpha.15,true",
     "4.1.0,true",
     "4.1.1,true",
+    "tanzu+rabbitmq.v4.3.0.dev.1.179.g335e26b,true",
   })
   void is_3_11_OrMore(String input, boolean expected) {
     assertThat(Utils.is3_11_OrMore(input)).isEqualTo(expected);
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "4.3.0,4.3.0",
+    "3.13.6,3.13.6",
+    "3.13.6.2,3.13.6",
+    "3.13.6-alpha.0,3.13.6",
+    "3.13.6~beta-1,3.13.6",
+    "3.13.6+funky-metadata-1,3.13.6",
+    "3.7.0+rc.1.4.gedc5d96,3.7.0",
+    "tanzu+rabbitmq.v4.3.0.dev.1.179.g335e26b,4.3.0"
+  })
+  void currentVersionExtraction(String input, String expected) {
+    assertThat(Utils.currentVersion(input)).isEqualTo(expected);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"tanzu+rabbitmq", "not-a-version", "abc"})
+  void versionCheckReturnsTrueWhenVersionCannotBeParsed(String brokerVersion) {
+    assertThat(Utils.is3_11_OrMore(brokerVersion)).isTrue();
   }
 
   @Test

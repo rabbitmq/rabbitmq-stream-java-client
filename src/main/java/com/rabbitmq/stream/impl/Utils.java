@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -64,6 +64,8 @@ import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.net.ssl.X509TrustManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -496,20 +498,14 @@ final class Utils {
     return Long.compareUnsigned(x, y) < 0;
   }
 
-  private static String currentVersion(String currentVersion) {
-    // versions built from source: 3.7.0+rc.1.4.gedc5d96
-    if (currentVersion.contains("+")) {
-      currentVersion = currentVersion.substring(0, currentVersion.indexOf("+"));
+  private static final Pattern SEMVER_PATTERN = Pattern.compile("(\\d+\\.\\d+\\.\\d+)");
+
+  static String currentVersion(String currentVersion) {
+    Matcher matcher = SEMVER_PATTERN.matcher(currentVersion);
+    if (matcher.find()) {
+      return matcher.group(1);
     }
-    // alpha (snapshot) versions: 3.7.0~alpha.449-1
-    if (currentVersion.contains("~")) {
-      currentVersion = currentVersion.substring(0, currentVersion.indexOf("~"));
-    }
-    // alpha (snapshot) versions: 3.7.1-alpha.40
-    if (currentVersion.contains("-")) {
-      currentVersion = currentVersion.substring(0, currentVersion.indexOf("-"));
-    }
-    return currentVersion;
+    throw new IllegalArgumentException("No semver pattern found in: " + currentVersion);
   }
 
   /**
@@ -534,7 +530,12 @@ final class Utils {
   }
 
   static boolean is3_11_OrMore(String brokerVersion) {
-    return versionCompare(currentVersion(brokerVersion), "3.11.0") >= 0;
+    try {
+      return versionCompare(currentVersion(brokerVersion), "3.11.0") >= 0;
+    } catch (Exception e) {
+      LOGGER.debug("Unable to parse broker version {}", brokerVersion, e);
+      return true;
+    }
   }
 
   static Client.ClientParameters maybeSetUpClientParametersFromUris(
