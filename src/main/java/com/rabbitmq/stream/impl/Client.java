@@ -508,7 +508,7 @@ public class Client implements AutoCloseable {
                     "Super stream management is available only on RabbitMQ 3.13 or more.");
               };
       this.resolveOffsetSpecCommandVersionsCheck =
-          streamStatsSupported.get()
+          resolveOffsetSpecSupported.get()
               ? () -> {}
               : () -> {
                 throw new UnsupportedOperationException(
