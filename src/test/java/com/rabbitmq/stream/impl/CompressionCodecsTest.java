@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.TestUtils.encodedMessageData;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.Codec.EncodedMessage;
@@ -120,7 +121,8 @@ public class CompressionCodecsTest {
               EncodedMessage originalMessage = encodedMessages.get(i);
               EncodedMessage decompressedMessage = decompressedMessages.get(i);
               assertThat(decompressedMessage.getSize()).isEqualTo(originalMessage.getSize());
-              assertThat(decompressedMessage.getData()).isEqualTo(originalMessage.getData());
+              assertThat(encodedMessageData(decompressedMessage))
+                  .isEqualTo(encodedMessageData(originalMessage));
             });
 
     destinationBb.release();

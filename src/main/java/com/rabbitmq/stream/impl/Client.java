@@ -2115,7 +2115,7 @@ public class Client implements AutoCloseable {
     @Override
     public void write(ByteBuf bb) {
       for (Codec.EncodedMessage message : messages) {
-        bb.writeInt(message.getSize()).writeBytes(message.getData(), 0, message.getSize());
+        message.writeTo(bb);
       }
     }
 
@@ -2178,12 +2178,7 @@ public class Client implements AutoCloseable {
       this.buffer = allocator.buffer(maxCompressedLength);
       try (OutputStream outputStream = this.codec.compress(new ByteBufOutputStream(buffer))) {
         for (int i = 0; i < messages.size(); i++) {
-          final int size = messages.get(i).getSize();
-          outputStream.write((size >>> 24) & 0xFF);
-          outputStream.write((size >>> 16) & 0xFF);
-          outputStream.write((size >>> 8) & 0xFF);
-          outputStream.write((size >>> 0) & 0xFF);
-          outputStream.write(messages.get(i).getData(), 0, size);
+          messages.get(i).writeTo(outputStream);
         }
         outputStream.flush();
       } catch (Throwable e) {
@@ -2225,8 +2220,7 @@ public class Client implements AutoCloseable {
     @Override
     public int write(ByteBuf bb, Object entity, long publishingId) {
       Codec.EncodedMessage messageToPublish = (Codec.EncodedMessage) entity;
-      bb.writeInt(messageToPublish.getSize());
-      bb.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
+      messageToPublish.writeTo(bb);
       return 1;
     }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -13,6 +13,8 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 package com.rabbitmq.stream.benchmark;
+
+import static com.rabbitmq.stream.impl.TestUtils.encodedMessageData;
 
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Message;
@@ -76,8 +78,7 @@ public class EncodeDecodeForPerformanceToolBenchmark {
     byte[] payload = new byte[payloadSize];
     writeLong(payload, timestampProvider.get());
     Codec.EncodedMessage encoded = codec.encode(codec.messageBuilder().addData(payload).build());
-    messageToDecode = new byte[encoded.getSize()];
-    System.arraycopy(encoded.getData(), 0, messageToDecode, 0, encoded.getSize());
+    messageToDecode = encodedMessageData(encoded);
   }
 
   @Benchmark
