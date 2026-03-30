@@ -651,8 +651,7 @@ final class StreamProducer extends ResourceBase implements Producer {
       }
       Codec.EncodedMessage messageToPublish =
           (Codec.EncodedMessage) accumulatedEntity.encodedEntity();
-      bb.writeInt(messageToPublish.getSize());
-      bb.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
+      messageToPublish.writeTo(bb);
       return 1;
     }
 

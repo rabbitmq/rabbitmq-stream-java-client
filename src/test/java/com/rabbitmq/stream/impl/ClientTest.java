@@ -1038,8 +1038,7 @@ public class ClientTest {
             bb.writeShort(msg.filterValue.length());
             bb.writeBytes(msg.filterValue.getBytes(StandardCharsets.UTF_8));
             Codec.EncodedMessage messageToPublish = msg.encodedMessage;
-            bb.writeInt(messageToPublish.getSize());
-            bb.writeBytes(messageToPublish.getData(), 0, messageToPublish.getSize());
+            messageToPublish.writeTo(bb);
             return 1;
           }
 

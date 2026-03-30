@@ -32,6 +32,7 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Cli;
+import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
@@ -40,6 +41,8 @@ import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.EventLoopGroup;
 import io.vavr.Tuple2;
 import java.io.IOException;
@@ -1236,5 +1239,15 @@ public final class TestUtils {
     int port = socket.getLocalPort();
     socket.close();
     return port;
+  }
+
+  public static byte[] encodedMessageData(Codec.EncodedMessage encoded) {
+    ByteBuf buf = Unpooled.buffer();
+    encoded.writeTo(buf);
+    buf.skipBytes(Integer.BYTES);
+    byte[] data = new byte[buf.readableBytes()];
+    buf.readBytes(data);
+    buf.release();
+    return data;
   }
 }

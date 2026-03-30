@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.codec;
 
+import static com.rabbitmq.stream.impl.TestUtils.encodedMessageData;
 import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -276,8 +277,7 @@ public class CodecsTest {
 
           Codec.EncodedMessage encoded = serializer.encode(outboundMessage);
 
-          byte[] encodedData = new byte[encoded.getSize()];
-          System.arraycopy(encoded.getData(), 0, encodedData, 0, encoded.getSize());
+          byte[] encodedData = encodedMessageData(encoded);
           Message inboundMessage = deserializer.decode(encodedData);
 
           messageExpectation.accept(inboundMessage);
@@ -595,9 +595,7 @@ public class CodecsTest {
           QpidProtonAmqpMessageWrapper wrapper =
               new QpidProtonAmqpMessageWrapper(true, 1L, nativeMessage);
           EncodedMessage encoded = new QpidProtonCodec().encode(wrapper);
-          byte[] encodedData = new byte[encoded.getSize()];
-          System.arraycopy(encoded.getData(), 0, encodedData, 0, encoded.getSize());
-          return codec.decode(encodedData);
+          return codec.decode(encodedMessageData(encoded));
         };
 
     Message m1 = encodeDecode.apply("hello".getBytes(StandardCharsets.UTF_8));
@@ -656,9 +654,7 @@ public class CodecsTest {
     UnaryOperator<Message> encodeDecode =
         msg -> {
           EncodedMessage encoded = serializer.encode(msg);
-          byte[] encodedData = new byte[encoded.getSize()];
-          System.arraycopy(encoded.getData(), 0, encodedData, 0, encoded.getSize());
-          return deserializer.decode(encodedData);
+          return deserializer.decode(encodedMessageData(encoded));
         };
 
     message = encodeDecode.apply(message);
