@@ -20,8 +20,8 @@ jobs:
     strategy:
       matrix:
         rabbitmq-image:
-          - pivotalrabbitmq/rabbitmq:v4.2.x-otp27
           - pivotalrabbitmq/rabbitmq:v4.3.x-otp27
+          - pivotalrabbitmq/rabbitmq:main-otp27
     name:  Test against ${{ matrix.rabbitmq-image }}
     steps:
       - uses: actions/checkout@v6
@@ -34,7 +34,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
           cache: 'maven'
       - name: Start broker
         run: ci/start-broker.sh
