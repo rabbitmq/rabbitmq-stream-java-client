@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -117,7 +117,8 @@ final class ConsumersCoordinator implements AutoCloseable {
       Function<List<Broker>, Broker> brokerPicker) {
     this.environment = environment;
     this.clientFactory = clientFactory;
-    this.maxConsumersByConnection = maxConsumersByConnection;
+    this.maxConsumersByConnection =
+        Math.min(maxConsumersByConnection, MAX_SUBSCRIPTIONS_PER_CLIENT);
     this.connectionNamingStrategy = connectionNamingStrategy;
     this.forceReplica = forceReplica;
     this.brokerPicker = brokerPicker;
@@ -522,12 +523,12 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
 
     void detachFromManager() {
-      lock(
-          this.subscriptionTrackerLock,
-          () -> {
-            this.manager = null;
-            this.consumer.setSubscriptionClient(null);
-          });
+      lock(this.subscriptionTrackerLock, this::detachFromManagerNoLock);
+    }
+
+    void detachFromManagerNoLock() {
+      this.manager = null;
+      this.consumer.setSubscriptionClient(null);
     }
 
     void state(SubscriptionState state) {
@@ -816,7 +817,8 @@ final class ConsumersCoordinator implements AutoCloseable {
                       subscription.offset,
                       subscription.hasReceivedSomething);
                   newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
-                  subscription.consumer.setSubscriptionClient(null);
+                  // do not lock, to avoid a deadlock
+                  subscription.detachFromManagerNoLock();
                 }
                 this.setSubscriptionTrackers(newSubscriptions);
               }
@@ -1209,6 +1211,16 @@ final class ConsumersCoordinator implements AutoCloseable {
           this.subscriptionManagerLock,
           () -> {
             byte subscriptionIdInClient = subscriptionTracker.subscriptionIdInClient;
+
+            // Prevent stale removals from cancelling a new subscription that reused this slot
+            // a tracker can still refer to its old manager
+            // this is hard to fix because of concurrency and potential deadlocks
+            // so this check guards against this
+            if (this.subscriptionTrackers.get(subscriptionIdInClient & 0xFF)
+                != subscriptionTracker) {
+              return;
+            }
+
             try {
               Client.Response unsubscribeResponse =
                   Utils.callAndMaybeRetry(
@@ -1306,20 +1318,21 @@ final class ConsumersCoordinator implements AutoCloseable {
                 for (int i = 0; i < this.subscriptionTrackers.size(); i++) {
                   SubscriptionTracker tracker = this.subscriptionTrackers.get(i);
                   if (tracker != null) {
+                    byte subId = tracker.subscriptionIdInClient;
                     try {
                       if (this.client.isOpen() && tracker.consumer.isOpen()) {
-                        this.client.unsubscribe(tracker.subscriptionIdInClient);
+                        this.client.unsubscribe(subId);
                       }
                     } catch (Exception e) {
                       // OK, moving on
                       LOGGER.debug(
                           "Error while unsubscribing from {}, registration {}",
                           tracker.stream,
-                          tracker.subscriptionIdInClient);
+                          subId);
                     }
-                    this.subscriptionTrackers.set(i, null);
                   }
                 }
+                this.setSubscriptionTrackers(createSubscriptionTrackerList());
 
                 streamToStreamSubscriptions.clear();
 
