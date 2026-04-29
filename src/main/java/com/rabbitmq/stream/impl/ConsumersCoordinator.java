@@ -25,7 +25,6 @@ import static com.rabbitmq.stream.impl.Utils.jsonField;
 import static com.rabbitmq.stream.impl.Utils.keyForNode;
 import static com.rabbitmq.stream.impl.Utils.lock;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
-import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 import static com.rabbitmq.stream.impl.Utils.quote;
 import static java.lang.String.format;
 import static java.util.stream.Collectors.toList;
@@ -62,7 +61,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
@@ -555,6 +553,44 @@ final class ConsumersCoordinator implements AutoCloseable {
       }
     }
 
+    /**
+     * Handles disconnection events. Uses CAS to transition to RECOVERING state and schedules
+     * recovery if not already in progress.
+     */
+    void notifyDisconnection() {
+      if (this.state.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
+        LOGGER.debug(
+            "Tracker {} notified of disconnection, transitioning to RECOVERING", this.label());
+        this.markRecovering();
+        // TODO Phase 3: Submit recovery task to executor
+        // For now, this just marks the state transition
+      } else {
+        LOGGER.debug(
+            "Tracker {} disconnection notification ignored, current state: {}",
+            this.label(),
+            this.state.get());
+      }
+    }
+
+    /**
+     * Handles topology change events. Uses CAS to transition to RECOVERING state and schedules
+     * recovery if not already in progress.
+     */
+    void notifyTopologyChange() {
+      if (this.state.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
+        LOGGER.debug(
+            "Tracker {} notified of topology change, transitioning to RECOVERING", this.label());
+        this.markRecovering();
+        // TODO Phase 3: Submit recovery task to executor
+        // For now, this just marks the state transition
+      } else {
+        LOGGER.debug(
+            "Tracker {} topology change notification ignored, current state: {}",
+            this.label(),
+            this.state.get());
+      }
+    }
+
     String label() {
       return String.format(
           "[id %d, stream %s, name %s, consumer %d]",
@@ -758,50 +794,16 @@ final class ConsumersCoordinator implements AutoCloseable {
               SubscriptionTracker[] localTrackers = this.trackers;
               for (SubscriptionTracker tracker : localTrackers) {
                 if (tracker != null) {
-                  tracker.markRecovering();
+                  tracker.notifyDisconnection();
                 }
               }
-              environment
-                  .scheduledExecutorService()
-                  .execute(
-                      namedRunnable(
-                          () -> {
-                            if (Thread.currentThread().isInterrupted()) {
-                              return;
-                            }
-                            SubscriptionTracker[] currentTrackers = this.trackers;
-                            for (SubscriptionTracker tracker : currentTrackers) {
-                              if (tracker != null && tracker.state() == SubscriptionState.ACTIVE) {
-                                tracker.detachFromManager();
-                              }
-                            }
-                            for (Entry<String, Set<SubscriptionTracker>> entry :
-                                streamToStreamSubscriptions.entrySet()) {
-                              if (Thread.currentThread().isInterrupted()) {
-                                LOGGER.debug("Interrupting consumer re-assignment task");
-                                break;
-                              }
-                              String stream = entry.getKey();
-                              Set<SubscriptionTracker> trackersToReAssign = entry.getValue();
-                              if (trackersToReAssign == null || trackersToReAssign.isEmpty()) {
-                                LOGGER.debug(
-                                    "No consumer to re-assign to stream {} after disconnection",
-                                    stream);
-                              } else {
-                                LOGGER.debug(
-                                    "Re-assigning {} consumer(s) to stream {} after disconnection",
-                                    trackersToReAssign.size(),
-                                    stream);
-                                assignConsumersToStream(
-                                    trackersToReAssign,
-                                    stream,
-                                    recoveryBackOffDelayPolicy(),
-                                    false);
-                              }
-                            }
-                          },
-                          "Consumers re-assignment after disconnection from %s",
-                          nameReference.get()));
+              // Detach trackers from this manager - recovery will be handled by individual trackers
+              SubscriptionTracker[] currentTrackers = this.trackers;
+              for (SubscriptionTracker tracker : currentTrackers) {
+                if (tracker != null && tracker.state() == SubscriptionState.RECOVERING) {
+                  tracker.detachFromManager();
+                }
+              }
             }
           };
       MetadataListener metadataListener =
@@ -838,27 +840,17 @@ final class ConsumersCoordinator implements AutoCloseable {
             }
 
             if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
-              iterate(affectedSubscriptions, SubscriptionTracker::markRecovering);
-              environment
-                  .scheduledExecutorService()
-                  .execute(
-                      namedRunnable(
-                          () -> {
-                            if (Thread.currentThread().isInterrupted()) {
-                              return;
-                            }
-                            LOGGER.debug(
-                                "Trying to move {} subscription(s) (stream '{}')",
-                                affectedSubscriptions.size(),
-                                stream);
-                            assignConsumersToStream(
-                                affectedSubscriptions,
-                                stream,
-                                metadataUpdateBackOffDelayPolicy(),
-                                true);
-                          },
-                          "Consumers re-assignment after metadata update on stream '%s'",
-                          stream));
+              for (SubscriptionTracker tracker : affectedSubscriptions) {
+                if (tracker != null) {
+                  tracker.notifyTopologyChange();
+                }
+              }
+              // Detach trackers from this manager - recovery will be handled by individual trackers
+              for (SubscriptionTracker tracker : affectedSubscriptions) {
+                if (tracker != null && tracker.state() == SubscriptionState.RECOVERING) {
+                  tracker.detachFromManager();
+                }
+              }
             }
           };
       ConsumerUpdateListener consumerUpdateListener =
@@ -903,6 +895,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       clientInitializedInManager.set(true);
     }
 
+    // TODO Phase 3: Remove this method - recovery will be handled by individual trackers
     private void assignConsumersToStream(
         Collection<SubscriptionTracker> subscriptions,
         String stream,
@@ -1519,6 +1512,7 @@ final class ConsumersCoordinator implements AutoCloseable {
     return picker.apply(keepReplicasIfPossible(candidates));
   }
 
+  // TODO Phase 3: Remove this method - no longer needed with tracker-centric recovery
   private static void iterate(
       Collection<SubscriptionTracker> l, java.util.function.Consumer<SubscriptionTracker> c) {
     for (SubscriptionTracker tracker : l) {
