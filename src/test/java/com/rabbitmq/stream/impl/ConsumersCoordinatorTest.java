@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -2106,42 +2106,41 @@ public class ConsumersCoordinatorTest {
 
   @Test
   void pickSlotTest() {
-    List<String> list = new ArrayList<>(ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT);
-    range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(ignored -> list.add(null));
+    String[] array = new String[ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT];
     AtomicInteger sequence = new AtomicInteger(0);
-    int index = pickSlot(list, sequence);
+    int index = pickSlot(array, sequence);
     assertThat(index).isZero();
-    list.set(index, "0");
+    array[index] = "0";
 
-    index = pickSlot(list, sequence);
+    index = pickSlot(array, sequence);
     assertThat(index).isEqualTo(1);
-    list.set(index, "1");
-    index = pickSlot(list, sequence);
+    array[index] = "1";
+    index = pickSlot(array, sequence);
     assertThat(index).isEqualTo(2);
-    list.set(index, "2");
-    index = pickSlot(list, sequence);
+    array[index] = "2";
+    index = pickSlot(array, sequence);
     assertThat(index).isEqualTo(3);
-    list.set(index, "3");
+    array[index] = "3";
 
-    list.set(1, null);
-    index = pickSlot(list, sequence);
+    array[1] = null;
+    index = pickSlot(array, sequence);
     assertThat(index).isEqualTo(4);
-    list.set(index, "4");
+    array[index] = "4";
 
     sequence.set(MAX_SUBSCRIPTIONS_PER_CLIENT - 2);
 
-    index = pickSlot(list, sequence);
+    index = pickSlot(array, sequence);
     assertThat(index).isEqualTo(254);
-    list.set(index, "254");
-    index = pickSlot(list, sequence);
+    array[index] = "254";
+    index = pickSlot(array, sequence);
     assertThat(index).isEqualTo(255);
-    list.set(index, "255");
+    array[index] = "255";
 
     // 0 is already taken, so we should get index 1 when we overflow
-    index = pickSlot(list, sequence);
+    index = pickSlot(array, sequence);
     assertThat(index).isEqualTo(1);
-    list.set(index, "256");
-    index = pickSlot(list, sequence);
+    array[index] = "256";
+    index = pickSlot(array, sequence);
     assertThat(index).isEqualTo(5);
   }
 

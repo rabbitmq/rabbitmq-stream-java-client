@@ -79,7 +79,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -378,22 +377,23 @@ final class ConsumersCoordinator implements AutoCloseable {
                       .append(jsonField("consumer_count", m.trackerCount))
                       .append(",");
                   managerBuilder.append("\"subscriptions\" : [");
-                  List<SubscriptionTracker> trackers = m.subscriptionTrackers;
-                  managerBuilder.append(
-                      trackers.stream()
-                          .filter(Objects::nonNull)
-                          .map(
-                              t ->
-                                  "{"
-                                      + jsonField("stream", t.stream)
-                                      + ","
-                                      + jsonField("id", t.id)
-                                      + ","
-                                      + jsonField("subscription_id", t.subscriptionIdInClient)
-                                      + ","
-                                      + jsonField("state", t.consumer.state())
-                                      + "}")
-                          .collect(Collectors.joining(",")));
+                  SubscriptionTracker[] trackers = m.trackers;
+                  List<String> subscriptionInfos = new ArrayList<>();
+                  for (SubscriptionTracker t : trackers) {
+                    if (t != null) {
+                      subscriptionInfos.add(
+                          "{"
+                              + jsonField("stream", t.stream)
+                              + ","
+                              + jsonField("id", t.id)
+                              + ","
+                              + jsonField("subscription_id", t.subscriptionIdInClient)
+                              + ","
+                              + jsonField("state", t.consumer.state())
+                              + "}");
+                    }
+                  }
+                  managerBuilder.append(String.join(",", subscriptionInfos));
                   managerBuilder.append("]");
                   return managerBuilder.append("}").toString();
                 })
@@ -642,12 +642,15 @@ final class ConsumersCoordinator implements AutoCloseable {
     private final Map<String, Set<SubscriptionTracker>> streamToStreamSubscriptions =
         new ConcurrentHashMap<>();
     // trackers and tracker count must be kept in sync
-    private volatile List<SubscriptionTracker> subscriptionTrackers =
-        createSubscriptionTrackerList();
+    // lock-free array for fast message dispatch (hot path)
+    private volatile SubscriptionTracker[] trackers =
+        new SubscriptionTracker[MAX_SUBSCRIPTIONS_PER_CLIENT];
     private final AtomicInteger consumerIndexSequence = new AtomicInteger(0);
     private volatile int trackerCount;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Lock subscriptionManagerLock = new ReentrantLock();
+    // allocation lock for copy-on-write array updates
+    private final Lock allocationLock = new ReentrantLock();
 
     private ClientSubscriptionsManager(
         Broker targetNode,
@@ -660,8 +663,8 @@ final class ConsumersCoordinator implements AutoCloseable {
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       ChunkListener chunkListener =
           (client, subscriptionId, offset, messageCount, dataSize) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
+            SubscriptionTracker[] localTrackers = this.trackers;
+            SubscriptionTracker subscriptionTracker = localTrackers[subscriptionId & 0xFF];
             ConsumerFlowStrategy.MessageProcessedCallback processCallback;
             if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
               processCallback =
@@ -679,8 +682,8 @@ final class ConsumersCoordinator implements AutoCloseable {
 
       CreditNotification creditNotification =
           (subscriptionId, responseCode) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
+            SubscriptionTracker[] localTrackers = this.trackers;
+            SubscriptionTracker subscriptionTracker = localTrackers[subscriptionId & 0xFF];
             String stream = subscriptionTracker == null ? "?" : subscriptionTracker.stream;
             LOGGER.debug(
                 "Received credit notification for subscription {} (stream '{}'): {}",
@@ -691,8 +694,8 @@ final class ConsumersCoordinator implements AutoCloseable {
 
       MessageListener messageListener =
           (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
+            SubscriptionTracker[] localTrackers = this.trackers;
+            SubscriptionTracker subscriptionTracker = localTrackers[subscriptionId & 0xFF];
             if (subscriptionTracker != null) {
               subscriptionTracker.offset = offset;
               subscriptionTracker.hasReceivedSomething = true;
@@ -714,8 +717,8 @@ final class ConsumersCoordinator implements AutoCloseable {
           };
       MessageIgnoredListener messageIgnoredListener =
           (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
+            SubscriptionTracker[] localTrackers = this.trackers;
+            SubscriptionTracker subscriptionTracker = localTrackers[subscriptionId & 0xFF];
             if (subscriptionTracker != null) {
               // message at the beginning of the first chunk is ignored
               // we "simulate" the processing if possible
@@ -750,9 +753,14 @@ final class ConsumersCoordinator implements AutoCloseable {
                   nameReference.get());
               LOGGER.debug(
                   "Subscription connection has {} consumer(s) over {} stream(s) to recover",
-                  this.subscriptionTrackers.stream().filter(Objects::nonNull).count(),
+                  this.trackerCount,
                   this.streamToStreamSubscriptions.size());
-              iterate(this.subscriptionTrackers, SubscriptionTracker::markRecovering);
+              SubscriptionTracker[] localTrackers = this.trackers;
+              for (SubscriptionTracker tracker : localTrackers) {
+                if (tracker != null) {
+                  tracker.markRecovering();
+                }
+              }
               environment
                   .scheduledExecutorService()
                   .execute(
@@ -761,10 +769,12 @@ final class ConsumersCoordinator implements AutoCloseable {
                             if (Thread.currentThread().isInterrupted()) {
                               return;
                             }
-                            subscriptionTrackers.stream()
-                                .filter(Objects::nonNull)
-                                .filter(t -> t.state() == SubscriptionState.ACTIVE)
-                                .forEach(SubscriptionTracker::detachFromManager);
+                            SubscriptionTracker[] currentTrackers = this.trackers;
+                            for (SubscriptionTracker tracker : currentTrackers) {
+                              if (tracker != null && tracker.state() == SubscriptionState.ACTIVE) {
+                                tracker.detachFromManager();
+                              }
+                            }
                             for (Entry<String, Set<SubscriptionTracker>> entry :
                                 streamToStreamSubscriptions.entrySet()) {
                               if (Thread.currentThread().isInterrupted()) {
@@ -805,10 +815,10 @@ final class ConsumersCoordinator implements AutoCloseable {
             try {
               Set<SubscriptionTracker> subscriptions = streamToStreamSubscriptions.remove(stream);
               if (subscriptions != null && !subscriptions.isEmpty()) {
-                List<SubscriptionTracker> newSubscriptions = createSubscriptionTrackerList();
-                for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-                  newSubscriptions.set(i, subscriptionTrackers.get(i));
-                }
+                SubscriptionTracker[] newTrackers =
+                    new SubscriptionTracker[MAX_SUBSCRIPTIONS_PER_CLIENT];
+                SubscriptionTracker[] currentTrackers = this.trackers;
+                System.arraycopy(currentTrackers, 0, newTrackers, 0, MAX_SUBSCRIPTIONS_PER_CLIENT);
                 for (SubscriptionTracker subscription : subscriptions) {
                   LOGGER.debug(
                       "Subscription {} ({}) was at offset {} (received something? {})",
@@ -816,11 +826,11 @@ final class ConsumersCoordinator implements AutoCloseable {
                       subscription.label(),
                       subscription.offset,
                       subscription.hasReceivedSomething);
-                  newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
+                  newTrackers[subscription.subscriptionIdInClient & 0xFF] = null;
                   // do not lock, to avoid a deadlock
                   subscription.detachFromManagerNoLock();
                 }
-                this.setSubscriptionTrackers(newSubscriptions);
+                this.setTrackers(newTrackers);
               }
               affectedSubscriptions = subscriptions;
             } finally {
@@ -854,8 +864,8 @@ final class ConsumersCoordinator implements AutoCloseable {
       ConsumerUpdateListener consumerUpdateListener =
           (client, subscriptionId, active) -> {
             OffsetSpecification result = null;
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
+            SubscriptionTracker[] localTrackers = this.trackers;
+            SubscriptionTracker subscriptionTracker = localTrackers[subscriptionId & 0xFF];
             if (subscriptionTracker != null) {
               if (isSac(subscriptionTracker.subscriptionProperties)) {
                 result = subscriptionTracker.consumer.consumerUpdate(active);
@@ -949,10 +959,38 @@ final class ConsumersCoordinator implements AutoCloseable {
               });
     }
 
-    private List<SubscriptionTracker> createSubscriptionTrackerList() {
-      List<SubscriptionTracker> newSubscriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
-      IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> newSubscriptions.add(null));
-      return newSubscriptions;
+    // Copy-on-write array update methods for safe concurrent access
+
+    void assignSlot(byte id, SubscriptionTracker tracker) {
+      Utils.lock(
+          this.allocationLock,
+          () -> {
+            SubscriptionTracker[] newTrackers =
+                new SubscriptionTracker[MAX_SUBSCRIPTIONS_PER_CLIENT];
+            System.arraycopy(this.trackers, 0, newTrackers, 0, MAX_SUBSCRIPTIONS_PER_CLIENT);
+            boolean wasNull = newTrackers[id & 0xFF] == null;
+            newTrackers[id & 0xFF] = tracker;
+            this.trackers = newTrackers;
+            if (wasNull) {
+              this.trackerCount++;
+            }
+          });
+    }
+
+    void clearSlot(byte id) {
+      Utils.lock(
+          this.allocationLock,
+          () -> {
+            SubscriptionTracker[] newTrackers =
+                new SubscriptionTracker[MAX_SUBSCRIPTIONS_PER_CLIENT];
+            System.arraycopy(this.trackers, 0, newTrackers, 0, MAX_SUBSCRIPTIONS_PER_CLIENT);
+            boolean wasNotNull = newTrackers[id & 0xFF] != null;
+            newTrackers[id & 0xFF] = null;
+            this.trackers = newTrackers;
+            if (wasNotNull) {
+              this.trackerCount--;
+            }
+          });
     }
 
     private void maybeRecoverSubscription(
@@ -1092,10 +1130,9 @@ final class ConsumersCoordinator implements AutoCloseable {
 
         checkNotClosed();
 
-        byte subscriptionId =
-            (byte) pickSlot(this.subscriptionTrackers, this.consumerIndexSequence);
+        byte subscriptionId = (byte) pickSlot(this.trackers, this.consumerIndexSequence);
 
-        List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
+        SubscriptionTracker[] previousTrackers = this.trackers;
 
         LOGGER.debug(
             "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
@@ -1113,7 +1150,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           streamToStreamSubscriptions
               .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
               .add(tracker);
-          this.setSubscriptionTrackers(update(previousSubscriptions, subscriptionId, tracker));
+          this.assignSlot(subscriptionId, tracker);
 
           String offsetTrackingReference = tracker.offsetTrackingReference;
           if (offsetTrackingReference != null) {
@@ -1184,14 +1221,16 @@ final class ConsumersCoordinator implements AutoCloseable {
             if (subscribeResponse.getResponseCode()
                 == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS) {
               if (LOGGER.isDebugEnabled()) {
-                SubscriptionTracker initialTracker = previousSubscriptions.get(subscriptionId);
+                SubscriptionTracker initialTracker = previousTrackers[subscriptionId & 0xFF];
                 LOGGER.debug("Subscription ID already exists");
-                LOGGER.debug(
-                    "Initial tracker with sub ID {}: consumer {}, stream {}, name {}",
-                    subscriptionId,
-                    initialTracker.consumer.id(),
-                    initialTracker.stream,
-                    initialTracker.offsetTrackingReference);
+                if (initialTracker != null) {
+                  LOGGER.debug(
+                      "Initial tracker with sub ID {}: consumer {}, stream {}, name {}",
+                      subscriptionId,
+                      initialTracker.consumer.id(),
+                      initialTracker.stream,
+                      initialTracker.offsetTrackingReference);
+                }
               }
             }
             throw convertCodeToException(
@@ -1199,7 +1238,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           }
         } catch (RuntimeException e) {
           tracker.assign((byte) -1, null);
-          this.setSubscriptionTrackers(previousSubscriptions);
+          this.trackers = previousTrackers;
           streamToStreamSubscriptions
               .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
               .remove(tracker);
@@ -1236,8 +1275,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             // a tracker can still refer to its old manager
             // this is hard to fix because of concurrency and potential deadlocks
             // so this check guards against this
-            if (this.subscriptionTrackers.get(subscriptionIdInClient & 0xFF)
-                != subscriptionTracker) {
+            if (this.trackers[subscriptionIdInClient & 0xFF] != subscriptionTracker) {
               return;
             }
 
@@ -1269,8 +1307,7 @@ final class ConsumersCoordinator implements AutoCloseable {
                   subscriptionTracker.stream);
             }
 
-            this.setSubscriptionTrackers(
-                update(this.subscriptionTrackers, subscriptionIdInClient, null));
+            this.clearSlot(subscriptionIdInClient);
             streamToStreamSubscriptions.compute(
                 subscriptionTracker.stream,
                 (stream, subscriptionsForThisStream) -> {
@@ -1286,19 +1323,15 @@ final class ConsumersCoordinator implements AutoCloseable {
           });
     }
 
-    private List<SubscriptionTracker> update(
-        List<SubscriptionTracker> original, byte index, SubscriptionTracker newValue) {
-      List<SubscriptionTracker> newSubcriptions = createSubscriptionTrackerList();
-      int intIndex = index & 0xFF;
-      for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-        newSubcriptions.set(i, i == intIndex ? newValue : original.get(i));
+    private void setTrackers(SubscriptionTracker[] trackers) {
+      this.trackers = trackers;
+      int count = 0;
+      for (SubscriptionTracker tracker : trackers) {
+        if (tracker != null) {
+          count++;
+        }
       }
-      return newSubcriptions;
-    }
-
-    private void setSubscriptionTrackers(List<SubscriptionTracker> trackers) {
-      this.subscriptionTrackers = trackers;
-      this.trackerCount = (int) this.subscriptionTrackers.stream().filter(Objects::nonNull).count();
+      this.trackerCount = count;
     }
 
     boolean isFull() {
@@ -1335,8 +1368,8 @@ final class ConsumersCoordinator implements AutoCloseable {
               LOGGER.debug(
                   "Closing consumer subscription manager on {}, id {}", this.name, this.id);
               if (this.client != null && this.client.isOpen()) {
-                for (int i = 0; i < this.subscriptionTrackers.size(); i++) {
-                  SubscriptionTracker tracker = this.subscriptionTrackers.get(i);
+                SubscriptionTracker[] currentTrackers = this.trackers;
+                for (SubscriptionTracker tracker : currentTrackers) {
                   if (tracker != null) {
                     byte subId = tracker.subscriptionIdInClient;
                     try {
@@ -1352,7 +1385,8 @@ final class ConsumersCoordinator implements AutoCloseable {
                     }
                   }
                 }
-                this.setSubscriptionTrackers(createSubscriptionTrackerList());
+                this.trackers = new SubscriptionTracker[MAX_SUBSCRIPTIONS_PER_CLIENT];
+                this.trackerCount = 0;
 
                 streamToStreamSubscriptions.clear();
 
@@ -1461,9 +1495,9 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
   }
 
-  static <T> int pickSlot(List<T> list, AtomicInteger sequence) {
+  static <T> int pickSlot(T[] array, AtomicInteger sequence) {
     int index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
-    while (list.get(index) != null) {
+    while (array[index] != null) {
       index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
     }
     return index;
