@@ -772,7 +772,7 @@ final class ConsumersCoordinator implements AutoCloseable {
      * Attempts to recover this subscription by finding candidate nodes and re-subscribing. This is
      * a single-attempt, non-blocking operation that schedules retries on failure.
      */
-    void tryRecover() {
+    void tryRecover(RecoveryType recoveryType) {
       if (this.state.get() != SubscriptionState.RECOVERING) {
         LOGGER.debug("Tracker {} not in RECOVERING state, skipping recovery attempt", this.label());
         return;
@@ -793,7 +793,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             coordinator.findCandidateNodes(this.stream, coordinator.forceReplica);
         if (candidates == null || candidates.isEmpty()) {
           LOGGER.debug("Tracker {} no candidates found for stream {}", this.label(), this.stream);
-          scheduleNextRecoveryAttempt();
+          scheduleNextRecoveryAttempt(recoveryType);
           return;
         }
 
@@ -801,7 +801,7 @@ final class ConsumersCoordinator implements AutoCloseable {
         Broker broker = pickBroker(coordinator.brokerPicker, candidates);
         if (broker == null) {
           LOGGER.debug("Tracker {} no broker selected from candidates", this.label());
-          scheduleNextRecoveryAttempt();
+          scheduleNextRecoveryAttempt(recoveryType);
           return;
         }
 
@@ -831,7 +831,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           }
         } else {
           LOGGER.debug("Tracker {} allocation failed, scheduling retry", this.label());
-          scheduleNextRecoveryAttempt();
+          scheduleNextRecoveryAttempt(recoveryType);
         }
 
       } catch (StreamDoesNotExistException e) {
@@ -846,17 +846,20 @@ final class ConsumersCoordinator implements AutoCloseable {
 
       } catch (Exception e) {
         LOGGER.debug("Tracker {} recovery attempt failed: {}", this.label(), e.getMessage());
-        scheduleNextRecoveryAttempt();
+        scheduleNextRecoveryAttempt(recoveryType);
       }
     }
 
     /** Schedules the next recovery attempt using exponential backoff. */
-    private void scheduleNextRecoveryAttempt() {
+    private void scheduleNextRecoveryAttempt(RecoveryType recoveryType) {
       if (this.state.get() != SubscriptionState.RECOVERING) {
         return; // Recovery cancelled
       }
 
-      BackOffDelayPolicy delayPolicy = coordinator.metadataUpdateBackOffDelayPolicy();
+      BackOffDelayPolicy delayPolicy =
+          recoveryType == RecoveryType.CONNECTION
+              ? coordinator.recoveryBackOffDelayPolicy()
+              : coordinator.metadataUpdateBackOffDelayPolicy();
       Duration delay = delayPolicy.delay(this.recoveryAttempts.get() - 1);
 
       if (delay == BackOffDelayPolicy.TIMEOUT) {
@@ -875,7 +878,10 @@ final class ConsumersCoordinator implements AutoCloseable {
       coordinator
           .environment
           .scheduledExecutorService()
-          .schedule(this::tryRecover, delay.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+          .schedule(
+              () -> tryRecover(recoveryType),
+              delay.toMillis(),
+              java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -890,7 +896,10 @@ final class ConsumersCoordinator implements AutoCloseable {
         // Detach from manager since connection is lost
         this.detachFromManager();
         // Schedule immediate recovery attempt
-        coordinator.environment.scheduledExecutorService().execute(this::tryRecover);
+        coordinator
+            .environment
+            .scheduledExecutorService()
+            .execute(() -> tryRecover(RecoveryType.CONNECTION));
       } else {
         LOGGER.debug(
             "Tracker {} disconnection notification ignored, current state: {}",
@@ -911,7 +920,10 @@ final class ConsumersCoordinator implements AutoCloseable {
         // Detach from manager since stream topology changed
         this.detachFromManager();
         // Schedule immediate recovery attempt
-        coordinator.environment.scheduledExecutorService().execute(this::tryRecover);
+        coordinator
+            .environment
+            .scheduledExecutorService()
+            .execute(() -> tryRecover(RecoveryType.TOPOLOGY));
       } else {
         LOGGER.debug(
             "Tracker {} topology change notification ignored, current state: {}",
@@ -932,6 +944,11 @@ final class ConsumersCoordinator implements AutoCloseable {
     ACTIVE,
     RECOVERING,
     CLOSED
+  }
+
+  private enum RecoveryType {
+    CONNECTION,
+    TOPOLOGY
   }
 
   private static final class MessageHandlerContext implements Context {
@@ -1291,118 +1308,6 @@ final class ConsumersCoordinator implements AutoCloseable {
 
             LOGGER.debug("Released slot {} in manager {}", subscriptionId & 0xFF, this.name);
           });
-    }
-
-    private void maybeRecoverSubscription(
-        List<BrokerWrapper> candidates, SubscriptionTracker tracker) {
-      // the subscription may have recovered already (from another listener), so skipping
-      if (tracker.manager != null && !tracker.manager.isClosed()) {
-        LOGGER.debug(
-            "Tracker {} is already assigned to a healthy manager, skipping duplicate recovery.",
-            tracker.label());
-        return;
-      }
-
-      if (tracker.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
-        try {
-          recoverSubscription(candidates, tracker);
-        } catch (Exception e) {
-          LOGGER.warn(
-              "Error while recovering consumer tracker {}. Reason: {}",
-              tracker.label(),
-              Utils.exceptionMessage(e));
-        }
-      } else {
-        LOGGER.debug(
-            "Not recovering consumer tracker {}, state is {}, expected is {}",
-            tracker.label(),
-            tracker.state(),
-            SubscriptionState.ACTIVE);
-      }
-    }
-
-    private void recoverSubscription(List<BrokerWrapper> candidates, SubscriptionTracker tracker) {
-      boolean reassignmentCompleted = false;
-      while (!reassignmentCompleted) {
-        try {
-          if (tracker.consumer.isOpen()) {
-            Broker broker = pickBroker(brokerPicker, candidates);
-            LOGGER.debug("Using {} to resume consuming from {}", broker, tracker.stream);
-            tracker.consumer.lock();
-            try {
-              if (tracker.consumer.isOpen()) {
-                OffsetSpecification offsetSpecification;
-                if (tracker.hasReceivedSomething) {
-                  offsetSpecification = OffsetSpecification.offset(tracker.offset);
-                } else {
-                  offsetSpecification = tracker.initialOffsetSpecification;
-                }
-                addToManager(broker, candidates, tracker, offsetSpecification, false);
-              }
-            } finally {
-              tracker.consumer.unlock();
-            }
-          } else {
-            LOGGER.debug(
-                "Not re-assigning consumer {} (stream '{}') because it has been closed",
-                tracker.consumer.id(),
-                tracker.stream);
-          }
-          reassignmentCompleted = true;
-        } catch (StreamException e) {
-          if (shouldRefreshCandidates(e)) {
-            LOGGER.debug(
-                "Consumer {} re-assignment on stream {} timed out or connection closed or stream not available, "
-                    + "refreshing candidates and retrying",
-                tracker.consumer.id(),
-                tracker.stream);
-            // maybe not a good candidate, let's refresh and retry for this one
-            candidates =
-                Utils.callAndMaybeRetry(
-                    findCandidateNodes(tracker.stream),
-                    ex -> !(ex instanceof StreamDoesNotExistException),
-                    recoveryBackOffDelayPolicy(),
-                    "Candidate lookup to consume from '%s' (subscription recovery)",
-                    tracker.stream);
-          } else {
-            LOGGER.warn(
-                "Stream error while re-assigning subscription from stream {} (name {})",
-                tracker.stream,
-                tracker.offsetTrackingReference,
-                e);
-            if (e.getCode() == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS) {
-              LOGGER.debug("Subscription ID already existing, retrying");
-            } else {
-              LOGGER.debug(
-                  "Not re-assigning consumer '{}' because of '{}'",
-                  tracker.label(),
-                  e.getMessage());
-              try {
-                tracker.consumer.closeAfterStreamDeletion();
-              } catch (Exception ex) {
-                LOGGER.debug("Error while closing consumer: {}", ex.getMessage());
-              }
-              tracker.state(SubscriptionState.CLOSED);
-              reassignmentCompleted = true;
-            }
-          }
-        } catch (Exception e) {
-          LOGGER.warn(
-              "Error while re-assigning subscription from stream {} (name {})",
-              tracker.stream,
-              tracker.offsetTrackingReference,
-              e);
-          LOGGER.debug(
-              "Not re-assigning consumer '{}' because of '{}'", tracker.label(), e.getMessage());
-          try {
-            tracker.consumer.closeAfterStreamDeletion();
-          } catch (Exception ex) {
-            LOGGER.debug("Error while closing consumer: {}", ex.getMessage());
-          }
-          tracker.state(SubscriptionState.CLOSED);
-          reassignmentCompleted = true;
-        }
-      }
     }
 
     private void checkNotClosed() {
