@@ -652,7 +652,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     // Recovery tracking
     private final ConsumersCoordinator coordinator;
     private final AtomicInteger recoveryAttempts = new AtomicInteger(0);
-    private volatile long recoveryStartTime = -1;
 
     private SubscriptionTracker(
         long id,
@@ -714,7 +713,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             this.subscriptionIdInClient = subscriptionIdInClient;
             this.manager = manager;
             if (this.manager == null) {
-              if (consumer != null) {
+              if (consumer != null && consumer.hasSubscriptionClient()) {
                 this.consumer.setSubscriptionClient(null);
               }
             } else {
@@ -816,7 +815,6 @@ final class ConsumersCoordinator implements AutoCloseable {
         if (success) {
           // Recovery succeeded
           this.recoveryAttempts.set(0);
-          this.recoveryStartTime = -1;
           if (this.state.compareAndSet(SubscriptionState.RECOVERING, SubscriptionState.ACTIVE)) {
             LOGGER.debug("Tracker {} recovery successful", this.label());
           }
@@ -877,8 +875,9 @@ final class ConsumersCoordinator implements AutoCloseable {
       if (this.state.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
         LOGGER.debug(
             "Tracker {} notified of disconnection, transitioning to RECOVERING", this.label());
-        this.recoveryStartTime = System.currentTimeMillis();
         this.markRecovering();
+        // Detach from manager since connection is lost
+        this.detachFromManager();
         // Schedule immediate recovery attempt
         coordinator.environment.scheduledExecutorService().execute(this::tryRecover);
       } else {
@@ -897,8 +896,9 @@ final class ConsumersCoordinator implements AutoCloseable {
       if (this.state.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
         LOGGER.debug(
             "Tracker {} notified of topology change, transitioning to RECOVERING", this.label());
-        this.recoveryStartTime = System.currentTimeMillis();
         this.markRecovering();
+        // Detach from manager since stream topology changed
+        this.detachFromManager();
         // Schedule immediate recovery attempt
         coordinator.environment.scheduledExecutorService().execute(this::tryRecover);
       } else {
@@ -1115,13 +1115,7 @@ final class ConsumersCoordinator implements AutoCloseable {
                   tracker.notifyDisconnection();
                 }
               }
-              // Detach trackers from this manager - recovery will be handled by individual trackers
-              SubscriptionTracker[] currentTrackers = this.trackers;
-              for (SubscriptionTracker tracker : currentTrackers) {
-                if (tracker != null && tracker.state() == SubscriptionState.RECOVERING) {
-                  tracker.detachFromManager();
-                }
-              }
+              // Recovery and detachment are now handled by individual trackers in notifyDisconnection()
             }
           };
       MetadataListener metadataListener =
@@ -1163,12 +1157,7 @@ final class ConsumersCoordinator implements AutoCloseable {
                   tracker.notifyTopologyChange();
                 }
               }
-              // Detach trackers from this manager - recovery will be handled by individual trackers
-              for (SubscriptionTracker tracker : affectedSubscriptions) {
-                if (tracker != null && tracker.state() == SubscriptionState.RECOVERING) {
-                  tracker.detachFromManager();
-                }
-              }
+              // Recovery and detachment are now handled by individual trackers in notifyTopologyChange()
             }
           };
       ConsumerUpdateListener consumerUpdateListener =
