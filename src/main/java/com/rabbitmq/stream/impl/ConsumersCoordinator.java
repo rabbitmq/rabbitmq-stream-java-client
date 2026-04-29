@@ -728,8 +728,19 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     void detachFromManagerNoLock() {
       if (this.manager != null) {
+        // Clear from manager's tracking structures
+        ClientSubscriptionsManager currentManager = this.manager;
+        currentManager.clearSlot(this.subscriptionIdInClient);
+        currentManager
+            .streamToStreamSubscriptions
+            .computeIfAbsent(this.stream, s -> ConcurrentHashMap.newKeySet())
+            .remove(this);
+
         this.manager = null;
         this.consumer.setSubscriptionClient(null);
+
+        // Close manager if it becomes empty after detachment
+        currentManager.closeIfEmpty();
       }
     }
 
@@ -1115,7 +1126,6 @@ final class ConsumersCoordinator implements AutoCloseable {
                   tracker.notifyDisconnection();
                 }
               }
-              // Recovery and detachment are now handled by individual trackers in notifyDisconnection()
             }
           };
       MetadataListener metadataListener =
@@ -1157,7 +1167,6 @@ final class ConsumersCoordinator implements AutoCloseable {
                   tracker.notifyTopologyChange();
                 }
               }
-              // Recovery and detachment are now handled by individual trackers in notifyTopologyChange()
             }
           };
       ConsumerUpdateListener consumerUpdateListener =
