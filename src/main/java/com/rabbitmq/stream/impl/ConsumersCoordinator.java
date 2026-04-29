@@ -55,7 +55,6 @@ import com.rabbitmq.stream.impl.Utils.BrokerWrapper;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
-
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -131,6 +130,191 @@ final class ConsumersCoordinator implements AutoCloseable {
     return environment.topologyUpdateBackOffDelayPolicy();
   }
 
+  /**
+   * Finds a suitable manager for the given node, or creates one if needed. Returns null if no
+   * manager can be found/created or if all are full.
+   */
+  private ClientSubscriptionsManager findOrCreateManager(
+      Broker node, List<BrokerWrapper> candidates) {
+    // First, try to find an existing manager with available capacity
+    Iterator<ClientSubscriptionsManager> iterator = this.managers.iterator();
+    while (iterator.hasNext()) {
+      ClientSubscriptionsManager manager = iterator.next();
+      if (manager.isClosed()) {
+        iterator.remove();
+      } else if (node.equals(manager.node) && !manager.isFull()) {
+        return manager;
+      }
+    }
+
+    // No suitable manager found, create a new one
+    String name = keyForNode(node);
+    LOGGER.debug("Creating subscription manager on {}", name);
+
+    ClientParameters clientParameters =
+        environment
+            .clientParametersCopy()
+            .executorServiceFactory(this.executorServiceFactory)
+            .host(node.getHost())
+            .port(node.getPort());
+
+    try {
+      ClientSubscriptionsManager newManager =
+          new ClientSubscriptionsManager(node, candidates, clientParameters);
+      LOGGER.debug("Created subscription manager on {}, id {}", name, newManager.id);
+      this.managers.add(newManager);
+      return newManager;
+    } catch (Exception e) {
+      LOGGER.debug("Failed to create manager for node {}: {}", name, e.getMessage());
+      return null;
+    }
+  }
+
+  /**
+   * Attempts to allocate a tracker to a manager and subscribe. This is the new allocation method
+   * that decouples allocation logic from managers.
+   */
+  boolean tryAllocateTracker(
+      Broker node,
+      List<BrokerWrapper> candidates,
+      SubscriptionTracker tracker,
+      OffsetSpecification offsetSpecification) {
+
+    LOGGER.debug("Attempting to allocate tracker {} to node {}", tracker.label(), keyForNode(node));
+
+    ClientSubscriptionsManager manager = findOrCreateManager(node, candidates);
+    if (manager == null) {
+      LOGGER.debug("No manager available for node {}", keyForNode(node));
+      return false;
+    }
+
+    // Try to reserve a slot
+    Byte reservedSlot = manager.tryReserveSlot(tracker);
+    if (reservedSlot == null) {
+      LOGGER.debug("Manager {} is full, cannot allocate tracker {}", manager.name, tracker.label());
+      return false;
+    }
+
+    try {
+      // Assign the tracker to the manager with the reserved slot
+      tracker.assign(reservedSlot, manager);
+
+      // Add to stream tracking
+      manager
+          .streamToStreamSubscriptions
+          .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
+          .add(tracker);
+
+      // Now attempt the actual subscription
+      try {
+        return performSubscription(tracker, manager, offsetSpecification);
+      } catch (Exception e) {
+        LOGGER.debug("Subscription failed for tracker {}: {}", tracker.label(), e.getMessage());
+        throw new RuntimeException("Subscription failed: " + e.getMessage(), e);
+      }
+
+    } catch (Exception e) {
+      // If subscription failed, clean up the allocation
+      manager.releaseSlot(reservedSlot);
+      tracker.assign((byte) -1, null);
+      manager
+          .streamToStreamSubscriptions
+          .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
+          .remove(tracker);
+
+      LOGGER.debug(
+          "Failed to allocate tracker {} to manager {}: {}",
+          tracker.label(),
+          manager.name,
+          e.getMessage());
+      
+      if (e instanceof RuntimeException) {
+        throw (RuntimeException) e;
+      } else {
+        throw new RuntimeException("Allocation failed: " + e.getMessage(), e);
+      }
+    }
+  }
+
+  /** Performs the actual subscription call for a tracker that has been allocated to a manager. */
+  private boolean performSubscription(
+      SubscriptionTracker tracker,
+      ClientSubscriptionsManager manager,
+      OffsetSpecification offsetSpecification)
+      throws Exception {
+
+    String offsetTrackingReference = tracker.offsetTrackingReference;
+    if (offsetTrackingReference != null) {
+      QueryOffsetResponse queryOffsetResponse =
+          Utils.callAndMaybeRetry(
+              () -> manager.client.queryOffset(offsetTrackingReference, tracker.stream),
+              RETRY_ON_TIMEOUT,
+              "Offset query for consumer %s on stream '%s' (reference %s)",
+              tracker.consumer.id(),
+              tracker.stream,
+              offsetTrackingReference);
+
+      if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
+        LOGGER.debug(
+            "Using stored offset {} to start consuming from {} with consumer {} (instead of {})",
+            queryOffsetResponse.getOffset(),
+            tracker.stream,
+            offsetTrackingReference,
+            offsetSpecification);
+        offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
+      }
+    }
+
+    offsetSpecification =
+        offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
+
+    // Call subscription listener
+    SubscriptionContext subscriptionContext =
+        new DefaultSubscriptionContext(offsetSpecification, tracker.stream);
+    tracker.subscriptionListener.preSubscribe(subscriptionContext);
+    LOGGER.info(
+        "Computed offset specification {}, offset specification used after subscription listener {}",
+        offsetSpecification,
+        subscriptionContext.offsetSpecification());
+
+    // Perform the subscription
+    Client.Response subscribeResponse =
+        Utils.callAndMaybeRetry(
+            () ->
+                manager.client.subscribe(
+                    tracker.subscriptionIdInClient,
+                    tracker.stream,
+                    subscriptionContext.offsetSpecification(),
+                    tracker.flowStrategy.initialCredits(),
+                    tracker.subscriptionProperties),
+            RETRY_ON_TIMEOUT,
+            "Subscribe request for consumer %d on stream '%s'",
+            tracker.consumer.id(),
+            tracker.stream);
+
+    if (!subscribeResponse.isOk()) {
+      String message =
+          "Subscription to stream "
+              + tracker.stream
+              + " failed with code "
+              + formatConstant(subscribeResponse.getResponseCode());
+      LOGGER.debug(message);
+
+      if (subscribeResponse.getResponseCode() == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS) {
+        LOGGER.debug("Subscription ID already exists for tracker {}", tracker.label());
+      }
+
+      throw convertCodeToException(
+          subscribeResponse.getResponseCode(), tracker.stream, () -> message);
+    }
+
+    tracker.state(SubscriptionState.ACTIVE);
+    tracker.markOpen();
+    LOGGER.debug(
+        "Successfully subscribed tracker {} to stream {}", tracker.label(), tracker.stream);
+    return true;
+  }
+
   Runnable subscribe(
       StreamConsumer consumer,
       String stream,
@@ -167,7 +351,11 @@ final class ConsumersCoordinator implements AutoCloseable {
                   this);
 
           try {
-            addToManager(newNode, candidates, subscriptionTracker, offsetSpecification, true);
+            boolean success =
+                tryAllocateTracker(newNode, candidates, subscriptionTracker, offsetSpecification);
+            if (!success) {
+              throw new IllegalStateException("Failed to allocate subscription tracker");
+            }
           } catch (ConnectionStreamException e) {
             // these exceptions are not public
             throw new StreamException(e.getMessage());
@@ -613,13 +801,19 @@ final class ConsumersCoordinator implements AutoCloseable {
             broker,
             offsetSpecification);
 
-        // Attempt to add to a manager (this will create subscription)
-        coordinator.addToManager(broker, candidates, this, offsetSpecification, false);
+        // Attempt to allocate using new allocation logic
+        boolean success =
+            coordinator.tryAllocateTracker(broker, candidates, this, offsetSpecification);
 
-        // If we get here, recovery succeeded
-        this.recoveryAttempts.set(0);
-        if (this.state.compareAndSet(SubscriptionState.RECOVERING, SubscriptionState.ACTIVE)) {
-          LOGGER.debug("Tracker {} recovery successful", this.label());
+        if (success) {
+          // Recovery succeeded
+          this.recoveryAttempts.set(0);
+          if (this.state.compareAndSet(SubscriptionState.RECOVERING, SubscriptionState.ACTIVE)) {
+            LOGGER.debug("Tracker {} recovery successful", this.label());
+          }
+        } else {
+          LOGGER.debug("Tracker {} allocation failed, scheduling retry", this.label());
+          scheduleNextRecoveryAttempt();
         }
 
       } catch (StreamDoesNotExistException e) {
@@ -1091,6 +1285,54 @@ final class ConsumersCoordinator implements AutoCloseable {
             if (wasNotNull) {
               this.trackerCount--;
             }
+          });
+    }
+
+    /**
+     * Tries to reserve a slot for a tracker. Returns the assigned subscription ID if successful, or
+     * null if the manager is full.
+     */
+    Byte tryReserveSlot(SubscriptionTracker tracker) {
+      return Utils.lock(
+          this.allocationLock,
+          () -> {
+            if (this.isFull()) {
+              return null;
+            }
+
+            byte subscriptionId = (byte) pickSlot(this.trackers, this.consumerIndexSequence);
+            SubscriptionTracker[] newTrackers =
+                new SubscriptionTracker[MAX_SUBSCRIPTIONS_PER_CLIENT];
+            System.arraycopy(this.trackers, 0, newTrackers, 0, MAX_SUBSCRIPTIONS_PER_CLIENT);
+            newTrackers[subscriptionId & 0xFF] = tracker;
+            this.trackers = newTrackers;
+            this.trackerCount++;
+
+            LOGGER.debug(
+                "Reserved slot {} for tracker {} in manager {}",
+                subscriptionId & 0xFF,
+                tracker.label(),
+                this.name);
+            return subscriptionId;
+          });
+    }
+
+    /** Releases a previously reserved slot. */
+    void releaseSlot(byte subscriptionId) {
+      Utils.lock(
+          this.allocationLock,
+          () -> {
+            SubscriptionTracker[] newTrackers =
+                new SubscriptionTracker[MAX_SUBSCRIPTIONS_PER_CLIENT];
+            System.arraycopy(this.trackers, 0, newTrackers, 0, MAX_SUBSCRIPTIONS_PER_CLIENT);
+            boolean wasNotNull = newTrackers[subscriptionId & 0xFF] != null;
+            newTrackers[subscriptionId & 0xFF] = null;
+            this.trackers = newTrackers;
+            if (wasNotNull) {
+              this.trackerCount--;
+            }
+
+            LOGGER.debug("Released slot {} in manager {}", subscriptionId & 0xFF, this.name);
           });
     }
 
