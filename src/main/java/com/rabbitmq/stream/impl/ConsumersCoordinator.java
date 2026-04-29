@@ -957,6 +957,14 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     private void maybeRecoverSubscription(
         List<BrokerWrapper> candidates, SubscriptionTracker tracker) {
+      // the subscription may have recovered already (from another listener), so skipping
+      if (tracker.manager != null && !tracker.manager.isClosed()) {
+        LOGGER.debug(
+            "Tracker {} is already assigned to a healthy manager, skipping duplicate recovery.",
+            tracker.label());
+        return;
+      }
+
       if (tracker.compareAndSet(SubscriptionState.ACTIVE, SubscriptionState.RECOVERING)) {
         try {
           recoverSubscription(candidates, tracker);
