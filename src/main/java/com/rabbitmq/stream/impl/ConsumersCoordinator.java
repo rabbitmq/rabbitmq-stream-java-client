@@ -896,10 +896,7 @@ final class ConsumersCoordinator implements AutoCloseable {
         // Detach from manager since connection is lost
         this.detachFromManager();
         // Schedule immediate recovery attempt
-        coordinator
-            .environment
-            .scheduledExecutorService()
-            .execute(() -> tryRecover(RecoveryType.CONNECTION));
+        scheduleNextRecoveryAttempt(RecoveryType.CONNECTION);
       } else {
         LOGGER.debug(
             "Tracker {} disconnection notification ignored, current state: {}",
@@ -920,10 +917,7 @@ final class ConsumersCoordinator implements AutoCloseable {
         // Detach from manager since stream topology changed
         this.detachFromManager();
         // Schedule immediate recovery attempt
-        coordinator
-            .environment
-            .scheduledExecutorService()
-            .execute(() -> tryRecover(RecoveryType.TOPOLOGY));
+        scheduleNextRecoveryAttempt(RecoveryType.TOPOLOGY);
       } else {
         LOGGER.debug(
             "Tracker {} topology change notification ignored, current state: {}",
