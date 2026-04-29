@@ -55,6 +55,8 @@ import com.rabbitmq.stream.impl.Utils.BrokerWrapper;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
+
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -161,7 +163,8 @@ final class ConsumersCoordinator implements AutoCloseable {
                   trackingClosingCallback,
                   messageHandler,
                   subscriptionProperties,
-                  flowStrategy);
+                  flowStrategy,
+                  this);
 
           try {
             addToManager(newNode, candidates, subscriptionTracker, offsetSpecification, true);
@@ -186,7 +189,8 @@ final class ConsumersCoordinator implements AutoCloseable {
         });
   }
 
-  private void addToManager(
+  // package protected for tracker recovery
+  void addToManager(
       Broker node,
       List<BrokerWrapper> candidates,
       SubscriptionTracker tracker,
@@ -452,6 +456,9 @@ final class ConsumersCoordinator implements AutoCloseable {
         new AtomicReference<>(SubscriptionState.OPENING);
     private final ConsumerFlowStrategy flowStrategy;
     private final Lock subscriptionTrackerLock = new ReentrantLock();
+    // Recovery tracking
+    private final ConsumersCoordinator coordinator;
+    private final AtomicInteger recoveryAttempts = new AtomicInteger(0);
 
     private SubscriptionTracker(
         long id,
@@ -463,7 +470,8 @@ final class ConsumersCoordinator implements AutoCloseable {
         Runnable trackingClosingCallback,
         MessageHandler messageHandler,
         Map<String, String> subscriptionProperties,
-        ConsumerFlowStrategy flowStrategy) {
+        ConsumerFlowStrategy flowStrategy,
+        ConsumersCoordinator coordinator) {
       this.id = id;
       this.consumer = consumer;
       this.stream = stream;
@@ -473,6 +481,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       this.trackingClosingCallback = trackingClosingCallback;
       this.messageHandler = messageHandler;
       this.flowStrategy = flowStrategy;
+      this.coordinator = coordinator;
       if (this.offsetTrackingReference == null) {
         this.subscriptionProperties = subscriptionProperties;
       } else {
@@ -554,6 +563,99 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
 
     /**
+     * Attempts to recover this subscription by finding candidate nodes and re-subscribing. This is
+     * a single-attempt, non-blocking operation that schedules retries on failure.
+     */
+    void tryRecover() {
+      if (this.state.get() != SubscriptionState.RECOVERING) {
+        LOGGER.debug("Tracker {} not in RECOVERING state, skipping recovery attempt", this.label());
+        return;
+      }
+
+      if (!this.consumer.isOpen()) {
+        LOGGER.debug("Tracker {} consumer is closed, stopping recovery", this.label());
+        this.state.set(SubscriptionState.CLOSED);
+        return;
+      }
+
+      int attemptNumber = this.recoveryAttempts.incrementAndGet();
+      LOGGER.debug("Tracker {} recovery attempt #{}", this.label(), attemptNumber);
+
+      try {
+        // Find candidate nodes for this stream
+        List<BrokerWrapper> candidates =
+            coordinator.findCandidateNodes(this.stream, coordinator.forceReplica);
+        if (candidates == null || candidates.isEmpty()) {
+          LOGGER.debug("Tracker {} no candidates found for stream {}", this.label(), this.stream);
+          scheduleNextRecoveryAttempt();
+          return;
+        }
+
+        // Pick a broker
+        Broker broker = pickBroker(coordinator.brokerPicker, candidates);
+        if (broker == null) {
+          LOGGER.debug("Tracker {} no broker selected from candidates", this.label());
+          scheduleNextRecoveryAttempt();
+          return;
+        }
+
+        // Determine offset specification for recovery
+        OffsetSpecification offsetSpecification;
+        if (this.hasReceivedSomething) {
+          offsetSpecification = OffsetSpecification.offset(this.offset);
+        } else {
+          offsetSpecification = this.initialOffsetSpecification;
+        }
+
+        LOGGER.debug(
+            "Tracker {} attempting recovery to broker {}, offset: {}",
+            this.label(),
+            broker,
+            offsetSpecification);
+
+        // Attempt to add to a manager (this will create subscription)
+        coordinator.addToManager(broker, candidates, this, offsetSpecification, false);
+
+        // If we get here, recovery succeeded
+        this.recoveryAttempts.set(0);
+        if (this.state.compareAndSet(SubscriptionState.RECOVERING, SubscriptionState.ACTIVE)) {
+          LOGGER.debug("Tracker {} recovery successful", this.label());
+        }
+
+      } catch (StreamDoesNotExistException e) {
+        LOGGER.debug(
+            "Tracker {} stream {} no longer exists, stopping recovery", this.label(), this.stream);
+        try {
+          this.consumer.closeAfterStreamDeletion();
+        } catch (Exception ex) {
+          LOGGER.debug("Error while closing consumer after stream deletion: {}", ex.getMessage());
+        }
+        this.state.set(SubscriptionState.CLOSED);
+
+      } catch (Exception e) {
+        LOGGER.debug("Tracker {} recovery attempt failed: {}", this.label(), e.getMessage());
+        scheduleNextRecoveryAttempt();
+      }
+    }
+
+    /** Schedules the next recovery attempt using exponential backoff. */
+    private void scheduleNextRecoveryAttempt() {
+      if (this.state.get() != SubscriptionState.RECOVERING) {
+        return; // Recovery cancelled
+      }
+
+      BackOffDelayPolicy delayPolicy = coordinator.recoveryBackOffDelayPolicy();
+      Duration delay = delayPolicy.delay(this.recoveryAttempts.get() - 1);
+
+      LOGGER.debug("Tracker {} scheduling next recovery attempt in {}", this.label(), delay);
+
+      coordinator
+          .environment
+          .scheduledExecutorService()
+          .schedule(this::tryRecover, delay.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
+    /**
      * Handles disconnection events. Uses CAS to transition to RECOVERING state and schedules
      * recovery if not already in progress.
      */
@@ -562,8 +664,8 @@ final class ConsumersCoordinator implements AutoCloseable {
         LOGGER.debug(
             "Tracker {} notified of disconnection, transitioning to RECOVERING", this.label());
         this.markRecovering();
-        // TODO Phase 3: Submit recovery task to executor
-        // For now, this just marks the state transition
+        // Schedule immediate recovery attempt
+        coordinator.environment.scheduledExecutorService().execute(this::tryRecover);
       } else {
         LOGGER.debug(
             "Tracker {} disconnection notification ignored, current state: {}",
@@ -581,8 +683,8 @@ final class ConsumersCoordinator implements AutoCloseable {
         LOGGER.debug(
             "Tracker {} notified of topology change, transitioning to RECOVERING", this.label());
         this.markRecovering();
-        // TODO Phase 3: Submit recovery task to executor
-        // For now, this just marks the state transition
+        // Schedule immediate recovery attempt
+        coordinator.environment.scheduledExecutorService().execute(this::tryRecover);
       } else {
         LOGGER.debug(
             "Tracker {} topology change notification ignored, current state: {}",
@@ -930,7 +1032,13 @@ final class ConsumersCoordinator implements AutoCloseable {
                   consumersClosingCallback.run();
                 } else {
                   for (SubscriptionTracker affectedSubscription : subscriptions) {
-                    maybeRecoverSubscription(candidates, affectedSubscription);
+                    // Trackers now handle their own recovery - just trigger the notification
+                    if (affectedSubscription.state() == SubscriptionState.RECOVERING) {
+                      // Recovery should have been triggered already, but schedule it just in case
+                      environment
+                          .scheduledExecutorService()
+                          .execute(affectedSubscription::tryRecover);
+                    }
                   }
                   if (maybeCloseClient) {
                     this.closeIfEmpty();
