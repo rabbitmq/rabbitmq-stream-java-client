@@ -1031,6 +1031,12 @@ final class ConsumersCoordinator implements AutoCloseable {
                   "Not re-assigning consumer '{}' because of '{}'",
                   tracker.label(),
                   e.getMessage());
+              try {
+                tracker.consumer.closeAfterStreamDeletion();
+              } catch (Exception ex) {
+                LOGGER.debug("Error while closing consumer: {}", ex.getMessage());
+              }
+              tracker.state(SubscriptionState.CLOSED);
               reassignmentCompleted = true;
             }
           }
@@ -1042,6 +1048,12 @@ final class ConsumersCoordinator implements AutoCloseable {
               e);
           LOGGER.debug(
               "Not re-assigning consumer '{}' because of '{}'", tracker.label(), e.getMessage());
+          try {
+            tracker.consumer.closeAfterStreamDeletion();
+          } catch (Exception ex) {
+            LOGGER.debug("Error while closing consumer: {}", ex.getMessage());
+          }
+          tracker.state(SubscriptionState.CLOSED);
           reassignmentCompleted = true;
         }
       }
