@@ -1389,8 +1389,9 @@ public class ConsumersCoordinatorTest {
         Collections.emptyMap(),
         flowStrategy());
 
-    // no more client creation
-    verify(clientFactory, times(2)).client(any());
+    // manager (and client/connection) closed eagerly during recovery
+    // so a new one is created
+    verify(clientFactory, times(3)).client(any());
     verify(client, times(subscriptionCount + ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT + 1))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
 

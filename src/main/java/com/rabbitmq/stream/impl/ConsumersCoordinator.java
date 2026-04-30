@@ -65,7 +65,6 @@ import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -512,22 +511,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     return brokers;
   }
 
-  private Callable<List<BrokerWrapper>> findCandidateNodes(String stream) {
-    AtomicInteger attemptNumber = new AtomicInteger();
-    return () -> {
-      boolean mustUseReplica;
-      if (forceReplica) {
-        mustUseReplica =
-            attemptNumber.incrementAndGet() <= MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER;
-      } else {
-        mustUseReplica = false;
-      }
-      LOGGER.debug(
-          "Looking for broker(s) for stream {}, forcing replica {}", stream, mustUseReplica);
-      return findCandidateNodes(stream, mustUseReplica);
-    };
-  }
-
   public void close() {
     Iterator<ClientSubscriptionsManager> iterator = this.managers.iterator();
     while (iterator.hasNext()) {
@@ -788,9 +771,12 @@ final class ConsumersCoordinator implements AutoCloseable {
       LOGGER.debug("Tracker {} recovery attempt #{}", this.label(), attemptNumber);
 
       try {
+        boolean mustUseReplica =
+            coordinator.forceReplica
+                && attemptNumber <= ConsumersCoordinator.MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER;
         // Find candidate nodes for this stream
         List<BrokerWrapper> candidates =
-            coordinator.findCandidateNodes(this.stream, coordinator.forceReplica);
+            coordinator.findCandidateNodes(this.stream, mustUseReplica);
         if (candidates == null || candidates.isEmpty()) {
           LOGGER.debug("Tracker {} no candidates found for stream {}", this.label(), this.stream);
           scheduleNextRecoveryAttempt(recoveryType);
