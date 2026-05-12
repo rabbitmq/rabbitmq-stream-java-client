@@ -1174,6 +1174,16 @@ final class ConsumersCoordinator implements AutoCloseable {
                   "Subscribe request for consumer %d on stream '%s'",
                   tracker.consumer.id(),
                   tracker.stream);
+          if (subscribeResponse == null) {
+            // The subscribe call returned no response: the connection was torn down
+            // between the request being written and the response being read, or the
+            // stream was deleted concurrently.
+            if (!client.isOpen()) {
+              throw new ConnectionStreamException(
+                  "Connection closed during subscribe on stream '" + tracker.stream + "'");
+            }
+            throw new StreamDoesNotExistException(tracker.stream);
+          }
           if (!subscribeResponse.isOk()) {
             String message =
                 "Subscription to stream "
