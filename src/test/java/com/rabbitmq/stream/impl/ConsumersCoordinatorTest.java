@@ -431,6 +431,34 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
+  void subscribeShouldThrowStreamExceptionWhenClientSubscribeReturnsNull() {
+    when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(null);
+
+    assertThatThrownBy(
+            () ->
+                coordinator.subscribe(
+                    consumer,
+                    "stream",
+                    OffsetSpecification.first(),
+                    null,
+                    NO_OP_SUBSCRIPTION_LISTENER,
+                    NO_OP_TRACKING_CLOSING_CALLBACK,
+                    (offset, message) -> {},
+                    Collections.emptyMap(),
+                    flowStrategy()))
+        .isInstanceOf(StreamException.class);
+    assertThat(MonitoringTestUtils.extract(coordinator).isEmpty()).isTrue();
+  }
+
+  @Test
   void subscribeShouldThrowExceptionWhenMetadataResponseIsNotOk() {
     when(locator.metadata("stream"))
         .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_ACCESS_REFUSED));
