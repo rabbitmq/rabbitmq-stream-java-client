@@ -219,6 +219,16 @@ include::{test-examples}/SuperStreamUsage.java[tag=producer-custom-routing-strat
 Deduplication for a super stream producer works the same way as with a <<api.adoc#outbound-message-deduplication, single stream producer>>.
 The publishing ID values are spread across the streams, but this does not affect the mechanism.
 
+For a named super stream producer, publishing IDs are interpreted as a single sequence shared across all partitions of the super stream.
+
+Because partitions can advance at different rates, `Producer#getLastPublishingId()` for a super stream returns the smallest last publishing ID observed across its partitions.
+This is intentional: after a restart, resuming from `getLastPublishingId() + 1` is expected to replay the same logical message sequence with the same routing strategy.
+Partitions that already stored some of these publishing IDs will filter them out through deduplication.
+
+In other words, this mechanism is designed for replaying the same sequence after restart, not for treating each partition as having an independent resume cursor.
+
+If an application needs partition-specific resume positions, it must track them separately at the application level.
+
 ==== Consuming From a Super Stream
 
 A super stream consumer is a composite consumer: it looks up the super stream partitions and creates a consumer for each of them.
