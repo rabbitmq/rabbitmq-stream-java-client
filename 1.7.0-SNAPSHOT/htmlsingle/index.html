@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.7.0-SNAPSHOT</span>
-<br><span id="revremark">(1026387)</span>
+<br><span id="revremark">(0b2c226)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -3987,6 +3987,20 @@ Producer producer = environment.producerBuilder()
 <p>Deduplication for a super stream producer works the same way as with a <a href="#outbound-message-deduplication">single stream producer</a>.
 The publishing ID values are spread across the streams, but this does not affect the mechanism.</p>
 </div>
+<div class="paragraph">
+<p>For a named super stream producer, publishing IDs are interpreted as a single sequence shared across all partitions of the super stream.</p>
+</div>
+<div class="paragraph">
+<p>Because partitions can advance at different rates, <code>Producer#getLastPublishingId()</code> for a super stream returns the smallest last publishing ID observed across its partitions.
+This is intentional: after a restart, resuming from <code>getLastPublishingId() + 1</code> is expected to replay the same logical message sequence with the same routing strategy.
+Partitions that already stored some of these publishing IDs will filter them out through deduplication.</p>
+</div>
+<div class="paragraph">
+<p>In other words, this mechanism is designed for replaying the same sequence after restart, not for treating each partition as having an independent resume cursor.</p>
+</div>
+<div class="paragraph">
+<p>If an application needs partition-specific resume positions, it must track them separately at the application level.</p>
+</div>
 </div>
 </div>
 <div class="sect3">
@@ -5133,7 +5147,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.7.0-SNAPSHOT<br>
-Last updated 2026-05-18 07:33:04 UTC
+Last updated 2026-05-18 08:00:42 UTC
 </div>
 </div>
 </body>
