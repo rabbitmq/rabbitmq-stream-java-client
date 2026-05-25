@@ -57,20 +57,10 @@ import org.slf4j.LoggerFactory;
 
 final class StreamConsumer extends ResourceBase implements Consumer {
 
-  private static final AtomicLong ID_SEQUENCE = new AtomicLong(0);
   static final String COMPONENT_SUBSCRIPTION = "subscription";
   static final String COMPONENT_TRACKING = "tracking";
-
+  private static final AtomicLong ID_SEQUENCE = new AtomicLong(0);
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamConsumer.class);
-
-  private static String[] componentIds(TrackingConfiguration trackingConfiguration) {
-    if (trackingConfiguration.enabled()) {
-      return new String[] {COMPONENT_SUBSCRIPTION, COMPONENT_TRACKING};
-    } else {
-      return new String[] {COMPONENT_SUBSCRIPTION};
-    }
-  }
-
   private final long id;
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final String name;
@@ -79,15 +69,15 @@ final class StreamConsumer extends ResourceBase implements Consumer {
   private final LongConsumer trackingCallback;
   private final Runnable initCallback;
   private final ConsumerUpdateListener consumerUpdateListener;
+  private final AtomicBoolean nothingStoredYet = new AtomicBoolean(true);
+  private final boolean sac;
+  private final OffsetSpecification initialOffsetSpecification;
+  private final Lock lock = new ReentrantLock();
   private volatile Runnable closingCallback;
   private volatile Client trackingClient;
   private volatile Client subscriptionClient;
   private volatile long lastRequestedStoredOffset = 0;
-  private final AtomicBoolean nothingStoredYet = new AtomicBoolean(true);
   private volatile boolean sacActive;
-  private final boolean sac;
-  private final OffsetSpecification initialOffsetSpecification;
-  private final Lock lock = new ReentrantLock();
 
   StreamConsumer(
       String stream,
@@ -277,6 +267,14 @@ final class StreamConsumer extends ResourceBase implements Consumer {
     }
   }
 
+  private static String[] componentIds(TrackingConfiguration trackingConfiguration) {
+    if (trackingConfiguration.enabled()) {
+      return new String[] {COMPONENT_SUBSCRIPTION, COMPONENT_TRACKING};
+    } else {
+      return new String[] {COMPONENT_SUBSCRIPTION};
+    }
+  }
+
   static OffsetSpecification getStoredOffset(
       StreamConsumer consumer, StreamEnvironment environment, OffsetSpecification fallback) {
     OffsetSpecification result = null;
@@ -415,7 +413,16 @@ final class StreamConsumer extends ResourceBase implements Consumer {
       result = this.consumerUpdateListener.update(context);
       LOGGER.debug("Consumer update listener returned {}", result);
     } catch (Exception e) {
-      LOGGER.warn("Error in consumer update listener", e);
+      Client trackingClient = this.trackingClient;
+      Client subClient = this.subscriptionClient;
+      if (!this.isOpen()
+          || (trackingClient != null && !trackingClient.isOpen())
+          || (subClient != null && !subClient.isOpen())) {
+        // the connections are recovering or even closing, we avoid noise in logs
+        LOGGER.info("Error in consumer update listener: {}", e.getMessage());
+      } else {
+        LOGGER.warn("Error in consumer update listener", e);
+      }
     }
 
     // TODO pause/unpause offset tracking strategy
@@ -423,37 +430,6 @@ final class StreamConsumer extends ResourceBase implements Consumer {
     // pausing/unpausing them would save some resources, but makes the code more complicated
 
     return result;
-  }
-
-  private static class DefaultConsumerUpdateContext implements ConsumerUpdateListener.Context {
-
-    private final StreamConsumer consumer;
-    private final boolean active;
-
-    private DefaultConsumerUpdateContext(StreamConsumer consumer, boolean active) {
-      this.consumer = consumer;
-      this.active = active;
-    }
-
-    @Override
-    public Consumer consumer() {
-      return this.consumer;
-    }
-
-    @Override
-    public String stream() {
-      return this.consumer.stream;
-    }
-
-    @Override
-    public boolean isActive() {
-      return this.active;
-    }
-
-    @Override
-    public String toString() {
-      return "DefaultConsumerUpdateContext{" + "consumer=" + consumer + ", active=" + active + '}';
-    }
   }
 
   boolean isSac() {
@@ -633,6 +609,37 @@ final class StreamConsumer extends ResourceBase implements Consumer {
     if (state() == CLOSED) {
       // will throw the appropriate exception
       checkOpen();
+    }
+  }
+
+  private static class DefaultConsumerUpdateContext implements ConsumerUpdateListener.Context {
+
+    private final StreamConsumer consumer;
+    private final boolean active;
+
+    private DefaultConsumerUpdateContext(StreamConsumer consumer, boolean active) {
+      this.consumer = consumer;
+      this.active = active;
+    }
+
+    @Override
+    public Consumer consumer() {
+      return this.consumer;
+    }
+
+    @Override
+    public String stream() {
+      return this.consumer.stream;
+    }
+
+    @Override
+    public boolean isActive() {
+      return this.active;
+    }
+
+    @Override
+    public String toString() {
+      return "DefaultConsumerUpdateContext{" + "consumer=" + consumer + ", active=" + active + '}';
     }
   }
 }
