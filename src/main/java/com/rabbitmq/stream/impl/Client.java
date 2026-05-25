@@ -115,7 +115,6 @@ import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -2578,6 +2577,7 @@ public class Client implements AutoCloseable {
   }
 
   public static class ClientParameters {
+    // IMPORTANT: When adding new fields, make sure to update the copy constructor method below!
 
     private final Map<String, String> clientProperties = new ConcurrentHashMap<>();
     EventLoopGroup eventLoopGroup;
@@ -2621,6 +2621,44 @@ public class Client implements AutoCloseable {
     private ExecutorServiceFactory dispatchingExecutorServiceFactory;
     // for other server frames
     private ExecutorServiceFactory executorServiceFactory;
+
+    public ClientParameters() {}
+
+    public ClientParameters(ClientParameters other) {
+      // Copy clientProperties map
+      this.clientProperties.putAll(other.clientProperties);
+
+      // Copy all other fields
+      this.eventLoopGroup = other.eventLoopGroup;
+      this.codec = other.codec;
+      this.host = other.host;
+      this.port = other.port;
+      this.compressionCodecFactory = other.compressionCodecFactory;
+      this.virtualHost = other.virtualHost;
+      this.requestedHeartbeat = other.requestedHeartbeat;
+      this.requestedMaxFrameSize = other.requestedMaxFrameSize;
+      this.publishConfirmListener = other.publishConfirmListener;
+      this.publishErrorListener = other.publishErrorListener;
+      this.chunkListener = other.chunkListener;
+      this.messageListener = other.messageListener;
+      this.messageIgnoredListener = other.messageIgnoredListener;
+      this.metadataListener = other.metadataListener;
+      this.creditNotification = other.creditNotification;
+      this.consumerUpdateListener = other.consumerUpdateListener;
+      this.shutdownListener = other.shutdownListener;
+      this.saslConfiguration = other.saslConfiguration;
+      this.credentialsProvider = other.credentialsProvider;
+      this.credentialsManager = other.credentialsManager;
+      this.chunkChecksum = other.chunkChecksum;
+      this.metricsCollector = other.metricsCollector;
+      this.sslContext = other.sslContext;
+      this.byteBufAllocator = other.byteBufAllocator;
+      this.rpcTimeout = other.rpcTimeout;
+      this.channelCustomizer = other.channelCustomizer;
+      this.bootstrapCustomizer = other.bootstrapCustomizer;
+      this.dispatchingExecutorServiceFactory = other.dispatchingExecutorServiceFactory;
+      this.executorServiceFactory = other.executorServiceFactory;
+    }
 
     public ClientParameters host(String host) {
       this.host = host;
@@ -2831,20 +2869,7 @@ public class Client implements AutoCloseable {
     }
 
     public ClientParameters duplicate() {
-      ClientParameters duplicate = new ClientParameters();
-      for (Field field : ClientParameters.class.getDeclaredFields()) {
-        field.setAccessible(true);
-        try {
-          Object value = field.get(this);
-          if (value instanceof Map) {
-            value = new ConcurrentHashMap<>((Map<?, ?>) value);
-          }
-          field.set(duplicate, value);
-        } catch (IllegalAccessException e) {
-          throw new StreamException("Error while duplicating client parameters", e);
-        }
-      }
-      return duplicate;
+      return new ClientParameters(this);
     }
   }
 

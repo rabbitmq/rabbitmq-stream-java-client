@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -25,11 +25,8 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Resource;
-import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.SubscriptionListener;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -62,6 +59,31 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
   public StreamConsumerBuilder(StreamEnvironment environment) {
     this.environment = environment;
+  }
+
+  public StreamConsumerBuilder(StreamConsumerBuilder other) {
+    // Copy environment reference
+    this.environment = other.environment;
+
+    // Copy subscriptionProperties map
+    this.subscriptionProperties.putAll(other.subscriptionProperties);
+
+    // Copy all other fields
+    this.stream = other.stream;
+    this.superStream = other.superStream;
+    this.offsetSpecification = other.offsetSpecification;
+    this.messageHandler = other.messageHandler;
+    this.name = other.name;
+    this.autoTrackingStrategy = other.autoTrackingStrategy;
+    this.manualTrackingStrategy = other.manualTrackingStrategy;
+    this.noTrackingStrategy = other.noTrackingStrategy;
+    this.lazyInit = other.lazyInit;
+    this.subscriptionListener = other.subscriptionListener;
+    // Note: flowConfiguration is initialized in field declaration, copy its strategy
+    this.flowConfiguration.strategy(other.flowConfiguration.getStrategy());
+    this.consumerUpdateListener = other.consumerUpdateListener;
+    this.filterConfiguration = other.filterConfiguration;
+    this.listeners.addAll(other.listeners);
   }
 
   @Override
@@ -276,19 +298,7 @@ class StreamConsumerBuilder implements ConsumerBuilder {
   }
 
   StreamConsumerBuilder duplicate() {
-    StreamConsumerBuilder duplicate = new StreamConsumerBuilder(this.environment);
-    for (Field field : StreamConsumerBuilder.class.getDeclaredFields()) {
-      if (Modifier.isStatic(field.getModifiers())) {
-        continue;
-      }
-      field.setAccessible(true);
-      try {
-        field.set(duplicate, field.get(this));
-      } catch (IllegalAccessException e) {
-        throw new StreamException("Error while duplicating stream producer builder", e);
-      }
-    }
-    return duplicate;
+    return new StreamConsumerBuilder(this);
   }
 
   static class TrackingConfiguration {
@@ -475,6 +485,10 @@ class StreamConsumerBuilder implements ConsumerBuilder {
     @Override
     public ConsumerBuilder builder() {
       return this.consumerBuilder;
+    }
+
+    private ConsumerFlowStrategy getStrategy() {
+      return this.strategy;
     }
   }
 
