@@ -115,7 +115,6 @@ import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -2832,18 +2831,41 @@ public class Client implements AutoCloseable {
 
     public ClientParameters duplicate() {
       ClientParameters duplicate = new ClientParameters();
-      for (Field field : ClientParameters.class.getDeclaredFields()) {
-        field.setAccessible(true);
-        try {
-          Object value = field.get(this);
-          if (value instanceof Map) {
-            value = new ConcurrentHashMap<>((Map<?, ?>) value);
-          }
-          field.set(duplicate, value);
-        } catch (IllegalAccessException e) {
-          throw new StreamException("Error while duplicating client parameters", e);
-        }
-      }
+
+      // Copy clientProperties map
+      duplicate.clientProperties.putAll(this.clientProperties);
+
+      // Copy all other fields
+      duplicate.eventLoopGroup = this.eventLoopGroup;
+      duplicate.codec = this.codec;
+      duplicate.host = this.host;
+      duplicate.port = this.port;
+      duplicate.compressionCodecFactory = this.compressionCodecFactory;
+      duplicate.virtualHost = this.virtualHost;
+      duplicate.requestedHeartbeat = this.requestedHeartbeat;
+      duplicate.requestedMaxFrameSize = this.requestedMaxFrameSize;
+      duplicate.publishConfirmListener = this.publishConfirmListener;
+      duplicate.publishErrorListener = this.publishErrorListener;
+      duplicate.chunkListener = this.chunkListener;
+      duplicate.messageListener = this.messageListener;
+      duplicate.messageIgnoredListener = this.messageIgnoredListener;
+      duplicate.metadataListener = this.metadataListener;
+      duplicate.creditNotification = this.creditNotification;
+      duplicate.consumerUpdateListener = this.consumerUpdateListener;
+      duplicate.shutdownListener = this.shutdownListener;
+      duplicate.saslConfiguration = this.saslConfiguration;
+      duplicate.credentialsProvider = this.credentialsProvider;
+      duplicate.credentialsManager = this.credentialsManager;
+      duplicate.chunkChecksum = this.chunkChecksum;
+      duplicate.metricsCollector = this.metricsCollector;
+      duplicate.sslContext = this.sslContext;
+      duplicate.byteBufAllocator = this.byteBufAllocator;
+      duplicate.rpcTimeout = this.rpcTimeout;
+      duplicate.channelCustomizer = this.channelCustomizer;
+      duplicate.bootstrapCustomizer = this.bootstrapCustomizer;
+      duplicate.dispatchingExecutorServiceFactory = this.dispatchingExecutorServiceFactory;
+      duplicate.executorServiceFactory = this.executorServiceFactory;
+
       return duplicate;
     }
   }

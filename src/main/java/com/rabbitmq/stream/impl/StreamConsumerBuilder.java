@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -25,11 +25,8 @@ import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Resource;
-import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.SubscriptionListener;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -277,17 +274,27 @@ class StreamConsumerBuilder implements ConsumerBuilder {
 
   StreamConsumerBuilder duplicate() {
     StreamConsumerBuilder duplicate = new StreamConsumerBuilder(this.environment);
-    for (Field field : StreamConsumerBuilder.class.getDeclaredFields()) {
-      if (Modifier.isStatic(field.getModifiers())) {
-        continue;
-      }
-      field.setAccessible(true);
-      try {
-        field.set(duplicate, field.get(this));
-      } catch (IllegalAccessException e) {
-        throw new StreamException("Error while duplicating stream producer builder", e);
-      }
-    }
+
+    // Copy subscriptionProperties map
+    duplicate.subscriptionProperties.putAll(this.subscriptionProperties);
+
+    // Copy all other fields
+    duplicate.stream = this.stream;
+    duplicate.superStream = this.superStream;
+    duplicate.offsetSpecification = this.offsetSpecification;
+    duplicate.messageHandler = this.messageHandler;
+    duplicate.name = this.name;
+    duplicate.autoTrackingStrategy = this.autoTrackingStrategy;
+    duplicate.manualTrackingStrategy = this.manualTrackingStrategy;
+    duplicate.noTrackingStrategy = this.noTrackingStrategy;
+    duplicate.lazyInit = this.lazyInit;
+    duplicate.subscriptionListener = this.subscriptionListener;
+    // Note: flowConfiguration and filterConfiguration are final fields initialized in constructor
+    // and don't need explicit copying since they are instance-specific
+    duplicate.consumerUpdateListener = this.consumerUpdateListener;
+    // Copy listeners list
+    duplicate.listeners.addAll(this.listeners);
+
     return duplicate;
   }
 
