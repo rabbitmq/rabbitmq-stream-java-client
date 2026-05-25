@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
+// Copyright (c) 2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,35 +14,17 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.rabbitmq.stream.impl.Client.ClientParameters;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import org.junit.jupiter.api.Test;
 
-public class ClientParametersTest {
-
-  @Test
-  void duplicate() {
-    Client.ClientParameters clientParameters1 =
-        new Client.ClientParameters().host("rabbitmq").port(5556);
-    clientParameters1.clientProperty("connection_name", "producer");
-    ClientParameters clientParameters2 = clientParameters1.duplicate();
-    assertThat(clientParameters2.host()).isEqualTo("rabbitmq");
-    assertThat(clientParameters2.port()).isEqualTo(5556);
-
-    // same as original
-    assertThat(clientParameters2.clientProperties()).containsEntry("connection_name", "producer");
-    // changing the copy should not change the original
-    clientParameters2.clientProperty("connection_name", "consumer");
-    assertThat(clientParameters1.clientProperties()).containsEntry("connection_name", "producer");
-  }
+public class StreamConsumerBuilderTest {
 
   @Test
   void duplicateMethodHandlesAllFields() {
-    Field[] allFields = ClientParameters.class.getDeclaredFields();
+    Field[] allFields = StreamConsumerBuilder.class.getDeclaredFields();
     int nonStaticFields = 0;
     for (Field field : allFields) {
       if (!Modifier.isStatic(field.getModifiers())) {
@@ -51,7 +33,7 @@ public class ClientParametersTest {
     }
 
     assertEquals(
-        30,
+        16,
         nonStaticFields,
         "If this fails, update the copy constructor method to handle the new field(s)");
   }
