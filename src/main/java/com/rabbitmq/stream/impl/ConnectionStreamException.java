@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -18,11 +18,11 @@ import com.rabbitmq.stream.StreamException;
 
 class ConnectionStreamException extends StreamException {
 
-  public ConnectionStreamException(String message) {
+  ConnectionStreamException(String message) {
     super(message);
   }
 
-  public ConnectionStreamException(String message, Throwable cause) {
+  ConnectionStreamException(String message, Throwable cause) {
     super(message, cause);
   }
 }

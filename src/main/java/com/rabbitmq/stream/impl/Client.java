@@ -665,8 +665,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<SaslAuthenticateResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -690,13 +689,13 @@ public class Client implements AutoCloseable {
       OutstandingRequest<OpenResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      if (!request.response.get().isOk()) {
+      OpenResponse response = request.blockAndGet();
+      if (!response.isOk()) {
         throw new StreamException(
             "Unexpected response code when connecting to virtual host: "
-                + formatConstant(request.response.get().getResponseCode()));
+                + formatConstant(response.getResponseCode()));
       }
-      return request.response.get().connectionProperties;
+      return response.connectionProperties;
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -732,14 +731,13 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      if (!request.response.get().isOk()) {
+      Response response = request.blockAndGet();
+      if (!response.isOk()) {
         LOGGER.warn(
             "Unexpected response code when closing: {}",
-            formatConstant(request.response.get().getResponseCode()));
+            formatConstant(response.getResponseCode()));
         throw new StreamException(
-            "Unexpected response code when closing: "
-                + formatConstant(request.response.get().getResponseCode()));
+            "Unexpected response code when closing: " + formatConstant(response.getResponseCode()));
       }
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
@@ -762,8 +760,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -792,8 +789,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -843,8 +839,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -869,8 +864,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -953,8 +947,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -984,8 +977,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Map<String, StreamMetadata>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1023,8 +1015,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1048,8 +1039,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1386,8 +1376,7 @@ public class Client implements AutoCloseable {
             new SubscriptionOffset(subscriptionId, offsetSpecification.getOffset()));
       }
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1443,8 +1432,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<QueryOffsetResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1522,8 +1510,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<ResolveOffsetSpecResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1560,8 +1547,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<QueryPublisherSequenceResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      QueryPublisherSequenceResponse response = request.response.get();
+      QueryPublisherSequenceResponse response = request.blockAndGet();
       if (!response.isOk()) {
         LOGGER.info(
             "Query publisher sequence failed with code {}",
@@ -1594,8 +1580,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1762,8 +1747,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1795,8 +1779,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1827,8 +1810,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<List<FrameHandlerInfo>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -1856,8 +1838,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<StreamStatsResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      return request.response.get();
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
@@ -2919,6 +2900,22 @@ public class Client implements AutoCloseable {
 
     void countDown() {
       this.latch.countDown();
+    }
+
+    T blockAndGet() {
+      block();
+      if (response.get() != null) {
+        return response.get();
+      } else {
+        Throwable t = error.get();
+        if (t instanceof RuntimeException) {
+          throw (RuntimeException) t;
+        } else if (t != null) {
+          throw new StreamException(t);
+        } else {
+          throw new StreamException("Error during RPC operation, no response");
+        }
+      }
     }
   }
 
