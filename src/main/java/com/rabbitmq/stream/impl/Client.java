@@ -3142,7 +3142,11 @@ public class Client implements AutoCloseable {
           LOGGER.debug("More than 1 outstanding request: {}", outstandingRequests);
         }
       }
-      LOGGER.warn("Error in stream handler", cause);
+      if (closing.get() || !ctx.channel().isOpen()) {
+        LOGGER.debug("Error in stream handler", cause);
+      } else {
+        LOGGER.warn("Error in stream handler", cause);
+      }
       ctx.close();
     }
   }
