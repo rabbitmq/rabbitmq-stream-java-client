@@ -83,6 +83,7 @@ class SuperStreamConsumer implements Consumer {
             (StreamConsumerBuilder)
                 subConsumerBuilder
                     .autoTrackingStrategy()
+                    .flushInterval(trackingConfiguration.autoFlushInterval())
                     .messageCountBeforeStorage(
                         trackingConfiguration.autoMessageCountBeforeStorage() / partitions.size())
                     .builder();
