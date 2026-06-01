@@ -40,7 +40,6 @@ import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.ProducerUtils.AccumulatedEntity;
 import io.netty.buffer.ByteBuf;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -646,8 +645,7 @@ final class StreamProducer extends ResourceBase implements Producer {
       if (filterValue == null) {
         bb.writeShort(-1);
       } else {
-        bb.writeShort(filterValue.length());
-        bb.writeBytes(filterValue.getBytes(StandardCharsets.UTF_8));
+        Client.writeString(bb, filterValue);
       }
       Codec.EncodedMessage messageToPublish =
           (Codec.EncodedMessage) accumulatedEntity.encodedEntity();
@@ -663,7 +661,7 @@ final class StreamProducer extends ResourceBase implements Producer {
       if (filterValue == null) {
         return 8 + 2 + 4 + message.getSize();
       } else {
-        return 8 + 2 + accumulatedEntity.filterValue().length() + 4 + message.getSize();
+        return 8 + 2 + Client.stringByteSize(filterValue) + 4 + message.getSize();
       }
     }
   }

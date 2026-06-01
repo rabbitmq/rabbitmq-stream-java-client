@@ -44,6 +44,8 @@ import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.Client.StreamParametersBuilder;
 import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
+import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
+import com.rabbitmq.stream.impl.Client.SubscriptionTracker;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
@@ -1324,5 +1326,22 @@ public class ClientTest {
     assertThatThrownBy(() -> client.queryPublisherSequence(refOver256Bytes, stream))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("less than 256 bytes when encoded as UTF-8");
+  }
+
+  @Test
+  void testSubscriptionTrackerState() {
+    SubscriptionTracker tracker = new SubscriptionTracker();
+    byte subId = 42;
+
+    assertThat(tracker.hasOffsets()).isFalse();
+    long offset = tracker.extractInitialOffset(subId);
+    assertThat(offset).isEqualTo(-1);
+
+    tracker.add(new SubscriptionOffset(subId, 500L));
+    assertThat(tracker.hasOffsets()).isTrue();
+
+    offset = tracker.extractInitialOffset(subId);
+    assertThat(offset).isEqualTo(500);
+    assertThat(tracker.hasOffsets()).isFalse();
   }
 }

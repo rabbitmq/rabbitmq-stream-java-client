@@ -92,6 +92,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufOutputStream;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -178,6 +179,9 @@ public class Client implements AutoCloseable {
   static final String NETTY_HANDLER_FRAME_DECODER =
       LengthFieldBasedFrameDecoder.class.getSimpleName();
   static final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
+  private static final String NETTY_HANDLER_FLUSH_CONSOLIDATION =
+      FlushConsolidationHandler.class.getSimpleName();
+  private static final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
   static final Duration DEFAULT_RPC_TIMEOUT = Duration.ofSeconds(10);
   private static final PublishConfirmListener NO_OP_PUBLISH_CONFIRM_LISTENER =
       (publisherId, publishingId) -> {};
@@ -196,7 +200,10 @@ public class Client implements AutoCloseable {
   final Channel channel;
   final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
       new ConcurrentHashMap<>();
+  private final SubscriptionTracker subscriptionTracker = new SubscriptionTracker();
   final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
+  // A flag that mirrors whether the list has any elements
+  private volatile boolean hasSubscriptionOffsets = false;
   // dispatches broker frames, except for delivery frames
   final ExecutorService executorService;
   private final Consumer<ExecutorService> closeExecutorService;
@@ -226,9 +233,6 @@ public class Client implements AutoCloseable {
   private final boolean frameSizeCapped;
   private final EventLoopGroup eventLoopGroup;
   private final Map<String, String> clientProperties;
-  private final String NETTY_HANDLER_FLUSH_CONSOLIDATION =
-      FlushConsolidationHandler.class.getSimpleName();
-  private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
   private final String host;
   private final String clientConnectionName;
   private final int port;
@@ -236,7 +240,7 @@ public class Client implements AutoCloseable {
   private final Map<String, String> connectionProperties;
   private final Duration rpcTimeout;
   private final List<String> saslMechanisms;
-  private AtomicReference<ShutdownReason> shutdownReason = new AtomicReference<>();
+  private final AtomicReference<ShutdownReason> shutdownReason = new AtomicReference<>();
   private final Runnable streamStatsCommandVersionsCheck;
   private final boolean filteringSupported;
   private final Runnable superStreamManagementCommandVersionsCheck;
@@ -342,31 +346,11 @@ public class Client implements AutoCloseable {
         });
 
     this.nettyClosing = Utils.makeIdempotent(this::closeNetty);
-    ChannelFuture f;
     String clientConnectionName = parameters.clientProperties.getOrDefault("connection_name", "");
-    try {
-      LOGGER.debug(
-          "Trying to create stream connection to {}:{}, with client connection name '{}'",
-          parameters.host,
-          parameters.port,
-          clientConnectionName);
-      f = b.connect(parameters.host, parameters.port).sync();
-      this.host = parameters.host;
-      this.port = parameters.port;
-      this.clientConnectionName = clientConnectionName;
-    } catch (Exception e) {
-      String message =
-          format(
-              "Error while creating stream connection to %s:%d", parameters.host, parameters.port);
-      if (e instanceof ConnectTimeoutException) {
-        throw new TimeoutStreamException(message, e);
-      } else if (e instanceof ConnectException) {
-        throw new ConnectionStreamException(message, e);
-      } else {
-        throw new StreamException(message, e);
-      }
-    }
-    this.channel = f.channel();
+    this.host = parameters.host;
+    this.port = parameters.port;
+    this.clientConnectionName = clientConnectionName;
+
     ExecutorServiceFactory executorServiceFactory = parameters.executorServiceFactory;
     if (executorServiceFactory == null) {
       this.closeExecutorService =
@@ -421,6 +405,28 @@ public class Client implements AutoCloseable {
               });
       this.dispatchingExecutorService = dispatchingExecutorServiceFactory.get();
     }
+
+    ChannelFuture f;
+    try {
+      LOGGER.debug(
+          "Trying to create stream connection to {}:{}, with client connection name '{}'",
+          parameters.host,
+          parameters.port,
+          clientConnectionName);
+      f = b.connect(parameters.host, parameters.port).sync();
+    } catch (Exception e) {
+      String message =
+          format(
+              "Error while creating stream connection to %s:%d", parameters.host, parameters.port);
+      if (e instanceof ConnectTimeoutException) {
+        throw new TimeoutStreamException(message, e);
+      } else if (e instanceof ConnectException) {
+        throw new ConnectionStreamException(message, e);
+      } else {
+        throw new StreamException(message, e);
+      }
+    }
+    this.channel = f.channel();
     try {
       this.tuneState =
           new TuneState(
@@ -534,7 +540,7 @@ public class Client implements AutoCloseable {
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
         throws Exception {
-      metricsCollector.writtenBytes(((ByteBuf) msg).capacity());
+      metricsCollector.writtenBytes(((ByteBuf) msg).readableBytes());
       super.write(ctx, msg, promise);
     }
   }
@@ -563,41 +569,52 @@ public class Client implements AutoCloseable {
   }
 
   private int nextCorrelationId() {
-    return this.correlationSequence.getAndIncrement();
+    return this.correlationSequence.getAndIncrement() & 0x7fffffff;
   }
 
-  private Map<String, String> peerProperties() {
-    int clientPropertiesSize = mapSize(this.clientProperties);
-    int length = 2 + 2 + 4 + clientPropertiesSize;
+  private <T> T sendRpc(
+      short command, short version, int length, Consumer<ByteBuf> bodyWriter, String errorContext) {
+    return sendRpc(command, version, length, bodyWriter, errorContext, false);
+  }
+
+  private <T> T sendRpc(
+      short command,
+      short version,
+      int length,
+      Consumer<ByteBuf> bodyWriter,
+      String errorContext,
+      boolean noCheck) {
     int correlationId = nextCorrelationId();
     try {
-      ByteBuf bb = allocateNoCheck(length + 4);
+      ByteBuf bb = noCheck ? allocateNoCheck(length + 4) : allocate(length + 4);
       bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_PEER_PROPERTIES));
-      bb.writeShort(VERSION_1);
+      bb.writeShort(encodeRequestCode(command));
+      bb.writeShort(version);
       bb.writeInt(correlationId);
-      writeMap(bb, this.clientProperties);
-      OutstandingRequest<Map<String, String>> request = outstandingRequest();
-      LOGGER.debug("Peer properties request has correlation ID {}", correlationId);
+      bodyWriter.accept(bb);
+      OutstandingRequest<T> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      request.block();
-      if (request.error() == null) {
-        return request.response.get();
-      } else {
-        if (request.error() instanceof StreamException) {
-          throw (StreamException) request.error();
-        } else {
-          throw new StreamException("Error when establishing stream connection", request.error());
-        }
-      }
+      return request.blockAndGet();
     } catch (StreamException e) {
       this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
       this.handleRpcError(correlationId, e);
-      throw new StreamException("Error while trying to exchange peer properties", e);
+      throw new StreamException(errorContext, e);
     }
+  }
+
+  private Map<String, String> peerProperties() {
+    int clientPropertiesSize = mapSize(this.clientProperties);
+    int length = 2 + 2 + 4 + clientPropertiesSize;
+    return sendRpc(
+        COMMAND_PEER_PROPERTIES,
+        VERSION_1,
+        length,
+        bb -> writeMap(bb, this.clientProperties),
+        "Error while trying to exchange peer properties",
+        true);
   }
 
   void authenticate(CredentialsProvider credentialsProvider) {
@@ -648,59 +665,37 @@ public class Client implements AutoCloseable {
             + stringByteSize(saslMechanism.getName())
             + 4
             + (challengeResponse == null ? 0 : challengeResponse.length);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocateNoCheck(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_SASL_AUTHENTICATE));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, saslMechanism.getName());
-      if (challengeResponse == null) {
-        bb.writeInt(-1);
-      } else {
-        bb.writeInt(challengeResponse.length).writeBytes(challengeResponse);
-      }
-      OutstandingRequest<SaslAuthenticateResponse> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException("Error while trying to authenticate", e);
-    }
+    return sendRpc(
+        COMMAND_SASL_AUTHENTICATE,
+        VERSION_1,
+        length,
+        bb -> {
+          writeString(bb, saslMechanism.getName());
+          if (challengeResponse == null) {
+            bb.writeInt(-1);
+          } else {
+            bb.writeInt(challengeResponse.length).writeBytes(challengeResponse);
+          }
+        },
+        "Error while trying to authenticate",
+        true);
   }
 
   private Map<String, String> open(String virtualHost) {
     int length = 2 + 2 + 4 + 2 + stringByteSize(virtualHost);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_OPEN));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, virtualHost);
-      OutstandingRequest<OpenResponse> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      OpenResponse response = request.blockAndGet();
-      if (!response.isOk()) {
-        throw new StreamException(
-            "Unexpected response code when connecting to virtual host: "
-                + formatConstant(response.getResponseCode()));
-      }
-      return response.connectionProperties;
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException("Error during open command", e);
+    OpenResponse response =
+        sendRpc(
+            COMMAND_OPEN,
+            VERSION_1,
+            length,
+            bb -> writeString(bb, virtualHost),
+            "Error during open command");
+    if (!response.isOk()) {
+      throw new StreamException(
+          "Unexpected response code when connecting to virtual host: "
+              + formatConstant(response.getResponseCode()));
     }
+    return response.connectionProperties;
   }
 
   // for testing
@@ -716,55 +711,33 @@ public class Client implements AutoCloseable {
 
   private void sendClose(short code, String reason) {
     int length = 2 + 2 + 4 + 2 + 2 + stringByteSize(reason);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_CLOSE));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      bb.writeShort(code);
-      writeString(bb, reason);
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      Response response = request.blockAndGet();
-      if (!response.isOk()) {
-        LOGGER.warn(
-            "Unexpected response code when closing: {}",
-            formatConstant(response.getResponseCode()));
-        throw new StreamException(
-            "Unexpected response code when closing: " + formatConstant(response.getResponseCode()));
-      }
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException("Error while closing connection", e);
+    Response response =
+        sendRpc(
+            COMMAND_CLOSE,
+            VERSION_1,
+            length,
+            bb -> {
+              bb.writeShort(code);
+              writeString(bb, reason);
+            },
+            "Error while closing connection");
+    if (!response.isOk()) {
+      LOGGER.warn(
+          "Unexpected response code when closing: {}", formatConstant(response.getResponseCode()));
+      throw new StreamException(
+          "Unexpected response code when closing: " + formatConstant(response.getResponseCode()));
     }
   }
 
   private List<String> getSaslMechanisms() {
     int length = 2 + 2 + 4;
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocateNoCheck(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_SASL_HANDSHAKE));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      OutstandingRequest<List<String>> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException("Error while exchanging SASL mechanisms", e);
-    }
+    return sendRpc(
+        COMMAND_SASL_HANDSHAKE,
+        VERSION_1,
+        length,
+        bb -> {},
+        "Error while exchanging SASL mechanisms",
+        true);
   }
 
   public Response create(String stream) {
@@ -773,26 +746,15 @@ public class Client implements AutoCloseable {
 
   public Response create(String stream, Map<String, String> arguments) {
     int length = 2 + 2 + 4 + 2 + stringByteSize(stream) + mapSize(arguments);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_CREATE_STREAM));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, stream);
-      writeMap(bb, arguments);
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(format("Error while creating stream '%s'", stream), e);
-    }
+    return sendRpc(
+        COMMAND_CREATE_STREAM,
+        VERSION_1,
+        length,
+        bb -> {
+          writeString(bb, stream);
+          writeMap(bb, arguments);
+        },
+        format("Error while creating stream '%s'", stream));
   }
 
   Response createSuperStream(
@@ -810,7 +772,7 @@ public class Client implements AutoCloseable {
           "Partitions and routing keys of a super stream must have "
               + "the same number of elements");
     }
-    arguments = arguments == null ? Collections.emptyMap() : arguments;
+    Map<String, String> argumentsToWrite = arguments == null ? Collections.emptyMap() : arguments;
     int length =
         2
             + 2
@@ -819,57 +781,37 @@ public class Client implements AutoCloseable {
             + stringByteSize(superStream)
             + collectionSize(partitions)
             + collectionSize(bindingKeys)
-            + mapSize(arguments);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_CREATE_SUPER_STREAM));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, superStream);
-      writeCollection(bb, partitions);
-      writeCollection(bb, bindingKeys);
-      writeMap(bb, arguments);
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(format("Error while creating super stream '%s'", superStream), e);
-    }
+            + mapSize(argumentsToWrite);
+    return sendRpc(
+        COMMAND_CREATE_SUPER_STREAM,
+        VERSION_1,
+        length,
+        bb -> {
+          writeString(bb, superStream);
+          writeCollection(bb, partitions);
+          writeCollection(bb, bindingKeys);
+          writeMap(bb, argumentsToWrite);
+        },
+        format("Error while creating super stream '%s'", superStream));
   }
 
   Response deleteSuperStream(String superStream) {
     this.superStreamManagementCommandVersionsCheck.run();
     int length = 2 + 2 + 4 + 2 + stringByteSize(superStream);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_DELETE_SUPER_STREAM));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, superStream);
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(format("Error while deleting stream '%s'", superStream), e);
-    }
+    return sendRpc(
+        COMMAND_DELETE_SUPER_STREAM,
+        VERSION_1,
+        length,
+        bb -> writeString(bb, superStream),
+        format("Error while deleting stream '%s'", superStream));
   }
 
   private static int collectionSize(Collection<String> elements) {
-    return 4 + elements.stream().mapToInt(v -> 2 + stringByteSize(v)).sum();
+    int size = 4;
+    for (String element : elements) {
+      size += 2 + ByteBufUtil.utf8Bytes(element);
+    }
+    return size;
   }
 
   private static int arraySize(String... elements) {
@@ -877,20 +819,22 @@ public class Client implements AutoCloseable {
   }
 
   private static int mapSize(Map<String, String> elements) {
-    return 4
-        + elements.entrySet().stream()
-            .mapToInt(e -> 2 + stringByteSize(e.getKey()) + 2 + stringByteSize(e.getValue()))
-            .sum();
+    int size = 4;
+    for (Map.Entry<String, String> entry : elements.entrySet()) {
+      size +=
+          2 + ByteBufUtil.utf8Bytes(entry.getKey()) + 2 + ByteBufUtil.utf8Bytes(entry.getValue());
+    }
+    return size;
   }
 
-  private static int stringByteSize(String string) {
-    return string.getBytes(CHARSET).length;
+  static int stringByteSize(String string) {
+    return ByteBufUtil.utf8Bytes(string);
   }
 
-  private static void writeString(ByteBuf bb, String string) {
-    byte[] bytes = string.getBytes(CHARSET);
-    bb.writeShort(bytes.length);
-    bb.writeBytes(bytes);
+  static void writeString(ByteBuf bb, String string) {
+    int byteLen = ByteBufUtil.utf8Bytes(string);
+    bb.writeShort(byteLen);
+    ByteBufUtil.writeUtf8(bb, string);
   }
 
   private static void writeCollection(ByteBuf bb, Collection<String> elements) {
@@ -936,25 +880,12 @@ public class Client implements AutoCloseable {
 
   public Response delete(String stream) {
     int length = 2 + 2 + 4 + 2 + stringByteSize(stream);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_DELETE_STREAM));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, stream);
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(format("Error while deleting stream '%s'", stream), e);
-    }
+    return sendRpc(
+        COMMAND_DELETE_STREAM,
+        VERSION_1,
+        length,
+        bb -> writeString(bb, stream),
+        format("Error while deleting stream '%s'", stream));
   }
 
   Map<String, StreamMetadata> metadata(List<String> streams) {
@@ -966,26 +897,12 @@ public class Client implements AutoCloseable {
       throw new IllegalArgumentException("At least one stream must be specified");
     }
     int length = 2 + 2 + 4 + arraySize(streams); // API code, version, correlation ID, array size
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_METADATA));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeArray(bb, streams);
-      OutstandingRequest<Map<String, StreamMetadata>> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format("Error while getting metadata for stream(s) '%s'", join(",", streams)), e);
-    }
+    return sendRpc(
+        COMMAND_METADATA,
+        VERSION_1,
+        length,
+        bb -> writeArray(bb, streams),
+        format("Error while getting metadata for stream(s) '%s'", join(",", streams)));
   }
 
   public Response declarePublisher(byte publisherId, String publisherReference, String stream) {
@@ -998,55 +915,30 @@ public class Client implements AutoCloseable {
           "If specified, publisher reference must be less than 256 bytes when encoded as UTF-8");
     }
     int length = 2 + 2 + 4 + 1 + 2 + publisherReferenceSize + 2 + stringByteSize(stream);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_DECLARE_PUBLISHER));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      bb.writeByte(publisherId);
-      if (publisherReference == null || publisherReference.isEmpty()) {
-        bb.writeShort(0);
-      } else {
-        writeString(bb, publisherReference);
-      }
-      writeString(bb, stream);
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format("Error while declaring publisher for stream '%s'", stream), e);
-    }
+    return sendRpc(
+        COMMAND_DECLARE_PUBLISHER,
+        VERSION_1,
+        length,
+        bb -> {
+          bb.writeByte(publisherId);
+          if (publisherReference == null || publisherReference.isEmpty()) {
+            bb.writeShort(0);
+          } else {
+            writeString(bb, publisherReference);
+          }
+          writeString(bb, stream);
+        },
+        format("Error while declaring publisher for stream '%s'", stream));
   }
 
   public Response deletePublisher(byte publisherId) {
     int length = 2 + 2 + 4 + 1;
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_DELETE_PUBLISHER));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      bb.writeByte(publisherId);
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException("Error while deleting publisher", e);
-    }
+    return sendRpc(
+        COMMAND_DELETE_PUBLISHER,
+        VERSION_1,
+        length,
+        bb -> bb.writeByte(publisherId),
+        "Error while deleting publisher");
   }
 
   public List<Long> publish(byte publisherId, List<Message> messages) {
@@ -1351,38 +1243,40 @@ public class Client implements AutoCloseable {
       propertiesSize = mapSize(properties);
     }
     length += propertiesSize;
-    int correlationId = nextCorrelationId();
+    boolean[] offsetAdded = {false};
     try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_SUBSCRIBE));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      bb.writeByte(subscriptionId);
-      writeString(bb, stream);
-      bb.writeShort(offsetSpecification.getType());
-      if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
-        bb.writeLong(offsetSpecification.getOffset());
+      Response response =
+          sendRpc(
+              COMMAND_SUBSCRIBE,
+              VERSION_1,
+              length,
+              bb -> {
+                bb.writeByte(subscriptionId);
+                writeString(bb, stream);
+                bb.writeShort(offsetSpecification.getType());
+                if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
+                  bb.writeLong(offsetSpecification.getOffset());
+                }
+                bb.writeShort(initialCredits);
+                if (properties != null && !properties.isEmpty()) {
+                  writeMap(bb, properties);
+                }
+                if (offsetSpecification.isOffset()) {
+                  this.addSubscriptionToList(
+                      new SubscriptionOffset(subscriptionId, offsetSpecification.getOffset()));
+                  offsetAdded[0] = true;
+                }
+              },
+              format("Error while trying to subscribe to stream '%s'", stream));
+      // Clean up subscription offset if subscribe failed
+      if (offsetAdded[0] && response.getResponseCode() != RESPONSE_CODE_OK) {
+        this.removeSubscriptionFromList(subscriptionId);
       }
-      bb.writeShort(initialCredits);
-      if (properties != null && !properties.isEmpty()) {
-        writeMap(bb, properties);
-      }
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      if (offsetSpecification.isOffset()) {
-        subscriptionOffsets.add(
-            new SubscriptionOffset(subscriptionId, offsetSpecification.getOffset()));
-      }
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
+      return response;
+    } catch (Exception e) {
+      // Clean up subscription offset on failure
+      this.removeSubscriptionFromList(subscriptionId);
       throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format("Error while trying to subscribe to stream '%s'", stream), e);
     }
   }
 
@@ -1417,29 +1311,15 @@ public class Client implements AutoCloseable {
     }
 
     int length = 2 + 2 + 4 + 2 + stringByteSize(reference) + 2 + stringByteSize(stream);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_QUERY_OFFSET));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, reference);
-      writeString(bb, stream);
-      OutstandingRequest<QueryOffsetResponse> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format(
-              "Error while querying offset for reference '%s' on stream '%s'", reference, stream),
-          e);
-    }
+    return sendRpc(
+        COMMAND_QUERY_OFFSET,
+        VERSION_1,
+        length,
+        bb -> {
+          writeString(bb, reference);
+          writeString(bb, stream);
+        },
+        format("Error while querying offset for reference '%s' on stream '%s'", reference, stream));
   }
 
   /**
@@ -1488,33 +1368,21 @@ public class Client implements AutoCloseable {
     }
     length += propertiesSize;
 
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_RESOLVE_OFFSET_SPEC));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, stream);
-      bb.writeShort(offsetSpecification.getType());
-      if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
-        bb.writeLong(offsetSpecification.getOffset());
-      }
-      if (properties != null && !properties.isEmpty()) {
-        writeMap(bb, properties);
-      }
-      OutstandingRequest<ResolveOffsetSpecResponse> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format("Error while resolving offset spec for stream '%s'", stream), e);
-    }
+    return sendRpc(
+        COMMAND_RESOLVE_OFFSET_SPEC,
+        VERSION_1,
+        length,
+        bb -> {
+          writeString(bb, stream);
+          bb.writeShort(offsetSpecification.getType());
+          if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
+            bb.writeLong(offsetSpecification.getOffset());
+          }
+          if (properties != null && !properties.isEmpty()) {
+            writeMap(bb, properties);
+          }
+        },
+        format("Error while resolving offset spec for stream '%s'", stream));
   }
 
   public long queryPublisherSequence(String publisherReference, String stream) {
@@ -1529,59 +1397,47 @@ public class Client implements AutoCloseable {
     }
 
     int length = 2 + 2 + 4 + 2 + stringByteSize(publisherReference) + 2 + stringByteSize(stream);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_QUERY_PUBLISHER_SEQUENCE));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, publisherReference);
-      writeString(bb, stream);
-      OutstandingRequest<QueryPublisherSequenceResponse> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      QueryPublisherSequenceResponse response = request.blockAndGet();
-      if (!response.isOk()) {
-        LOGGER.info(
-            "Query publisher sequence failed with code {}",
-            formatConstant(response.getResponseCode()));
-      }
-      return response.getSequence();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format(
-              "Error while querying publisher sequence for '%s' on stream '%s'",
-              publisherReference, stream),
-          e);
+    QueryPublisherSequenceResponse response =
+        sendRpc(
+            COMMAND_QUERY_PUBLISHER_SEQUENCE,
+            VERSION_1,
+            length,
+            bb -> {
+              writeString(bb, publisherReference);
+              writeString(bb, stream);
+            },
+            format(
+                "Error while querying publisher sequence for '%s' on stream '%s'",
+                publisherReference, stream));
+    if (!response.isOk()) {
+      LOGGER.info(
+          "Query publisher sequence failed with code {}",
+          formatConstant(response.getResponseCode()));
     }
+    return response.getSequence();
   }
 
   public Response unsubscribe(byte subscriptionId) {
     int length = 2 + 2 + 4 + 1;
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_UNSUBSCRIBE));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      bb.writeByte(subscriptionId);
-      OutstandingRequest<Response> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException("Error while unsubscribing", e);
-    }
+    this.removeSubscriptionFromList(subscriptionId);
+    return sendRpc(
+        COMMAND_UNSUBSCRIBE,
+        VERSION_1,
+        length,
+        bb -> bb.writeByte(subscriptionId),
+        "Error while unsubscribing");
+  }
+
+  private void addSubscriptionToList(SubscriptionOffset sub) {
+    this.subscriptionTracker.add(sub);
+  }
+
+  private void removeSubscriptionFromList(byte subscriptionId) {
+    this.subscriptionTracker.remove(subscriptionId);
+  }
+
+  long extractInitialSubscriptionOffset(byte subscriptionId) {
+    return this.subscriptionTracker.extractInitialOffset(subscriptionId);
   }
 
   public void close() {
@@ -1658,7 +1514,7 @@ public class Client implements AutoCloseable {
   private void maybeShutdownEventLoop() {
     try {
       if (this.eventLoopGroup != null
-          && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
+          && (!this.eventLoopGroup.isShuttingDown() && !this.eventLoopGroup.isShutdown())) {
         LOGGER.debug("Closing Netty event loop group");
         this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
       }
@@ -1727,30 +1583,17 @@ public class Client implements AutoCloseable {
             + stringByteSize(routingKey)
             + 2
             + stringByteSize(superStream); // API code, version, correlation ID, 2 strings
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_ROUTE));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, routingKey);
-      writeString(bb, superStream);
-      OutstandingRequest<List<String>> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format(
-              "Error while querying route for routing key '%s' on super stream '%s'",
-              routingKey, superStream),
-          e);
-    }
+    return sendRpc(
+        COMMAND_ROUTE,
+        VERSION_1,
+        length,
+        bb -> {
+          writeString(bb, routingKey);
+          writeString(bb, superStream);
+        },
+        format(
+            "Error while querying route for routing key '%s' on super stream '%s'",
+            routingKey, superStream));
   }
 
   public List<String> partitions(String superStream) {
@@ -1759,56 +1602,31 @@ public class Client implements AutoCloseable {
     }
     int length =
         2 + 2 + 4 + 2 + stringByteSize(superStream); // API code, version, correlation ID, 1 string
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_PARTITIONS));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, superStream);
-      OutstandingRequest<List<String>> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format("Error while querying partitions for super stream '%s'", superStream), e);
-    }
+    return sendRpc(
+        COMMAND_PARTITIONS,
+        VERSION_1,
+        length,
+        bb -> writeString(bb, superStream),
+        format("Error while querying partitions for super stream '%s'", superStream));
   }
 
   List<FrameHandlerInfo> exchangeCommandVersions() {
     List<FrameHandlerInfo> commandVersions = ServerFrameHandler.commandVersions();
     int length = 2 + 2 + 4 + 4; // API code, version, correlation ID, array size
     length += commandVersions.size() * (2 + 2 + 2);
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_EXCHANGE_COMMAND_VERSIONS));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      bb.writeInt(commandVersions.size());
-      for (FrameHandlerInfo commandVersion : commandVersions) {
-        bb.writeShort(commandVersion.getKey());
-        bb.writeShort(commandVersion.getMinVersion());
-        bb.writeShort(commandVersion.getMaxVersion());
-      }
-      OutstandingRequest<List<FrameHandlerInfo>> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException("Error while exchanging command version", e);
-    }
+    return sendRpc(
+        COMMAND_EXCHANGE_COMMAND_VERSIONS,
+        VERSION_1,
+        length,
+        bb -> {
+          bb.writeInt(commandVersions.size());
+          for (FrameHandlerInfo commandVersion : commandVersions) {
+            bb.writeShort(commandVersion.getKey());
+            bb.writeShort(commandVersion.getMinVersion());
+            bb.writeShort(commandVersion.getMaxVersion());
+          }
+        },
+        "Error while exchanging command version");
   }
 
   public StreamStatsResponse streamStats(String stream) {
@@ -1818,26 +1636,12 @@ public class Client implements AutoCloseable {
     }
     int length =
         2 + 2 + 4 + 2 + stringByteSize(stream); // API code, version, correlation ID, 1 string
-    int correlationId = nextCorrelationId();
-    try {
-      ByteBuf bb = allocate(length + 4);
-      bb.writeInt(length);
-      bb.writeShort(encodeRequestCode(COMMAND_STREAM_STATS));
-      bb.writeShort(VERSION_1);
-      bb.writeInt(correlationId);
-      writeString(bb, stream);
-      OutstandingRequest<StreamStatsResponse> request = outstandingRequest();
-      outstandingRequests.put(correlationId, request);
-      channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
-    } catch (StreamException e) {
-      this.handleRpcError(correlationId, e);
-      throw e;
-    } catch (RuntimeException e) {
-      this.handleRpcError(correlationId, e);
-      throw new StreamException(
-          format("Error while querying statistics for stream '%s'", stream), e);
-    }
+    return sendRpc(
+        COMMAND_STREAM_STATS,
+        VERSION_1,
+        length,
+        bb -> writeString(bb, stream),
+        format("Error while querying statistics for stream '%s'", stream));
   }
 
   public void consumerUpdateResponse(
@@ -2912,15 +2716,15 @@ public class Client implements AutoCloseable {
 
   static final class SubscriptionOffset {
 
-    private final int subscriptionId;
+    private final byte subscriptionId;
     private final long offset;
 
-    SubscriptionOffset(int subscriptionId, long offset) {
+    SubscriptionOffset(byte subscriptionId, long offset) {
       this.subscriptionId = subscriptionId;
       this.offset = offset;
     }
 
-    int subscriptionId() {
+    byte subscriptionId() {
       return subscriptionId;
     }
 
@@ -3038,7 +2842,7 @@ public class Client implements AutoCloseable {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
       ByteBuf m = (ByteBuf) msg;
-      metricsCollector.readBytes(m.capacity() + 4); // 32-bits integer for size not included
+      metricsCollector.readBytes(m.readableBytes() + 4); // 32-bits integer for size not included
       int frameSize = m.readableBytes();
       short commandId = extractResponseCode(m.readShort());
       short version = m.readShort();
@@ -3049,9 +2853,7 @@ public class Client implements AutoCloseable {
         } else {
           LOGGER.debug("Ignoring command {} from server while closing", commandId);
           try {
-            while (m.isReadable()) {
-              m.readByte();
-            }
+            m.skipBytes(m.readableBytes());
           } finally {
             m.release();
           }
@@ -3065,10 +2867,20 @@ public class Client implements AutoCloseable {
       }
 
       if (task != null) {
-        if (commandId == Constants.COMMAND_DELIVER) {
-          dispatchingExecutorService.submit(task);
-        } else {
-          executorService.submit(task);
+        try {
+          if (commandId == Constants.COMMAND_DELIVER) {
+            dispatchingExecutorService.execute(task);
+          } else {
+            executorService.execute(task);
+          }
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+          LOGGER.warn("Task execution rejected in stream handler for command {}", commandId, e);
+          try {
+            m.release();
+          } catch (Exception ex) {
+            LOGGER.debug("Error while releasing buffer on rejected execution: {}", ex.getMessage());
+          }
+          throw e;
         }
       }
     }
@@ -3090,7 +2902,12 @@ public class Client implements AutoCloseable {
             // we do our best the execute the closing sequence
             new Thread(() -> closingSequence(ShutdownReason.UNKNOWN)).start();
           } else {
-            executorService.submit(() -> closingSequence(ShutdownReason.UNKNOWN));
+            try {
+              executorService.execute(() -> closingSequence(ShutdownReason.UNKNOWN));
+            } catch (java.util.concurrent.RejectedExecutionException e) {
+              LOGGER.warn("Shutdown task rejected, running synchronously", e);
+              closingSequence(ShutdownReason.UNKNOWN);
+            }
           }
         }
       }
@@ -3106,8 +2923,15 @@ public class Client implements AutoCloseable {
               clientConnectionName,
               host,
               port);
-          closing.set(true);
-          closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE);
+          if (closing.compareAndSet(false, true)) {
+            try {
+              executorService.execute(
+                  () -> closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE));
+            } catch (java.util.concurrent.RejectedExecutionException ree) {
+              LOGGER.warn("Heartbeat failure close task rejected, running synchronously", ree);
+              closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE);
+            }
+          }
         } else if (e.state() == IdleState.WRITER_IDLE) {
           LOGGER.debug("Sending heartbeat frame");
           ByteBuf bb = allocate(ctx.alloc(), 4 + 2 + 2);
@@ -3226,6 +3050,40 @@ public class Client implements AutoCloseable {
       if (!f.isSuccess()) {
         handleRpcError(requests, correlationId, f.cause());
       }
+    }
+  }
+
+  static final class SubscriptionTracker {
+    private final List<SubscriptionOffset> offsets = new CopyOnWriteArrayList<>();
+    private volatile boolean hasOffsets = false;
+
+    void add(SubscriptionOffset sub) {
+      this.offsets.add(sub);
+      this.hasOffsets = true;
+    }
+
+    void remove(byte subscriptionId) {
+      this.offsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
+      this.hasOffsets = !this.offsets.isEmpty();
+    }
+
+    long extractInitialOffset(byte subscriptionId) {
+      if (!this.hasOffsets) {
+        return -1;
+      }
+
+      for (SubscriptionOffset subscriptionOffset : this.offsets) {
+        if (subscriptionOffset.subscriptionId() == subscriptionId) {
+          this.offsets.remove(subscriptionOffset);
+          this.hasOffsets = !this.offsets.isEmpty();
+          return subscriptionOffset.offset();
+        }
+      }
+      return -1;
+    }
+
+    boolean hasOffsets() {
+      return this.hasOffsets;
     }
   }
 }

@@ -73,7 +73,6 @@ import com.rabbitmq.stream.impl.Client.SaslAuthenticateResponse;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
-import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
 import com.rabbitmq.stream.impl.Utils.MutableBoolean;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import io.netty.buffer.ByteBuf;
@@ -295,13 +294,20 @@ class ServerFrameHandler {
 
     @Override
     public void handle(Client client, int frameSize, ChannelHandlerContext ctx, ByteBuf message) {
+      int readerIndexBefore = message.readerIndex();
       try {
         int read = doHandle(client, ctx, message) + 4; // already read the command id and version
         if (read != frameSize) {
           LOGGER.warn("Read {} bytes in frame, expecting {}", read, frameSize);
         }
       } catch (Exception e) {
-        LOGGER.warn("Error while handling response from server", e);
+        LOGGER.warn(
+            "Error while handling response from server (frameSize: {}, readerIndex before handle: {}, readerIndex after error: {}, readableBytes: {})",
+            frameSize,
+            readerIndexBefore,
+            message.readerIndex(),
+            message.readableBytes(),
+            e);
       } finally {
         message.release();
       }
@@ -403,21 +409,21 @@ class ServerFrameHandler {
     static int handleDeliverVersion1(
         ByteBuf message,
         Client client,
+        ChannelHandlerContext ctx,
         ChunkListener chunkListener,
         MessageListener messageListener,
         MessageIgnoredListener messageIgnoredListener,
         Codec codec,
-        List<SubscriptionOffset> subscriptionOffsets,
         ChunkChecksum chunkChecksum,
         MetricsCollector metricsCollector) {
       return handleDeliver(
           message,
           client,
+          ctx,
           chunkListener,
           messageListener,
           messageIgnoredListener,
           codec,
-          subscriptionOffsets,
           chunkChecksum,
           metricsCollector,
           message.readByte(), // subscription ID
@@ -429,11 +435,11 @@ class ServerFrameHandler {
     static int handleDeliver(
         ByteBuf message,
         Client client,
+        ChannelHandlerContext ctx,
         ChunkListener chunkListener,
         MessageListener messageListener,
         MessageIgnoredListener messageIgnoredListener,
         Codec codec,
-        List<SubscriptionOffset> subscriptionOffsets,
         ChunkChecksum chunkChecksum,
         MetricsCollector metricsCollector,
         byte subscriptionId,
@@ -487,16 +493,7 @@ class ServerFrameHandler {
       Object chunkContext =
           chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
 
-      long offsetLimit = -1;
-      if (!subscriptionOffsets.isEmpty()) {
-        for (SubscriptionOffset subscriptionOffset : subscriptionOffsets) {
-          if (subscriptionOffset.subscriptionId() == subscriptionId) {
-            subscriptionOffsets.remove(subscriptionOffset);
-            offsetLimit = subscriptionOffset.offset();
-            break;
-          }
-        }
-      }
+      long offsetLimit = client.extractInitialSubscriptionOffset(subscriptionId);
 
       final boolean ignore = offsetLimit != -1;
 
@@ -561,7 +558,13 @@ class ServerFrameHandler {
                      */
           byte compression = (byte) ((entryType & 0x70) >> 4);
           read++;
-          Compression comp = Compression.get(compression);
+          Compression comp;
+          try {
+            comp = Compression.get(compression);
+          } catch (Exception e) {
+            LOGGER.warn("Unknown compression code {}; connection may fail to decode", compression);
+            throw new StreamException("Unknown compression code: " + compression, e);
+          }
           int numRecordsInBatch = message.readUnsignedShort();
           read += 2;
           int uncompressedDataSize = message.readInt();
@@ -573,7 +576,7 @@ class ServerFrameHandler {
           ByteBuf bbToReadFrom = message;
           if (comp.code() != Compression.NONE.code()) {
             CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
-            ByteBuf outBb = client.channel.alloc().heapBuffer(uncompressedDataSize);
+            ByteBuf outBb = ctx.alloc().heapBuffer(uncompressedDataSize);
             byte[] inBuffer = new byte[Math.min(uncompressedDataSize, 1024)];
             int n;
             ByteBuf slice = message.slice(message.readerIndex(), dataSize);
@@ -644,11 +647,11 @@ class ServerFrameHandler {
       return handleDeliverVersion1(
           message,
           client,
+          ctx,
           client.chunkListener,
           client.messageListener,
           client.messageIgnoredListener,
           client.codec,
-          client.subscriptionOffsets,
           client.chunkChecksum,
           client.metricsCollector);
     }
@@ -666,11 +669,11 @@ class ServerFrameHandler {
       return DeliverVersion1FrameHandler.handleDeliver(
           message,
           client,
+          ctx,
           client.chunkListener,
           client.messageListener,
           client.messageIgnoredListener,
           client.codec,
-          client.subscriptionOffsets,
           client.chunkChecksum,
           client.metricsCollector,
           message.readByte(), // subscription ID
@@ -688,11 +691,16 @@ class ServerFrameHandler {
       int read = 2;
       if (code == RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
         StringPayload stream = readString(message);
-        LOGGER.debug("Stream {} is no longer available", stream.value);
+        if (LOGGER.isDebugEnabled()) {
+          LOGGER.debug("Stream {} is no longer available", stream.value);
+        }
         read += (2 + stream.byteLength);
         client.metadataListener.handle(stream.value, code);
       } else {
-        throw new IllegalArgumentException("Unsupported metadata update code " + code);
+        LOGGER.warn("Unsupported metadata update code {}, draining frame", code);
+        int remainingBytes = message.readableBytes();
+        message.skipBytes(remainingBytes);
+        read += remainingBytes;
       }
       return read;
     }
@@ -822,29 +830,41 @@ class ServerFrameHandler {
 
     @Override
     int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
-      LOGGER.debug(
-          "Handling peer properties response for connection {}", client.clientConnectionName());
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug(
+            "Handling peer properties response for connection {}", client.clientConnectionName());
+      }
       int correlationId = message.readInt();
-      LOGGER.debug(
-          "Handling peer properties response for connection {}, correlation ID is {}",
-          client.clientConnectionName(),
-          correlationId);
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug(
+            "Handling peer properties response for connection {}, correlation ID is {}",
+            client.clientConnectionName(),
+            correlationId);
+      }
       int read = 4;
 
       short responseCode = message.readShort();
       read += 2;
       if (responseCode != RESPONSE_CODE_OK) {
-        while (message.isReadable()) {
-          message.readByte();
+        int remainingBytes = message.readableBytes();
+        message.skipBytes(remainingBytes);
+        read += remainingBytes;
+
+        OutstandingRequest<Map<String, String>> outstandingRequest =
+            remove(
+                client.outstandingRequests, correlationId, new ParameterizedTypeReference<>() {});
+        if (outstandingRequest != null) {
+          outstandingRequest.completeExceptionally(
+              new StreamException(
+                  "Unexpected response code for peer properties response: " + responseCode));
         }
-        // FIXME: should we unblock the request and notify that there's something wrong?
-        throw new StreamException(
-            "Unexpected response code for SASL handshake response: " + responseCode);
+        return read;
       }
 
       int serverPropertiesCount = message.readInt();
       read += 4;
-      Map<String, String> serverProperties = new LinkedHashMap<>(serverPropertiesCount);
+      Map<String, String> serverProperties =
+          new LinkedHashMap<>((int) (serverPropertiesCount / 0.75f) + 1);
 
       for (int i = 0; i < serverPropertiesCount; i++) {
         StringPayload key = readString(message);
@@ -880,7 +900,7 @@ class ServerFrameHandler {
       if (message.isReadable()) {
         int connectionPropertiesCount = message.readInt();
         read += 4;
-        connectionProperties = new LinkedHashMap<>(connectionPropertiesCount);
+        connectionProperties = new LinkedHashMap<>((int) (connectionPropertiesCount / 0.75f) + 1);
         for (int i = 0; i < connectionPropertiesCount; i++) {
           StringPayload key = readString(message);
           read += 2 + key.byteLength;
@@ -1003,12 +1023,19 @@ class ServerFrameHandler {
       short responseCode = message.readShort();
       read += 2;
       if (responseCode != RESPONSE_CODE_OK) {
-        while (message.isReadable()) {
-          message.readByte();
+        int remainingBytes = message.readableBytes();
+        message.skipBytes(remainingBytes);
+        read += remainingBytes;
+
+        OutstandingRequest<List<String>> outstandingRequest =
+            remove(
+                client.outstandingRequests, correlationId, new ParameterizedTypeReference<>() {});
+        if (outstandingRequest != null) {
+          outstandingRequest.completeExceptionally(
+              new StreamException(
+                  "Unexpected response code for SASL handshake response: " + responseCode));
         }
-        // FIXME: should we unlock the request and notify that there's something wrong?
-        throw new StreamException(
-            "Unexpected response code for SASL handshake response: " + responseCode);
+        return read;
       }
 
       int mechanismsCount = message.readInt();
@@ -1042,9 +1069,9 @@ class ServerFrameHandler {
     int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
       int correlationId = message.readInt();
       int read = 4;
-      Map<Short, Broker> brokers = new HashMap<>();
       int brokersCount = message.readInt();
       read += 4;
+      Map<Short, Broker> brokers = new HashMap<>((int) (brokersCount / 0.75f) + 1);
       for (int i = 0; i < brokersCount; i++) {
         short brokerReference = message.readShort();
         read += 2;
@@ -1056,7 +1083,7 @@ class ServerFrameHandler {
       }
 
       int streamsCount = message.readInt();
-      Map<String, StreamMetadata> results = new LinkedHashMap<>(streamsCount);
+      Map<String, StreamMetadata> results = new LinkedHashMap<>((int) (streamsCount / 0.75f) + 1);
       read += 4;
       for (int i = 0; i < streamsCount; i++) {
         StringPayload stream = readString(message);
@@ -1179,7 +1206,7 @@ class ServerFrameHandler {
       }
 
       if (responseCode != RESPONSE_CODE_OK) {
-        LOGGER.info("Route returned error: {}", Utils.formatConstant(responseCode));
+        LOGGER.info("Partitions returned error: {}", Utils.formatConstant(responseCode));
       }
 
       OutstandingRequest<List<String>> outstandingRequest =
@@ -1254,7 +1281,7 @@ class ServerFrameHandler {
 
       int infoCount = message.readInt();
       read += 4;
-      Map<String, Long> info = new LinkedHashMap<>(infoCount);
+      Map<String, Long> info = new LinkedHashMap<>((int) (infoCount / 0.75f) + 1);
 
       for (int i = 0; i < infoCount; i++) {
         StringPayload key = readString(message);
