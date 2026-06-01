@@ -265,11 +265,21 @@ class ServerFrameHandler {
     return (OutstandingRequest<T>) outstandingRequests.remove(correlationId);
   }
 
-  private static String readString(ByteBuf bb) {
+  static class StringPayload {
+    final String value;
+    final short byteLength;
+
+    StringPayload(String value, short byteLength) {
+      this.value = value;
+      this.byteLength = byteLength;
+    }
+  }
+
+  private static StringPayload readString(ByteBuf bb) {
     short size = bb.readShort();
     byte[] bytes = new byte[size];
     bb.readBytes(bytes);
-    return new String(bytes, StandardCharsets.UTF_8);
+    return new StringPayload(new String(bytes, StandardCharsets.UTF_8), size);
   }
 
   interface FrameHandler {
@@ -677,10 +687,10 @@ class ServerFrameHandler {
       short code = message.readShort();
       int read = 2;
       if (code == RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
-        String stream = readString(message);
-        LOGGER.debug("Stream {} is no longer available", stream);
-        read += (2 + stream.length());
-        client.metadataListener.handle(stream, code);
+        StringPayload stream = readString(message);
+        LOGGER.debug("Stream {} is no longer available", stream.value);
+        read += (2 + stream.byteLength);
+        client.metadataListener.handle(stream.value, code);
       } else {
         throw new IllegalArgumentException("Unsupported metadata update code " + code);
       }
@@ -696,10 +706,10 @@ class ServerFrameHandler {
       int read = 4;
       short closeCode = message.readShort();
       read += 2;
-      String closeReason = readString(message);
-      read += 2 + closeReason.length();
+      StringPayload closeReason = readString(message);
+      read += 2 + closeReason.byteLength;
 
-      LOGGER.info("Received close from server, reason: {} {}", closeCode, closeReason);
+      LOGGER.info("Received close from server, reason: {} {}", closeCode, closeReason.value);
 
       int length = 2 + 2 + 4 + 2;
       ByteBuf byteBuf = client.allocate(ctx.alloc(), length + 4);
@@ -837,11 +847,11 @@ class ServerFrameHandler {
       Map<String, String> serverProperties = new LinkedHashMap<>(serverPropertiesCount);
 
       for (int i = 0; i < serverPropertiesCount; i++) {
-        String key = readString(message);
-        read += 2 + key.length();
-        String value = readString(message);
-        read += 2 + value.length();
-        serverProperties.put(key, value);
+        StringPayload key = readString(message);
+        read += 2 + key.byteLength;
+        StringPayload value = readString(message);
+        read += 2 + value.byteLength;
+        serverProperties.put(key.value, value.value);
       }
 
       OutstandingRequest<Map<String, String>> outstandingRequest =
@@ -872,11 +882,11 @@ class ServerFrameHandler {
         read += 4;
         connectionProperties = new LinkedHashMap<>(connectionPropertiesCount);
         for (int i = 0; i < connectionPropertiesCount; i++) {
-          String key = readString(message);
-          read += 2 + key.length();
-          String value = readString(message);
-          read += 2 + value.length();
-          connectionProperties.put(key, value);
+          StringPayload key = readString(message);
+          read += 2 + key.byteLength;
+          StringPayload value = readString(message);
+          read += 2 + value.byteLength;
+          connectionProperties.put(key.value, value.value);
         }
       } else {
         connectionProperties = Collections.emptyMap();
@@ -1006,9 +1016,9 @@ class ServerFrameHandler {
       read += 4;
       List<String> mechanisms = new ArrayList<>(mechanismsCount);
       for (int i = 0; i < mechanismsCount; i++) {
-        String mechanism = readString(message);
-        mechanisms.add(mechanism);
-        read += 2 + mechanism.length();
+        StringPayload mechanism = readString(message);
+        mechanisms.add(mechanism.value);
+        read += 2 + mechanism.byteLength;
       }
 
       OutstandingRequest<List<String>> outstandingRequest =
@@ -1038,19 +1048,19 @@ class ServerFrameHandler {
       for (int i = 0; i < brokersCount; i++) {
         short brokerReference = message.readShort();
         read += 2;
-        String host = readString(message);
-        read += 2 + host.length();
+        StringPayload host = readString(message);
+        read += 2 + host.byteLength;
         int port = message.readInt();
         read += 4;
-        brokers.put(brokerReference, new Broker(host, port));
+        brokers.put(brokerReference, new Broker(host.value, port));
       }
 
       int streamsCount = message.readInt();
       Map<String, StreamMetadata> results = new LinkedHashMap<>(streamsCount);
       read += 4;
       for (int i = 0; i < streamsCount; i++) {
-        String stream = readString(message);
-        read += 2 + stream.length();
+        StringPayload stream = readString(message);
+        read += 2 + stream.byteLength;
         short responseCode = message.readShort();
         read += 2;
         short leaderReference = message.readShort();
@@ -1069,15 +1079,12 @@ class ServerFrameHandler {
           }
         }
         StreamMetadata streamMetadata =
-            new StreamMetadata(stream, responseCode, brokers.get(leaderReference), replicas);
-        results.put(stream, streamMetadata);
+            new StreamMetadata(stream.value, responseCode, brokers.get(leaderReference), replicas);
+        results.put(stream.value, streamMetadata);
       }
 
       OutstandingRequest<Map<String, StreamMetadata>> outstandingRequest =
-          remove(
-              client.outstandingRequests,
-              correlationId,
-              new ParameterizedTypeReference<Map<String, StreamMetadata>>() {});
+          remove(client.outstandingRequests, correlationId, new ParameterizedTypeReference<>() {});
       if (outstandingRequest == null) {
         logMissingOutstandingRequest(correlationId);
       } else {
@@ -1126,9 +1133,9 @@ class ServerFrameHandler {
       } else {
         streams = new ArrayList<>(streamCount);
         for (int i = 0; i < streamCount; i++) {
-          String stream = readString(message);
-          read += (2 + stream.length());
-          streams.add(stream);
+          StringPayload stream = readString(message);
+          read += (2 + stream.byteLength);
+          streams.add(stream.value);
         }
       }
 
@@ -1165,9 +1172,9 @@ class ServerFrameHandler {
       } else {
         streams = new ArrayList<>(streamCount);
         for (int i = 0; i < streamCount; i++) {
-          String stream = readString(message);
-          read += (2 + stream.length());
-          streams.add(stream);
+          StringPayload stream = readString(message);
+          read += (2 + stream.byteLength);
+          streams.add(stream.value);
         }
       }
 
@@ -1250,10 +1257,10 @@ class ServerFrameHandler {
       Map<String, Long> info = new LinkedHashMap<>(infoCount);
 
       for (int i = 0; i < infoCount; i++) {
-        String key = readString(message);
-        read += 2 + key.length();
+        StringPayload key = readString(message);
+        read += 2 + key.byteLength;
         long value = message.readLong();
-        info.put(key, value);
+        info.put(key.value, value);
         read += 8;
       }
 
