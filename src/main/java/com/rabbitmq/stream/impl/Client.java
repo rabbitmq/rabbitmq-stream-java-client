@@ -535,7 +535,7 @@ public class Client implements AutoCloseable {
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
         throws Exception {
-      metricsCollector.writtenBytes(((ByteBuf) msg).capacity());
+      metricsCollector.writtenBytes(((ByteBuf) msg).readableBytes());
       super.write(ctx, msg, promise);
     }
   }
@@ -3058,7 +3058,7 @@ public class Client implements AutoCloseable {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
       ByteBuf m = (ByteBuf) msg;
-      metricsCollector.readBytes(m.capacity() + 4); // 32-bits integer for size not included
+      metricsCollector.readBytes(m.readableBytes() + 4); // 32-bits integer for size not included
       int frameSize = m.readableBytes();
       short commandId = extractResponseCode(m.readShort());
       short version = m.readShort();
