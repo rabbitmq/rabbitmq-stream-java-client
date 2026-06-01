@@ -646,8 +646,6 @@ final class StreamProducer extends ResourceBase implements Producer {
         bb.writeShort(-1);
       } else {
         Client.writeString(bb, filterValue);
-        //        bb.writeShort(filterValue.length());
-        //        bb.writeBytes(filterValue.getBytes(StandardCharsets.UTF_8));
       }
       Codec.EncodedMessage messageToPublish =
           (Codec.EncodedMessage) accumulatedEntity.encodedEntity();
