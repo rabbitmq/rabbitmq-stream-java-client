@@ -834,12 +834,19 @@ class ServerFrameHandler {
       short responseCode = message.readShort();
       read += 2;
       if (responseCode != RESPONSE_CODE_OK) {
-        while (message.isReadable()) {
-          message.readByte();
+        int remainingBytes = message.readableBytes();
+        message.skipBytes(remainingBytes);
+        read += remainingBytes;
+
+        OutstandingRequest<Map<String, String>> outstandingRequest =
+            remove(
+                client.outstandingRequests, correlationId, new ParameterizedTypeReference<>() {});
+        if (outstandingRequest != null) {
+          outstandingRequest.completeExceptionally(
+              new StreamException(
+                  "Unexpected response code for peer properties response: " + responseCode));
         }
-        // FIXME: should we unblock the request and notify that there's something wrong?
-        throw new StreamException(
-            "Unexpected response code for SASL handshake response: " + responseCode);
+        return read;
       }
 
       int serverPropertiesCount = message.readInt();
@@ -1003,12 +1010,19 @@ class ServerFrameHandler {
       short responseCode = message.readShort();
       read += 2;
       if (responseCode != RESPONSE_CODE_OK) {
-        while (message.isReadable()) {
-          message.readByte();
+        int remainingBytes = message.readableBytes();
+        message.skipBytes(remainingBytes);
+        read += remainingBytes;
+
+        OutstandingRequest<List<String>> outstandingRequest =
+            remove(
+                client.outstandingRequests, correlationId, new ParameterizedTypeReference<>() {});
+        if (outstandingRequest != null) {
+          outstandingRequest.completeExceptionally(
+              new StreamException(
+                  "Unexpected response code for SASL handshake response: " + responseCode));
         }
-        // FIXME: should we unlock the request and notify that there's something wrong?
-        throw new StreamException(
-            "Unexpected response code for SASL handshake response: " + responseCode);
+        return read;
       }
 
       int mechanismsCount = message.readInt();
