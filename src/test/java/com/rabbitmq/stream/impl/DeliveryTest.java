@@ -147,7 +147,6 @@ public class DeliveryTest {
               AtomicInteger chunkCountInCallback = new AtomicInteger();
               AtomicLong messageCountInCallback = new AtomicLong();
 
-              List<Client.SubscriptionOffset> subscriptionOffsets = new ArrayList<>();
               if (chunkOffset != subscriptionOffset) {
                 when(client.extractInitialSubscriptionOffset((byte) 1))
                     .thenReturn(subscriptionOffset);
@@ -175,7 +174,6 @@ public class DeliveryTest {
                     filteredMessageCount.incrementAndGet();
                   },
                   NO_OP_CODEC,
-                  subscriptionOffsets,
                   ChunkChecksum.NO_OP,
                   NoOpMetricsCollector.SINGLETON);
 

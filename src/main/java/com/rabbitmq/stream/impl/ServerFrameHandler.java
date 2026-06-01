@@ -73,7 +73,6 @@ import com.rabbitmq.stream.impl.Client.SaslAuthenticateResponse;
 import com.rabbitmq.stream.impl.Client.ShutdownContext.ShutdownReason;
 import com.rabbitmq.stream.impl.Client.StreamMetadata;
 import com.rabbitmq.stream.impl.Client.StreamStatsResponse;
-import com.rabbitmq.stream.impl.Client.SubscriptionOffset;
 import com.rabbitmq.stream.impl.Utils.MutableBoolean;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import io.netty.buffer.ByteBuf;
@@ -407,7 +406,6 @@ class ServerFrameHandler {
         MessageListener messageListener,
         MessageIgnoredListener messageIgnoredListener,
         Codec codec,
-        List<SubscriptionOffset> subscriptionOffsets,
         ChunkChecksum chunkChecksum,
         MetricsCollector metricsCollector) {
       return handleDeliver(
@@ -417,7 +415,6 @@ class ServerFrameHandler {
           messageListener,
           messageIgnoredListener,
           codec,
-          subscriptionOffsets,
           chunkChecksum,
           metricsCollector,
           message.readByte(), // subscription ID
@@ -433,7 +430,6 @@ class ServerFrameHandler {
         MessageListener messageListener,
         MessageIgnoredListener messageIgnoredListener,
         Codec codec,
-        List<SubscriptionOffset> subscriptionOffsets,
         ChunkChecksum chunkChecksum,
         MetricsCollector metricsCollector,
         byte subscriptionId,
@@ -639,7 +635,6 @@ class ServerFrameHandler {
           client.messageListener,
           client.messageIgnoredListener,
           client.codec,
-          client.subscriptionOffsets,
           client.chunkChecksum,
           client.metricsCollector);
     }
@@ -661,7 +656,6 @@ class ServerFrameHandler {
           client.messageListener,
           client.messageIgnoredListener,
           client.codec,
-          client.subscriptionOffsets,
           client.chunkChecksum,
           client.metricsCollector,
           message.readByte(), // subscription ID

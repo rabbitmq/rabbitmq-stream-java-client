@@ -197,6 +197,7 @@ public class Client implements AutoCloseable {
   final Channel channel;
   final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
       new ConcurrentHashMap<>();
+  private final SubscriptionTracker subscriptionTracker = new SubscriptionTracker();
   final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
   // A flag that mirrors whether the list has any elements
   private volatile boolean hasSubscriptionOffsets = false;
@@ -1426,28 +1427,15 @@ public class Client implements AutoCloseable {
   }
 
   private void addSubscriptionToList(SubscriptionOffset sub) {
-    this.subscriptionOffsets.add(sub);
-    this.hasSubscriptionOffsets = true;
+    this.subscriptionTracker.add(sub);
   }
 
   private void removeSubscriptionFromList(byte subscriptionId) {
-    this.subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
-    this.hasSubscriptionOffsets = !subscriptionOffsets.isEmpty();
+    this.subscriptionTracker.remove(subscriptionId);
   }
 
   long extractInitialSubscriptionOffset(byte subscriptionId) {
-    if (!this.hasSubscriptionOffsets) {
-      return -1;
-    }
-
-    for (SubscriptionOffset subscriptionOffset : this.subscriptionOffsets) {
-      if (subscriptionOffset.subscriptionId() == subscriptionId) {
-        this.subscriptionOffsets.remove(subscriptionOffset);
-        this.hasSubscriptionOffsets = !this.subscriptionOffsets.isEmpty();
-        return subscriptionOffset.offset();
-      }
-    }
-    return -1;
+    return this.subscriptionTracker.extractInitialOffset(subscriptionId);
   }
 
   public void close() {
@@ -3042,6 +3030,40 @@ public class Client implements AutoCloseable {
       if (!f.isSuccess()) {
         handleRpcError(requests, correlationId, f.cause());
       }
+    }
+  }
+
+  static final class SubscriptionTracker {
+    private final List<SubscriptionOffset> offsets = new CopyOnWriteArrayList<>();
+    private volatile boolean hasOffsets = false;
+
+    void add(SubscriptionOffset sub) {
+      this.offsets.add(sub);
+      this.hasOffsets = true;
+    }
+
+    void remove(byte subscriptionId) {
+      this.offsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
+      this.hasOffsets = !this.offsets.isEmpty();
+    }
+
+    long extractInitialOffset(byte subscriptionId) {
+      if (!this.hasOffsets) {
+        return -1;
+      }
+
+      for (SubscriptionOffset subscriptionOffset : this.offsets) {
+        if (subscriptionOffset.subscriptionId() == subscriptionId) {
+          this.offsets.remove(subscriptionOffset);
+          this.hasOffsets = !this.offsets.isEmpty();
+          return subscriptionOffset.offset();
+        }
+      }
+      return -1;
+    }
+
+    boolean hasOffsets() {
+      return this.hasOffsets;
     }
   }
 }
