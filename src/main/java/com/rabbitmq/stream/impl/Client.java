@@ -890,11 +890,11 @@ public class Client implements AutoCloseable {
     return size;
   }
 
-  private static int stringByteSize(String string) {
+  static int stringByteSize(String string) {
     return ByteBufUtil.utf8Bytes(string);
   }
 
-  private static void writeString(ByteBuf bb, String string) {
+  static void writeString(ByteBuf bb, String string) {
     int byteLen = ByteBufUtil.utf8Bytes(string);
     bb.writeShort(byteLen);
     ByteBufUtil.writeUtf8(bb, string);

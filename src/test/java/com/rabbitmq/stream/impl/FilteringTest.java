@@ -104,7 +104,7 @@ public class FilteringTest {
   void publishConsume(String producerName) throws Exception {
     repeatIfFailure(
         () -> {
-          List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "banana", "pear"));
+          List<String> filterValues = new ArrayList<>(Arrays.asList("apple", "café", "pear"));
           Map<String, AtomicInteger> filterValueCount = new HashMap<>();
           Random random = new Random();
 
@@ -202,7 +202,6 @@ public class FilteringTest {
                   .builder()
                   .messageHandler(
                       (ctx, msg) -> {
-                        System.out.println(msg.getProperties().getGroupId());
                         receivedFilterValues.add(
                             msg.getProperties().getGroupId() == null
                                 ? "null"
