@@ -1658,7 +1658,7 @@ public class Client implements AutoCloseable {
   private void maybeShutdownEventLoop() {
     try {
       if (this.eventLoopGroup != null
-          && (!this.eventLoopGroup.isShuttingDown() || !this.eventLoopGroup.isShutdown())) {
+          && (!this.eventLoopGroup.isShuttingDown() && !this.eventLoopGroup.isShutdown())) {
         LOGGER.debug("Closing Netty event loop group");
         this.eventLoopGroup.shutdownGracefully(1, 10, SECONDS).get(10, SECONDS);
       }
