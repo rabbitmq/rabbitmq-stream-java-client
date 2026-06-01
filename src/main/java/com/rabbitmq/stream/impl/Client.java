@@ -3106,8 +3106,10 @@ public class Client implements AutoCloseable {
               clientConnectionName,
               host,
               port);
-          closing.set(true);
-          closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE);
+          if (closing.compareAndSet(false, true)) {
+            executorService.submit(
+                () -> closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE));
+          }
         } else if (e.state() == IdleState.WRITER_IDLE) {
           LOGGER.debug("Sending heartbeat frame");
           ByteBuf bb = allocate(ctx.alloc(), 4 + 2 + 2);
