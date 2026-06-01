@@ -179,6 +179,9 @@ public class Client implements AutoCloseable {
   static final String NETTY_HANDLER_FRAME_DECODER =
       LengthFieldBasedFrameDecoder.class.getSimpleName();
   static final String NETTY_HANDLER_IDLE_STATE = IdleStateHandler.class.getSimpleName();
+  private static final String NETTY_HANDLER_FLUSH_CONSOLIDATION =
+      FlushConsolidationHandler.class.getSimpleName();
+  private static final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
   static final Duration DEFAULT_RPC_TIMEOUT = Duration.ofSeconds(10);
   private static final PublishConfirmListener NO_OP_PUBLISH_CONFIRM_LISTENER =
       (publisherId, publishingId) -> {};
@@ -230,9 +233,6 @@ public class Client implements AutoCloseable {
   private final boolean frameSizeCapped;
   private final EventLoopGroup eventLoopGroup;
   private final Map<String, String> clientProperties;
-  private final String NETTY_HANDLER_FLUSH_CONSOLIDATION =
-      FlushConsolidationHandler.class.getSimpleName();
-  private final String NETTY_HANDLER_STREAM = StreamHandler.class.getSimpleName();
   private final String host;
   private final String clientConnectionName;
   private final int port;
@@ -240,7 +240,7 @@ public class Client implements AutoCloseable {
   private final Map<String, String> connectionProperties;
   private final Duration rpcTimeout;
   private final List<String> saslMechanisms;
-  private AtomicReference<ShutdownReason> shutdownReason = new AtomicReference<>();
+  private final AtomicReference<ShutdownReason> shutdownReason = new AtomicReference<>();
   private final Runnable streamStatsCommandVersionsCheck;
   private final boolean filteringSupported;
   private final Runnable superStreamManagementCommandVersionsCheck;
@@ -346,31 +346,11 @@ public class Client implements AutoCloseable {
         });
 
     this.nettyClosing = Utils.makeIdempotent(this::closeNetty);
-    ChannelFuture f;
     String clientConnectionName = parameters.clientProperties.getOrDefault("connection_name", "");
-    try {
-      LOGGER.debug(
-          "Trying to create stream connection to {}:{}, with client connection name '{}'",
-          parameters.host,
-          parameters.port,
-          clientConnectionName);
-      f = b.connect(parameters.host, parameters.port).sync();
-      this.host = parameters.host;
-      this.port = parameters.port;
-      this.clientConnectionName = clientConnectionName;
-    } catch (Exception e) {
-      String message =
-          format(
-              "Error while creating stream connection to %s:%d", parameters.host, parameters.port);
-      if (e instanceof ConnectTimeoutException) {
-        throw new TimeoutStreamException(message, e);
-      } else if (e instanceof ConnectException) {
-        throw new ConnectionStreamException(message, e);
-      } else {
-        throw new StreamException(message, e);
-      }
-    }
-    this.channel = f.channel();
+    this.host = parameters.host;
+    this.port = parameters.port;
+    this.clientConnectionName = clientConnectionName;
+
     ExecutorServiceFactory executorServiceFactory = parameters.executorServiceFactory;
     if (executorServiceFactory == null) {
       this.closeExecutorService =
@@ -425,6 +405,28 @@ public class Client implements AutoCloseable {
               });
       this.dispatchingExecutorService = dispatchingExecutorServiceFactory.get();
     }
+
+    ChannelFuture f;
+    try {
+      LOGGER.debug(
+          "Trying to create stream connection to {}:{}, with client connection name '{}'",
+          parameters.host,
+          parameters.port,
+          clientConnectionName);
+      f = b.connect(parameters.host, parameters.port).sync();
+    } catch (Exception e) {
+      String message =
+          format(
+              "Error while creating stream connection to %s:%d", parameters.host, parameters.port);
+      if (e instanceof ConnectTimeoutException) {
+        throw new TimeoutStreamException(message, e);
+      } else if (e instanceof ConnectException) {
+        throw new ConnectionStreamException(message, e);
+      } else {
+        throw new StreamException(message, e);
+      }
+    }
+    this.channel = f.channel();
     try {
       this.tuneState =
           new TuneState(
@@ -2851,9 +2853,7 @@ public class Client implements AutoCloseable {
         } else {
           LOGGER.debug("Ignoring command {} from server while closing", commandId);
           try {
-            while (m.isReadable()) {
-              m.readByte();
-            }
+            m.skipBytes(m.readableBytes());
           } finally {
             m.release();
           }

@@ -839,7 +839,8 @@ class ServerFrameHandler {
 
       int serverPropertiesCount = message.readInt();
       read += 4;
-      Map<String, String> serverProperties = new LinkedHashMap<>(serverPropertiesCount);
+      Map<String, String> serverProperties =
+          new LinkedHashMap<>((int) (serverPropertiesCount / 0.75f) + 1);
 
       for (int i = 0; i < serverPropertiesCount; i++) {
         StringPayload key = readString(message);
@@ -875,7 +876,7 @@ class ServerFrameHandler {
       if (message.isReadable()) {
         int connectionPropertiesCount = message.readInt();
         read += 4;
-        connectionProperties = new LinkedHashMap<>(connectionPropertiesCount);
+        connectionProperties = new LinkedHashMap<>((int) (connectionPropertiesCount / 0.75f) + 1);
         for (int i = 0; i < connectionPropertiesCount; i++) {
           StringPayload key = readString(message);
           read += 2 + key.byteLength;
@@ -1044,9 +1045,9 @@ class ServerFrameHandler {
     int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
       int correlationId = message.readInt();
       int read = 4;
-      Map<Short, Broker> brokers = new HashMap<>();
       int brokersCount = message.readInt();
       read += 4;
+      Map<Short, Broker> brokers = new HashMap<>((int) (brokersCount / 0.75f) + 1);
       for (int i = 0; i < brokersCount; i++) {
         short brokerReference = message.readShort();
         read += 2;
@@ -1058,7 +1059,7 @@ class ServerFrameHandler {
       }
 
       int streamsCount = message.readInt();
-      Map<String, StreamMetadata> results = new LinkedHashMap<>(streamsCount);
+      Map<String, StreamMetadata> results = new LinkedHashMap<>((int) (streamsCount / 0.75f) + 1);
       read += 4;
       for (int i = 0; i < streamsCount; i++) {
         StringPayload stream = readString(message);
@@ -1256,7 +1257,7 @@ class ServerFrameHandler {
 
       int infoCount = message.readInt();
       read += 4;
-      Map<String, Long> info = new LinkedHashMap<>(infoCount);
+      Map<String, Long> info = new LinkedHashMap<>((int) (infoCount / 0.75f) + 1);
 
       for (int i = 0; i < infoCount; i++) {
         StringPayload key = readString(message);
