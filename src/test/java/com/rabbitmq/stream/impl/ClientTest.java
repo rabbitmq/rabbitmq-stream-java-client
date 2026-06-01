@@ -1212,4 +1212,117 @@ public class ClientTest {
     assertThat(response).is(ko());
     assertThat(response.getResponseCode()).isEqualTo(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
   }
+
+  @Test
+  void utf8StringsInStreamOperations(TestInfo info) throws Exception {
+    // Test strings with UTF-8 characters (non-ASCII)
+    String streamWithUTF8 = streamName(info) + "-café-🚀";
+    String publisherRef = "ref-référence-🎯";
+    String offsetRef = "offset-référence-📍";
+    String superStreamWithUTF8 = streamName(info) + "-super-café-🌟";
+    String routingKeyWithUTF8 = "routing-clé-🔑";
+
+    Client client = cf.get();
+
+    try {
+      // Test create stream with UTF-8 name
+      Response response = client.create(streamWithUTF8);
+      assertThat(response).is(ok());
+
+      // Test declare publisher with UTF-8 reference and stream name
+      response = client.declarePublisher(b(1), publisherRef, streamWithUTF8);
+      assertThat(response).is(ok());
+
+      // Publish a message to establish some content
+      List<Message> messages =
+          Collections.singletonList(client.messageBuilder().addData("hello".getBytes()).build());
+      client.publish(b(1), messages);
+
+      // Test store and query offset with UTF-8 reference
+      long offset = 42L;
+      client.storeOffset(offsetRef, streamWithUTF8, offset);
+      Thread.sleep(100); // storeOffset is fire-and-forget, give it time
+      waitAtMost(
+          () -> {
+            Client.QueryOffsetResponse r = client.queryOffset(offsetRef, streamWithUTF8);
+            return r.isOk() && r.getOffset() == offset;
+          });
+
+      Client.QueryOffsetResponse offsetResponse = client.queryOffset(offsetRef, streamWithUTF8);
+      assertThat(offsetResponse).is(ok());
+      assertThat(offsetResponse.getOffset()).isEqualTo(offset);
+
+      // Test query publisher sequence with UTF-8 reference
+      long sequence = client.queryPublisherSequence(publisherRef, streamWithUTF8);
+      assertThat(sequence).isGreaterThanOrEqualTo(0L);
+      client.deletePublisher(b(1));
+
+      // Test super stream operations with UTF-8 strings
+      List<String> partitionsWithUTF8 =
+          Arrays.asList(streamWithUTF8 + "-partition-0", streamWithUTF8 + "-partition-1");
+      List<String> bindingKeysWithUTF8 =
+          Arrays.asList(routingKeyWithUTF8 + "-0", routingKeyWithUTF8 + "-1");
+
+      response =
+          client.createSuperStream(
+              superStreamWithUTF8, partitionsWithUTF8, bindingKeysWithUTF8, Collections.emptyMap());
+      assertThat(response).is(ok());
+
+      // Test route with UTF-8 routing key and super stream name
+      List<String> routeResult = client.route(routingKeyWithUTF8 + "-0", superStreamWithUTF8);
+      assertThat(routeResult).isNotEmpty();
+
+      // Test partitions with UTF-8 super stream name
+      List<String> partitions = client.partitions(superStreamWithUTF8);
+      assertThat(partitions).hasSize(2);
+
+      // Clean up super stream
+      client.deleteSuperStream(superStreamWithUTF8);
+
+    } finally {
+      // Clean up regular stream
+      try {
+        client.delete(streamWithUTF8);
+      } catch (Exception e) {
+        // ignore cleanup errors
+      }
+    }
+  }
+
+  @Test
+  void utf8StringLengthValidation() {
+    Client client = cf.get();
+
+    // Test publisher reference that's valid in character count but too big in byte count
+    StringBuilder longUTF8Reference = new StringBuilder();
+    // Each "𝒜" is 4 bytes in UTF-8, so 64 of them = 256 bytes (at the limit)
+    for (int i = 0; i < 64; i++) {
+      longUTF8Reference.append("𝒜");
+    }
+    String refAt256Bytes = longUTF8Reference.toString();
+
+    // This should be allowed (exactly at limit)
+    assertThat(refAt256Bytes.getBytes(UTF8)).hasSize(256);
+
+    // Add one more character to exceed the limit
+    String refOver256Bytes = refAt256Bytes + "𝒜";
+    assertThat(refOver256Bytes.getBytes(UTF8)).hasSize(260);
+
+    // Test that the validation properly checks UTF-8 byte length, not character count
+    assertThatThrownBy(() -> client.declarePublisher(b(1), refOver256Bytes, stream))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("less than 256 bytes when encoded as UTF-8");
+
+    assertThatThrownBy(() -> client.storeOffset(refOver256Bytes, stream, 0L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("less than 256 bytes when encoded as UTF-8");
+
+    assertThatThrownBy(() -> client.queryOffset(refOver256Bytes, stream))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("less than 256 bytes when encoded as UTF-8");
+
+    assertThatThrownBy(() -> client.queryPublisherSequence(refOver256Bytes, stream))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("less than 256 bytes when encoded as UTF-8");
+  }
 }

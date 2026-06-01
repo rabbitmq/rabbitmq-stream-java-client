@@ -645,7 +645,7 @@ public class Client implements AutoCloseable {
             + 2
             + 4
             + 2
-            + saslMechanism.getName().length()
+            + stringByteSize(saslMechanism.getName())
             + 4
             + (challengeResponse == null ? 0 : challengeResponse.length);
     int correlationId = nextCorrelationId();
@@ -655,8 +655,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_SASL_AUTHENTICATE));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(saslMechanism.getName().length());
-      bb.writeBytes(saslMechanism.getName().getBytes(CHARSET));
+      writeString(bb, saslMechanism.getName());
       if (challengeResponse == null) {
         bb.writeInt(-1);
       } else {
@@ -676,7 +675,7 @@ public class Client implements AutoCloseable {
   }
 
   private Map<String, String> open(String virtualHost) {
-    int length = 2 + 2 + 4 + 2 + virtualHost.length();
+    int length = 2 + 2 + 4 + 2 + stringByteSize(virtualHost);
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -684,8 +683,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_OPEN));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(virtualHost.length());
-      bb.writeBytes(virtualHost.getBytes(CHARSET));
+      writeString(bb, virtualHost);
       OutstandingRequest<OpenResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -717,7 +715,7 @@ public class Client implements AutoCloseable {
   }
 
   private void sendClose(short code, String reason) {
-    int length = 2 + 2 + 4 + 2 + 2 + reason.length();
+    int length = 2 + 2 + 4 + 2 + 2 + stringByteSize(reason);
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -726,8 +724,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeShort(code);
-      bb.writeShort(reason.length());
-      bb.writeBytes(reason.getBytes(CHARSET));
+      writeString(bb, reason);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -775,7 +772,7 @@ public class Client implements AutoCloseable {
   }
 
   public Response create(String stream, Map<String, String> arguments) {
-    int length = 2 + 2 + 4 + 2 + stream.length() + mapSize(arguments);
+    int length = 2 + 2 + 4 + 2 + stringByteSize(stream) + mapSize(arguments);
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -783,8 +780,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_CREATE_STREAM));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(stream.length());
-      bb.writeBytes(stream.getBytes(CHARSET));
+      writeString(bb, stream);
       writeMap(bb, arguments);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
@@ -820,7 +816,7 @@ public class Client implements AutoCloseable {
             + 2
             + 4
             + 2
-            + superStream.length()
+            + stringByteSize(superStream)
             + collectionSize(partitions)
             + collectionSize(bindingKeys)
             + mapSize(arguments);
@@ -831,8 +827,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_CREATE_SUPER_STREAM));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(superStream.length());
-      bb.writeBytes(superStream.getBytes(CHARSET));
+      writeString(bb, superStream);
       writeCollection(bb, partitions);
       writeCollection(bb, bindingKeys);
       writeMap(bb, arguments);
@@ -851,7 +846,7 @@ public class Client implements AutoCloseable {
 
   Response deleteSuperStream(String superStream) {
     this.superStreamManagementCommandVersionsCheck.run();
-    int length = 2 + 2 + 4 + 2 + superStream.length();
+    int length = 2 + 2 + 4 + 2 + stringByteSize(superStream);
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -859,8 +854,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_DELETE_SUPER_STREAM));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(superStream.length());
-      bb.writeBytes(superStream.getBytes(CHARSET));
+      writeString(bb, superStream);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -875,7 +869,7 @@ public class Client implements AutoCloseable {
   }
 
   private static int collectionSize(Collection<String> elements) {
-    return 4 + elements.stream().mapToInt(v -> 2 + v.length()).sum();
+    return 4 + elements.stream().mapToInt(v -> 2 + stringByteSize(v)).sum();
   }
 
   private static int arraySize(String... elements) {
@@ -885,29 +879,36 @@ public class Client implements AutoCloseable {
   private static int mapSize(Map<String, String> elements) {
     return 4
         + elements.entrySet().stream()
-            .mapToInt(e -> 2 + e.getKey().length() + 2 + e.getValue().length())
+            .mapToInt(e -> 2 + stringByteSize(e.getKey()) + 2 + stringByteSize(e.getValue()))
             .sum();
   }
 
-  private static ByteBuf writeCollection(ByteBuf bb, Collection<String> elements) {
+  private static int stringByteSize(String string) {
+    return string.getBytes(CHARSET).length;
+  }
+
+  private static void writeString(ByteBuf bb, String string) {
+    byte[] bytes = string.getBytes(CHARSET);
+    bb.writeShort(bytes.length);
+    bb.writeBytes(bytes);
+  }
+
+  private static void writeCollection(ByteBuf bb, Collection<String> elements) {
     bb.writeInt(elements.size());
-    elements.forEach(e -> bb.writeShort(e.length()).writeBytes(e.getBytes(CHARSET)));
-    return bb;
+    elements.forEach(e -> writeString(bb, e));
   }
 
-  private static ByteBuf writeArray(ByteBuf bb, String... elements) {
-    return writeCollection(bb, asList(elements));
+  private static void writeArray(ByteBuf bb, String... elements) {
+    writeCollection(bb, asList(elements));
   }
 
-  private static ByteBuf writeMap(ByteBuf bb, Map<String, String> elements) {
+  private static void writeMap(ByteBuf bb, Map<String, String> elements) {
     bb.writeInt(elements.size());
     elements.forEach(
-        (key, value) ->
-            bb.writeShort(key.length())
-                .writeBytes(key.getBytes(CHARSET))
-                .writeShort(value.length())
-                .writeBytes(value.getBytes(CHARSET)));
-    return bb;
+        (key, value) -> {
+          writeString(bb, key);
+          writeString(bb, value);
+        });
   }
 
   ByteBuf allocate(ByteBufAllocator allocator, int capacity) {
@@ -934,7 +935,7 @@ public class Client implements AutoCloseable {
   }
 
   public Response delete(String stream) {
-    int length = 2 + 2 + 4 + 2 + stream.length();
+    int length = 2 + 2 + 4 + 2 + stringByteSize(stream);
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -942,8 +943,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_DELETE_STREAM));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(stream.length());
-      bb.writeBytes(stream.getBytes(CHARSET));
+      writeString(bb, stream);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -992,12 +992,12 @@ public class Client implements AutoCloseable {
     int publisherReferenceSize =
         (publisherReference == null || publisherReference.isEmpty()
             ? 0
-            : publisherReference.length());
-    if (publisherReferenceSize >= MAX_REFERENCE_SIZE) {
+            : stringByteSize(publisherReference));
+    if (publisherReference != null && publisherReferenceSize >= MAX_REFERENCE_SIZE) {
       throw new IllegalArgumentException(
-          "If specified, publisher reference must less than 256 characters");
+          "If specified, publisher reference must be less than 256 bytes when encoded as UTF-8");
     }
-    int length = 2 + 2 + 4 + 1 + 2 + publisherReferenceSize + 2 + stream.length();
+    int length = 2 + 2 + 4 + 1 + 2 + publisherReferenceSize + 2 + stringByteSize(stream);
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -1006,12 +1006,12 @@ public class Client implements AutoCloseable {
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(publisherId);
-      bb.writeShort(publisherReferenceSize);
-      if (publisherReferenceSize > 0) {
-        bb.writeBytes(publisherReference.getBytes(CHARSET));
+      if (publisherReference == null || publisherReference.isEmpty()) {
+        bb.writeShort(0);
+      } else {
+        writeString(bb, publisherReference);
       }
-      bb.writeShort(stream.length());
-      bb.writeBytes(stream.getBytes(CHARSET));
+      writeString(bb, stream);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -1342,7 +1342,7 @@ public class Client implements AutoCloseable {
     if (initialCredits < 0 || initialCredits > Short.MAX_VALUE) {
       throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
     }
-    int length = 2 + 2 + 4 + 1 + 2 + stream.length() + 2 + 2; // misses the offset
+    int length = 2 + 2 + 4 + 1 + 2 + stringByteSize(stream) + 2 + 2; // misses the offset
     if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
       length += 8;
     }
@@ -1359,8 +1359,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
       bb.writeByte(subscriptionId);
-      bb.writeShort(stream.length());
-      bb.writeBytes(stream.getBytes(CHARSET));
+      writeString(bb, stream);
       bb.writeShort(offsetSpecification.getType());
       if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
         bb.writeLong(offsetSpecification.getOffset());
@@ -1388,36 +1387,36 @@ public class Client implements AutoCloseable {
   }
 
   public void storeOffset(String reference, String stream, long offset) {
-    if (reference == null || reference.isEmpty() || reference.length() >= MAX_REFERENCE_SIZE) {
+    if (reference == null
+        || reference.isEmpty()
+        || stringByteSize(reference) >= MAX_REFERENCE_SIZE) {
       throw new IllegalArgumentException(
-          "Reference must a non-empty string of less than 256 characters");
+          "Reference must be a non-empty string of less than 256 bytes when encoded as UTF-8");
     }
     if (stream == null || stream.isEmpty()) {
       throw new IllegalArgumentException("Stream cannot be null or empty");
     }
-    int length = 2 + 2 + 2 + reference.length() + 2 + stream.length() + 8;
+    int length = 2 + 2 + 2 + stringByteSize(reference) + 2 + stringByteSize(stream) + 8;
     ByteBuf bb = allocate(length + 4);
     bb.writeInt(length);
     bb.writeShort(encodeRequestCode(COMMAND_STORE_OFFSET));
     bb.writeShort(VERSION_1);
-    bb.writeShort(reference.length());
-    bb.writeBytes(reference.getBytes(CHARSET));
-    bb.writeShort(stream.length());
-    bb.writeBytes(stream.getBytes(CHARSET));
+    writeString(bb, reference);
+    writeString(bb, stream);
     bb.writeLong(offset);
     channel.writeAndFlush(bb, channel.voidPromise());
   }
 
   public QueryOffsetResponse queryOffset(String reference, String stream) {
-    if (reference == null || reference.isEmpty() || reference.length() > 256) {
+    if (reference == null || reference.isEmpty() || stringByteSize(reference) > 256) {
       throw new IllegalArgumentException(
-          "Reference must a non-empty string of less than 256 characters");
+          "Reference must be a non-empty string of less than 256 bytes when encoded as UTF-8");
     }
     if (stream == null || stream.isEmpty()) {
       throw new IllegalArgumentException("Stream cannot be null or empty");
     }
 
-    int length = 2 + 2 + 4 + 2 + reference.length() + 2 + stream.length();
+    int length = 2 + 2 + 4 + 2 + stringByteSize(reference) + 2 + stringByteSize(stream);
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -1425,10 +1424,8 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_QUERY_OFFSET));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(reference.length());
-      bb.writeBytes(reference.getBytes(CHARSET));
-      bb.writeShort(stream.length());
-      bb.writeBytes(stream.getBytes(CHARSET));
+      writeString(bb, reference);
+      writeString(bb, stream);
       OutstandingRequest<QueryOffsetResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -1480,7 +1477,7 @@ public class Client implements AutoCloseable {
             + 2
             + 4
             + 2
-            + stream.length()
+            + stringByteSize(stream)
             + 2; // API code, version, correlation ID, stream, offset type
     if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
       length += 8;
@@ -1498,8 +1495,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_RESOLVE_OFFSET_SPEC));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(stream.length());
-      bb.writeBytes(stream.getBytes(CHARSET));
+      writeString(bb, stream);
       bb.writeShort(offsetSpecification.getType());
       if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
         bb.writeLong(offsetSpecification.getOffset());
@@ -1524,15 +1520,15 @@ public class Client implements AutoCloseable {
   public long queryPublisherSequence(String publisherReference, String stream) {
     if (publisherReference == null
         || publisherReference.isEmpty()
-        || publisherReference.length() > 256) {
+        || stringByteSize(publisherReference) > 256) {
       throw new IllegalArgumentException(
-          "Publisher reference must a non-empty string of less than 256 characters");
+          "Publisher reference must be a non-empty string of less than 256 bytes when encoded as UTF-8");
     }
     if (stream == null || stream.isEmpty()) {
       throw new IllegalArgumentException("Stream cannot be null or empty");
     }
 
-    int length = 2 + 2 + 4 + 2 + publisherReference.length() + 2 + stream.length();
+    int length = 2 + 2 + 4 + 2 + stringByteSize(publisherReference) + 2 + stringByteSize(stream);
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -1540,10 +1536,8 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_QUERY_PUBLISHER_SEQUENCE));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(publisherReference.length());
-      bb.writeBytes(publisherReference.getBytes(CHARSET));
-      bb.writeShort(stream.length());
-      bb.writeBytes(stream.getBytes(CHARSET));
+      writeString(bb, publisherReference);
+      writeString(bb, stream);
       OutstandingRequest<QueryPublisherSequenceResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -1730,9 +1724,9 @@ public class Client implements AutoCloseable {
             + 2
             + 4
             + 2
-            + routingKey.length()
+            + stringByteSize(routingKey)
             + 2
-            + superStream.length(); // API code, version, correlation ID, 2 strings
+            + stringByteSize(superStream); // API code, version, correlation ID, 2 strings
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -1740,10 +1734,8 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_ROUTE));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(routingKey.length());
-      bb.writeBytes(routingKey.getBytes(CHARSET));
-      bb.writeShort(superStream.length());
-      bb.writeBytes(superStream.getBytes(CHARSET));
+      writeString(bb, routingKey);
+      writeString(bb, superStream);
       OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -1766,7 +1758,7 @@ public class Client implements AutoCloseable {
       throw new IllegalArgumentException("stream must not be null");
     }
     int length =
-        2 + 2 + 4 + 2 + superStream.length(); // API code, version, correlation ID, 1 string
+        2 + 2 + 4 + 2 + stringByteSize(superStream); // API code, version, correlation ID, 1 string
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -1774,8 +1766,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_PARTITIONS));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(superStream.length());
-      bb.writeBytes(superStream.getBytes(CHARSET));
+      writeString(bb, superStream);
       OutstandingRequest<List<String>> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
@@ -1825,7 +1816,8 @@ public class Client implements AutoCloseable {
     if (stream == null) {
       throw new IllegalArgumentException("stream must not be null");
     }
-    int length = 2 + 2 + 4 + 2 + stream.length(); // API code, version, correlation ID, 1 string
+    int length =
+        2 + 2 + 4 + 2 + stringByteSize(stream); // API code, version, correlation ID, 1 string
     int correlationId = nextCorrelationId();
     try {
       ByteBuf bb = allocate(length + 4);
@@ -1833,8 +1825,7 @@ public class Client implements AutoCloseable {
       bb.writeShort(encodeRequestCode(COMMAND_STREAM_STATS));
       bb.writeShort(VERSION_1);
       bb.writeInt(correlationId);
-      bb.writeShort(stream.length());
-      bb.writeBytes(stream.getBytes(CHARSET));
+      writeString(bb, stream);
       OutstandingRequest<StreamStatsResponse> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
