@@ -294,13 +294,20 @@ class ServerFrameHandler {
 
     @Override
     public void handle(Client client, int frameSize, ChannelHandlerContext ctx, ByteBuf message) {
+      int readerIndexBefore = message.readerIndex();
       try {
         int read = doHandle(client, ctx, message) + 4; // already read the command id and version
         if (read != frameSize) {
           LOGGER.warn("Read {} bytes in frame, expecting {}", read, frameSize);
         }
       } catch (Exception e) {
-        LOGGER.warn("Error while handling response from server", e);
+        LOGGER.warn(
+            "Error while handling response from server (frameSize: {}, readerIndex before handle: {}, readerIndex after error: {}, readableBytes: {})",
+            frameSize,
+            readerIndexBefore,
+            message.readerIndex(),
+            message.readableBytes(),
+            e);
       } finally {
         message.release();
       }
@@ -402,6 +409,7 @@ class ServerFrameHandler {
     static int handleDeliverVersion1(
         ByteBuf message,
         Client client,
+        ChannelHandlerContext ctx,
         ChunkListener chunkListener,
         MessageListener messageListener,
         MessageIgnoredListener messageIgnoredListener,
@@ -411,6 +419,7 @@ class ServerFrameHandler {
       return handleDeliver(
           message,
           client,
+          ctx,
           chunkListener,
           messageListener,
           messageIgnoredListener,
@@ -426,6 +435,7 @@ class ServerFrameHandler {
     static int handleDeliver(
         ByteBuf message,
         Client client,
+        ChannelHandlerContext ctx,
         ChunkListener chunkListener,
         MessageListener messageListener,
         MessageIgnoredListener messageIgnoredListener,
@@ -548,7 +558,13 @@ class ServerFrameHandler {
                      */
           byte compression = (byte) ((entryType & 0x70) >> 4);
           read++;
-          Compression comp = Compression.get(compression);
+          Compression comp;
+          try {
+            comp = Compression.get(compression);
+          } catch (Exception e) {
+            LOGGER.warn("Unknown compression code {}; connection may fail to decode", compression);
+            throw new StreamException("Unknown compression code: " + compression, e);
+          }
           int numRecordsInBatch = message.readUnsignedShort();
           read += 2;
           int uncompressedDataSize = message.readInt();
@@ -560,7 +576,7 @@ class ServerFrameHandler {
           ByteBuf bbToReadFrom = message;
           if (comp.code() != Compression.NONE.code()) {
             CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
-            ByteBuf outBb = client.channel.alloc().heapBuffer(uncompressedDataSize);
+            ByteBuf outBb = ctx.alloc().heapBuffer(uncompressedDataSize);
             byte[] inBuffer = new byte[Math.min(uncompressedDataSize, 1024)];
             int n;
             ByteBuf slice = message.slice(message.readerIndex(), dataSize);
@@ -631,6 +647,7 @@ class ServerFrameHandler {
       return handleDeliverVersion1(
           message,
           client,
+          ctx,
           client.chunkListener,
           client.messageListener,
           client.messageIgnoredListener,
@@ -652,6 +669,7 @@ class ServerFrameHandler {
       return DeliverVersion1FrameHandler.handleDeliver(
           message,
           client,
+          ctx,
           client.chunkListener,
           client.messageListener,
           client.messageIgnoredListener,
@@ -673,7 +691,9 @@ class ServerFrameHandler {
       int read = 2;
       if (code == RESPONSE_CODE_STREAM_NOT_AVAILABLE) {
         StringPayload stream = readString(message);
-        LOGGER.debug("Stream {} is no longer available", stream.value);
+        if (LOGGER.isDebugEnabled()) {
+          LOGGER.debug("Stream {} is no longer available", stream.value);
+        }
         read += (2 + stream.byteLength);
         client.metadataListener.handle(stream.value, code);
       } else {
@@ -810,13 +830,17 @@ class ServerFrameHandler {
 
     @Override
     int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
-      LOGGER.debug(
-          "Handling peer properties response for connection {}", client.clientConnectionName());
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug(
+            "Handling peer properties response for connection {}", client.clientConnectionName());
+      }
       int correlationId = message.readInt();
-      LOGGER.debug(
-          "Handling peer properties response for connection {}, correlation ID is {}",
-          client.clientConnectionName(),
-          correlationId);
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug(
+            "Handling peer properties response for connection {}, correlation ID is {}",
+            client.clientConnectionName(),
+            correlationId);
+      }
       int read = 4;
 
       short responseCode = message.readShort();

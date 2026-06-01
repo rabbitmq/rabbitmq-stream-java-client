@@ -156,9 +156,14 @@ public class DeliveryTest {
 
               AtomicLong filteredMessageCount = new AtomicLong();
 
+              io.netty.channel.ChannelHandlerContext ctx =
+                  org.mockito.Mockito.mock(io.netty.channel.ChannelHandlerContext.class);
+              when(ctx.alloc()).thenReturn(io.netty.buffer.UnpooledByteBufAllocator.DEFAULT);
+
               DeliverVersion1FrameHandler.handleDeliverVersion1(
                   bb,
                   client,
+                  ctx,
                   (client, subscriptionId, offset, messageCount, sizeOfData) -> {
                     assertThat(messageCount).isEqualTo(nbMessages);
                     chunkCountInCallback.incrementAndGet();

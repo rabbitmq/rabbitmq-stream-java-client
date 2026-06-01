@@ -569,7 +569,7 @@ public class Client implements AutoCloseable {
   }
 
   private int nextCorrelationId() {
-    return this.correlationSequence.getAndIncrement();
+    return this.correlationSequence.getAndIncrement() & 0x7fffffff;
   }
 
   private <T> T sendRpc(
@@ -2867,10 +2867,20 @@ public class Client implements AutoCloseable {
       }
 
       if (task != null) {
-        if (commandId == Constants.COMMAND_DELIVER) {
-          dispatchingExecutorService.submit(task);
-        } else {
-          executorService.submit(task);
+        try {
+          if (commandId == Constants.COMMAND_DELIVER) {
+            dispatchingExecutorService.execute(task);
+          } else {
+            executorService.execute(task);
+          }
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+          LOGGER.warn("Task execution rejected in stream handler for command {}", commandId, e);
+          try {
+            m.release();
+          } catch (Exception ex) {
+            LOGGER.debug("Error while releasing buffer on rejected execution: {}", ex.getMessage());
+          }
+          throw e;
         }
       }
     }
@@ -2892,7 +2902,12 @@ public class Client implements AutoCloseable {
             // we do our best the execute the closing sequence
             new Thread(() -> closingSequence(ShutdownReason.UNKNOWN)).start();
           } else {
-            executorService.submit(() -> closingSequence(ShutdownReason.UNKNOWN));
+            try {
+              executorService.execute(() -> closingSequence(ShutdownReason.UNKNOWN));
+            } catch (java.util.concurrent.RejectedExecutionException e) {
+              LOGGER.warn("Shutdown task rejected, running synchronously", e);
+              closingSequence(ShutdownReason.UNKNOWN);
+            }
           }
         }
       }
@@ -2909,8 +2924,13 @@ public class Client implements AutoCloseable {
               host,
               port);
           if (closing.compareAndSet(false, true)) {
-            executorService.submit(
-                () -> closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE));
+            try {
+              executorService.execute(
+                  () -> closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE));
+            } catch (java.util.concurrent.RejectedExecutionException ree) {
+              LOGGER.warn("Heartbeat failure close task rejected, running synchronously", ree);
+              closingSequence(ShutdownContext.ShutdownReason.HEARTBEAT_FAILURE);
+            }
           }
         } else if (e.state() == IdleState.WRITER_IDLE) {
           LOGGER.debug("Sending heartbeat frame");

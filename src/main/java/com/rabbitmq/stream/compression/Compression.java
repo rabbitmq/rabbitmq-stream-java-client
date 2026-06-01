@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -31,6 +31,9 @@ public enum Compression {
   }
 
   public static Compression get(byte code) {
+    if (code < 0 || code >= COMPRESSIONS.length) {
+      throw new IllegalArgumentException("Unknown compression code: " + code);
+    }
     return COMPRESSIONS[code];
   }
 
