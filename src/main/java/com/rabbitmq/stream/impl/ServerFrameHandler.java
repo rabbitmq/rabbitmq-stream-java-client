@@ -683,7 +683,10 @@ class ServerFrameHandler {
         read += (2 + stream.byteLength);
         client.metadataListener.handle(stream.value, code);
       } else {
-        throw new IllegalArgumentException("Unsupported metadata update code " + code);
+        LOGGER.warn("Unsupported metadata update code {}, draining frame", code);
+        int remainingBytes = message.readableBytes();
+        message.skipBytes(remainingBytes);
+        read += remainingBytes;
       }
       return read;
     }
