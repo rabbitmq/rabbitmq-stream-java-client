@@ -198,6 +198,8 @@ public class Client implements AutoCloseable {
   final ConcurrentMap<Integer, OutstandingRequest<?>> outstandingRequests =
       new ConcurrentHashMap<>();
   final List<SubscriptionOffset> subscriptionOffsets = new CopyOnWriteArrayList<>();
+  // A flag that mirrors whether the list has any elements
+  private volatile boolean hasSubscriptionOffsets = false;
   // dispatches broker frames, except for delivery frames
   final ExecutorService executorService;
   private final Consumer<ExecutorService> closeExecutorService;
@@ -1379,7 +1381,7 @@ public class Client implements AutoCloseable {
       outstandingRequests.put(correlationId, request);
       boolean offsetAdded = false;
       if (offsetSpecification.isOffset()) {
-        subscriptionOffsets.add(
+        this.addSubscriptionToList(
             new SubscriptionOffset(subscriptionId, offsetSpecification.getOffset()));
         offsetAdded = true;
       }
@@ -1387,17 +1389,17 @@ public class Client implements AutoCloseable {
       Response response = request.blockAndGet();
       // Clean up subscription offset if subscribe failed
       if (offsetAdded && response.getResponseCode() != RESPONSE_CODE_OK) {
-        subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
+        this.removeSubscriptionFromList(subscriptionId);
       }
       return response;
     } catch (StreamException e) {
       // Clean up subscription offset on failure
-      subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
+      this.removeSubscriptionFromList(subscriptionId);
       this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
       // Clean up subscription offset on failure
-      subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
+      this.removeSubscriptionFromList(subscriptionId);
       this.handleRpcError(correlationId, e);
       throw new StreamException(
           format("Error while trying to subscribe to stream '%s'", stream), e);
@@ -1592,7 +1594,7 @@ public class Client implements AutoCloseable {
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
       // Clean up any matching subscription offset entries
-      subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
+      this.removeSubscriptionFromList(subscriptionId);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       return request.blockAndGet();
     } catch (StreamException e) {
@@ -1602,6 +1604,31 @@ public class Client implements AutoCloseable {
       this.handleRpcError(correlationId, e);
       throw new StreamException("Error while unsubscribing", e);
     }
+  }
+
+  private void addSubscriptionToList(SubscriptionOffset sub) {
+    this.subscriptionOffsets.add(sub);
+    this.hasSubscriptionOffsets = true;
+  }
+
+  private void removeSubscriptionFromList(byte subscriptionId) {
+    this.subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
+    this.hasSubscriptionOffsets = !subscriptionOffsets.isEmpty();
+  }
+
+  long extractInitialSubscriptionOffset(byte subscriptionId) {
+    if (!this.hasSubscriptionOffsets) {
+      return -1;
+    }
+
+    for (SubscriptionOffset subscriptionOffset : this.subscriptionOffsets) {
+      if (subscriptionOffset.subscriptionId() == subscriptionId) {
+        this.subscriptionOffsets.remove(subscriptionOffset);
+        this.hasSubscriptionOffsets = !this.subscriptionOffsets.isEmpty();
+        return subscriptionOffset.offset();
+      }
+    }
+    return -1;
   }
 
   public void close() {

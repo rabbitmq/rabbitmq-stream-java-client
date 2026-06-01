@@ -487,16 +487,7 @@ class ServerFrameHandler {
       Object chunkContext =
           chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
 
-      long offsetLimit = -1;
-      if (!subscriptionOffsets.isEmpty()) {
-        for (SubscriptionOffset subscriptionOffset : subscriptionOffsets) {
-          if (subscriptionOffset.subscriptionId() == subscriptionId) {
-            subscriptionOffsets.remove(subscriptionOffset);
-            offsetLimit = subscriptionOffset.offset();
-            break;
-          }
-        }
-      }
+      long offsetLimit = client.extractInitialSubscriptionOffset(subscriptionId);
 
       final boolean ignore = offsetLimit != -1;
 

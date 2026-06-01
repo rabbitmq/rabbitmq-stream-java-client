@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.Codec;
@@ -30,7 +31,13 @@ import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 
 public class DeliveryTest {
 
@@ -51,6 +58,19 @@ public class DeliveryTest {
           return null;
         }
       };
+
+  @Mock Client client;
+  AutoCloseable mocks;
+
+  @BeforeEach
+  void setUp() {
+    mocks = MockitoAnnotations.openMocks(this);
+  }
+
+  @AfterEach
+  void tearDown() throws Exception {
+    mocks.close();
+  }
 
   ByteBuf generateFrameBuffer(
       int nbMessages, long chunkOffset, int dataSize, Iterable<byte[]> messages) {
@@ -131,15 +151,17 @@ public class DeliveryTest {
 
               List<Client.SubscriptionOffset> subscriptionOffsets = new ArrayList<>();
               if (chunkOffset != subscriptionOffset) {
-                subscriptionOffsets.add(
-                    new Client.SubscriptionOffset((byte) 1, subscriptionOffset));
+                when(client.extractInitialSubscriptionOffset((byte) 1))
+                    .thenReturn(subscriptionOffset);
+              } else {
+                when(client.extractInitialSubscriptionOffset((byte) 1)).thenReturn(-1L);
               }
 
               AtomicLong filteredMessageCount = new AtomicLong();
 
               DeliverVersion1FrameHandler.handleDeliverVersion1(
                   bb,
-                  null,
+                  client,
                   (client, subscriptionId, offset, messageCount, sizeOfData) -> {
                     assertThat(messageCount).isEqualTo(nbMessages);
                     chunkCountInCallback.incrementAndGet();
