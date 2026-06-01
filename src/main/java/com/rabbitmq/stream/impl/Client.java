@@ -92,6 +92,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufOutputStream;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -869,7 +870,11 @@ public class Client implements AutoCloseable {
   }
 
   private static int collectionSize(Collection<String> elements) {
-    return 4 + elements.stream().mapToInt(v -> 2 + stringByteSize(v)).sum();
+    int size = 4;
+    for (String element : elements) {
+      size += 2 + ByteBufUtil.utf8Bytes(element);
+    }
+    return size;
   }
 
   private static int arraySize(String... elements) {
@@ -877,20 +882,22 @@ public class Client implements AutoCloseable {
   }
 
   private static int mapSize(Map<String, String> elements) {
-    return 4
-        + elements.entrySet().stream()
-            .mapToInt(e -> 2 + stringByteSize(e.getKey()) + 2 + stringByteSize(e.getValue()))
-            .sum();
+    int size = 4;
+    for (Map.Entry<String, String> entry : elements.entrySet()) {
+      size +=
+          2 + ByteBufUtil.utf8Bytes(entry.getKey()) + 2 + ByteBufUtil.utf8Bytes(entry.getValue());
+    }
+    return size;
   }
 
   private static int stringByteSize(String string) {
-    return string.getBytes(CHARSET).length;
+    return ByteBufUtil.utf8Bytes(string);
   }
 
   private static void writeString(ByteBuf bb, String string) {
-    byte[] bytes = string.getBytes(CHARSET);
-    bb.writeShort(bytes.length);
-    bb.writeBytes(bytes);
+    int byteLen = ByteBufUtil.utf8Bytes(string);
+    bb.writeShort(byteLen);
+    ByteBufUtil.writeUtf8(bb, string);
   }
 
   private static void writeCollection(ByteBuf bb, Collection<String> elements) {
