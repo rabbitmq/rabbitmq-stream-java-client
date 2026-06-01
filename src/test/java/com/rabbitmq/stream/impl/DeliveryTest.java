@@ -131,7 +131,8 @@ public class DeliveryTest {
 
               List<Client.SubscriptionOffset> subscriptionOffsets = new ArrayList<>();
               if (chunkOffset != subscriptionOffset) {
-                subscriptionOffsets.add(new Client.SubscriptionOffset(1, subscriptionOffset));
+                subscriptionOffsets.add(
+                    new Client.SubscriptionOffset((byte) 1, subscriptionOffset));
               }
 
               AtomicLong filteredMessageCount = new AtomicLong();

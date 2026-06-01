@@ -1377,16 +1377,27 @@ public class Client implements AutoCloseable {
       }
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
+      boolean offsetAdded = false;
       if (offsetSpecification.isOffset()) {
         subscriptionOffsets.add(
             new SubscriptionOffset(subscriptionId, offsetSpecification.getOffset()));
+        offsetAdded = true;
       }
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
-      return request.blockAndGet();
+      Response response = request.blockAndGet();
+      // Clean up subscription offset if subscribe failed
+      if (offsetAdded && response.getResponseCode() != RESPONSE_CODE_OK) {
+        subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
+      }
+      return response;
     } catch (StreamException e) {
+      // Clean up subscription offset on failure
+      subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
       this.handleRpcError(correlationId, e);
       throw e;
     } catch (RuntimeException e) {
+      // Clean up subscription offset on failure
+      subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
       this.handleRpcError(correlationId, e);
       throw new StreamException(
           format("Error while trying to subscribe to stream '%s'", stream), e);
@@ -1580,6 +1591,8 @@ public class Client implements AutoCloseable {
       bb.writeByte(subscriptionId);
       OutstandingRequest<Response> request = outstandingRequest();
       outstandingRequests.put(correlationId, request);
+      // Clean up any matching subscription offset entries
+      subscriptionOffsets.removeIf(offset -> offset.subscriptionId() == subscriptionId);
       channel.writeAndFlush(bb).addListener(maybeFailRpc(correlationId));
       return request.blockAndGet();
     } catch (StreamException e) {
@@ -2919,15 +2932,15 @@ public class Client implements AutoCloseable {
 
   static final class SubscriptionOffset {
 
-    private final int subscriptionId;
+    private final byte subscriptionId;
     private final long offset;
 
-    SubscriptionOffset(int subscriptionId, long offset) {
+    SubscriptionOffset(byte subscriptionId, long offset) {
       this.subscriptionId = subscriptionId;
       this.offset = offset;
     }
 
-    int subscriptionId() {
+    byte subscriptionId() {
       return subscriptionId;
     }
 
