@@ -1184,7 +1184,7 @@ class ServerFrameHandler {
       }
 
       if (responseCode != RESPONSE_CODE_OK) {
-        LOGGER.info("Route returned error: {}", Utils.formatConstant(responseCode));
+        LOGGER.info("Partitions returned error: {}", Utils.formatConstant(responseCode));
       }
 
       OutstandingRequest<List<String>> outstandingRequest =
