@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -38,6 +38,7 @@ import com.rabbitmq.stream.sasl.SaslMechanism;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -46,6 +47,12 @@ public class AuthenticationTest {
 
   TestUtils.ClientFactory cf;
   String brokerVersion;
+  long start;
+
+  @BeforeEach
+  void setUp() {
+    start = System.nanoTime();
+  }
 
   @Test
   void authenticateShouldPassWithValidCredentials() {
@@ -70,6 +77,7 @@ public class AuthenticationTest {
       assertThat(e.getMessage())
           .contains(String.valueOf(Constants.RESPONSE_CODE_AUTHENTICATION_FAILURE));
     }
+    assertSilentClosedDelayWorked();
   }
 
   @Test
@@ -131,6 +139,7 @@ public class AuthenticationTest {
       assertThat(e.getMessage())
           .contains(String.valueOf(Constants.RESPONSE_CODE_VIRTUAL_HOST_ACCESS_FAILURE));
     }
+    assertSilentClosedDelayWorked();
   }
 
   @Test
@@ -173,6 +182,7 @@ public class AuthenticationTest {
       assertThat(client.isOpen()).isFalse();
     }
     client.close();
+    assertSilentClosedDelayWorked();
   }
 
   @Test
@@ -201,6 +211,7 @@ public class AuthenticationTest {
         assertThat(client.isOpen()).isFalse();
       }
       client.close();
+      assertSilentClosedDelayWorked();
     } finally {
       deleteUser(username);
     }
@@ -229,6 +240,7 @@ public class AuthenticationTest {
       assertThat(closedSync).completes();
       assertThat(client.isOpen()).isFalse();
       client.close();
+      assertSilentClosedDelayWorked();
     } finally {
       deleteUser(u);
     }
@@ -248,5 +260,11 @@ public class AuthenticationTest {
 
   private boolean connectionClosedOnUpdateSecretFailure() {
     return TestUtils.atLeastVersion(RABBITMQ_4_1_4.version(), brokerVersion);
+  }
+
+  private void assertSilentClosedDelayWorked() {
+    Duration executionTime = Duration.ofNanos(System.nanoTime() - start);
+    // the broker silent close delay is 3 seconds
+    assertThat(executionTime).isGreaterThan(Duration.ofSeconds(2));
   }
 }
