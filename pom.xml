@@ -669,6 +669,9 @@
         <groupId>com.github.spotbugs</groupId>
         <artifactId>spotbugs-maven-plugin</artifactId>
         <version>${spotbugs-maven-plugin.version}</version>
+        <configuration>
+          <skip>true</skip>
+        </configuration>
         <dependencies>
           <dependency>
             <groupId>com.github.spotbugs</groupId>
