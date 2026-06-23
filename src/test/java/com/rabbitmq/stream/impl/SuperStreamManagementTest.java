@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2023-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -21,6 +21,7 @@ import static com.rabbitmq.stream.Constants.RESPONSE_CODE_ACCESS_REFUSED;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_ALREADY_EXISTS;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST;
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE;
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_13_0;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ko;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.ok;
 import static com.rabbitmq.stream.impl.TestUtils.ResponseConditions.responseCode;
@@ -32,6 +33,8 @@ import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rabbitmq.stream.OffsetSpecification;
+import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,10 +43,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
-@TestUtils.DisabledIfRabbitMqCtlNotSet
+@StreamTestInfrastructure
+@DisabledIfRabbitMqCtlNotSet
 public class SuperStreamManagementTest {
 
   TestUtils.ClientFactory cf;
@@ -60,7 +62,7 @@ public class SuperStreamManagementTest {
   }
 
   @Test
-  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
   void createDelete() {
     Client c = cf.get();
     Client.Response response = c.createSuperStream(s, partitions, bindingKeys, null);
@@ -90,7 +92,7 @@ public class SuperStreamManagementTest {
   }
 
   @Test
-  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
   void clientWithSubscriptionShouldReceiveNotificationOnDeletion() throws Exception {
     Client c = cf.get();
     Client.Response response = c.createSuperStream(s, partitions, bindingKeys, null);
@@ -119,8 +121,8 @@ public class SuperStreamManagementTest {
   }
 
   @Test
-  @TestUtils.BrokerVersionAtLeast(TestUtils.BrokerVersion.RABBITMQ_3_13_0)
-  void authorisation() throws Exception {
+  @BrokerVersionAtLeast(RABBITMQ_3_13_0)
+  void authorisation() {
     String user = "stream";
     // binding keys do not matter for authorisation
     bindingKeys = asList("1", "2", "3");
@@ -150,6 +152,11 @@ public class SuperStreamManagementTest {
           .hasSameSizeAs(partitions)
           .allSatisfy((s, streamMetadata) -> assertThat(streamMetadata.isResponseOk()).isTrue());
       assertThat(c.partitions(s)).isEqualTo(partitions);
+
+      // route requires write permissions on the super stream exchange and partitions
+      // producers use route, so its permissions are consistent with its usage (writing to the
+      // streams)
+      setPermissions(user, asList("stream|partition.*$", "stream|partition.*$", "stream.*$"));
       for (int i = 0; i < bindingKeys.size(); i++) {
         String bk = bindingKeys.get(i);
         assertThat(c.route(bk, s)).hasSize(1).contains(partitions.get(i));
