@@ -1001,19 +1001,6 @@ class ServerFrameHandler {
 
       client.tuneState.maxFrameSize(maxFrameSize).heartbeat(heartbeat);
 
-      if (maxFrameSize > 0) {
-        // tighten the decoder to the negotiated value, which may be smaller than the client's
-        // own requested cap already in place since pipeline construction; frames belonging to
-        // a TCP read already in flight when this runs are still bound by the previous cap
-        client
-            .channel
-            .pipeline()
-            .replace(
-                Client.NETTY_HANDLER_FRAME_DECODER,
-                Client.NETTY_HANDLER_FRAME_DECODER,
-                Client.frameDecoder(maxFrameSize));
-      }
-
       if (heartbeat > 0) {
         client
             .channel
