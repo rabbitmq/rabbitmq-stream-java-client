@@ -170,6 +170,9 @@ public class Client implements AutoCloseable {
   public static final int DEFAULT_TLS_PORT = 5551;
   static final int MAX_REFERENCE_SIZE = 256;
   static final int DEFAULT_MAX_FRAME_SIZE = 1048576;
+  // used before the max frame size is negotiated with the server (tune/open exchange), so the
+  // client is never exposed to an unbounded or overly large frame from an unauthenticated peer
+  static final int MAX_FRAME_SIZE_BEFORE_AUTHENTICATION = 4096;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
@@ -330,7 +333,8 @@ public class Client implements AutoCloseable {
                         FlushConsolidationHandler.DEFAULT_EXPLICIT_FLUSH_AFTER_FLUSHES, true));
             ch.pipeline()
                 .addLast(
-                    NETTY_HANDLER_FRAME_DECODER, frameDecoder(parameters.requestedMaxFrameSize));
+                    NETTY_HANDLER_FRAME_DECODER,
+                    frameDecoder(MAX_FRAME_SIZE_BEFORE_AUTHENTICATION));
             ch.pipeline().addLast(NETTY_HANDLER_STREAM, new StreamHandler());
             ch.pipeline().addLast(new MetricsHandler(metricsCollector));
             if (parameters.sslContext != null) {
@@ -475,6 +479,13 @@ public class Client implements AutoCloseable {
           this.maxFrameSize(),
           tuneState.getHeartbeat());
       this.connectionProperties = open(parameters.virtualHost);
+      // the connection is authenticated and opened at this point, so it is safe to enforce the
+      // frame size agreed on during the tune exchange (it may be larger than the fixed cap used
+      // until now)
+      this.channel
+          .pipeline()
+          .replace(
+              NETTY_HANDLER_FRAME_DECODER, NETTY_HANDLER_FRAME_DECODER, frameDecoder(maxFrameSize));
       Set<FrameHandlerInfo> supportedCommands = maybeExchangeCommandVersions();
       AtomicBoolean streamStatsSupported = new AtomicBoolean(false);
       AtomicBoolean filteringSupportedReference = new AtomicBoolean(false);
