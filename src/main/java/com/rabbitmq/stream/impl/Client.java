@@ -172,7 +172,7 @@ public class Client implements AutoCloseable {
   static final int DEFAULT_MAX_FRAME_SIZE = 1048576;
   // used before the max frame size is negotiated with the server (tune/open exchange), so the
   // client is never exposed to an unbounded or overly large frame from an unauthenticated peer
-  static final int MAX_FRAME_SIZE_BEFORE_AUTHENTICATION = 4096;
+  static final int MAX_FRAME_SIZE_BEFORE_AUTHENTICATION = 8192;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
