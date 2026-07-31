@@ -172,7 +172,7 @@ public class Client implements AutoCloseable {
   static final int DEFAULT_MAX_FRAME_SIZE = 1048576;
   // used before the max frame size is negotiated with the server (tune/open exchange), so the
   // client is never exposed to an unbounded or overly large frame from an unauthenticated peer
-  static final int MAX_FRAME_SIZE_BEFORE_AUTHENTICATION = 8192;
+  static final int DEFAULT_MAX_FRAME_SIZE_BEFORE_AUTHENTICATION = 8192;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
@@ -334,7 +334,7 @@ public class Client implements AutoCloseable {
             ch.pipeline()
                 .addLast(
                     NETTY_HANDLER_FRAME_DECODER,
-                    frameDecoder(MAX_FRAME_SIZE_BEFORE_AUTHENTICATION));
+                    frameDecoder(parameters.maxFrameSizeBeforeAuthentication));
             ch.pipeline().addLast(NETTY_HANDLER_STREAM, new StreamHandler());
             ch.pipeline().addLast(new MetricsHandler(metricsCollector));
             if (parameters.sslContext != null) {
@@ -2377,6 +2377,7 @@ public class Client implements AutoCloseable {
     private String virtualHost = "/";
     private Duration requestedHeartbeat = Duration.ofSeconds(60);
     private int requestedMaxFrameSize = DEFAULT_MAX_FRAME_SIZE;
+    private int maxFrameSizeBeforeAuthentication = DEFAULT_MAX_FRAME_SIZE_BEFORE_AUTHENTICATION;
     private PublishConfirmListener publishConfirmListener = NO_OP_PUBLISH_CONFIRM_LISTENER;
     private PublishErrorListener publishErrorListener = NO_OP_PUBLISH_ERROR_LISTENER;
     private ChunkListener chunkListener =
@@ -2426,6 +2427,7 @@ public class Client implements AutoCloseable {
       this.virtualHost = other.virtualHost;
       this.requestedHeartbeat = other.requestedHeartbeat;
       this.requestedMaxFrameSize = other.requestedMaxFrameSize;
+      this.maxFrameSizeBeforeAuthentication = other.maxFrameSizeBeforeAuthentication;
       this.publishConfirmListener = other.publishConfirmListener;
       this.publishErrorListener = other.publishErrorListener;
       this.chunkListener = other.chunkListener;
@@ -2560,6 +2562,11 @@ public class Client implements AutoCloseable {
 
     public ClientParameters requestedMaxFrameSize(int requestedMaxFrameSize) {
       this.requestedMaxFrameSize = requestedMaxFrameSize;
+      return this;
+    }
+
+    public ClientParameters maxFrameSizeBeforeAuthentication(int maxFrameSizeBeforeAuthentication) {
+      this.maxFrameSizeBeforeAuthentication = maxFrameSizeBeforeAuthentication;
       return this;
     }
 
