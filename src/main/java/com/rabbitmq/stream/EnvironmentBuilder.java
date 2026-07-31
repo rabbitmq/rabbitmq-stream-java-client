@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -208,6 +208,27 @@ public interface EnvironmentBuilder {
    * @see <a href="https://rabbitmq.com/stream.html#protocol">Stream plugin documentation</a>
    */
   EnvironmentBuilder requestedMaxFrameSize(int requestedMaxFrameSize);
+
+  /**
+   * The maximum frame size accepted from the broker before authentication completes.
+   *
+   * <p>Until the authentication sequence completes (<code>peer properties</code>, <code>
+   * SASL handshake</code>, <code>SASL authenticate</code>, <code>tune</code>, <code>open</code>),
+   * the client has not negotiated the actual max frame size with the broker yet, so it applies this
+   * lower ceiling instead. This avoids exposing the client to an unbounded or overly large frame
+   * from a peer it has not authenticated yet.
+   *
+   * <p>Default is 8192, which matches the broker default (<code>stream.initial_frame_max</code>)
+   * and is unlikely to need to change: it is small enough to mitigate the risk mentioned above,
+   * while being large enough to accommodate realistic <a
+   * href="https://www.rabbitmq.com/docs/oauth2">JWT tokens</a> carried as the SASL PLAIN password.
+   * The broker should be configured with the same value.
+   *
+   * @param maxFrameSizeBeforeAuthentication
+   * @return this builder instance
+   * @see <a href="https://rabbitmq.com/stream.html#protocol">Stream plugin documentation</a>
+   */
+  EnvironmentBuilder maxFrameSizeBeforeAuthentication(int maxFrameSizeBeforeAuthentication);
 
   /**
    * The checksum strategy used for chunk checksum.
