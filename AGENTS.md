@@ -45,6 +45,7 @@ To run a single test:
 
 * `src/main/java/com/rabbitmq/stream`: the public API
 * `src/main/java/com/rabbitmq/stream/impl`: internal packages
+* `src/main/java/com/rabbitmq/stream/codec`: classes for stream message encoding/decoding
 * `src/test/java`: tests
 
 ## Key Files
@@ -56,6 +57,8 @@ Under `src/main/java/com/rabbitmq/stream/`:
 * `impl/StreamEnvironmentBuilder.java`, `impl/StreamEnvironment.java`: implementation classes to bootstrap the system
 * `impl/StreamProducer.java`, `impl/StreamConsumer.java`: key implementation classes
 * `impl/ProducersCoordinator.java`, `impl/ConsumersCoordinator.java`: key implementation classes for resource management
+* `codec/Codec.java`: abstraction for stream message encoding/decoding
+* `codec/InternalCodec.java`, `codec/Amqp10.java`: default implementation of the stream message codec, uses the AMQP 1.0 message format and type system
 
 ## Code Style
 
