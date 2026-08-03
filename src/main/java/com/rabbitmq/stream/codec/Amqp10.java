@@ -16,12 +16,14 @@ package com.rabbitmq.stream.codec;
 
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.Properties;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.amqp.UnsignedByte;
 import com.rabbitmq.stream.amqp.UnsignedInteger;
 import com.rabbitmq.stream.amqp.UnsignedLong;
 import com.rabbitmq.stream.amqp.UnsignedShort;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Date;
@@ -1113,13 +1115,113 @@ final class Amqp10 {
 
   // --- Decoding ---
 
+  // Guardrails against malformed input.
+  // Mirrors deps/amqp10_common/src/amqp10_binary_parser.erl in rabbitmq-server.
+
+  /**
+   * Maximum number of sections in a message. Same value as MAX_MSG_SECTIONS in
+   * amqp10_binary_parser.erl: an unlimited number of tiny sections would let a single message
+   * consume disproportionate CPU time. No real world sender comes near this.
+   */
+  private static final int MAX_MSG_SECTIONS = 10_000;
+
+  /** Maximum nesting depth of AMQP types. Real messages nest two or three levels deep. */
+  private static final int MAX_NESTING_DEPTH = 64;
+
+  /** Number of bytes still readable before the current region ends. */
+  private static int remaining(ByteBuf buf, int limit) {
+    return limit - buf.readerIndex();
+  }
+
+  private static void requireBytes(ByteBuf buf, int limit, int needed) {
+    if (remaining(buf, limit) < needed) {
+      throw new StreamException(
+          "Insufficient input: %d byte(s) needed, %d available", needed, remaining(buf, limit));
+    }
+  }
+
+  /** Reads a 1-byte size field and checks the announced bytes are present. */
+  private static int readSize8(ByteBuf buf, int limit) {
+    requireBytes(buf, limit, 1);
+    int size = buf.readByte() & 0xFF;
+    requireBytes(buf, limit, size);
+    return size;
+  }
+
+  /**
+   * Reads a 4-byte size field and checks it is non-negative and the announced bytes are present.
+   */
+  private static int readSize32(ByteBuf buf, int limit) {
+    requireBytes(buf, limit, 4);
+    int size = buf.readInt();
+    if (size < 0) {
+      throw new StreamException("Invalid declared size: %d", size);
+    }
+    requireBytes(buf, limit, size);
+    return size;
+  }
+
+  private static byte readByteChecked(ByteBuf buf, int limit) {
+    requireBytes(buf, limit, 1);
+    return buf.readByte();
+  }
+
+  private static short readShortChecked(ByteBuf buf, int limit) {
+    requireBytes(buf, limit, 2);
+    return buf.readShort();
+  }
+
+  private static int readIntChecked(ByteBuf buf, int limit) {
+    requireBytes(buf, limit, 4);
+    return buf.readInt();
+  }
+
+  private static long readLongChecked(ByteBuf buf, int limit) {
+    requireBytes(buf, limit, 8);
+    return buf.readLong();
+  }
+
+  private static void checkDepth(int depth) {
+    if (depth > MAX_NESTING_DEPTH) {
+      throw new StreamException(
+          "AMQP 1.0 nesting depth exceeds the limit of %d", MAX_NESTING_DEPTH);
+    }
+  }
+
+  /**
+   * Minimum byte size of one array element of the given type, excluding the constructor that all
+   * elements of the array share. Port of array_element_size/2 in amqp10_binary_parser.erl.
+   * Variable-width types return the size of their length prefix, which is their minimum.
+   */
+  private static int arrayElementSize(byte type) {
+    int t = type & 0xFF;
+    if (t == DESCRIBED_TYPE_CONSTRUCTOR) return 2; // descriptor + value, at least 1 byte each
+    if (t >= 0x40 && t <= 0x4f) return 0; // zero-width: null, true, false, uint0, ulong0, list0
+    if (t >= 0x50 && t <= 0x5f) return 1;
+    if (t >= 0x60 && t <= 0x6f) return 2;
+    if (t >= 0x70 && t <= 0x7f) return 4;
+    if (t >= 0x80 && t <= 0x8f) return 8;
+    if (t >= 0x90 && t <= 0x9f) return 16;
+    if (t >= 0xa0 && t <= 0xaf) return 1; // 1-byte length prefix
+    if (t >= 0xb0 && t <= 0xbf) return 4; // 4-byte length prefix
+    if (t >= 0xc0 && t <= 0xcf) return 1;
+    if (t >= 0xd0 && t <= 0xdf) return 4;
+    if (t >= 0xe0 && t <= 0xef) return 1;
+    if (t >= 0xf0) return 4;
+    throw new StreamException("Unsupported array element type: 0x%02X", t);
+  }
+
   static Object readObject(ByteBuf buf) {
-    byte code = buf.readByte();
-    return readObjectWithCode(buf, code);
+    return readObject(buf, buf.writerIndex(), 0);
+  }
+
+  private static Object readObject(ByteBuf buf, int limit, int depth) {
+    byte code = readByteChecked(buf, limit);
+    return readObjectWithCode(buf, code, limit, depth);
   }
 
   @SuppressWarnings("fallthrough")
-  private static Object readObjectWithCode(ByteBuf buf, byte code) {
+  private static Object readObjectWithCode(ByteBuf buf, byte code, int limit, int depth) {
     switch (code) {
       case NULL:
         return null;
@@ -1128,172 +1230,232 @@ final class Amqp10 {
       case BOOLEAN_FALSE:
         return Boolean.FALSE;
       case BOOLEAN:
-        return buf.readByte() != 0 ? Boolean.TRUE : Boolean.FALSE;
+        return readByteChecked(buf, limit) != 0 ? Boolean.TRUE : Boolean.FALSE;
       case UBYTE:
-        return UnsignedByte.valueOf(buf.readByte());
+        return UnsignedByte.valueOf(readByteChecked(buf, limit));
       case BYTE:
-        return buf.readByte();
+        return readByteChecked(buf, limit);
       case USHORT:
-        return UnsignedShort.valueOf(buf.readShort());
+        return UnsignedShort.valueOf(readShortChecked(buf, limit));
       case SHORT:
-        return buf.readShort();
+        return readShortChecked(buf, limit);
       case UINT:
-        return UnsignedInteger.valueOf(buf.readInt());
+        return UnsignedInteger.valueOf(readIntChecked(buf, limit));
       case SMALLUINT:
-        return UnsignedInteger.valueOf(buf.readByte() & 0xFF);
+        return UnsignedInteger.valueOf(readByteChecked(buf, limit) & 0xFF);
       case UINT0:
         return UnsignedInteger.valueOf(0);
       case INT:
-        return buf.readInt();
+        return readIntChecked(buf, limit);
       case SMALLINT:
-        return (int) buf.readByte();
+        return (int) readByteChecked(buf, limit);
       case ULONG:
-        return UnsignedLong.valueOf(buf.readLong());
+        return UnsignedLong.valueOf(readLongChecked(buf, limit));
       case SMALLULONG:
-        return UnsignedLong.valueOf(buf.readByte() & 0xFFL);
+        return UnsignedLong.valueOf(readByteChecked(buf, limit) & 0xFFL);
       case ULONG0:
         return UnsignedLong.valueOf(0);
       case LONG:
-        return buf.readLong();
+        return readLongChecked(buf, limit);
       case SMALLLONG:
-        return (long) buf.readByte();
+        return (long) readByteChecked(buf, limit);
       case FLOAT:
-        return Float.intBitsToFloat(buf.readInt());
+        return Float.intBitsToFloat(readIntChecked(buf, limit));
       case DOUBLE:
-        return Double.longBitsToDouble(buf.readLong());
+        return Double.longBitsToDouble(readLongChecked(buf, limit));
       case CHAR:
-        return buf.readInt();
+        return readIntChecked(buf, limit);
       case TIMESTAMP:
         // Returns raw milliseconds as Long, not Date object.
         // This causes type fidelity loss during Date roundtrip encoding/decoding.
         // Consistent with QPid Proton behavior but should be documented.
-        return buf.readLong();
+        return readLongChecked(buf, limit);
       case UUID_TYPE:
-        return new UUID(buf.readLong(), buf.readLong());
+        return new UUID(readLongChecked(buf, limit), readLongChecked(buf, limit));
       case VBIN8:
         {
-          int len = buf.readByte() & 0xFF;
+          int len = readSize8(buf, limit);
           byte[] data = new byte[len];
           buf.readBytes(data);
           return data;
         }
       case VBIN32:
         {
-          int len = buf.readInt();
+          int len = readSize32(buf, limit);
           byte[] data = new byte[len];
           buf.readBytes(data);
           return data;
         }
       case STR8:
-        {
-          int len = buf.readByte() & 0xFF;
-          String result = buf.toString(buf.readerIndex(), len, StandardCharsets.UTF_8);
-          buf.skipBytes(len);
-          return result;
-        }
+        return readText(buf, readSize8(buf, limit), StandardCharsets.UTF_8);
       case STR32:
-        {
-          int len = buf.readInt();
-          String result = buf.toString(buf.readerIndex(), len, StandardCharsets.UTF_8);
-          buf.skipBytes(len);
-          return result;
-        }
+        return readText(buf, readSize32(buf, limit), StandardCharsets.UTF_8);
       case SYM8:
-        {
-          int len = buf.readByte() & 0xFF;
-          String result = buf.toString(buf.readerIndex(), len, StandardCharsets.US_ASCII);
-          buf.skipBytes(len);
-          return result;
-        }
+        return readText(buf, readSize8(buf, limit), StandardCharsets.US_ASCII);
       case SYM32:
-        {
-          int len = buf.readInt();
-          String result = buf.toString(buf.readerIndex(), len, StandardCharsets.US_ASCII);
-          buf.skipBytes(len);
-          return result;
-        }
+        return readText(buf, readSize32(buf, limit), StandardCharsets.US_ASCII);
       case LIST0:
         return new ArrayList<>(0);
       case LIST8:
-        return readList8(buf);
+        {
+          int size = readSize8(buf, limit);
+          if (size < 1) {
+            throw new StreamException("Invalid list size: %d", size);
+          }
+          int end = buf.readerIndex() + size;
+          int declaredCount = buf.readByte() & 0xFF; // allocation hint only, never a loop bound
+          return readListElements(buf, end, declaredCount, depth + 1);
+        }
       case LIST32:
-        return readList32(buf);
+        {
+          int size = readSize32(buf, limit);
+          if (size < 4) {
+            throw new StreamException("Invalid list size: %d", size);
+          }
+          int end = buf.readerIndex() + size;
+          int declaredCount = buf.readInt(); // allocation hint only, never a loop bound
+          return readListElements(buf, end, declaredCount, depth + 1);
+        }
       case MAP8:
-        return readMap8(buf);
+        {
+          int size = readSize8(buf, limit);
+          if (size < 1) {
+            throw new StreamException("Invalid map size: %d", size);
+          }
+          int end = buf.readerIndex() + size;
+          int declaredCount = buf.readByte() & 0xFF; // allocation hint only
+          return readMapEntries(buf, end, declaredCount, depth + 1);
+        }
       case MAP32:
-        return readMap32(buf);
+        {
+          int size = readSize32(buf, limit);
+          if (size < 4) {
+            throw new StreamException("Invalid map size: %d", size);
+          }
+          int end = buf.readerIndex() + size;
+          int declaredCount = buf.readInt(); // allocation hint only
+          return readMapEntries(buf, end, declaredCount, depth + 1);
+        }
       case ARRAY8:
-        return readArray8(buf);
+        {
+          // An array's size covers count(1) + element constructor(1) + elements, so 2 is the
+          // minimum.
+          int size = readSize8(buf, limit);
+          if (size < 2) {
+            throw new StreamException("Invalid array size: %d", size);
+          }
+          int end = buf.readerIndex() + size;
+          int count = buf.readByte() & 0xFF;
+          return readArrayElements(buf, end, count, depth + 1);
+        }
       case ARRAY32:
-        return readArray32(buf);
+        {
+          // An array's size covers count(4) + element constructor(1) + elements, so 5 is the
+          // minimum.
+          int size = readSize32(buf, limit);
+          if (size < 5) {
+            throw new StreamException("Invalid array size: %d", size);
+          }
+          int end = buf.readerIndex() + size;
+          int count = buf.readInt();
+          if (count < 0) {
+            throw new StreamException("Invalid array count: %d", count);
+          }
+          return readArrayElements(buf, end, count, depth + 1);
+        }
       case DESCRIBED_TYPE_CONSTRUCTOR:
-        return readDescribedType(buf);
+        return readDescribedType(buf, limit, depth + 1);
       default:
         throw new IllegalArgumentException(
             "Unknown AMQP type code: 0x" + Integer.toHexString(code & 0xFF));
     }
   }
 
-  private static List<Object> readList8(ByteBuf buf) {
-    buf.readByte(); // size
-    int count = buf.readByte() & 0xFF;
-    return readListElements(buf, count);
+  private static String readText(ByteBuf buf, int length, Charset charset) {
+    String result = buf.toString(buf.readerIndex(), length, charset);
+    buf.skipBytes(length);
+    return result;
   }
 
-  private static List<Object> readList32(ByteBuf buf) {
-    buf.readInt(); // size (skip, we use count)
-    int count = buf.readInt();
-    return readListElements(buf, count);
+  /**
+   * Initial capacity for a decoded collection. The declared count is a hint from the peer, so it is
+   * clamped to the largest number of elements the remaining bytes can hold: 1 byte minimum per list
+   * element (its constructor byte), 2 bytes minimum per map entry (a key and a value constructor).
+   * For a well-formed message the declared count is exact and is used as-is.
+   */
+  private static int sanitizedCapacity(
+      int declaredCount, int availableBytes, int minBytesPerElement) {
+    if (declaredCount <= 0) {
+      return 0;
+    }
+    return Math.min(declaredCount, availableBytes / minBytesPerElement);
   }
 
-  private static List<Object> readListElements(ByteBuf buf, int count) {
-    List<Object> list = new ArrayList<>(count);
-    for (int i = 0; i < count; i++) {
-      list.add(readObject(buf));
+  private static List<Object> readListElements(ByteBuf buf, int end, int declaredCount, int depth) {
+    checkDepth(depth);
+    List<Object> list =
+        new ArrayList<>(sanitizedCapacity(declaredCount, end - buf.readerIndex(), 1));
+    while (buf.readerIndex() < end) {
+      list.add(readObject(buf, end, depth));
     }
     return list;
   }
 
-  private static Map<Object, Object> readMap8(ByteBuf buf) {
-    buf.readByte(); // size
-    int count = buf.readByte() & 0xFF;
-    return readMapEntries(buf, count / 2);
-  }
-
-  private static Map<Object, Object> readMap32(ByteBuf buf) {
-    buf.readInt(); // size
-    int count = buf.readInt();
-    return readMapEntries(buf, count / 2);
-  }
-
-  private static Map<Object, Object> readMapEntries(ByteBuf buf, int entryCount) {
-    Map<Object, Object> map = new LinkedHashMap<>(entryCount);
-    for (int i = 0; i < entryCount; i++) {
-      Object key = readObject(buf);
-      Object value = readObject(buf);
-      map.put(key, value);
+  private static Map<Object, Object> readMapEntries(
+      ByteBuf buf, int end, int declaredCount, int depth) {
+    checkDepth(depth);
+    // The declared count of a map is the number of elements, i.e. twice the number of entries.
+    Map<Object, Object> map =
+        new LinkedHashMap<>(sanitizedCapacity(declaredCount / 2, end - buf.readerIndex(), 2));
+    while (buf.readerIndex() < end) {
+      Object key = readObject(buf, end, depth);
+      if (buf.readerIndex() >= end) {
+        // "Map encodings MUST contain an even number of items" [1.6.23]
+        throw new StreamException("Map with an odd number of elements");
+      }
+      map.put(key, readObject(buf, end, depth));
     }
     return map;
   }
 
-  private static Object readArray8(ByteBuf buf) {
-    buf.readByte(); // size
-    int count = buf.readByte() & 0xFF;
-    return readArrayElements(buf, count);
-  }
-
-  private static Object readArray32(ByteBuf buf) {
-    buf.readInt(); // size
-    int count = buf.readInt();
-    return readArrayElements(buf, count);
-  }
-
-  private static Object readArrayElements(ByteBuf buf, int count) {
-    if (count == 0) {
-      buf.readByte(); // skip element type constructor
-      return new Object[0];
+  private static Object readArrayElements(ByteBuf buf, int end, int count, int depth) {
+    checkDepth(depth);
+    if (buf.readerIndex() >= end) {
+      throw new StreamException("Missing array element constructor");
     }
     byte elementType = buf.readByte();
+    int elementSize = arrayElementSize(elementType);
+    Object array;
+    if (elementSize == 0) {
+      // A huge count of zero-width elements costs a handful of bytes on the wire, so the
+      // count cannot be trusted and the elements cannot be materialized safely (CWE-770).
+      // amqp10_binary_parser.erl keeps such an array opaque; this codec must return real
+      // objects, so it rejects it instead.
+      if (count > 0) {
+        throw new StreamException(
+            "Array of %d zero-width elements (constructor 0x%02X) not supported",
+            count, elementType & 0xFF);
+      }
+      array = new Object[0];
+    } else {
+      if ((long) count * elementSize > end - buf.readerIndex()) {
+        throw new StreamException(
+            "Declared array count %d exceeds the %d byte(s) available",
+            count, end - buf.readerIndex());
+      }
+      array = readArrayValues(buf, elementType, count, end, depth);
+    }
+    // An array must fill its declared size exactly. Mirrors
+    // failed_to_parse_array_extra_input_remaining in amqp10_binary_parser.erl.
+    if (buf.readerIndex() != end) {
+      throw new StreamException(
+          "Array declared %d byte(s) beyond its elements", end - buf.readerIndex());
+    }
+    return array;
+  }
+
+  private static Object readArrayValues(
+      ByteBuf buf, byte elementType, int count, int end, int depth) {
     switch (elementType) {
       case BYTE:
         {
@@ -1395,7 +1557,7 @@ final class Amqp10 {
         {
           Object[] result = new Object[count];
           for (int i = 0; i < count; i++) {
-            result[i] = readObjectWithCode(buf, elementType);
+            result[i] = readObjectWithCode(buf, elementType, end, depth);
           }
           return result;
         }
@@ -1404,10 +1566,11 @@ final class Amqp10 {
 
   // --- Decoding: Described types ---
 
-  private static Object readDescribedType(ByteBuf buf) {
+  private static Object readDescribedType(ByteBuf buf, int limit, int depth) {
+    checkDepth(depth);
     // The constructor byte (0x00) has already been consumed
-    Object descriptor = readObject(buf);
-    Object value = readObject(buf);
+    Object descriptor = readObject(buf, limit, depth + 1);
+    Object value = readObject(buf, limit, depth + 1);
     return new DescribedValue(descriptor, value);
   }
 
@@ -1431,31 +1594,47 @@ final class Amqp10 {
 
   // --- Decoding: Message sections ---
 
-  @SuppressWarnings("unchecked")
   static DecodedMessage decodeMessage(ByteBuf buf, int length) {
+    if (length < 0 || length > buf.readableBytes()) {
+      throw new StreamException(
+          "Invalid message length %d, only %d byte(s) available", length, buf.readableBytes());
+    }
     int endIndex = buf.readerIndex() + length;
+    try {
+      return decodeSections(buf, endIndex);
+    } finally {
+      // The frame layer assumes the codec consumed exactly `length` bytes, whether decoding
+      // succeeded or not. Never leave the reader index short of, or past, the message end.
+      buf.readerIndex(endIndex);
+    }
+  }
 
+  private static DecodedMessage decodeSections(ByteBuf buf, int endIndex) {
     Map<String, Object> messageAnnotations = null;
     Properties properties = null;
     Map<String, Object> applicationProperties = null;
     byte[] bodyData = null;
     Object body = null;
 
+    int sections = 0;
     while (buf.readerIndex() < endIndex) {
-      Object section = readObject(buf);
+      if (++sections > MAX_MSG_SECTIONS) {
+        throw new StreamException("Message has more than %d sections", MAX_MSG_SECTIONS);
+      }
+      Object section = readObject(buf, endIndex, 0);
       if (!(section instanceof DescribedValue)) {
         continue;
       }
       DescribedValue dv = (DescribedValue) section;
       long code = dv.descriptorCode();
       if (code == MESSAGE_ANNOTATIONS_DESCRIPTOR) {
-        messageAnnotations = toStringKeyMap((Map<Object, Object>) dv.value);
+        messageAnnotations = toStringKeyMap(asMap(dv.value, "message annotations"));
       } else if (code == PROPERTIES_DESCRIPTOR) {
-        properties = decodeProperties((List<Object>) dv.value);
+        properties = decodeProperties(asList(dv.value, "properties"));
       } else if (code == APPLICATION_PROPERTIES_DESCRIPTOR) {
-        applicationProperties = toStringKeyMap((Map<Object, Object>) dv.value);
+        applicationProperties = toStringKeyMap(asMap(dv.value, "application properties"));
       } else if (code == DATA_DESCRIPTOR) {
-        bodyData = (byte[]) dv.value;
+        bodyData = asBinary(dv.value, "data");
         body = bodyData;
       } else if (code == AMQP_SEQUENCE_DESCRIPTOR) {
         if (body == null) {
@@ -1473,12 +1652,41 @@ final class Amqp10 {
         messageAnnotations, properties, applicationProperties, bodyData, body);
   }
 
+  @SuppressWarnings("unchecked")
+  private static Map<Object, Object> asMap(Object value, String section) {
+    if (value == null || value instanceof Map) {
+      return (Map<Object, Object>) value;
+    }
+    throw new StreamException(
+        "Expected a map for the %s section, got %s", section, value.getClass().getSimpleName());
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<Object> asList(Object value, String section) {
+    if (value == null || value instanceof List) {
+      return (List<Object>) value;
+    }
+    throw new StreamException(
+        "Expected a list for the %s section, got %s", section, value.getClass().getSimpleName());
+  }
+
+  private static byte[] asBinary(Object value, String section) {
+    if (value == null || value instanceof byte[]) {
+      return (byte[]) value;
+    }
+    throw new StreamException(
+        "Expected binary for the %s section, got %s", section, value.getClass().getSimpleName());
+  }
+
   private static Map<String, Object> toStringKeyMap(Map<Object, Object> source) {
     if (source == null) {
       return null;
     }
     Map<String, Object> result = new LinkedHashMap<>(source.size());
     for (Map.Entry<Object, Object> entry : source.entrySet()) {
+      if (entry.getKey() == null) {
+        throw new StreamException("Null key in a string-keyed message section");
+      }
       result.put(entry.getKey().toString(), entry.getValue());
     }
     return result;
