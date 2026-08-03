@@ -92,7 +92,7 @@
     <buildnumber.plugin.version>3.3.0</buildnumber.plugin.version>
     <jmh.version>1.37</jmh.version>
     <spotless.version>3.9.0</spotless.version>
-    <google-java-format.version>1.36.0</google-java-format.version>
+    <google-java-format.version>1.36.1</google-java-format.version>
     <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
     <spotbugs.version>4.10.3</spotbugs.version>
     <!-- for documentation -->
