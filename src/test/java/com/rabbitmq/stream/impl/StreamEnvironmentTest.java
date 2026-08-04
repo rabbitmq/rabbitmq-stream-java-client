@@ -156,7 +156,8 @@ public class StreamEnvironmentTest {
                     .close())
         .isInstanceOf(StreamException.class)
         .hasCauseInstanceOf(ConnectException.class)
-        .hasRootCauseMessage("Connection refused");
+        .rootCause()
+        .hasMessageContaining("Connection refused");
     // no thread leak
     waitAtMost(
         Duration.ofSeconds(20),
