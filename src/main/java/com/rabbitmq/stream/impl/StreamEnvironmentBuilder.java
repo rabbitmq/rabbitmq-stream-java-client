@@ -202,6 +202,17 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     return this;
   }
 
+  public StreamEnvironmentBuilder maxUncompressedSubEntryBatchSize(
+      int maxUncompressedSubEntryBatchSize) {
+    this.clientParameters.maxUncompressedSubEntryBatchSize(maxUncompressedSubEntryBatchSize);
+    return this;
+  }
+
+  public StreamEnvironmentBuilder maxUncompressedSizePerChunk(int maxUncompressedSizePerChunk) {
+    this.clientParameters.maxUncompressedSizePerChunk(maxUncompressedSizePerChunk);
+    return this;
+  }
+
   public StreamEnvironmentBuilder chunkChecksum(ChunkChecksum chunkChecksum) {
     this.clientParameters.chunkChecksum(chunkChecksum);
     return this;
