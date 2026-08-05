@@ -83,7 +83,10 @@ public class TlsTest {
 
   SslContext alwaysTrustSslContext() {
     try {
-      return builder().trustManager(TRUST_EVERYTHING_TRUST_MANAGER).build();
+      return builder()
+          .trustManager(TRUST_EVERYTHING_TRUST_MANAGER)
+          .endpointIdentificationAlgorithm(null)
+          .build();
     } catch (SSLException e) {
       throw new RuntimeException(e);
     }
