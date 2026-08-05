@@ -127,6 +127,20 @@
       <groupId>io.netty</groupId>
       <artifactId>netty-codec</artifactId>
       <version>${netty.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-codec-compression</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-codec-protobuf</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-codec-marshalling</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
