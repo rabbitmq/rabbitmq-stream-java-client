@@ -529,7 +529,7 @@ table.CodeRay td.code{padding:0 0 0 .75em}
 <h1>RabbitMQ Stream Java Client</h1>
 <div class="details">
 <span id="revnumber">version 1.10.0-SNAPSHOT</span>
-<br><span id="revremark">(d824e7f)</span>
+<br><span id="revremark">(0d3affa)</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -1692,6 +1692,17 @@ The limit may not be strictly enforced in case of too many concurrent creations.
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>requestedHeartbeat</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Heartbeat requested by the client.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">60 seconds</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxUncompressedSubEntryBatchSize</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The maximum uncompressed size of a single sub-entry batch.
+The broker enforces the same limit when messages are published and should be configured with the same value.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">67108864 (64 MiB)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxUncompressedSizePerChunk</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The maximum total uncompressed size of the sub-entry batches in a single chunk.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1073741824 (1 GiB)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>forceReplicaForConsumers</code></p></td>
@@ -4699,7 +4710,7 @@ Here is the declaration for Maven:</p>
   <span class="tag">&lt;dependency&gt;</span>
     <span class="tag">&lt;groupId&gt;</span>io.netty<span class="tag">&lt;/groupId&gt;</span>
     <span class="tag">&lt;artifactId&gt;</span>netty-transport-native-epoll<span class="tag">&lt;/artifactId&gt;</span>
-    <span class="tag">&lt;version&gt;</span>4.2.16.Final<span class="tag">&lt;/version&gt;</span>
+    <span class="tag">&lt;version&gt;</span>4.2.17.Final<span class="tag">&lt;/version&gt;</span>
     <span class="tag">&lt;classifier&gt;</span>linux-x86_64<span class="tag">&lt;/classifier&gt;</span>
   <span class="tag">&lt;/dependency&gt;</span>
 
@@ -4713,7 +4724,7 @@ Here is the declaration for Maven:</p>
 <div class="title">Declaring the Linux x86-64 native <code>epoll</code> transport dependency with Gradle</div>
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="groovy">dependencies {
-  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">io.netty:netty-transport-native-epoll:4.2.16.Final:linux-x86_64</span><span class="delimiter">&quot;</span></span>
+  compile <span class="string"><span class="delimiter">&quot;</span><span class="content">io.netty:netty-transport-native-epoll:4.2.17.Final:linux-x86_64</span><span class="delimiter">&quot;</span></span>
 }</code></pre>
 </div>
 </div>
@@ -5147,7 +5158,7 @@ Micrometer internally uses <code>nanoseconds</code> for the baseunit. However, e
 <div id="footer">
 <div id="footer-text">
 Version 1.10.0-SNAPSHOT<br>
-Last updated 2026-08-03 15:40:35 UTC
+Last updated 2026-08-06 06:17:44 UTC
 </div>
 </div>
 </body>
