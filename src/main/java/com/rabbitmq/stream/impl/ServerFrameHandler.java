@@ -98,9 +98,11 @@ class ServerFrameHandler {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerFrameHandler.class);
   private static final FrameHandler RESPONSE_FRAME_HANDLER = new ResponseFrameHandler();
-  // sanity bound on declared uncompressed size vs. actual compressed size, to guard
-  // against a malicious/corrupted frame triggering an oversized buffer allocation
-  private static final int MAX_COMPRESSION_RATIO = 1024;
+  // initial capacity of the decompression buffer, it grows as needed up to the declared
+  // uncompressed size
+  static final int INITIAL_DECOMPRESSION_BUFFER_SIZE = 64 * 1024;
+  // transfer buffer size
+  private static final int DECOMPRESSION_TRANSFER_BUFFER_SIZE = 1024;
 
   private static final FrameHandler[][] HANDLERS;
 
@@ -538,6 +540,11 @@ class ServerFrameHandler {
       metricsCollector.chunk(numEntries);
       MutableBoolean messageIgnored = new MutableBoolean(false);
 
+      // bounds the total decompression work one frame can demand on the message dispatch thread:
+      // the
+      // per-entry cap bounds memory, but a chunk holds many entries
+      long decompressionBudget = client.maxUncompressedSizePerChunk();
+
       while (numRecords != 0) {
         byte entryType = message.readByte();
         if ((entryType & 0x80) == 0) {
@@ -600,78 +607,114 @@ class ServerFrameHandler {
           read += 4;
           checkSize(dataSize, message);
           if (uncompressedDataSize < 0
-              || uncompressedDataSize > (long) dataSize * MAX_COMPRESSION_RATIO) {
+              || uncompressedDataSize > client.maxUncompressedSubEntryBatchSize()) {
             throw new StreamException(
-                "Invalid uncompressed data size "
+                "Uncompressed sub-entry batch size "
                     + uncompressedDataSize
-                    + " for compressed size "
-                    + dataSize);
+                    + " exceeds the maximum of "
+                    + client.maxUncompressedSubEntryBatchSize()
+                    + " byte(s), it can be increased with"
+                    + " EnvironmentBuilder#maxUncompressedSubEntryBatchSize(int)");
+          }
+          if (comp.code() != Compression.NONE.code()) {
+            decompressionBudget -= uncompressedDataSize;
+            if (decompressionBudget < 0) {
+              throw new StreamException(
+                  "Chunk at offset "
+                      + offset
+                      + " declares more than "
+                      + client.maxUncompressedSizePerChunk()
+                      + " byte(s) of uncompressed sub-entry data, it can be increased with"
+                      + " EnvironmentBuilder#maxUncompressedSizePerChunk(int)");
+            }
+          }
+          if (numRecordsInBatch == 0) {
+            LOGGER.debug("Sub-batch entry declares 0 record(s)");
           }
 
           int readBeforeSubEntries = read;
           ByteBuf bbToReadFrom = message;
-          if (comp.code() != Compression.NONE.code()) {
-            CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
-            ByteBuf outBb = ctx.alloc().heapBuffer(uncompressedDataSize);
-            byte[] inBuffer = new byte[Math.min(uncompressedDataSize, 1024)];
-            int n;
-            ByteBuf slice = message.slice(message.readerIndex(), dataSize);
-            InputStream inputStream = null;
-            try {
-              inputStream = compressionCodec.decompress(new ByteBufInputStream(slice));
-              while (-1 != (n = inputStream.read(inBuffer))) {
-                outBb.writeBytes(inBuffer, 0, n);
-              }
-            } catch (Throwable e) {
-              // compression codecs may use native libraries, so we can end up
-              // with throwables or errors
-              throw new StreamException("Error while uncompressing sub-entry", e);
-            } finally {
-              if (inputStream != null) {
-                try {
-                  inputStream.close();
-                } catch (IOException e) {
-                  throw new StreamException(
-                      "Error while closing sub-entry compressed input stream", e);
+          ByteBuf outBb = null;
+          try {
+            if (comp.code() != Compression.NONE.code()) {
+              CompressionCodec compressionCodec = client.compressionCodecFactory.get(comp);
+              int initialCapacity =
+                  Math.min(uncompressedDataSize, INITIAL_DECOMPRESSION_BUFFER_SIZE);
+              // bounding maxCapacity makes the declared uncompressed size a hard limit: a
+              // stream producing more than it declared fails instead of growing without limit
+              outBb = ctx.alloc().heapBuffer(initialCapacity, uncompressedDataSize);
+              // shrink the transfer buffer for small declared sizes, but never to zero:
+              // read(byte[0]) returns 0 forever, not -1
+              byte[] inBuffer =
+                  new byte
+                      [uncompressedDataSize > 0
+                          ? Math.min(uncompressedDataSize, DECOMPRESSION_TRANSFER_BUFFER_SIZE)
+                          : DECOMPRESSION_TRANSFER_BUFFER_SIZE];
+              int n;
+              ByteBuf slice = message.slice(message.readerIndex(), dataSize);
+              InputStream inputStream = null;
+              try {
+                inputStream = compressionCodec.decompress(new ByteBufInputStream(slice));
+                while (-1 != (n = inputStream.read(inBuffer))) {
+                  outBb.writeBytes(inBuffer, 0, n);
+                }
+              } catch (Throwable e) {
+                // compression codecs may use native libraries, so we can end up
+                // with throwables or errors
+                throw new StreamException("Error while uncompressing sub-entry", e);
+              } finally {
+                if (inputStream != null) {
+                  try {
+                    inputStream.close();
+                  } catch (IOException e) {
+                    throw new StreamException(
+                        "Error while closing sub-entry compressed input stream", e);
+                  }
                 }
               }
+              message.readerIndex(message.readerIndex() + dataSize);
+              bbToReadFrom = outBb;
             }
-            message.readerIndex(message.readerIndex() + dataSize);
-            bbToReadFrom = outBb;
-          }
 
-          numRecords -= numRecordsInBatch;
+            // every sub-entry carries at least its own 4-byte length prefix
+            checkCount(numRecordsInBatch, 4, bbToReadFrom);
 
-          while (numRecordsInBatch != 0) {
-            read =
-                handleMessage(
-                    bbToReadFrom,
-                    read,
-                    ignore,
-                    messageIgnored,
-                    offset,
-                    offsetLimit,
-                    chunkTimestamp,
-                    committedOffset,
-                    codec,
-                    messageListener,
-                    subscriptionId,
-                    chunkContext);
-            if (messageIgnored.get()) {
-              messageIgnoredListener.ignored(
-                  subscriptionId, offset, chunkTimestamp, committedOffset, chunkContext);
-              messageIgnored.set(false);
-            } else {
-              metricsCollector.consume(1);
+            numRecords -= numRecordsInBatch;
+
+            while (numRecordsInBatch != 0) {
+              read =
+                  handleMessage(
+                      bbToReadFrom,
+                      read,
+                      ignore,
+                      messageIgnored,
+                      offset,
+                      offsetLimit,
+                      chunkTimestamp,
+                      committedOffset,
+                      codec,
+                      messageListener,
+                      subscriptionId,
+                      chunkContext);
+              if (messageIgnored.get()) {
+                messageIgnoredListener.ignored(
+                    subscriptionId, offset, chunkTimestamp, committedOffset, chunkContext);
+                messageIgnored.set(false);
+              } else {
+                metricsCollector.consume(1);
+              }
+              numRecordsInBatch--;
+              offset++; // works even for unsigned long
             }
-            numRecordsInBatch--;
-            offset++; // works even for unsigned long
-          }
 
-          if (comp.code() != Compression.NONE.code()) {
-            bbToReadFrom.release();
-            // to avoid a warning, we read more from what it's inside the frame with compression
-            read = readBeforeSubEntries + dataSize;
+            if (comp.code() != Compression.NONE.code()) {
+              // to avoid a warning, we read more from what it's inside the frame with compression
+              read = readBeforeSubEntries + dataSize;
+            }
+          } finally {
+            if (outBb != null) {
+              outBb.release();
+            }
           }
         }
       }

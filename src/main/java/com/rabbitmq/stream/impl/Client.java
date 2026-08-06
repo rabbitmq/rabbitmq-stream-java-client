@@ -173,6 +173,13 @@ public class Client implements AutoCloseable {
   // used before the max frame size is negotiated with the server (tune/open exchange), so the
   // client is never exposed to an unbounded or overly large frame from an unauthenticated peer
   static final int DEFAULT_MAX_FRAME_SIZE_BEFORE_AUTHENTICATION = 8192;
+  // absolute cap on the decompressed size of one sub-entry batch, bounding the heap a single
+  // frame can commit on the event loop thread
+  static final int DEFAULT_MAX_UNCOMPRESSED_SUB_ENTRY_BATCH_SIZE = 64 * 1024 * 1024;
+  // bounds the total decompression work one frame (one chunk) can demand on the event loop
+  // thread: a chunk holds many entries, so the per-entry cap above does not bound the aggregate
+  static final int DEFAULT_MAX_UNCOMPRESSED_SIZE_PER_CHUNK =
+      16 * DEFAULT_MAX_UNCOMPRESSED_SUB_ENTRY_BATCH_SIZE;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
@@ -233,6 +240,8 @@ public class Client implements AutoCloseable {
   private final Runnable nettyClosing;
   private final int maxFrameSize;
   private final boolean frameSizeCapped;
+  private final int maxUncompressedSubEntryBatchSize;
+  private final int maxUncompressedSizePerChunk;
   private final EventLoopGroup eventLoopGroup;
   private final Map<String, String> clientProperties;
   private final String host;
@@ -266,6 +275,8 @@ public class Client implements AutoCloseable {
     this.saslConfiguration = parameters.saslConfiguration;
     this.chunkChecksum = parameters.chunkChecksum;
     this.metricsCollector = parameters.metricsCollector;
+    this.maxUncompressedSubEntryBatchSize = parameters.maxUncompressedSubEntryBatchSize;
+    this.maxUncompressedSizePerChunk = parameters.maxUncompressedSizePerChunk;
     this.metadataListener = parameters.metadataListener;
     this.consumerUpdateListener = parameters.consumerUpdateListener;
     this.compressionCodecFactory =
@@ -575,6 +586,14 @@ public class Client implements AutoCloseable {
 
   int maxFrameSize() {
     return this.maxFrameSize;
+  }
+
+  int maxUncompressedSubEntryBatchSize() {
+    return this.maxUncompressedSubEntryBatchSize;
+  }
+
+  int maxUncompressedSizePerChunk() {
+    return this.maxUncompressedSizePerChunk;
   }
 
   private int nextCorrelationId() {
@@ -2378,6 +2397,8 @@ public class Client implements AutoCloseable {
     private Duration requestedHeartbeat = Duration.ofSeconds(60);
     private int requestedMaxFrameSize = DEFAULT_MAX_FRAME_SIZE;
     private int maxFrameSizeBeforeAuthentication = DEFAULT_MAX_FRAME_SIZE_BEFORE_AUTHENTICATION;
+    private int maxUncompressedSubEntryBatchSize = DEFAULT_MAX_UNCOMPRESSED_SUB_ENTRY_BATCH_SIZE;
+    private int maxUncompressedSizePerChunk = DEFAULT_MAX_UNCOMPRESSED_SIZE_PER_CHUNK;
     private PublishConfirmListener publishConfirmListener = NO_OP_PUBLISH_CONFIRM_LISTENER;
     private PublishErrorListener publishErrorListener = NO_OP_PUBLISH_ERROR_LISTENER;
     private ChunkListener chunkListener =
@@ -2428,6 +2449,8 @@ public class Client implements AutoCloseable {
       this.requestedHeartbeat = other.requestedHeartbeat;
       this.requestedMaxFrameSize = other.requestedMaxFrameSize;
       this.maxFrameSizeBeforeAuthentication = other.maxFrameSizeBeforeAuthentication;
+      this.maxUncompressedSubEntryBatchSize = other.maxUncompressedSubEntryBatchSize;
+      this.maxUncompressedSizePerChunk = other.maxUncompressedSizePerChunk;
       this.publishConfirmListener = other.publishConfirmListener;
       this.publishErrorListener = other.publishErrorListener;
       this.chunkListener = other.chunkListener;
@@ -2567,6 +2590,23 @@ public class Client implements AutoCloseable {
 
     public ClientParameters maxFrameSizeBeforeAuthentication(int maxFrameSizeBeforeAuthentication) {
       this.maxFrameSizeBeforeAuthentication = maxFrameSizeBeforeAuthentication;
+      return this;
+    }
+
+    public ClientParameters maxUncompressedSubEntryBatchSize(int maxUncompressedSubEntryBatchSize) {
+      if (maxUncompressedSubEntryBatchSize <= 0) {
+        throw new IllegalArgumentException(
+            "maxUncompressedSubEntryBatchSize must be greater than 0");
+      }
+      this.maxUncompressedSubEntryBatchSize = maxUncompressedSubEntryBatchSize;
+      return this;
+    }
+
+    public ClientParameters maxUncompressedSizePerChunk(int maxUncompressedSizePerChunk) {
+      if (maxUncompressedSizePerChunk <= 0) {
+        throw new IllegalArgumentException("maxUncompressedSizePerChunk must be greater than 0");
+      }
+      this.maxUncompressedSizePerChunk = maxUncompressedSizePerChunk;
       return this;
     }
 

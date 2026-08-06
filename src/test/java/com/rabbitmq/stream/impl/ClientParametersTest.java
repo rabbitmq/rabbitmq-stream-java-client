@@ -51,7 +51,7 @@ public class ClientParametersTest {
     }
 
     assertEquals(
-        31,
+        33,
         nonStaticFields,
         "If this fails, update the copy constructor method to handle the new field(s)");
   }

@@ -651,6 +651,41 @@ public class StreamProducerTest {
   }
 
   @Test
+  void subEntryBatchesWithHighCompressionRatioShouldBeConsumedProperly() {
+    // an identical body per message and a large sub-entry size push the compression ratio well
+    // past what MAX_COMPRESSION_RATIO used to allow (v1.9.0), which broke this kind of batch on
+    // every consumer even though the broker accepted and stored it
+    int messageCount = 5000;
+    byte[] body =
+        "identical repetitive body for a high compression ratio"
+            .repeat(5)
+            .getBytes(StandardCharsets.UTF_8);
+    CountDownLatch publishLatch = new CountDownLatch(messageCount);
+    ConfirmationHandler confirmationHandler = confirmationStatus -> publishLatch.countDown();
+    Producer producer =
+        environment.producerBuilder().stream(stream)
+            .subEntrySize(messageCount)
+            .compression(Compression.ZSTD)
+            .build();
+    IntStream.range(0, messageCount)
+        .forEach(
+            i ->
+                producer.send(
+                    producer.messageBuilder().addData(body).build(), confirmationHandler));
+
+    assertThat(latchAssert(publishLatch)).completes();
+    producer.close();
+
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    environment.consumerBuilder().stream(stream)
+        .offset(OffsetSpecification.first())
+        .messageHandler((context, message) -> consumeLatch.countDown())
+        .build();
+
+    assertThat(latchAssert(consumeLatch)).completes();
+  }
+
+  @Test
   void methodsShouldThrowExceptionWhenProducerIsClosed() {
     Producer producer = environment.producerBuilder().stream(stream).build();
     producer.close();

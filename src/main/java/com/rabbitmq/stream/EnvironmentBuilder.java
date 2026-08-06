@@ -231,6 +231,38 @@ public interface EnvironmentBuilder {
   EnvironmentBuilder maxFrameSizeBeforeAuthentication(int maxFrameSizeBeforeAuthentication);
 
   /**
+   * The maximum uncompressed size of a single sub-entry batch.
+   *
+   * <p>A sub-entry batch header is written by the publishing client, stored verbatim by the broker,
+   * and replayed to consumers. Consumers must decompress a batch before they can decode any of its
+   * records, so this setting bounds the heap a single frame can commit on the message dispatching
+   * thread.
+   *
+   * <p>Default is 67108864 (64 MiB). The broker enforces the same limit when messages are published
+   * and should be configured with the same value: a batch larger than the broker's limit is
+   * rejected at publish time, whereas a batch larger than this client's limit but within the
+   * broker's is stored and then fails on every consumer.
+   *
+   * @param maxUncompressedSubEntryBatchSize
+   * @return this builder instance
+   */
+  EnvironmentBuilder maxUncompressedSubEntryBatchSize(int maxUncompressedSubEntryBatchSize);
+
+  /**
+   * The maximum total uncompressed size of the sub-entry batches in a single chunk.
+   *
+   * <p>A chunk can hold many sub-entry batches, so {@link #maxUncompressedSubEntryBatchSize(int)}
+   * alone does not bound the aggregate decompression work a single frame can demand on the message
+   * dispatching thread. This setting bounds that aggregate.
+   *
+   * <p>Default is 1073741824 (1 GiB).
+   *
+   * @param maxUncompressedSizePerChunk
+   * @return this builder instance
+   */
+  EnvironmentBuilder maxUncompressedSizePerChunk(int maxUncompressedSizePerChunk);
+
+  /**
    * The checksum strategy used for chunk checksum.
    *
    * <p>The default is CRC32 based on JDK implementation.

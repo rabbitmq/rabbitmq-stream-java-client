@@ -214,6 +214,15 @@ The limit may not be strictly enforced in case of too many concurrent creations.
 |Heartbeat requested by the client.
 |60 seconds
 
+|`maxUncompressedSubEntryBatchSize`
+|The maximum uncompressed size of a single sub-entry batch.
+The broker enforces the same limit when messages are published and should be configured with the same value.
+|67108864 (64 MiB)
+
+|`maxUncompressedSizePerChunk`
+|The maximum total uncompressed size of the sub-entry batches in a single chunk.
+|1073741824 (1 GiB)
+
 |`forceReplicaForConsumers`
 |Retry connecting until a replica is available for consumers.
 The client retries 5 times before falling back to the stream leader node.
