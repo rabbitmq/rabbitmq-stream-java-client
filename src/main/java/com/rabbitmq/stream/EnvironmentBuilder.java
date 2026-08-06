@@ -201,7 +201,7 @@ public interface EnvironmentBuilder {
   /**
    * The maximum frame size to request.
    *
-   * <p>Default is 1048576.
+   * <p>Default is 20971520 (20 MiB).
    *
    * @param requestedMaxFrameSize
    * @return this builder instance
