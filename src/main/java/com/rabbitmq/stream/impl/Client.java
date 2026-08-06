@@ -169,7 +169,7 @@ public class Client implements AutoCloseable {
   public static final int DEFAULT_PORT = 5552;
   public static final int DEFAULT_TLS_PORT = 5551;
   static final int MAX_REFERENCE_SIZE = 256;
-  static final int DEFAULT_MAX_FRAME_SIZE = 1048576;
+  static final int DEFAULT_MAX_FRAME_SIZE = 20971520; // 20 MiB
   // used before the max frame size is negotiated with the server (tune/open exchange), so the
   // client is never exposed to an unbounded or overly large frame from an unauthenticated peer
   static final int DEFAULT_MAX_FRAME_SIZE_BEFORE_AUTHENTICATION = 8192;
