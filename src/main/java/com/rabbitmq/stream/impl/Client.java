@@ -496,7 +496,7 @@ public class Client implements AutoCloseable {
       this.channel
           .pipeline()
           .replace(
-              NETTY_HANDLER_FRAME_DECODER, NETTY_HANDLER_FRAME_DECODER, frameDecoder(maxFrameSize));
+              NETTY_HANDLER_FRAME_DECODER, NETTY_HANDLER_FRAME_DECODER, frameDecoder());
       Set<FrameHandlerInfo> supportedCommands = maybeExchangeCommandVersions();
       AtomicBoolean streamStatsSupported = new AtomicBoolean(false);
       AtomicBoolean filteringSupportedReference = new AtomicBoolean(false);
@@ -3152,6 +3152,10 @@ public class Client implements AutoCloseable {
   // refer to the body length only, hence the +4 below.
   static int frameDecoderMaxLength(int maxFrameSize) {
     return maxFrameSize > 0 ? maxFrameSize + 4 : Integer.MAX_VALUE;
+  }
+
+  static ChannelHandler frameDecoder() {
+    return new LengthFieldBasedFrameDecoder(frameDecoderMaxLength(Integer.MAX_VALUE), 0, 4, 0, 4);
   }
 
   static ChannelHandler frameDecoder(int maxFrameSize) {
