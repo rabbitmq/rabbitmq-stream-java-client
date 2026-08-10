@@ -3155,7 +3155,7 @@ public class Client implements AutoCloseable {
   }
 
   static ChannelHandler frameDecoder() {
-    return new LengthFieldBasedFrameDecoder(frameDecoderMaxLength(Integer.MAX_VALUE), 0, 4, 0, 4);
+    return new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, 0, 4);
   }
 
   static ChannelHandler frameDecoder(int maxFrameSize) {
