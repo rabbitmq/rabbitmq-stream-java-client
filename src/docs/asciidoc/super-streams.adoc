@@ -281,7 +281,7 @@ Consider a 3-partition super stream with `messageCountBeforeStorage` set to 10,0
 Dividing `messageCountBeforeStorage` by the partition count provides more accurate tracking when messages are evenly distributed across partitions.
 A good rule of thumb is to then multiply the expected per-stream `messageCountBeforeStorage` by the number of partitions, to avoid storing offsets too often. So the default being 10,000, it can be set to 30,000 for a 3-partition super stream.
 * *manual offset tracking*: the `MessageHandler.Context#storeOffset()` method must be used, the `Consumer#store(long)` will fail, because an offset value has a meaning only in one stream, not in other streams.
-A call to `MessageHandler.Context#storeOffset()` will store the current message offset in _its_ stream, but also the offset of the last dispatched message for the other streams of the super stream.
+A call to `MessageHandler.Context#storeOffset()` will store the current message offset in _its_ stream, but also the offset of the last processed message for the other streams of the super stream.
 
 [[super-stream-sac]]
 ===== Single Active Consumer Support
