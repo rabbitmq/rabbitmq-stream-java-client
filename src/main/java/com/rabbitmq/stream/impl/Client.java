@@ -64,6 +64,7 @@ import com.rabbitmq.stream.ChunkChecksum;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.ConsumerFlowStrategy.CreditUnit;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
@@ -254,6 +255,7 @@ public class Client implements AutoCloseable {
   private final AtomicReference<ShutdownReason> shutdownReason = new AtomicReference<>();
   private final Runnable streamStatsCommandVersionsCheck;
   private final boolean filteringSupported;
+  private final boolean byteCreditSupported;
   private final Runnable superStreamManagementCommandVersionsCheck;
   private final Runnable resolveOffsetSpecCommandVersionsCheck;
   private final Registration credentialsRegistration;
@@ -495,13 +497,14 @@ public class Client implements AutoCloseable {
       // until now)
       this.channel
           .pipeline()
-          .replace(
-              NETTY_HANDLER_FRAME_DECODER, NETTY_HANDLER_FRAME_DECODER, frameDecoder());
+          .replace(NETTY_HANDLER_FRAME_DECODER, NETTY_HANDLER_FRAME_DECODER, frameDecoder());
       Set<FrameHandlerInfo> supportedCommands = maybeExchangeCommandVersions();
       AtomicBoolean streamStatsSupported = new AtomicBoolean(false);
       AtomicBoolean filteringSupportedReference = new AtomicBoolean(false);
       AtomicBoolean superStreamManagementSupported = new AtomicBoolean(false);
       AtomicBoolean resolveOffsetSpecSupported = new AtomicBoolean(false);
+      AtomicBoolean subscribeVersion2Supported = new AtomicBoolean(false);
+      AtomicBoolean creditVersion2Supported = new AtomicBoolean(false);
       supportedCommands.forEach(
           c -> {
             if (c.getKey() == COMMAND_STREAM_STATS) {
@@ -516,6 +519,12 @@ public class Client implements AutoCloseable {
             if (c.getKey() == COMMAND_RESOLVE_OFFSET_SPEC) {
               resolveOffsetSpecSupported.set(true);
             }
+            if (c.getKey() == COMMAND_SUBSCRIBE && c.getMaxVersion() >= VERSION_2) {
+              subscribeVersion2Supported.set(true);
+            }
+            if (c.getKey() == COMMAND_CREDIT && c.getMaxVersion() >= VERSION_2) {
+              creditVersion2Supported.set(true);
+            }
           });
       this.streamStatsCommandVersionsCheck =
           streamStatsSupported.get()
@@ -525,6 +534,7 @@ public class Client implements AutoCloseable {
                     "QueryStreamInfo is available only on RabbitMQ 3.11 or more.");
               };
       this.filteringSupported = filteringSupportedReference.get();
+      this.byteCreditSupported = subscribeVersion2Supported.get() && creditVersion2Supported.get();
       this.superStreamManagementCommandVersionsCheck =
           superStreamManagementSupported.get()
               ? () -> {}
@@ -1206,18 +1216,38 @@ public class Client implements AutoCloseable {
   }
 
   public void credit(byte subscriptionId, int credit) {
-    if (credit < 0 || credit > Short.MAX_VALUE) {
-      throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
-    }
-    int length = 2 + 2 + 1 + 2;
+    this.credit(subscriptionId, credit, CreditUnit.CHUNK);
+  }
 
-    ByteBuf bb = allocate(length + 4);
-    bb.writeInt(length);
-    bb.writeShort(encodeRequestCode(COMMAND_CREDIT));
-    bb.writeShort(VERSION_1);
-    bb.writeByte(subscriptionId);
-    bb.writeShort((short) credit);
-    channel.writeAndFlush(bb, channel.voidPromise());
+  public void credit(byte subscriptionId, int credit, CreditUnit unit) {
+    if (unit == CreditUnit.BYTE) {
+      if (credit < 0) {
+        throw new IllegalArgumentException(
+            "Credit value must be between 0 and " + Integer.MAX_VALUE);
+      }
+      int length = 2 + 2 + 1 + 4;
+
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(encodeRequestCode(COMMAND_CREDIT));
+      bb.writeShort(VERSION_2);
+      bb.writeByte(subscriptionId);
+      bb.writeInt(credit);
+      channel.writeAndFlush(bb, channel.voidPromise());
+    } else {
+      if (credit < 0 || credit > Short.MAX_VALUE) {
+        throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
+      }
+      int length = 2 + 2 + 1 + 2;
+
+      ByteBuf bb = allocate(length + 4);
+      bb.writeInt(length);
+      bb.writeShort(encodeRequestCode(COMMAND_CREDIT));
+      bb.writeShort(VERSION_1);
+      bb.writeByte(subscriptionId);
+      bb.writeShort((short) credit);
+      channel.writeAndFlush(bb, channel.voidPromise());
+    }
   }
 
   /**
@@ -1259,10 +1289,52 @@ public class Client implements AutoCloseable {
       OffsetSpecification offsetSpecification,
       int initialCredits,
       Map<String, String> properties) {
-    if (initialCredits < 0 || initialCredits > Short.MAX_VALUE) {
-      throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
+    return this.subscribe(
+        subscriptionId, stream, offsetSpecification, initialCredits, properties, CreditUnit.CHUNK);
+  }
+
+  /**
+   * Subscribe to receive messages from a stream, with credit expressed in the given unit.
+   *
+   * <p>Note the offset is an unsigned long. Longs are signed in Java, but unsigned longs can be
+   * used as long as some care is taken for some operations. See the <code>unsigned*</code> static
+   * methods in {@link Long}.
+   *
+   * @param subscriptionId identifier to correlate inbound messages to this subscription
+   * @param stream the stream to consume from
+   * @param offsetSpecification the specification of the offset to consume from
+   * @param initialCredits the initial number of credits, in {@code unit}
+   * @param properties some optional properties to describe the subscription
+   * @param unit the unit {@code initialCredits} is expressed in
+   * @return the subscription confirmation
+   * @throws UnsupportedOperationException if {@code unit} is {@link CreditUnit#BYTE} and the broker
+   *     does not support {@code Subscribe} version 2
+   */
+  public Response subscribe(
+      byte subscriptionId,
+      String stream,
+      OffsetSpecification offsetSpecification,
+      int initialCredits,
+      Map<String, String> properties,
+      CreditUnit unit) {
+    if (unit == CreditUnit.BYTE && !this.byteCreditSupported()) {
+      throw new UnsupportedOperationException(
+          "Byte-based consumer credit requires a broker supporting Subscribe version 2 and "
+              + "Credit version 2");
     }
-    int length = 2 + 2 + 4 + 1 + 2 + stringByteSize(stream) + 2 + 2; // misses the offset
+    if (unit == CreditUnit.BYTE) {
+      if (initialCredits < 0) {
+        throw new IllegalArgumentException(
+            "Credit value must be between 0 and " + Integer.MAX_VALUE);
+      }
+    } else {
+      if (initialCredits < 0 || initialCredits > Short.MAX_VALUE) {
+        throw new IllegalArgumentException("Credit value must be between 0 and " + Short.MAX_VALUE);
+      }
+    }
+    int creditFieldSize = unit == CreditUnit.BYTE ? 4 : 2;
+    int length =
+        2 + 2 + 4 + 1 + 2 + stringByteSize(stream) + 2 + creditFieldSize; // misses the offset
     if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
       length += 8;
     }
@@ -1276,7 +1348,7 @@ public class Client implements AutoCloseable {
       Response response =
           sendRpc(
               COMMAND_SUBSCRIBE,
-              VERSION_1,
+              unit == CreditUnit.BYTE ? VERSION_2 : VERSION_1,
               length,
               bb -> {
                 bb.writeByte(subscriptionId);
@@ -1285,7 +1357,11 @@ public class Client implements AutoCloseable {
                 if (offsetSpecification.isOffset() || offsetSpecification.isTimestamp()) {
                   bb.writeLong(offsetSpecification.getOffset());
                 }
-                bb.writeShort(initialCredits);
+                if (unit == CreditUnit.BYTE) {
+                  bb.writeInt(initialCredits);
+                } else {
+                  bb.writeShort(initialCredits);
+                }
                 if (properties != null && !properties.isEmpty()) {
                   writeMap(bb, properties);
                 }
@@ -1599,6 +1675,10 @@ public class Client implements AutoCloseable {
     return this.filteringSupported;
   }
 
+  public boolean byteCreditSupported() {
+    return this.byteCreditSupported;
+  }
+
   public List<String> route(String routingKey, String superStream) {
     if (routingKey == null || superStream == null) {
       throw new IllegalArgumentException("routing key and stream must not be null");
@@ -1794,10 +1874,18 @@ public class Client implements AutoCloseable {
      * @param offset the first offset in the chunk
      * @param messageCount the total number of messages in the chunk
      * @param dataSize the size in bytes of the data in the chunk
+     * @param chunkByteCount the number of bytes of the chunk carried in the {@code Deliver} frame,
+     *     that is the cost the broker charged for it; this is what a byte-based subscription must
+     *     grant back as credit
      * @return a "chunk context" instance that'll be passed in to the {@link MessageListener}
      */
     Object handle(
-        Client client, byte subscriptionId, long offset, long messageCount, long dataSize);
+        Client client,
+        byte subscriptionId,
+        long offset,
+        long messageCount,
+        long dataSize,
+        long chunkByteCount);
   }
 
   public interface MessageListener {
@@ -2402,7 +2490,7 @@ public class Client implements AutoCloseable {
     private PublishConfirmListener publishConfirmListener = NO_OP_PUBLISH_CONFIRM_LISTENER;
     private PublishErrorListener publishErrorListener = NO_OP_PUBLISH_ERROR_LISTENER;
     private ChunkListener chunkListener =
-        (client, correlationId, offset, messageCount, dataSize) -> null;
+        (client, correlationId, offset, messageCount, dataSize, chunkByteCount) -> null;
     private MessageListener messageListener =
         (correlationId, offset, chunkTimestamp, committedOffset, chunkContext, message) -> {};
     private MessageIgnoredListener messageIgnoredListener =

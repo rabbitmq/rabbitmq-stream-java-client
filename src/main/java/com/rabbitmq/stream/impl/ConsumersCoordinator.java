@@ -659,7 +659,7 @@ final class ConsumersCoordinator implements AutoCloseable {
 
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       ChunkListener chunkListener =
-          (client, subscriptionId, offset, messageCount, dataSize) -> {
+          (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             ConsumerFlowStrategy.MessageProcessedCallback processCallback;

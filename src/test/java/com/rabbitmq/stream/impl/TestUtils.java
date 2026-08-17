@@ -34,6 +34,7 @@ import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Cli;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.ConsumerFlowStrategy.CreditUnit;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.StreamException;
@@ -546,6 +547,12 @@ public final class TestUtils {
   @Target({ElementType.TYPE, ElementType.METHOD})
   @Retention(RetentionPolicy.RUNTIME)
   @Documented
+  @ExtendWith(DisabledIfByteCreditNotSupportedCondition.class)
+  @interface DisabledIfByteCreditNotSupported {}
+
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
   @ExtendWith(DisabledIfRabbitMqCtlNotSetCondition.class)
   @interface DisabledIfRabbitMqCtlNotSet {}
 
@@ -707,6 +714,7 @@ public final class TestUtils {
         Client.Response response = client.create(stream);
         assertThat(response.isOk()).isTrue();
         store(context.getRoot()).put("filteringSupported", client.filteringSupported());
+        store(context.getRoot()).put("byteCreditSupported", client.byteCreditSupported());
         client.close();
         store(context).put("testMethodStream", stream);
       }
@@ -877,6 +885,30 @@ public final class TestUtils {
         return ConditionEvaluationResult.enabled("filtering is supported");
       } else {
         return ConditionEvaluationResult.disabled("filtering is not supported");
+      }
+    }
+  }
+
+  static class DisabledIfByteCreditNotSupportedCondition implements ExecutionCondition {
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      Boolean byteCreditSupported =
+          StreamTestInfrastructureExtension.store(context)
+              .get("byteCreditSupported", Boolean.class);
+      if (byteCreditSupported == null) {
+        EventLoopGroup eventLoop = StreamTestInfrastructureExtension.eventLoopGroup(context);
+        try (Client client = new Client(new ClientParameters().eventLoopGroup(eventLoop))) {
+          byteCreditSupported = client.byteCreditSupported();
+          StreamTestInfrastructureExtension.store(context)
+              .put("byteCreditSupported", byteCreditSupported);
+        }
+      }
+
+      if (byteCreditSupported) {
+        return ConditionEvaluationResult.enabled("byte credit is supported");
+      } else {
+        return ConditionEvaluationResult.disabled("byte credit is not supported");
       }
     }
   }
@@ -1170,8 +1202,15 @@ public final class TestUtils {
   }
 
   static Client.ChunkListener credit() {
-    return (client, subscriptionId, offset, messageCount, dataSize) -> {
+    return (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
       client.credit(subscriptionId, 1);
+      return null;
+    };
+  }
+
+  static Client.ChunkListener creditBytes() {
+    return (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
+      client.credit(subscriptionId, (int) chunkByteCount, CreditUnit.BYTE);
       return null;
     };
   }
