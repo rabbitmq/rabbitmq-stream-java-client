@@ -277,6 +277,23 @@ public interface ConsumerBuilder {
     FlowConfiguration initialCredits(int initialCredits);
 
     /**
+     * The initial credits for the subscription, as a window in bytes.
+     *
+     * <p>This calls uses {@link ConsumerFlowStrategy#creditOnChunkArrival(ByteCapacity)}.
+     *
+     * <p>The broker may exceed the window by up to one chunk: a chunk larger than the window is
+     * delivered anyway, so that a consumer with a small window still makes forward progress.
+     *
+     * <p>Requires a broker supporting {@code Subscribe} version 2.
+     *
+     * @param initialCredits the initial credit window, in bytes
+     * @return this configuration instance
+     * @since 1.11.0
+     * @see ConsumerFlowStrategy#creditOnChunkArrival(ByteCapacity)
+     */
+    FlowConfiguration initialCredits(ByteCapacity initialCredits);
+
+    /**
      * Flow strategy to use
      *
      * @param strategy the strategy to use
