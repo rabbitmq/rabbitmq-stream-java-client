@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2021-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.ConsumerFlowStrategy.creditOnChunkArrival;
 import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_11_11;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.declareSuperStreamTopology;
@@ -24,13 +25,16 @@ import static com.rabbitmq.stream.impl.TestUtils.wrap;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerFlowStrategy;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfByteCreditNotSupported;
 import io.netty.channel.EventLoopGroup;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -327,6 +331,32 @@ public class SuperStreamConsumerTest {
                           "Expecting stored offset %d on stream '%s', but got %d",
                           lastOffsets.get(p), p, client.queryOffset(consumerName, p).getOffset()));
             }));
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void sharedByteBasedStrategyInstanceIsAppliedIndependentlyToEachPartition() {
+    declareSuperStreamTopology(configurationClient, superStream, partitionCount);
+    Client client = cf.get();
+    List<String> partitions = client.partitions(superStream);
+    int messageCount = 10000 * partitionCount;
+    publishToPartitions(cf, partitions, messageCount);
+    // StreamConsumerBuilder#duplicate copies this very instance for each partition subscription;
+    // per-subscription accounting must live in ConsumersCoordinator, not in the strategy
+    ConsumerFlowStrategy sharedStrategy = creditOnChunkArrival(ByteCapacity.kB(64));
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    Consumer consumer =
+        environment
+            .consumerBuilder()
+            .superStream(superStream)
+            .offset(OffsetSpecification.first())
+            .flow()
+            .strategy(sharedStrategy)
+            .builder()
+            .messageHandler((context, message) -> consumeLatch.countDown())
+            .build();
+    latchAssert(consumeLatch).completes();
+    consumer.close();
   }
 
   @Test
