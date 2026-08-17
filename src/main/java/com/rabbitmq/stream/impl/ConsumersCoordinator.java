@@ -1298,7 +1298,7 @@ final class ConsumersCoordinator implements AutoCloseable {
               processCallback =
                   subscriptionTracker.flowStrategy.start(
                       new DefaultConsumerFlowStrategyContext(
-                          subscriptionId, client, messageCount, offset));
+                          subscriptionId, client, messageCount, offset, chunkByteCount));
             } else {
               LOGGER.debug(
                   "Could not find stream subscription {} or subscription closing, not providing credits",
@@ -2147,13 +2147,15 @@ final class ConsumersCoordinator implements AutoCloseable {
     private final Client client;
     private final long messageCount;
     private final long chunkId;
+    private final long chunkByteCount;
 
     private DefaultConsumerFlowStrategyContext(
-        byte subscriptionId, Client client, long messageCount, long chunkId) {
+        byte subscriptionId, Client client, long messageCount, long chunkId, long chunkByteCount) {
       this.subscriptionId = subscriptionId;
       this.client = client;
       this.messageCount = messageCount;
       this.chunkId = chunkId;
+      this.chunkByteCount = chunkByteCount;
     }
 
     @Override
@@ -2177,6 +2179,11 @@ final class ConsumersCoordinator implements AutoCloseable {
     @Override
     public long chunkId() {
       return this.chunkId;
+    }
+
+    @Override
+    public long chunkByteCount() {
+      return this.chunkByteCount;
     }
   }
 
