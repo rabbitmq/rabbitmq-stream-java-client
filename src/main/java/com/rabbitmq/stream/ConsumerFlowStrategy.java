@@ -31,6 +31,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * ideal solution, it depends on the use cases and several parameters (processing time, network,
  * etc).
  *
+ * <p>Custom implementations must never make a credit release depend on the arrival of a
+ * <em>later</em> chunk. Releasing when a chunk arrives, or when its own messages are processed, is
+ * safe: the trigger has already happened by the time the credit is due. Waiting for a chunk that
+ * has not arrived yet is not safe, because the broker may be blocked precisely because that chunk
+ * was never sent.
+ *
  * <p>This is an experimental API, subject to change.
  *
  * @since 0.12.0
@@ -67,6 +73,17 @@ public interface ConsumerFlowStrategy {
     BYTE
   }
 
+  /**
+   * The unit this strategy's credit is expressed in.
+   *
+   * <p>Defaults to {@link CreditUnit#CHUNK}.
+   *
+   * @return the credit unit
+   */
+  default CreditUnit unit() {
+    return CreditUnit.CHUNK;
+  }
+
   /** Chunk context. */
   interface Context {
 
@@ -75,6 +92,14 @@ public interface ConsumerFlowStrategy {
      *
      * <p>{@link ConsumerFlowStrategy} implementation should always provide 1 credit for a given
      * chunk.
+     *
+     * <p><code>credits</code> counts chunks in both units. For a byte-based subscription, the
+     * client grants the bytes of the corresponding chunks as credit, not the raw <code>credits
+     * </code> value.
+     *
+     * <p>Implementations must never call this method for a chunk based on the arrival of a
+     * <em>later</em> chunk, only on the arrival of the chunk itself or the processing of its own
+     * messages, see {@link ConsumerFlowStrategy}.
      *
      * @param credits the number of credits provided, usually 1
      */
@@ -93,6 +118,15 @@ public interface ConsumerFlowStrategy {
      * @return offset of the first message in the chunk (chunk ID)
      */
     long chunkId();
+
+    /**
+     * The cost the broker charged for the chunk, in bytes.
+     *
+     * <p>This is what a byte-based subscription must eventually grant back as credit.
+     *
+     * @return the chunk cost, in bytes
+     */
+    long chunkByteCount();
   }
 
   /** Behavior for {@link MessageHandler.Context#processed()} calls. */
@@ -141,6 +175,22 @@ public interface ConsumerFlowStrategy {
   }
 
   /**
+   * Strategy that provides a byte window as initial credits and a credit on each new chunk.
+   *
+   * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
+   *
+   * <p>Requires a broker supporting {@code Subscribe} version 2.
+   *
+   * @param window initial credit window, in bytes
+   * @return flow strategy
+   * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(ByteCapacity)
+   */
+  static ConsumerFlowStrategy creditOnChunkArrival(ByteCapacity window) {
+    return new CreditOnChunkArrivalConsumerFlowStrategy(
+        windowToInitialCredits(window), CreditUnit.BYTE);
+  }
+
+  /**
    * Strategy that provides 10 initial credits and a credit when half of the chunk messages are
    * processed.
    *
@@ -169,6 +219,23 @@ public interface ConsumerFlowStrategy {
   }
 
   /**
+   * Strategy that provides a byte window as initial credits and a credit when half of the chunk
+   * messages are processed.
+   *
+   * <p>Make sure to call {@link MessageHandler.Context#processed()} on every message when using
+   * this strategy, otherwise the broker may stop sending messages to the consumer.
+   *
+   * <p>Requires a broker supporting {@code Subscribe} version 2.
+   *
+   * @param window initial credit window, in bytes
+   * @return flow strategy
+   * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(ByteCapacity)
+   */
+  static ConsumerFlowStrategy creditWhenHalfMessagesProcessed(ByteCapacity window) {
+    return creditOnProcessedMessageCount(window, 0.5);
+  }
+
+  /**
    * Strategy that provides the specified number of initial credits and a credit when the specified
    * ratio of the chunk messages are processed.
    *
@@ -183,6 +250,36 @@ public interface ConsumerFlowStrategy {
   }
 
   /**
+   * Strategy that provides a byte window as initial credits and a credit when the specified ratio
+   * of the chunk messages are processed.
+   *
+   * <p>Make sure to call {@link MessageHandler.Context#processed()} on every message when using
+   * this strategy, otherwise the broker may stop sending messages to the consumer.
+   *
+   * <p>Requires a broker supporting {@code Subscribe} version 2.
+   *
+   * @param window initial credit window, in bytes
+   * @param ratio ratio of messages to process before providing credits
+   * @return flow strategy
+   * @see com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(ByteCapacity)
+   */
+  static ConsumerFlowStrategy creditOnProcessedMessageCount(ByteCapacity window, double ratio) {
+    return new MessageCountConsumerFlowStrategy(
+        windowToInitialCredits(window), ratio, CreditUnit.BYTE);
+  }
+
+  private static int windowToInitialCredits(ByteCapacity window) {
+    if (window == null || window.compareTo(ByteCapacity.B(0)) <= 0) {
+      throw new IllegalArgumentException("The window must be positive");
+    }
+    if (window.compareTo(ByteCapacity.B(Integer.MAX_VALUE)) > 0) {
+      throw new IllegalArgumentException(
+          "The window must be at most " + Integer.MAX_VALUE + " bytes");
+    }
+    return (int) window.toBytes();
+  }
+
+  /**
    * Strategy that provides the specified number of initial credits and <code>n</code> credits every
    * <code>n</code> chunks.
    *
@@ -194,6 +291,14 @@ public interface ConsumerFlowStrategy {
    * <p>A rule of thumb is to set <code>n</code> to a third of the value of initial credits.
    *
    * <p>Calls to {@link MessageHandler.Context#processed()} are ignored.
+   *
+   * <p>This strategy has no byte-based variant and always uses {@link CreditUnit#CHUNK}: it
+   * releases credit once <code>n</code> chunks have arrived, which makes the release of the last
+   * <code>n - 1</code> chunks depend on the arrival of a chunk that has not happened yet, breaking
+   * the contract described in {@link ConsumerFlowStrategy}. In chunk mode the residual is bounded
+   * by <code>n</code> chunks, which the constructor check below keeps under control; in byte mode
+   * the residual would be an unbounded number of bytes, since chunk sizes are not known when the
+   * consumer is built.
    *
    * @param initialCredits number of initial credits
    * @param n number of chunks and number of credits
@@ -259,14 +364,25 @@ public interface ConsumerFlowStrategy {
     private static final MessageProcessedCallback CALLBACK = v -> {};
 
     private final int initialCredits;
+    private final CreditUnit unit;
 
     private CreditOnChunkArrivalConsumerFlowStrategy(int initialCredits) {
+      this(initialCredits, CreditUnit.CHUNK);
+    }
+
+    CreditOnChunkArrivalConsumerFlowStrategy(int initialCredits, CreditUnit unit) {
       this.initialCredits = initialCredits;
+      this.unit = unit;
     }
 
     @Override
     public int initialCredits() {
       return this.initialCredits;
+    }
+
+    @Override
+    public CreditUnit unit() {
+      return this.unit;
     }
 
     @Override
@@ -287,15 +403,26 @@ public interface ConsumerFlowStrategy {
 
     private final int initialCredits;
     private final double ratio;
+    private final CreditUnit unit;
 
     private MessageCountConsumerFlowStrategy(int initialCredits, double ratio) {
+      this(initialCredits, ratio, CreditUnit.CHUNK);
+    }
+
+    MessageCountConsumerFlowStrategy(int initialCredits, double ratio, CreditUnit unit) {
       this.initialCredits = initialCredits;
       this.ratio = ratio;
+      this.unit = unit;
     }
 
     @Override
     public int initialCredits() {
       return this.initialCredits;
+    }
+
+    @Override
+    public CreditUnit unit() {
+      return this.unit;
     }
 
     @Override
