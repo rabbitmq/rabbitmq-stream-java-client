@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2023-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -60,6 +60,12 @@ public interface ConsumerFlowStrategy {
    * @return the message processed callback
    */
   MessageProcessedCallback start(Context context);
+
+  /** The unit a subscription's credit is expressed in. */
+  enum CreditUnit {
+    CHUNK,
+    BYTE
+  }
 
   /** Chunk context. */
   interface Context {

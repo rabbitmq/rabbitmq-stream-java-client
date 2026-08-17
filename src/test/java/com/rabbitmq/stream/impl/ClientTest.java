@@ -26,12 +26,15 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.ConsumerFlowStrategy.CreditUnit;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.MessageBuilder;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -49,6 +52,7 @@ import com.rabbitmq.stream.impl.Client.SubscriptionTracker;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfByteCreditNotSupported;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfFilteringNotSupported;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -502,7 +506,7 @@ public class ClientTest {
 
     AtomicInteger receivedCorrelationId = new AtomicInteger();
     Client.ChunkListener chunkListener =
-        (client, corr, offset, messageCountInChunk, dataSize) -> {
+        (client, corr, offset, messageCountInChunk, dataSize, chunkByteCount) -> {
           receivedCorrelationId.set(corr);
           client.credit(correlationId, 1);
           return null;
@@ -539,7 +543,7 @@ public class ClientTest {
 
     CountDownLatch consumedLatch = new CountDownLatch(publishCount);
     Client.ChunkListener chunkListener =
-        (client, correlationId, offset, messageCount, dataSize) -> {
+        (client, correlationId, offset, messageCount, dataSize, chunkByteCount) -> {
           if (consumedLatch.getCount() != 0) {
             client.credit(correlationId, 1);
           }
@@ -1343,5 +1347,262 @@ public class ClientTest {
     offset = tracker.extractInitialOffset(subId);
     assertThat(offset).isEqualTo(500);
     assertThat(tracker.hasOffsets()).isFalse();
+  }
+
+  private void publishMessagesOneByOne(int count, byte[] body) throws Exception {
+    AtomicReference<CountDownLatch> confirmLatch = new AtomicReference<>(new CountDownLatch(1));
+    Client publisher =
+        cf.get(
+            new ClientParameters()
+                .publishConfirmListener(
+                    (publisherId, publishingId) -> confirmLatch.get().countDown()));
+    publisher.declarePublisher(b(1), null, stream);
+    for (int i = 0; i < count; i++) {
+      confirmLatch.set(new CountDownLatch(1));
+      publisher.publish(
+          b(1), Collections.singletonList(publisher.messageBuilder().addData(body).build()));
+      assertThat(confirmLatch.get().await(10, SECONDS)).isTrue();
+    }
+  }
+
+  @Test
+  @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_11_0)
+  void byteCreditSupportedReflectsExchangeCommandVersions() {
+    Client client = cf.get();
+    List<FrameHandlerInfo> infos = client.exchangeCommandVersions();
+    boolean subscribeVersion2Supported =
+        infos.stream()
+            .anyMatch(
+                info ->
+                    info.getKey() == Constants.COMMAND_SUBSCRIBE
+                        && info.getMaxVersion() >= Constants.VERSION_2);
+    boolean creditVersion2Supported =
+        infos.stream()
+            .anyMatch(
+                info ->
+                    info.getKey() == Constants.COMMAND_CREDIT
+                        && info.getMaxVersion() >= Constants.VERSION_2);
+    assertThat(client.byteCreditSupported())
+        .isEqualTo(subscribeVersion2Supported && creditVersion2Supported);
+  }
+
+  @Test
+  void subscribeWithByteCreditFailsOnUnsupportingBroker() {
+    Client client = spy(cf.get());
+    when(client.byteCreditSupported()).thenReturn(false);
+    assertThatThrownBy(
+            () ->
+                client.subscribe(
+                    b(1),
+                    stream,
+                    OffsetSpecification.first(),
+                    1,
+                    Collections.emptyMap(),
+                    CreditUnit.BYTE))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void subscribeWithByteCreditDeliversUpToTheWindow() throws Exception {
+    publishMessagesOneByOne(10, new byte[20]);
+
+    AtomicInteger deliveredChunkCount = new AtomicInteger(0);
+    CountDownLatch firstChunkLatch = new CountDownLatch(1);
+    CountDownLatch secondChunkLatch = new CountDownLatch(2);
+    Client consumer =
+        cf.get(
+            new ClientParameters()
+                .chunkListener(
+                    (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
+                      deliveredChunkCount.incrementAndGet();
+                      firstChunkLatch.countDown();
+                      secondChunkLatch.countDown();
+                      return null;
+                    }));
+    Response response =
+        consumer.subscribe(
+            b(1), stream, OffsetSpecification.first(), 1, Collections.emptyMap(), CreditUnit.BYTE);
+    assertThat(response).is(ok());
+
+    assertThat(latchAssert(firstChunkLatch)).completes();
+    assertThat(latchAssert(secondChunkLatch)).doesNotComplete(2);
+    assertThat(deliveredChunkCount.get()).isEqualTo(1);
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void chunkCostIsFrameSizeBased() throws Exception {
+    publishMessagesOneByOne(10, new byte[20]);
+
+    AtomicInteger deliveredChunkCount = new AtomicInteger(0);
+    AtomicLong firstChunkByteCount = new AtomicLong(-1);
+    CountDownLatch firstChunkLatch = new CountDownLatch(1);
+    CountDownLatch secondChunkLatch = new CountDownLatch(1);
+    Client consumer =
+        cf.get(
+            new ClientParameters()
+                .chunkListener(
+                    (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
+                      if (deliveredChunkCount.incrementAndGet() == 1) {
+                        firstChunkByteCount.set(chunkByteCount);
+                        firstChunkLatch.countDown();
+                      } else {
+                        secondChunkLatch.countDown();
+                      }
+                      return null;
+                    }));
+    Response response =
+        consumer.subscribe(
+            b(1), stream, OffsetSpecification.first(), 1, Collections.emptyMap(), CreditUnit.BYTE);
+    assertThat(response).is(ok());
+    assertThat(latchAssert(firstChunkLatch)).completes();
+
+    consumer.credit(b(1), (int) (firstChunkByteCount.get() - 1), CreditUnit.BYTE);
+    assertThat(latchAssert(secondChunkLatch)).doesNotComplete(2);
+    assertThat(deliveredChunkCount.get()).isEqualTo(1);
+
+    consumer.credit(b(1), 1, CreditUnit.BYTE);
+    assertThat(latchAssert(secondChunkLatch)).completes();
+    assertThat(deliveredChunkCount.get()).isEqualTo(2);
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void chunkLargerThanWindowIsStillDelivered() throws Exception {
+    publishMessagesOneByOne(1, new byte[10 * 1024]);
+
+    CountDownLatch messageLatch = new CountDownLatch(1);
+    Client consumer =
+        cf.get(
+            new ClientParameters()
+                .chunkListener(TestUtils.creditBytes())
+                .messageListener(
+                    (subscriptionId,
+                        offset,
+                        chunkTimestamp,
+                        committedChunkId,
+                        chunkContext,
+                        message) -> messageLatch.countDown()));
+    Response response =
+        consumer.subscribe(
+            b(1),
+            stream,
+            OffsetSpecification.first(),
+            100,
+            Collections.emptyMap(),
+            CreditUnit.BYTE);
+    assertThat(response).is(ok());
+    assertThat(latchAssert(messageLatch)).completes();
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void byteCreditSpansManyChunks() throws Exception {
+    byte[] body = new byte[20];
+    publishMessagesOneByOne(100, body);
+
+    AtomicLong firstChunkByteCount = new AtomicLong(-1);
+    CountDownLatch probeLatch = new CountDownLatch(1);
+    Client probe =
+        cf.get(
+            new ClientParameters()
+                .chunkListener(
+                    (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
+                      firstChunkByteCount.set(chunkByteCount);
+                      probeLatch.countDown();
+                      return null;
+                    }));
+    probe.subscribe(
+        b(1), stream, OffsetSpecification.first(), 1, Collections.emptyMap(), CreditUnit.BYTE);
+    assertThat(latchAssert(probeLatch)).completes();
+    probe.close();
+
+    int window = (int) (3 * firstChunkByteCount.get() + 1);
+
+    AtomicInteger deliveredChunkCount = new AtomicInteger(0);
+    CountDownLatch fourChunksLatch = new CountDownLatch(4);
+    CountDownLatch fifthChunkLatch = new CountDownLatch(5);
+    Client consumer =
+        cf.get(
+            new ClientParameters()
+                .chunkListener(
+                    (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
+                      deliveredChunkCount.incrementAndGet();
+                      fourChunksLatch.countDown();
+                      fifthChunkLatch.countDown();
+                      return null;
+                    }));
+    consumer.subscribe(
+        b(1), stream, OffsetSpecification.first(), window, Collections.emptyMap(), CreditUnit.BYTE);
+    assertThat(latchAssert(fourChunksLatch)).completes();
+    assertThat(latchAssert(fifthChunkLatch)).doesNotComplete(2);
+    assertThat(deliveredChunkCount.get()).isEqualTo(4);
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void creditUnitMismatchIsRejectedForByteBasedSubscription() throws Exception {
+    publishMessagesOneByOne(1, new byte[20]);
+
+    AtomicInteger deliveredChunkCount = new AtomicInteger(0);
+    CountDownLatch notificationLatch = new CountDownLatch(1);
+    AtomicReference<Short> responseCode = new AtomicReference<>();
+    Client consumer =
+        cf.get(
+            new ClientParameters()
+                .chunkListener(
+                    (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
+                      deliveredChunkCount.incrementAndGet();
+                      return null;
+                    })
+                .creditNotification(
+                    (subscriptionId, code) -> {
+                      responseCode.set(code);
+                      notificationLatch.countDown();
+                    }));
+    Response response =
+        consumer.subscribe(
+            b(1), stream, OffsetSpecification.first(), 0, Collections.emptyMap(), CreditUnit.BYTE);
+    assertThat(response).is(ok());
+
+    // subscription is byte-based, sending a chunk-based (version 1) credit must be rejected
+    consumer.credit(b(1), 1);
+
+    assertThat(latchAssert(notificationLatch)).completes();
+    assertThat(responseCode.get()).isEqualTo(Constants.RESPONSE_CODE_PRECONDITION_FAILED);
+    assertThat(deliveredChunkCount.get()).isZero();
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void creditUnitMismatchIsRejectedForChunkBasedSubscription() throws Exception {
+    publishMessagesOneByOne(1, new byte[20]);
+
+    AtomicInteger deliveredChunkCount = new AtomicInteger(0);
+    CountDownLatch notificationLatch = new CountDownLatch(1);
+    AtomicReference<Short> responseCode = new AtomicReference<>();
+    Client consumer =
+        cf.get(
+            new ClientParameters()
+                .chunkListener(
+                    (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
+                      deliveredChunkCount.incrementAndGet();
+                      return null;
+                    })
+                .creditNotification(
+                    (subscriptionId, code) -> {
+                      responseCode.set(code);
+                      notificationLatch.countDown();
+                    }));
+    Response response = consumer.subscribe(b(1), stream, OffsetSpecification.first(), 0);
+    assertThat(response).is(ok());
+
+    // subscription is chunk-based, sending a byte-based (version 2) credit must be rejected
+    consumer.credit(b(1), 1, CreditUnit.BYTE);
+
+    assertThat(latchAssert(notificationLatch)).completes();
+    assertThat(responseCode.get()).isEqualTo(Constants.RESPONSE_CODE_PRECONDITION_FAILED);
+    assertThat(deliveredChunkCount.get()).isZero();
   }
 }
