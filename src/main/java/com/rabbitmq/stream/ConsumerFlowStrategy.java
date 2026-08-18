@@ -37,6 +37,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * has not arrived yet is not safe, because the broker may be blocked precisely because that chunk
  * was never sent.
  *
+ * <p>Credit is usually expressed in chunks, but a strategy can express it in bytes instead, see
+ * {@link CreditUnit}. Byte-based credit still follows a chunk granularity: a chunk is delivered in
+ * full even if it exceeds the outstanding byte credit, so a consumer never stalls just because its
+ * window is smaller than the next chunk.
+ *
  * <p>This is an experimental API, subject to change.
  *
  * @since 0.12.0
@@ -69,7 +74,13 @@ public interface ConsumerFlowStrategy {
 
   /** The unit a subscription's credit is expressed in. */
   enum CreditUnit {
+    /** 1 credit lets the broker send 1 more chunk, whatever its size. */
     CHUNK,
+    /**
+     * Credit is a number of bytes; the client must eventually grant back every byte the broker
+     * charged for a chunk. Requires broker support, see {@link
+     * com.rabbitmq.stream.ConsumerBuilder.FlowConfiguration#initialCredits(ByteCapacity)}.
+     */
     BYTE
   }
 

@@ -16,6 +16,7 @@ package com.rabbitmq.stream.docs;
 
 import java.time.Duration;
 
+import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerFlowStrategy;
 import com.rabbitmq.stream.Environment;
@@ -171,6 +172,22 @@ public class ConsumerUsage {
         })
         .build();
     // end::flow-control[]
+  }
+
+  void flowControlByteBased() {
+    Environment environment = Environment.builder().build();
+    // tag::flow-control-byte-based[]
+    Consumer consumer = environment.consumerBuilder()
+        .stream("my-stream")
+        .flow()
+            .strategy(ConsumerFlowStrategy.creditWhenHalfMessagesProcessed(ByteCapacity.kB(512)))  // <1>
+        .builder()
+        .messageHandler((context, message) -> {
+          // message handling code (possibly asynchronous)...
+          context.processed();  // <2>
+        })
+        .build();
+    // end::flow-control-byte-based[]
   }
 
   void enablingSingleActiveConsumer() {
