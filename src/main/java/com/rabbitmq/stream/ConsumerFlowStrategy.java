@@ -91,9 +91,7 @@ public interface ConsumerFlowStrategy {
    *
    * @return the credit unit
    */
-  default CreditUnit unit() {
-    return CreditUnit.CHUNK;
-  }
+  CreditUnit unit();
 
   /** Chunk context. */
   interface Context {
@@ -354,6 +352,11 @@ public interface ConsumerFlowStrategy {
     public int initialCredits() {
       this.chunkCount.set(0);
       return this.initialCredits;
+    }
+
+    @Override
+    public CreditUnit unit() {
+      return CreditUnit.CHUNK;
     }
 
     @Override

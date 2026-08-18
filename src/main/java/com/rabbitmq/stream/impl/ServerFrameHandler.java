@@ -103,6 +103,13 @@ class ServerFrameHandler {
   static final int INITIAL_DECOMPRESSION_BUFFER_SIZE = 64 * 1024;
   // transfer buffer size
   private static final int DECOMPRESSION_TRANSFER_BUFFER_SIZE = 1024;
+  // the chunk cost is the contract with the broker, not derived from the chunk header: it is
+  // the frame size minus the command id, version and subscription ID (5 bytes)
+  static final int CHUNK_COST_DELIVER_V1_OFFSET = 5;
+  // the chunk cost is the contract with the broker, not derived from the chunk header: it is
+  // the frame size minus the command id, version, subscription ID, and committed chunk ID (13
+  // bytes)
+  static final int CHUNK_COST_DELIVER_V2_OFFSET = 13;
 
   private static final FrameHandler[][] HANDLERS;
 
@@ -733,8 +740,6 @@ class ServerFrameHandler {
       return read;
     }
 
-    // the chunk cost is the contract with the broker, not derived from the chunk header: it is
-    // the frame size minus the command id, version and subscription ID (5 bytes)
     @Override
     int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message, int frameSize) {
       return handleDeliverVersion1(
@@ -747,7 +752,7 @@ class ServerFrameHandler {
           client.codec,
           client.chunkChecksum,
           client.metricsCollector,
-          frameSize - 5);
+          frameSize - CHUNK_COST_DELIVER_V1_OFFSET);
     }
   }
 
@@ -758,9 +763,6 @@ class ServerFrameHandler {
       return true;
     }
 
-    // the chunk cost is the contract with the broker, not derived from the chunk header: it is
-    // the frame size minus the command id, version, subscription ID, and committed chunk ID (13
-    // bytes)
     @Override
     int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message, int frameSize) {
       return DeliverVersion1FrameHandler.handleDeliver(
@@ -776,7 +778,7 @@ class ServerFrameHandler {
           message.readByte(), // subscription ID
           message.readLong(), // committed chunk ID, unsigned long
           9, // byte read count, 1 + 9
-          frameSize - 13);
+          frameSize - CHUNK_COST_DELIVER_V2_OFFSET);
     }
   }
 
