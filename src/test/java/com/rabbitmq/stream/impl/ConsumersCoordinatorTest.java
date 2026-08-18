@@ -874,6 +874,11 @@ public class ConsumersCoordinatorTest {
           }
 
           @Override
+          public CreditUnit unit() {
+            return CreditUnit.CHUNK;
+          }
+
+          @Override
           public MessageProcessedCallback start(Context context) {
             return flowStrategyCallback;
           }
