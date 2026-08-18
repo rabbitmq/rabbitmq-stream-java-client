@@ -300,9 +300,12 @@ public interface ConsumerBuilder {
      * @see ConsumerFlowStrategy
      * @see ConsumerFlowStrategy#creditOnChunkArrival()
      * @see ConsumerFlowStrategy#creditOnChunkArrival(int)
+     * @see ConsumerFlowStrategy#creditOnChunkArrival(ByteCapacity)
      * @see ConsumerFlowStrategy#creditWhenHalfMessagesProcessed()
      * @see ConsumerFlowStrategy#creditWhenHalfMessagesProcessed(int)
+     * @see ConsumerFlowStrategy#creditWhenHalfMessagesProcessed(ByteCapacity)
      * @see ConsumerFlowStrategy#creditOnProcessedMessageCount(int, double)
+     * @see ConsumerFlowStrategy#creditOnProcessedMessageCount(ByteCapacity, double)
      */
     FlowConfiguration strategy(ConsumerFlowStrategy strategy);
 
