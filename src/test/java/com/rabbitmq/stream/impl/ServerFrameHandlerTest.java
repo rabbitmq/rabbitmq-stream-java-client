@@ -14,6 +14,8 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.impl.ServerFrameHandler.CHUNK_COST_DELIVER_V1_OFFSET;
+import static com.rabbitmq.stream.impl.ServerFrameHandler.CHUNK_COST_DELIVER_V2_OFFSET;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
@@ -155,7 +157,7 @@ public class ServerFrameHandlerTest {
 
     new DeliverVersion1FrameHandler().handle(client, frameSize, ctx, bb);
 
-    assertThat(capturedChunkByteCount.get()).isEqualTo(frameSize - 5);
+    assertThat(capturedChunkByteCount.get()).isEqualTo(frameSize - CHUNK_COST_DELIVER_V1_OFFSET);
   }
 
   @Test
@@ -184,6 +186,6 @@ public class ServerFrameHandlerTest {
 
     new DeliverVersion2FrameHandler().handle(client, frameSize, ctx, bb);
 
-    assertThat(capturedChunkByteCount.get()).isEqualTo(frameSize - 13);
+    assertThat(capturedChunkByteCount.get()).isEqualTo(frameSize - CHUNK_COST_DELIVER_V2_OFFSET);
   }
 }

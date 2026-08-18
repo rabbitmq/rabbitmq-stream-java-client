@@ -1541,14 +1541,34 @@ final class ConsumersCoordinator implements AutoCloseable {
    */
   interface CreditAccountant {
 
+    /**
+     * Called before subscription.
+     *
+     * @param initialCredits
+     */
     void reset(int initialCredits);
 
+    /**
+     * Called on chunk arrival.
+     *
+     * @param client
+     * @param subscriptionId
+     * @param chunkByteCount
+     */
     void chunkArrived(Client client, byte subscriptionId, long chunkByteCount);
 
+    /**
+     * Called when the flow strategy provide credits via the default context.
+     *
+     * @param client
+     * @param subscriptionId
+     * @param chunks
+     * @param chunkByteCount
+     */
     void release(Client client, byte subscriptionId, int chunks, long chunkByteCount);
   }
 
-  /** Chunk-based credit: a pass-through to {@link Client#credit(byte, int)}, today's behavior. */
+  /** Chunk-based credit: a pass-through to {@link Client#credit(byte, int)}. */
   static final class ChunkCreditAccountant implements CreditAccountant {
 
     static final CreditAccountant INSTANCE = new ChunkCreditAccountant();
