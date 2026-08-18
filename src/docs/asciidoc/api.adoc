@@ -888,6 +888,7 @@ Useful when using an external store for offset tracking.
 |`flow#initialCredits`
 |Number of credits when the subscription is created.
 Increase for higher throughput at the expense of memory usage.
+Accepts a `ByteCapacity` instead of an `int` to use a <<byte-based-flow-control,byte window>> rather than a number of chunks (requires broker support).
 |10
 
 |`flow#strategy`
@@ -1183,6 +1184,46 @@ No calling it will stop the dispatching of messages.
 * Make sure to call `processed()` only once.
 Whether the method is idempotent depends on the flow strategy implementation.
 Apart from the default one, the implementations the library provides does not make `processed()` idempotent.
+
+[[byte-based-flow-control]]
+===== Byte-Based Flow Control
+
+WARNING: Byte-based flow control requires a broker new enough to support the corresponding
+version of the `Subscribe` and `Credit` commands.
+The client fails fast with an exception when creating a consumer with a byte-based strategy
+against a broker that does not support it, it does not fall back to chunk-based flow control.
+
+The credit unit for the strategies described above is the chunk: 1 credit lets the broker send 1
+more chunk. Chunks can vary widely in size, so a chunk-based window does not directly translate
+into a memory bound on the consumer side. `creditOnChunkArrival`, `creditWhenHalfMessagesProcessed`,
+and `creditOnProcessedMessageCount` all accept a `ByteCapacity` window instead of a number of
+chunks, so the client can express the same arrival-versus-feedback trade-off in terms of bytes:
+
+.Setting a byte-based consumer flow control strategy
+[source,java,indent=0]
+--------
+include::{test-examples}/ConsumerUsage.java[tag=flow-control-byte-based]
+--------
+<1> Set a byte-based flow control strategy with a 512 KB window
+<2> Make sure to call `Context#processed()`
+
+* `creditOnChunkArrival(ByteCapacity)` grants the whole window back as soon as a chunk arrives, so
+the number of bytes in flight is bounded, but the number of bytes received and not yet processed
+is unbounded if processing falls behind.
+* `creditWhenHalfMessagesProcessed(ByteCapacity)` and `creditOnProcessedMessageCount(ByteCapacity,
+double)` grant credit as messages are processed, so the number of bytes received and not yet
+processed stays bounded by roughly the window plus the size of the largest chunk received so far.
+This is the feedback property that distinguishes them from `creditOnChunkArrival`.
+* the broker may deliver a chunk larger than the window: a consumer never stalls just because its
+window is smaller than the next chunk, it only ever falls behind by that one chunk.
+* a byte-based strategy must eventually grant credit for every byte the broker charged for a
+chunk (`Context#chunkByteCount()`), whether on the chunk's arrival or on the processing of its
+messages. Granting less would make the subscription's credit drift down and eventually stall it.
+This only matters for a custom `ConsumerFlowStrategy`, the strategies described above already do
+it.
+* the broker resumes sending only once about half the window has been granted back as credit, so
+size the window to roughly twice the amount of data the application is willing to hold in memory
+at once.
 
 [[single-active-consumer]]
 ==== Single Active Consumer
