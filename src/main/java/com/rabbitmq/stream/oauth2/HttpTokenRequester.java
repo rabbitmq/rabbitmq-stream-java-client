@@ -66,7 +66,9 @@ public final class HttpTokenRequester implements TokenRequester {
     try {
       this.tokenEndpointUri = new URI(tokenEndpointUri);
     } catch (URISyntaxException e) {
-      throw new IllegalArgumentException("Error in URI: " + tokenEndpointUri);
+      throw new IllegalArgumentException(
+          "Invalid URI syntax (" + e.getReason() + " at index " + e.getIndex() + ")"
+      );
     }
     this.clientId = clientId;
     this.clientSecret = clientSecret;

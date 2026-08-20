@@ -99,7 +99,9 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       }
       return uri;
     } catch (URISyntaxException e) {
-      throw new IllegalArgumentException("Invalid URI: " + uriString, e);
+      throw new IllegalArgumentException(
+          "Invalid URI syntax (" + e.getReason() + " at index " + e.getIndex() + ")"
+      );
     }
   }
 
