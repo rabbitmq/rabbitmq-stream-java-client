@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.TestUtils.b;
+import static com.rabbitmq.stream.impl.TestUtils.credit;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +54,7 @@ public class SubscriptionTest {
     Client consumer =
         cf.get(
             new Client.ClientParameters()
+                .chunkListener(credit())
                 .messageListener(
                     (correlationId,
                         offset,
@@ -66,7 +68,7 @@ public class SubscriptionTest {
                       latches.get(correlationId).countDown();
                     }));
 
-    consumer.subscribe(b(1), stream, OffsetSpecification.first(), messageCount * 2);
+    consumer.subscribe(b(1), stream, OffsetSpecification.first(), 10);
 
     publisher.declarePublisher(b(1), null, stream);
     IntStream.range(0, messageCount)
@@ -81,7 +83,7 @@ public class SubscriptionTest {
         5,
         () -> messageCounts.computeIfAbsent(b(1), k -> new AtomicInteger(0)).get() == messageCount);
 
-    consumer.subscribe(b(2), stream, OffsetSpecification.first(), messageCount * 2);
+    consumer.subscribe(b(2), stream, OffsetSpecification.first(), 10);
 
     publisher.declarePublisher(b(1), null, stream);
     IntStream.range(0, messageCount)
@@ -129,6 +131,7 @@ public class SubscriptionTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
+                .chunkListener(credit())
                 .messageListener(
                     (correlationId,
                         offset,
@@ -139,8 +142,7 @@ public class SubscriptionTest {
                       receivedMessageCount.incrementAndGet();
                       latch.countDown();
                     }));
-    Client.Response response =
-        client.subscribe(b(1), stream, OffsetSpecification.first(), messageCount * 100);
+    Client.Response response = client.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
     client.declarePublisher(b(1), null, stream);
     IntStream.range(0, messageCount)
@@ -158,6 +160,7 @@ public class SubscriptionTest {
     Client client2 =
         cf.get(
             new Client.ClientParameters()
+                .chunkListener(credit())
                 .messageListener(
                     (correlationId,
                         offset,
@@ -165,7 +168,7 @@ public class SubscriptionTest {
                         committedChunkId,
                         chunkContext,
                         message) -> latch2.countDown()));
-    client2.subscribe(b(1), stream, OffsetSpecification.first(), messageCount * 100);
+    client2.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     client.declarePublisher(b(1), null, stream);
     IntStream.range(0, messageCount)
         .forEach(
@@ -189,6 +192,7 @@ public class SubscriptionTest {
     Client client =
         cf.get(
             new Client.ClientParameters()
+                .chunkListener(credit())
                 .messageListener(
                     (correlationId,
                         offset,
@@ -202,10 +206,9 @@ public class SubscriptionTest {
                       latches.get(correlationId).countDown();
                     }));
 
-    Client.Response response =
-        client.subscribe(b(1), stream, OffsetSpecification.first(), messageCount * 100);
+    Client.Response response = client.subscribe(b(1), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
-    response = client.subscribe(b(2), stream, OffsetSpecification.first(), messageCount * 100);
+    response = client.subscribe(b(2), stream, OffsetSpecification.first(), 10);
     assertThat(response.isOk()).isTrue();
 
     client.declarePublisher(b(1), null, stream);
