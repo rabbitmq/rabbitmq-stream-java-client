@@ -165,7 +165,7 @@ public class DeliveryTest {
                   bb,
                   client,
                   ctx,
-                  (client, subscriptionId, offset, messageCount, sizeOfData) -> {
+                  (client, subscriptionId, offset, messageCount, sizeOfData, chunkByteCount) -> {
                     assertThat(messageCount).isEqualTo(nbMessages);
                     chunkCountInCallback.incrementAndGet();
                     return null;
@@ -181,7 +181,8 @@ public class DeliveryTest {
                   },
                   NO_OP_CODEC,
                   ChunkChecksum.NO_OP,
-                  NoOpMetricsCollector.SINGLETON);
+                  NoOpMetricsCollector.SINGLETON,
+                  dataSize);
 
               long expectedMessageCount = nbMessages - (subscriptionOffset - chunkOffset);
               long expectedFilteredMessageCount = nbMessages - expectedMessageCount;
