@@ -490,6 +490,10 @@ final class StreamConsumer extends ResourceBase implements Consumer {
     }
   }
 
+  boolean hasSubscriptionClient() {
+    return this.subscriptionClient != null;
+  }
+
   private void maybeNotifyActiveToInactiveSac() {
     if (this.isSac() && this.sacActive) {
       LOGGER.debug(
