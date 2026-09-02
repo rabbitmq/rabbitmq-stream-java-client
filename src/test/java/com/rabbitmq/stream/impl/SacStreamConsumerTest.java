@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2022-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -21,8 +21,10 @@ import static com.rabbitmq.stream.impl.TestUtils.sync;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Cli;
 import com.rabbitmq.stream.Consumer;
+import com.rabbitmq.stream.ConsumerFlowStrategy;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.MessageHandler;
@@ -239,6 +241,30 @@ public class SacStreamConsumerTest {
 
     // nothing stored on the server side
     assertThat(cf.get().queryOffset(consumerName, stream).getOffset()).isZero();
+  }
+
+  @Test
+  @TestUtils.DisabledIfByteCreditNotSupported
+  void singleActiveConsumerWorksWithAByteBasedStrategy() throws Exception {
+    int messageCount = 10000;
+    AtomicInteger receivedMessageCount = new AtomicInteger();
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .name("foo")
+            .singleActiveConsumer()
+            .flow()
+            .strategy(ConsumerFlowStrategy.creditOnChunkArrival(ByteCapacity.kB(64)))
+            .builder()
+            .messageHandler((context, message) -> receivedMessageCount.incrementAndGet())
+            .offset(OffsetSpecification.first())
+            .autoTrackingStrategy()
+            .builder()
+            .build();
+
+    publishAndWaitForConfirms(cf, messageCount, stream);
+    waitAtMost(() -> receivedMessageCount.get() == messageCount);
+
+    consumer.close();
   }
 
   public static Stream<java.util.function.Consumer<Consumer>>

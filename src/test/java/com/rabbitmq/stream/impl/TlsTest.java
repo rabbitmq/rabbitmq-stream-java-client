@@ -153,7 +153,7 @@ public class TlsTest {
 
     CountDownLatch consumedLatch = new CountDownLatch(publishCount);
     Client.ChunkListener chunkListener =
-        (client, correlationId, offset, messageCount, dataSize) -> {
+        (client, correlationId, offset, messageCount, dataSize, chunkByteCount) -> {
           if (consumedLatch.getCount() != 0) {
             client.credit(correlationId, 1);
           }

@@ -914,6 +914,10 @@ final class StreamEnvironment implements Environment {
     return this.locatorOperation(Client::filteringSupported);
   }
 
+  boolean byteCreditSupported() {
+    return this.locatorOperation(Client::byteCreditSupported);
+  }
+
   Clock clock() {
     return this.clock;
   }
