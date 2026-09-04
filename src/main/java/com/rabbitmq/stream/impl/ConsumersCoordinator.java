@@ -335,7 +335,7 @@ final class ConsumersCoordinator implements AutoCloseable {
 
   private void creationFinished(Broker node, ClientSubscriptionsManager manager) {
     String key = keyForNode(node);
-    this.state.submit(
+    submitState(
         s -> {
           s.creating.remove(key);
           if (manager != null) {
@@ -361,8 +361,41 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
   }
 
+  /**
+   * Read loop-owned state for monitoring, falling back when the loop is gone.
+   *
+   * <p>Monitoring outlives the coordinator: {@code StreamEnvironment.toString()} is legitimately
+   * called on a closed environment, and must not throw.
+   */
+  private <R> R queryState(
+      java.util.function.Function<CoordinatorState, R> query, R valueIfClosed) {
+    if (this.state.isClosed()) {
+      return valueIfClosed;
+    }
+    try {
+      return this.state.query(query);
+    } catch (IllegalStateException e) {
+      // the loop was closed concurrently
+      return valueIfClosed;
+    }
+  }
+
+  /**
+   * Post to the loop, tolerating a closed loop.
+   *
+   * <p>Callers include netty I/O threads, whose connection events can arrive while the coordinator
+   * is closing; an exception there would surface on an I/O thread.
+   */
+  private void submitState(java.util.function.Consumer<CoordinatorState> task) {
+    try {
+      this.state.submit(task);
+    } catch (IllegalStateException e) {
+      LOGGER.debug("Coordinator event loop is closed, dropping task");
+    }
+  }
+
   private void registerSubscription(SubscriptionTracker tracker) {
-    this.state.submit(s -> s.subscriptions.put(tracker.id, new TrackerState(tracker)));
+    submitState(s -> s.subscriptions.put(tracker.id, new TrackerState(tracker)));
   }
 
   /**
@@ -375,7 +408,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       SubscriptionTracker tracker,
       BackOffDelayPolicy delayPolicy,
       BiFunction<State, Long, TransitionResult> decision) {
-    this.state.submit(
+    submitState(
         s -> {
           TrackerState trackerState = s.subscriptions.get(tracker.id);
           if (trackerState == null) {
@@ -398,7 +431,17 @@ final class ConsumersCoordinator implements AutoCloseable {
             // pool would not guarantee
             TrackerActions actions =
                 new TrackerActions(tracker, delayPolicy, trackerState.attempts);
-            submitRecovery(() -> result.applyEffect(actions));
+            submitRecovery(
+                () -> {
+                  try {
+                    result.applyEffect(actions);
+                  } catch (Throwable e) {
+                    LOGGER.warn(
+                        "Error while applying transition effect for subscription {}: {}",
+                        tracker.label(),
+                        e.getMessage());
+                  }
+                });
           }
         });
   }
@@ -526,13 +569,31 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     @Override
     public void markRecovering() {
-      this.tracker.detachFromManager();
-      this.tracker.markRecovering();
+      // user code runs here: detaching notifies a single active consumer it became inactive.
+      // it must not be able to prevent the re-assignment that follows in this same task
+      notifyConsumer(
+          () -> {
+            this.tracker.detachFromManager();
+            this.tracker.markRecovering();
+          },
+          "marking recovering");
     }
 
     @Override
     public void markOpen() {
-      this.tracker.markOpen();
+      notifyConsumer(this.tracker::markOpen, "marking open");
+    }
+
+    private void notifyConsumer(Runnable notification, String description) {
+      try {
+        notification.run();
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Error while {} for subscription {}: {}",
+            description,
+            this.tracker.label(),
+            Utils.exceptionMessage(e));
+      }
     }
 
     @Override
@@ -579,14 +640,14 @@ final class ConsumersCoordinator implements AutoCloseable {
   }
 
   int managerCount() {
-    return this.state.query(s -> s.connections.size());
+    return queryState(s -> s.connections.size(), 0);
   }
 
   // the connection pool is coordinator-owned state, so managers do not reach into it directly.
   // step 4 of the redesign replaces this call with an event posted to the event loop
   private void removeFromPool(ClientSubscriptionsManager manager) {
     // fire-and-forget: this is called from netty I/O threads, which must never wait on the loop
-    this.state.submit(s -> s.connections.remove(manager));
+    submitState(s -> s.connections.remove(manager));
   }
 
   // package protected for testing
@@ -675,12 +736,13 @@ final class ConsumersCoordinator implements AutoCloseable {
       return;
     }
     List<ClientSubscriptionsManager> connections =
-        this.state.query(
+        queryState(
             s -> {
               List<ClientSubscriptionsManager> all = new ArrayList<>(s.connections);
               s.connections.clear();
               return all;
-            });
+            },
+            Collections.emptyList());
     for (ClientSubscriptionsManager manager : connections) {
       try {
         manager.close();
@@ -725,7 +787,7 @@ final class ConsumersCoordinator implements AutoCloseable {
   @Override
   public String toString() {
     List<ClientSubscriptionsManager> connections =
-        this.state.query(s -> new ArrayList<>(s.connections));
+        queryState(s -> new ArrayList<>(s.connections), Collections.emptyList());
     StringBuilder builder = new StringBuilder("{");
     builder.append(jsonField("client_count", connections.size())).append(", ");
     builder
