@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -94,6 +95,8 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.stubbing.Answer;
 
 public class ConsumersCoordinatorTest {
+
+  static final int TIMEOUT_MS = 10_000;
 
   private static final SubscriptionListener NO_OP_SUBSCRIPTION_LISTENER = subscriptionContext -> {};
   private static final Runnable NO_OP_TRACKING_CLOSING_CALLBACK = () -> {};
@@ -872,8 +875,10 @@ public class ConsumersCoordinatorTest {
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
   }
 
+  // named after the old behaviour, where a second trigger was dropped by the in-flight attempt.
+  // it now supersedes it instead, and the two triggers still converge on a single subscription
   @Test
-  void shouldSkipRecoveryIfRecoveryIsAlreadyInProgress() throws Exception {
+  void overlappingRecoveryTriggersShouldConvergeOnOneSubscription() throws Exception {
     scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
@@ -1007,8 +1012,10 @@ public class ConsumersCoordinatorTest {
     this.metadataListeners.forEach(
         ml -> ml.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE));
 
-    // the consumer connection should be reset after the metadata update
-    verify(consumer, times(1)).setSubscriptionClient(isNull());
+    // the consumer connection should be reset after the metadata update. Asynchronously now:
+    // the netty thread only posts the event, because detaching notifies a single active consumer
+    // it became inactive, which is user code
+    verify(consumer, timeout(TIMEOUT_MS).times(1)).setSubscriptionClient(isNull());
 
     // the second consumer does not re-subscribe because it returns it is not open
     waitAtMost(() -> subscriptionCount.get() == 2 + 1);

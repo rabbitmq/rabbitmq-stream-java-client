@@ -118,6 +118,11 @@ final class SubscriptionStateMachine {
       return this.epoch;
     }
 
+    /** Whether there is anything to run, so callers can skip dispatching a no-op. */
+    boolean hasEffect() {
+      return this.effect != NO_OP;
+    }
+
     void applyEffect(Actions actions) {
       this.effect.accept(actions);
     }
@@ -136,8 +141,15 @@ final class SubscriptionStateMachine {
     return TransitionResult.of(State.ACTIVE, epoch, Actions::markOpen);
   }
 
+  /**
+   * @param recoverable whether another attempt is worth making. The caller decides, because the
+   *     same exception type means different things depending on which phase failed: a {@link
+   *     TimeoutStreamException} from opening a connection is worth retrying, whereas the same
+   *     exception from a candidate lookup that has exhausted its retry policy is the end of the
+   *     road. {@link #recoverable(Throwable)} is the classifier for the assignment phase.
+   */
   static TransitionResult onAssignmentFailed(
-      State state, long epoch, long eventEpoch, Throwable cause) {
+      State state, long epoch, long eventEpoch, Throwable cause, boolean recoverable) {
     if (isStale(epoch, eventEpoch) || state.terminal()) {
       return TransitionResult.noChange(state, epoch);
     }
@@ -145,7 +157,7 @@ final class SubscriptionStateMachine {
       // initial subscription does not retry: the failure is reported to the caller of subscribe()
       return TransitionResult.noChange(State.CLOSED, epoch);
     }
-    if (!recoverable(cause)) {
+    if (!recoverable) {
       return TransitionResult.of(
           State.CLOSED, epoch, a -> a.closeConsumerAfterStreamDeletion(cause));
     }

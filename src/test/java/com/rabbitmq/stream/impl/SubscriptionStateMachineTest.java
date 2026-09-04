@@ -119,7 +119,7 @@ public class SubscriptionStateMachineTest {
     // the failure of the superseded attempt must not disturb the current one
     RecordingActions stale = new RecordingActions();
     TransitionResult r =
-        onAssignmentFailed(second.state(), second.epoch(), first.epoch(), CONNECTION_ERROR);
+        onAssignmentFailed(second.state(), second.epoch(), first.epoch(), CONNECTION_ERROR, true);
     r.applyEffect(stale);
     assertThat(r.state()).isEqualTo(RECOVERING);
     assertThat(r.epoch()).isEqualTo(3);
@@ -128,7 +128,7 @@ public class SubscriptionStateMachineTest {
 
   @Test
   void recoverableAssignmentFailureSchedulesAnotherAttempt() {
-    TransitionResult r = run(onAssignmentFailed(RECOVERING, 2, 2, CONNECTION_ERROR));
+    TransitionResult r = run(onAssignmentFailed(RECOVERING, 2, 2, CONNECTION_ERROR, true));
     assertThat(r.state()).isEqualTo(RECOVERING);
     assertThat(r.epoch()).isEqualTo(3);
     assertThat(actions.calls).containsExactly("scheduleAssignment(3)");
@@ -136,15 +136,24 @@ public class SubscriptionStateMachineTest {
 
   @Test
   void unrecoverableAssignmentFailureClosesTheConsumer() {
-    TransitionResult r = run(onAssignmentFailed(RECOVERING, 2, 2, STREAM_GONE));
+    TransitionResult r = run(onAssignmentFailed(RECOVERING, 2, 2, STREAM_GONE, false));
     assertThat(r.state()).isEqualTo(CLOSED);
     assertThat(r.state().terminal()).isTrue();
     assertThat(actions.calls).containsExactly("closeConsumerAfterStreamDeletion");
   }
 
   @Test
+  void exhaustedCandidateLookupIsTerminalEvenThoughItsExceptionLooksRefreshable() {
+    Throwable lookupGaveUp = new TimeoutStreamException("candidate lookup gave up");
+    assertThat(recoverable(lookupGaveUp)).isTrue();
+    TransitionResult r = run(onAssignmentFailed(RECOVERING, 2, 2, lookupGaveUp, false));
+    assertThat(r.state()).isEqualTo(CLOSED);
+    assertThat(actions.calls).containsExactly("closeConsumerAfterStreamDeletion");
+  }
+
+  @Test
   void staleAssignmentFailureIsIgnored() {
-    TransitionResult r = run(onAssignmentFailed(RECOVERING, 6, 5, CONNECTION_ERROR));
+    TransitionResult r = run(onAssignmentFailed(RECOVERING, 6, 5, CONNECTION_ERROR, true));
     assertThat(r.state()).isEqualTo(RECOVERING);
     assertThat(r.epoch()).isEqualTo(6);
     assertThat(actions.calls).isEmpty();
@@ -160,7 +169,7 @@ public class SubscriptionStateMachineTest {
 
   @Test
   void assignmentFailureWhileOpeningClosesWithoutRetrying() {
-    TransitionResult r = run(onAssignmentFailed(OPENING, 1, 1, CONNECTION_ERROR));
+    TransitionResult r = run(onAssignmentFailed(OPENING, 1, 1, CONNECTION_ERROR, true));
     assertThat(r.state()).isEqualTo(CLOSED);
     assertThat(actions.calls).isEmpty();
   }
@@ -199,7 +208,7 @@ public class SubscriptionStateMachineTest {
             onStreamUnavailable(CLOSED, 9),
             onCancelled(CLOSED, 9),
             onStreamDeleted(CLOSED, 9, STREAM_GONE),
-            onAssignmentFailed(CLOSED, 9, 9, CONNECTION_ERROR));
+            onAssignmentFailed(CLOSED, 9, 9, CONNECTION_ERROR, true));
     for (TransitionResult r : results) {
       r.applyEffect(actions);
       assertThat(r.state()).isEqualTo(CLOSED);
