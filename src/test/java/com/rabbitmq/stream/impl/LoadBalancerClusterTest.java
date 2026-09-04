@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -81,6 +81,7 @@ public class LoadBalancerClusterTest {
         .thenReturn(new Client.ClientParameters().eventLoopGroup(eventLoopGroup).port(LB_PORT));
     when(environment.addressResolver()).thenReturn(address -> LOAD_BALANCER_ADDRESS);
     when(environment.locatorOperation(any())).thenCallRealMethod();
+    when(environment.rpcTimeout()).thenReturn(Duration.ofSeconds(10));
   }
 
   @AfterEach

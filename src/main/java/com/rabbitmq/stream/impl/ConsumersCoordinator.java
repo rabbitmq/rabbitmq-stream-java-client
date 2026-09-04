@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
+import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
 import static com.rabbitmq.stream.impl.Utils.brokerFromClient;
 import static com.rabbitmq.stream.impl.Utils.convertCodeToException;
@@ -28,6 +29,7 @@ import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 import static com.rabbitmq.stream.impl.Utils.quote;
 import static java.lang.String.format;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 
 import com.rabbitmq.stream.BackOffDelayPolicy;
@@ -56,6 +58,8 @@ import com.rabbitmq.stream.impl.Utils.BrokerWrapper;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.EventExecutorGroup;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -104,6 +108,10 @@ final class ConsumersCoordinator implements AutoCloseable {
           AVAILABLE_PROCESSORS, 10, "rabbitmq-stream-consumer-connection-");
   private final boolean forceReplica;
   private final Lock coordinatorLock = new ReentrantLock();
+  private final EventExecutorGroup eventExecutorGroup;
+  private final boolean privateEventExecutorGroup;
+  private final EventLoop eventLoop;
+  private final EventLoop.Client<CoordinatorState> state;
 
   ConsumersCoordinator(
       StreamEnvironment environment,
@@ -112,6 +120,31 @@ final class ConsumersCoordinator implements AutoCloseable {
       ClientFactory clientFactory,
       boolean forceReplica,
       Function<List<Broker>, Broker> brokerPicker) {
+    this(
+        environment,
+        maxConsumersByConnection,
+        connectionNamingStrategy,
+        clientFactory,
+        forceReplica,
+        brokerPicker,
+        null);
+  }
+
+  /**
+   * @param eventExecutorGroup the group backing the control-plane event loop, or null for the
+   *     coordinator to create and own its own. It must have exactly one thread: the loop state is
+   *     shared across all connections and subscriptions, so a second thread would silently split
+   *     it. Tests inject a deterministic group here; a caller-supplied group is not closed by
+   *     {@link #close()}.
+   */
+  ConsumersCoordinator(
+      StreamEnvironment environment,
+      int maxConsumersByConnection,
+      Function<ClientConnectionType, String> connectionNamingStrategy,
+      ClientFactory clientFactory,
+      boolean forceReplica,
+      Function<List<Broker>, Broker> brokerPicker,
+      EventExecutorGroup eventExecutorGroup) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxConsumersByConnection =
@@ -119,6 +152,18 @@ final class ConsumersCoordinator implements AutoCloseable {
     this.connectionNamingStrategy = connectionNamingStrategy;
     this.forceReplica = forceReplica;
     this.brokerPicker = brokerPicker;
+    if (eventExecutorGroup == null) {
+      // not the environment's netty I/O group on purpose: sharing with channel I/O would let the
+      // loop thread be the thread blocked on a socket
+      this.eventExecutorGroup =
+          new DefaultEventExecutorGroup(1, threadFactory("rabbitmq-stream-consumer-coordinator-"));
+      this.privateEventExecutorGroup = true;
+    } else {
+      this.eventExecutorGroup = eventExecutorGroup;
+      this.privateEventExecutorGroup = false;
+    }
+    this.eventLoop = new EventLoop(this.eventExecutorGroup, environment.rpcTimeout());
+    this.state = this.eventLoop.register(CoordinatorState::new);
   }
 
   private BackOffDelayPolicy recoveryBackOffDelayPolicy() {
@@ -352,6 +397,28 @@ final class ConsumersCoordinator implements AutoCloseable {
     } catch (Exception e) {
       LOGGER.info("Error while closing executor service factory: {}", e.getMessage());
     }
+    try {
+      this.state.close();
+      this.eventLoop.close();
+    } catch (Exception e) {
+      LOGGER.info("Error while closing coordinator event loop: {}", e.getMessage());
+    }
+    if (this.privateEventExecutorGroup) {
+      closeEventExecutorGroup(this.eventExecutorGroup);
+    }
+  }
+
+  private static void closeEventExecutorGroup(EventExecutorGroup group) {
+    try {
+      if (!group.isShuttingDown()) {
+        // no quiet period: the loop is a control plane, there is no in-flight batch to drain
+        group.shutdownGracefully(0, 10, SECONDS).get(10, SECONDS);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (Exception e) {
+      LOGGER.info("Error while closing coordinator event executor group: {}", e.getMessage());
+    }
   }
 
   @Override
@@ -533,6 +600,21 @@ final class ConsumersCoordinator implements AutoCloseable {
           this.id, this.stream, this.offsetTrackingReference, this.consumer.id());
     }
   }
+
+  /**
+   * Control-plane state owned by the event loop.
+   *
+   * <p>The rule this class exists to enforce: the loop is the <b>single writer</b> of the
+   * connection pool, the subscription-to-connection assignment, slot allocation, connection and
+   * subscription states, and epochs. The data plane stays off-loop and lock-free — the immutable
+   * tracker array published through a volatile field, plus the per-message volatile writes from
+   * netty threads — and {@code ConsumerUpdateListener} must never wait on the loop, because the
+   * protocol requires it to answer a netty thread synchronously.
+   *
+   * <p>Empty for now: the state moves in when the blocking I/O moves off-loop, since the two cannot
+   * be separated (see the implementation plan).
+   */
+  static final class CoordinatorState {}
 
   private enum SubscriptionState {
     OPENING,

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -59,6 +59,8 @@ import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerCoordinatorInfo;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import io.netty.channel.ConnectTimeoutException;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.EventExecutorGroup;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -72,6 +74,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -176,6 +179,7 @@ public class ConsumersCoordinatorTest {
     when(environment.locatorOperation(any())).thenCallRealMethod();
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.addressResolver()).thenReturn(address -> address);
+    when(environment.rpcTimeout()).thenReturn(Duration.ofSeconds(10));
     when(client.brokerVersion()).thenReturn("3.11.0");
     when(client.isOpen()).thenReturn(true);
     clientAdvertises(replica().get(0));
@@ -2197,6 +2201,53 @@ public class ConsumersCoordinatorTest {
 
   List<Client.Broker> replica() {
     return replicas().subList(0, 1);
+  }
+
+  @Test
+  void injectedEventExecutorGroupIsNotClosedByTheCoordinator() throws Exception {
+    EventExecutorGroup group = new DefaultEventExecutorGroup(1);
+    try {
+      try (ConsumersCoordinator c =
+          new ConsumersCoordinator(
+              environment,
+              ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+              type -> "consumer-connection",
+              clientFactory,
+              false,
+              brokerPicker(),
+              group)) {
+        assertThat(c).isNotNull();
+      }
+      assertThat(group.isShuttingDown()).isFalse();
+      assertThat(group.isShutdown()).isFalse();
+    } finally {
+      group.shutdownGracefully(0, 10, TimeUnit.SECONDS).get(10, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  void ownEventExecutorGroupIsShutDownOnClose() throws Exception {
+    // the coordinator from init() also holds one, so compare counts rather than absolute presence
+    int before = coordinatorLoopThreadCount();
+    ConsumersCoordinator c =
+        new ConsumersCoordinator(
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            clientFactory,
+            false,
+            brokerPicker());
+    assertThat(coordinatorLoopThreadCount()).isEqualTo(before + 1);
+    c.close();
+    waitAtMost(() -> coordinatorLoopThreadCount() == before);
+  }
+
+  private static int coordinatorLoopThreadCount() {
+    return (int)
+        Thread.getAllStackTraces().keySet().stream()
+            .filter(t -> t.getName().startsWith("rabbitmq-stream-consumer-coordinator-"))
+            .filter(Thread::isAlive)
+            .count();
   }
 
   private MessageListener firstMessageListener() {
