@@ -188,6 +188,13 @@ public class ConsumersCoordinatorTest {
     when(client.brokerVersion()).thenReturn("3.11.0");
     when(client.isOpen()).thenReturn(true);
     clientAdvertises(replica().get(0));
+    // a bare executor, not createScheduledExecutorService(): it must not start any thread of its
+    // own just by existing, only if actually given a task, so tests that override this stub before
+    // subscribing (as all of them already do) leave nothing running to clean up
+    scheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            ThreadUtils.threadFactory(info.getTestMethod().get().getName() + "-"));
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
 
     coordinator =
         new ConsumersCoordinator(
@@ -1913,6 +1920,69 @@ public class ConsumersCoordinatorTest {
             Utils.keyForNode(replicas().get(1)));
 
     c.close();
+  }
+
+  @Test
+  void watchdogShouldReDispatchASubscriptionStuckInRecoveringPastTheThreshold() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // a long fixed delay: the natural retry must not fire on its own during this test, so any
+    // further progress can only come from the watchdog
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(Duration.ofMinutes(10)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              // initial subscription
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            })
+        .thenAnswer(
+            invocation -> {
+              // this recovery attempt fails and its retry is scheduled 10 minutes out: the
+              // subscription is now "stuck" in RECOVERING for the purposes of this test
+              subscriptionCount.incrementAndGet();
+              return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+            })
+        .thenAnswer(
+            invocation -> {
+              // the watchdog-triggered attempt succeeds
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    coordinator.subscribe(
+        consumer,
+        "stream",
+        null,
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap(),
+        flowStrategy());
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1);
+
+    // the failed attempt is now waiting on its 10-minute backoff; age its clock and tick the
+    // watchdog directly instead of waiting out either the backoff or the real tick interval
+    coordinator.ageWatchdogClocksPastThreshold();
+    coordinator.watchdogTick();
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
   }
 
   @Test

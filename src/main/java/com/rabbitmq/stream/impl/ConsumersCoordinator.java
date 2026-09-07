@@ -79,6 +79,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -103,6 +104,11 @@ final class ConsumersCoordinator implements AutoCloseable {
   // how long a node that just failed a connection attempt is deprioritized for new placements;
   // short enough that a node which has actually come back is not avoided for long
   private static final long SUSPECT_TTL_NANOS = SECONDS.toNanos(5);
+  // insurance against a subscription stuck in RECOVERING because of a bug not yet found: every
+  // known way to get stuck is already fixed by the epoch-supersede mechanism the watchdog itself
+  // uses, so the threshold is generous, not tuned to any known failure timing
+  private static final long WATCHDOG_TICK_INTERVAL_MS = SECONDS.toMillis(30);
+  private static final long WATCHDOG_STUCK_THRESHOLD_NANOS = SECONDS.toNanos(120);
 
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
@@ -126,6 +132,10 @@ final class ConsumersCoordinator implements AutoCloseable {
   // recovery must not share the environment scheduler: blocking recovery work there starves
   // the AsyncRetry continuations it depends on
   private final ExecutorService recoveryExecutor;
+  // lazily started by the first subscribe(), not the constructor: no point ticking before there
+  // is anything to watch
+  private final AtomicBoolean watchdogScheduled = new AtomicBoolean(false);
+  private volatile ScheduledFuture<?> watchdogTask;
 
   ConsumersCoordinator(
       StreamEnvironment environment,
@@ -201,6 +211,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       MessageHandler messageHandler,
       Map<String, String> subscriptionProperties,
       ConsumerFlowStrategy flowStrategy) {
+    ensureWatchdogScheduled();
     List<BrokerWrapper> candidates = findCandidateNodes(stream, forceReplica);
     Broker newNode = pickBroker(this.brokerPicker, usableCandidates(candidates));
     if (newNode == null) {
@@ -442,6 +453,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           trackerState.epoch = result.epoch();
           if (newAttempt) {
             trackerState.attempts++;
+            trackerState.lastAttemptStartedAt = System.nanoTime();
           }
           if (result.state().terminal()) {
             s.subscriptions.remove(tracker.id);
@@ -464,6 +476,73 @@ final class ConsumersCoordinator implements AutoCloseable {
                   }
                 });
           }
+        });
+  }
+
+  private void ensureWatchdogScheduled() {
+    if (this.watchdogScheduled.compareAndSet(false, true)) {
+      this.watchdogTask =
+          this.environment
+              .scheduledExecutorService()
+              .scheduleAtFixedRate(
+                  this::watchdogTick,
+                  WATCHDOG_TICK_INTERVAL_MS,
+                  WATCHDOG_TICK_INTERVAL_MS,
+                  MILLISECONDS);
+    }
+  }
+
+  /**
+   * Re-trigger any subscription that has been {@code RECOVERING} past the stuck threshold.
+   *
+   * <p>Insurance against bugs not yet found, not a fix for a known one: every known way to get
+   * stuck in {@code RECOVERING} is already fixed by the epoch-supersede mechanism this reuses (see
+   * {@link SubscriptionStateMachine}).
+   *
+   * <p>Package-protected for testing: a test can call this directly instead of waiting out the real
+   * tick interval.
+   */
+  void watchdogTick() {
+    submitState(
+        s -> {
+          long now = System.nanoTime();
+          // collected first, then dispatched from a separate pass: dispatching inline while
+          // iterating s.subscriptions.values() would corrupt the iterator, since a transition can
+          // remove its own entry (e.g. onCancelled, for a consumer that closed while stuck)
+          List<TrackerState> stuck = new ArrayList<>();
+          for (TrackerState trackerState : s.subscriptions.values()) {
+            if (trackerState.state == State.RECOVERING
+                && now - trackerState.lastAttemptStartedAt > WATCHDOG_STUCK_THRESHOLD_NANOS) {
+              stuck.add(trackerState);
+            }
+          }
+          for (TrackerState trackerState : stuck) {
+            long attemptEpoch = trackerState.epoch;
+            if (!trackerState.tracker.consumer.isOpen()) {
+              trackerEvent(
+                  trackerState.tracker,
+                  recoveryBackOffDelayPolicy(),
+                  SubscriptionStateMachine::onCancelled);
+            } else {
+              trackerEvent(
+                  trackerState.tracker,
+                  recoveryBackOffDelayPolicy(),
+                  (st, epoch) -> SubscriptionStateMachine.onWatchdogTick(st, epoch, attemptEpoch));
+            }
+          }
+        });
+  }
+
+  // test support: age every subscription's watchdog clock past the stuck threshold, so a test can
+  // exercise watchdogTick() deterministically instead of waiting out the real threshold
+  void ageWatchdogClocksPastThreshold() {
+    this.state.query(
+        s -> {
+          for (TrackerState trackerState : s.subscriptions.values()) {
+            trackerState.lastAttemptStartedAt -=
+                WATCHDOG_STUCK_THRESHOLD_NANOS + SECONDS.toNanos(1);
+          }
+          return null;
         });
   }
 
@@ -777,6 +856,9 @@ final class ConsumersCoordinator implements AutoCloseable {
     if (this.state.isClosed()) {
       return;
     }
+    if (this.watchdogTask != null) {
+      this.watchdogTask.cancel(false);
+    }
     List<ClientSubscriptionsManager> connections =
         queryState(
             s -> {
@@ -1054,6 +1136,9 @@ final class ConsumersCoordinator implements AutoCloseable {
     private State state = State.OPENING;
     private long epoch = 1;
     private int attempts;
+    // set whenever a new RECOVERING attempt starts (see ConsumersCoordinator.trackerEvent);
+    // consulted by watchdogTick() to detect an attempt that never called back
+    private long lastAttemptStartedAt;
 
     private TrackerState(SubscriptionTracker tracker) {
       this.tracker = tracker;

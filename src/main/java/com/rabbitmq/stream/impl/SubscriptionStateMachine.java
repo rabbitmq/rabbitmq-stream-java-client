@@ -196,6 +196,24 @@ final class SubscriptionStateMachine {
         });
   }
 
+  /**
+   * An attempt has been {@code RECOVERING} past the watchdog's stuck threshold: supersede it, the
+   * same way a fresh disruption would.
+   *
+   * <p>Semantics mirror {@link #onDisruption}'s {@code RECOVERING} branch exactly, since a stuck
+   * attempt and a new disruption arriving while one is already in flight are the same situation:
+   * something needs to start a fresh attempt. {@code isStale} is what makes this safe to fire
+   * speculatively: if the attempt the watchdog is worried about has already succeeded, failed, or
+   * been superseded, this is a no-op.
+   */
+  static TransitionResult onWatchdogTick(State state, long epoch, long attemptEpoch) {
+    if (state.terminal() || state != State.RECOVERING || isStale(epoch, attemptEpoch)) {
+      return TransitionResult.noChange(state, epoch);
+    }
+    long newEpoch = epoch + 1;
+    return TransitionResult.of(State.RECOVERING, newEpoch, a -> a.dispatchAssignment(newEpoch));
+  }
+
   static TransitionResult onCancelled(State state, long epoch) {
     if (state.terminal()) {
       return TransitionResult.noChange(state, epoch);

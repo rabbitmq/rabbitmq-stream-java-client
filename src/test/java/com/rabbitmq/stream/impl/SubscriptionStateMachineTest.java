@@ -24,6 +24,7 @@ import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onCancelled;
 import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onConnectionLost;
 import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onStreamDeleted;
 import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onStreamUnavailable;
+import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onWatchdogTick;
 import static com.rabbitmq.stream.impl.SubscriptionStateMachine.recoverable;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -95,6 +96,32 @@ public class SubscriptionStateMachineTest {
     assertThat(r.state()).isEqualTo(RECOVERING);
     assertThat(r.epoch()).isEqualTo(3);
     assertThat(actions.calls).containsExactly("dispatchAssignment(3)");
+  }
+
+  @Test
+  void watchdogTickOnAStuckRecoveringAttemptSupersedesIt() {
+    // same handling as a fresh disruption arriving while an attempt is already in flight:
+    // something needs to start a new one
+    TransitionResult r = run(onWatchdogTick(RECOVERING, 5, 5));
+    assertThat(r.state()).isEqualTo(RECOVERING);
+    assertThat(r.epoch()).isEqualTo(6);
+    assertThat(actions.calls).containsExactly("dispatchAssignment(6)");
+  }
+
+  @Test
+  void staleWatchdogTickIsIgnored() {
+    // the attempt the tick was worried about has already succeeded, failed, or been superseded
+    TransitionResult r = run(onWatchdogTick(RECOVERING, 6, 5));
+    assertThat(r.state()).isEqualTo(RECOVERING);
+    assertThat(r.epoch()).isEqualTo(6);
+    assertThat(actions.calls).isEmpty();
+  }
+
+  @Test
+  void watchdogTickOnNonRecoveringStatesIsANoOp() {
+    assertThat(run(onWatchdogTick(OPENING, 1, 1)).state()).isEqualTo(OPENING);
+    assertThat(run(onWatchdogTick(ACTIVE, 1, 1)).state()).isEqualTo(ACTIVE);
+    assertThat(actions.calls).isEmpty();
   }
 
   @Test
@@ -208,7 +235,8 @@ public class SubscriptionStateMachineTest {
             onStreamUnavailable(CLOSED, 9),
             onCancelled(CLOSED, 9),
             onStreamDeleted(CLOSED, 9, STREAM_GONE),
-            onAssignmentFailed(CLOSED, 9, 9, CONNECTION_ERROR, true));
+            onAssignmentFailed(CLOSED, 9, 9, CONNECTION_ERROR, true),
+            onWatchdogTick(CLOSED, 9, 9));
     for (TransitionResult r : results) {
       r.applyEffect(actions);
       assertThat(r.state()).isEqualTo(CLOSED);
