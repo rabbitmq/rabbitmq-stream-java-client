@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
+import static com.rabbitmq.stream.impl.ConsumersCoordinator.deprioritizeSuspects;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickBroker;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickSlot;
 import static com.rabbitmq.stream.impl.TestUtils.b;
@@ -66,6 +67,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -555,6 +557,35 @@ public class ConsumersCoordinatorTest {
             });
     // pick the leader if it is the only one
     assertThat(pickBroker(picker, singletonList(leaderWrapper()))).isEqualTo(leader);
+  }
+
+  @Test
+  void deprioritizeSuspectsShouldDropOnlySuspectAndNotExpiredCandidates() {
+    Utils.BrokerWrapper replica1 = replicaWrappers().get(0);
+    Utils.BrokerWrapper replica2 = replicaWrappers().get(1);
+    List<Utils.BrokerWrapper> candidates = Arrays.asList(replica1, replica2);
+    long now = 10_000L;
+
+    assertThat(deprioritizeSuspects(candidates, new HashMap<>(), now))
+        .as("no suspect entry at all")
+        .containsExactlyInAnyOrder(replica1, replica2);
+
+    Map<String, Long> suspectUntil = new HashMap<>();
+    suspectUntil.put(Utils.keyForNode(replica1.broker()), now + 1_000L);
+    assertThat(deprioritizeSuspects(candidates, suspectUntil, now))
+        .as("replica1 still suspect, replica2 not")
+        .containsExactly(replica2);
+
+    suspectUntil.put(Utils.keyForNode(replica1.broker()), now - 1_000L);
+    assertThat(deprioritizeSuspects(candidates, suspectUntil, now))
+        .as("replica1's suspicion has expired")
+        .containsExactlyInAnyOrder(replica1, replica2);
+
+    suspectUntil.put(Utils.keyForNode(replica1.broker()), now + 1_000L);
+    suspectUntil.put(Utils.keyForNode(replica2.broker()), now + 1_000L);
+    assertThat(deprioritizeSuspects(candidates, suspectUntil, now))
+        .as("everything suspect falls back to the full candidate list")
+        .containsExactlyInAnyOrder(replica1, replica2);
   }
 
   @Test
@@ -1800,6 +1831,88 @@ public class ConsumersCoordinatorTest {
     waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
 
     verify(locator, times(3)).metadata("stream");
+  }
+
+  @Test
+  void shouldAvoidSuspectNodeWhenPickingBrokerAfterConnectionFailure() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+
+    // deterministic: always pick the first candidate, so which node ends up used is decided
+    // entirely by deprioritizeSuspects, not by chance
+    Function<List<Client.Broker>, Client.Broker> picker = candidates -> candidates.get(0);
+    ConsumersCoordinator c =
+        new ConsumersCoordinator(
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            clientFactory,
+            false,
+            picker);
+
+    ArgumentCaptor<Utils.ClientFactoryContext> contextCaptor =
+        ArgumentCaptor.forClass(Utils.ClientFactoryContext.class);
+    when(clientFactory.client(contextCaptor.capture())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              // initial subscription, to the first candidate (replica1)
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            })
+        .thenAnswer(
+            invocation -> {
+              // first recovery attempt: replica1 is not suspect yet, picked again, fails
+              subscriptionCount.incrementAndGet();
+              return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+            })
+        .thenAnswer(
+            invocation -> {
+              // second recovery attempt: replica1 is now suspect, replica2 gets picked instead
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    c.subscribe(
+        consumer,
+        "stream",
+        null,
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap(),
+        flowStrategy());
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
+
+    List<String> targets =
+        contextCaptor.getAllValues().stream()
+            .map(Utils.ClientFactoryContext::targetKey)
+            .collect(toList());
+    assertThat(targets)
+        .containsExactly(
+            Utils.keyForNode(replicas().get(0)),
+            Utils.keyForNode(replicas().get(0)),
+            Utils.keyForNode(replicas().get(1)));
+
+    c.close();
   }
 
   @Test

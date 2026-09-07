@@ -100,6 +100,9 @@ final class ConsumersCoordinator implements AutoCloseable {
   private static final long FIRST_ATTEMPT_EPOCH = 1;
   // sentinel subscription ID: no slot reserved, or a reservation that was rolled back or freed
   private static final byte NO_SLOT = -1;
+  // how long a node that just failed a connection attempt is deprioritized for new placements;
+  // short enough that a node which has actually come back is not avoided for long
+  private static final long SUSPECT_TTL_NANOS = SECONDS.toNanos(5);
 
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
@@ -199,7 +202,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       Map<String, String> subscriptionProperties,
       ConsumerFlowStrategy flowStrategy) {
     List<BrokerWrapper> candidates = findCandidateNodes(stream, forceReplica);
-    Broker newNode = pickBroker(this.brokerPicker, candidates);
+    Broker newNode = pickBroker(this.brokerPicker, usableCandidates(candidates));
     if (newNode == null) {
       throw new IllegalStateException("No available node to subscribe to");
     }
@@ -295,7 +298,11 @@ final class ConsumersCoordinator implements AutoCloseable {
         // full or closed in the meantime, pick again
       } catch (RuntimeException e) {
         if (shouldRefreshCandidates(e)) {
-          // manager connection is dead or stream not available
+          // manager connection is dead or stream not available: deprioritize this node for new
+          // placements for a short while, so a subscription being redistributed does not keep
+          // landing back on a node that is mid-restart
+          submitState(
+              s -> s.suspectUntil.put(keyForNode(node), System.nanoTime() + SUSPECT_TTL_NANOS));
           // scheduling manager closing if necessary in another thread to avoid blocking this one
           if (pickedManager.isEmpty()) {
             ClientSubscriptionsManager toClose = pickedManager;
@@ -335,6 +342,16 @@ final class ConsumersCoordinator implements AutoCloseable {
           s.waiters.computeIfAbsent(key, k -> new ArrayList<>()).add(waiter);
           return Placement.waitFor(waiter);
         });
+  }
+
+  /**
+   * Candidates with recently-failed nodes deprioritized, unless that leaves nothing to pick from.
+   */
+  private List<BrokerWrapper> usableCandidates(List<BrokerWrapper> candidates) {
+    // nanoTime, not currentTimeMillis: this is a deadline comparison, and must not be disturbed
+    // by a wall-clock adjustment
+    return this.state.query(
+        s -> deprioritizeSuspects(candidates, s.suspectUntil, System.nanoTime()));
   }
 
   private void creationFinished(Broker node, ClientSubscriptionsManager manager) {
@@ -503,7 +520,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       return;
     }
     try {
-      Broker broker = pickBroker(this.brokerPicker, candidates);
+      Broker broker = pickBroker(this.brokerPicker, usableCandidates(candidates));
       LOGGER.debug("Using {} to resume consuming from {}", broker, tracker.stream);
       OffsetSpecification offsetSpecification =
           tracker.hasReceivedSomething
@@ -1024,6 +1041,10 @@ final class ConsumersCoordinator implements AutoCloseable {
     // being opened instead of each opening their own
     private final Set<String> creating = new HashSet<>();
     private final Map<String, List<CompletableFuture<Void>>> waiters = new HashMap<>();
+    // broker key -> suspect-until deadline (System.nanoTime() terms); consulted lazily by
+    // deprioritizeSuspects, so a stale entry just stops mattering once its TTL passes, no active
+    // expiry needed
+    private final Map<String, Long> suspectUntil = new HashMap<>();
   }
 
   /** Per-subscription control state. Read and written only by the event loop. */
@@ -1721,6 +1742,27 @@ final class ConsumersCoordinator implements AutoCloseable {
   static Broker pickBroker(
       Function<List<Broker>, Broker> picker, Collection<BrokerWrapper> candidates) {
     return picker.apply(keepReplicasIfPossible(candidates));
+  }
+
+  /**
+   * Drop candidates whose node recently failed a connection attempt, unless that would leave
+   * nothing to pick from.
+   *
+   * <p>Pure: {@code now} is a parameter rather than read internally, so this needs no clock
+   * injection to test. {@code now} and the values in {@code suspectUntil} are expected to be {@link
+   * System#nanoTime()} readings; the comparison below is written as a subtraction rather than
+   * {@code deadline <= now} so it stays correct across a {@code nanoTime()} wraparound.
+   */
+  static List<BrokerWrapper> deprioritizeSuspects(
+      Collection<BrokerWrapper> candidates, Map<String, Long> suspectUntil, long now) {
+    List<BrokerWrapper> notSuspect = new ArrayList<>();
+    for (BrokerWrapper candidate : candidates) {
+      Long deadline = suspectUntil.get(keyForNode(candidate.broker()));
+      if (deadline == null || deadline - now <= 0) {
+        notSuspect.add(candidate);
+      }
+    }
+    return notSuspect.isEmpty() ? new ArrayList<>(candidates) : notSuspect;
   }
 
   private static void iterate(
