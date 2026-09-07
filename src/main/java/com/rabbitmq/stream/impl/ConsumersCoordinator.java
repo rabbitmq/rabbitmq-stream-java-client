@@ -141,23 +141,6 @@ final class ConsumersCoordinator implements AutoCloseable {
   private final AtomicBoolean watchdogScheduled = new AtomicBoolean(false);
   private volatile ScheduledFuture<?> watchdogTask;
 
-  ConsumersCoordinator(
-      StreamEnvironment environment,
-      int maxConsumersByConnection,
-      Function<ClientConnectionType, String> connectionNamingStrategy,
-      ClientFactory clientFactory,
-      boolean forceReplica,
-      Function<List<Broker>, Broker> brokerPicker) {
-    this(
-        environment,
-        maxConsumersByConnection,
-        connectionNamingStrategy,
-        clientFactory,
-        forceReplica,
-        brokerPicker,
-        null);
-  }
-
   /**
    * @param eventExecutorGroup the group backing the control-plane event loop, or null for the
    *     coordinator to create and own its own. It must have exactly one thread: the loop state is

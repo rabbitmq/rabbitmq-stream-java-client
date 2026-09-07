@@ -107,7 +107,8 @@ public class LoadBalancerClusterTest {
             type -> "consumer-connection",
             Utils.coordinatorClientFactory(this.environment, Duration.ofMillis(10)),
             forceReplica,
-            Utils.brokerPicker())) {
+            Utils.brokerPicker(),
+            null)) {
 
       waitAtMost(
           () -> locator.metadata(stream).get(stream).hasReplicas(),

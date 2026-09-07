@@ -207,7 +207,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
   }
 
   @AfterEach
@@ -238,7 +239,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             cf,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -280,7 +282,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             cf,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -322,7 +325,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             cf,
             false,
-            brokers -> brokers.get(0));
+            brokers -> brokers.get(0),
+            null);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -1335,7 +1339,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     List<Runnable> closingRunnables =
         range(0, subscriptionCount)
@@ -1905,7 +1910,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             false,
-            picker);
+            picker,
+            null);
 
     ArgumentCaptor<Utils.ClientFactoryContext> contextCaptor =
         ArgumentCaptor.forClass(Utils.ClientFactoryContext.class);
@@ -2255,7 +2261,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             true,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     AtomicInteger subscriptionCount = new AtomicInteger();
     when(client.subscribe(
@@ -2569,7 +2576,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             true,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     Runnable closingRunnable =
@@ -2737,7 +2745,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
     assertThat(coordinatorLoopThreadCount()).isEqualTo(before + 1);
     c.close();
     waitAtMost(() -> coordinatorLoopThreadCount() == before);
