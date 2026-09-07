@@ -77,7 +77,16 @@ public class SubscriptionStateMachineTest {
     TransitionResult r = run(onConnectionLost(ACTIVE, 1));
     assertThat(r.state()).isEqualTo(RECOVERING);
     assertThat(r.epoch()).isEqualTo(2);
-    assertThat(actions.calls).containsExactly("markRecovering", "dispatchAssignment(2)");
+    // scheduled, not dispatched: the first attempt of an episode waits the policy's first delay
+    assertThat(actions.calls).containsExactly("markRecovering", "scheduleAssignment(2)");
+  }
+
+  @Test
+  void metadataUpdateWhileActiveStartsRecoveryAfterTheFirstDelay() {
+    TransitionResult r = run(onStreamUnavailable(ACTIVE, 4));
+    assertThat(r.state()).isEqualTo(RECOVERING);
+    assertThat(r.epoch()).isEqualTo(5);
+    assertThat(actions.calls).containsExactly("markRecovering", "scheduleAssignment(5)");
   }
 
   @Test

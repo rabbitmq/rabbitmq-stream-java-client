@@ -110,8 +110,10 @@ final class ConsumersCoordinator implements AutoCloseable {
   static final long WATCHDOG_STUCK_THRESHOLD_NANOS = SECONDS.toNanos(120);
   // how long an emptied connection is kept around before actually closing it, so a subscription
   // landing on the same node moments later (e.g. during a rolling restart) can reuse it instead
-  // of reconnecting
-  private static final long IDLE_LINGER_MS = SECONDS.toMillis(3);
+  // of reconnecting. Has to outlast the recovery back-off delay (5s by default), since a
+  // redistributed subscription only comes back once its first attempt is due, but not by much: the
+  // connection is held idle for the whole window and the cost of being wrong is one reconnect
+  private static final long IDLE_LINGER_MS = SECONDS.toMillis(6);
   private static final java.util.function.Consumer<TrackerState> NO_STATE_CHANGE = s -> {};
 
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
@@ -451,14 +453,19 @@ final class ConsumersCoordinator implements AutoCloseable {
               result.state() == State.RECOVERING && result.epoch() != trackerState.epoch;
           trackerState.state = result.state();
           trackerState.epoch = result.epoch();
+          // 0-based, as BackOffDelayPolicy defines it (see AsyncRetry): delay(0) is the wait before
+          // an episode's first attempt, delay(n) the wait after n failed ones. Read before the
+          // increment and passed to the effect, so the deadline below and the delay
+          // scheduleAssignment applies come from the same index
+          int backOffIndex = trackerState.attempts;
           if (newAttempt) {
             trackerState.attempts++;
-            // the attempt is either dispatched right away or scheduled after the back-off delay,
-            // and which one is only decided in the effect. Assume the delay applies, so the
-            // watchdog measures "stuck" from the point the attempt is due at the latest and never
-            // cuts short a configured back-off
+            // the attempt is either scheduled after its back-off delay or, for a watchdog rescue,
+            // dispatched right away, and which one is only decided in the effect. Assume the delay
+            // applies, so the watchdog measures "stuck" from the point the attempt is due at the
+            // latest and never cuts short a configured back-off
             trackerState.nextAttemptAt =
-                System.nanoTime() + backOffNanos(delayPolicy, trackerState.attempts);
+                System.nanoTime() + backOffNanos(delayPolicy, backOffIndex);
           }
           if (result.state() == State.ACTIVE) {
             // a successful assignment ends the recovery episode: the retry timeout is meant to
@@ -474,8 +481,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             // (detach before re-assign, for instance), which separate tasks on a multi-threaded
             // pool would not guarantee
             TrackerActions actions =
-                new TrackerActions(
-                    tracker, delayPolicy, trackerState.attempts, trackerState.failedLookups);
+                new TrackerActions(tracker, delayPolicy, backOffIndex, trackerState.failedLookups);
             submitRecovery(
                 () -> {
                   try {
@@ -698,17 +704,19 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     private final SubscriptionTracker tracker;
     private final BackOffDelayPolicy delayPolicy;
-    private final int attempts;
+    // the number of attempts already made in this recovery episode, which is also the index this
+    // attempt's delay comes from
+    private final int backOffIndex;
     private final int failedLookups;
 
     private TrackerActions(
         SubscriptionTracker tracker,
         BackOffDelayPolicy delayPolicy,
-        int attempts,
+        int backOffIndex,
         int failedLookups) {
       this.tracker = tracker;
       this.delayPolicy = delayPolicy;
-      this.attempts = attempts;
+      this.backOffIndex = backOffIndex;
       this.failedLookups = failedLookups;
     }
 
@@ -719,12 +727,12 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     @Override
     public void scheduleAssignment(long attemptEpoch, Throwable cause) {
-      Duration delay = this.delayPolicy.delay(this.attempts);
+      Duration delay = this.delayPolicy.delay(this.backOffIndex);
       if (BackOffDelayPolicy.TIMEOUT.equals(delay)) {
         LOGGER.debug(
             "Giving up on subscription {} after {} attempt(s)",
             this.tracker.label(),
-            this.attempts);
+            this.backOffIndex);
         assignmentFailed(this.tracker, this.delayPolicy, attemptEpoch, cause, false);
         return;
       }

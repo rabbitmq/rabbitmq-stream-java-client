@@ -2006,7 +2006,7 @@ public class ConsumersCoordinatorTest {
             })
         .thenAnswer(
             invocation -> {
-              // the watchdog-triggered attempt succeeds
+              // the second watchdog-triggered attempt succeeds
               subscriptionCount.incrementAndGet();
               return responseOk();
             });
@@ -2024,6 +2024,12 @@ public class ConsumersCoordinatorTest {
 
     this.shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the episode's own first attempt is scheduled 10 minutes out, so bring that forward too.
+    // ageWatchdogClocksBy() runs on the event loop, which makes it a barrier for the transition
+    // the shutdown listener posted
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
+    coordinator.watchdogTick();
 
     waitAtMost(() -> subscriptionCount.get() == 1 + 1);
 
@@ -2075,6 +2081,12 @@ public class ConsumersCoordinatorTest {
     this.shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
 
+    // the episode's first attempt waits out the policy's first delay, so bring that forward to get
+    // the subscription into the state this test is about: an attempt that failed and is now
+    // waiting on its retry
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
+    coordinator.watchdogTick();
+
     waitAtMost(() -> subscriptionCount.get() == 1 + 1);
 
     // past the stuck threshold, but nowhere near the end of the 10-minute delay the subscription
@@ -2083,6 +2095,38 @@ public class ConsumersCoordinatorTest {
     coordinator.watchdogTick();
 
     verify(client, after(300).times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+  }
+
+  @Test
+  void firstRecoveryAttemptShouldWaitThePolicyInitialDelay() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // an initial delay much longer than the delay between retries, so which of the two applies to
+    // the first attempt of a recovery episode is observable
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(1000), ms(10)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(responseOk());
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // still only the initial subscription: the recovery attempt is waiting out delay(0), the
+    // policy's grace before reacting at all, and not delay(1)
+    verify(client, after(300).times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+    verify(client, timeout(TIMEOUT_MS).times(2))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
   }
 

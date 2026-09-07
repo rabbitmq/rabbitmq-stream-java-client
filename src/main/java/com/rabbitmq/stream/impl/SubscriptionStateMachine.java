@@ -71,7 +71,11 @@ final class SubscriptionStateMachine {
     /** Start an assignment attempt for the given epoch, off-loop. */
     void dispatchAssignment(long attemptEpoch);
 
-    /** Start an assignment attempt for the given epoch after the recovery back-off delay. */
+    /**
+     * Start an assignment attempt for the given epoch after the back-off delay for the attempt, or
+     * give up if the policy has run out. {@code cause} is only reported when giving up, and is null
+     * for an attempt triggered by a disruption rather than by a failure.
+     */
     void scheduleAssignment(long attemptEpoch, Throwable cause);
 
     void markRecovering();
@@ -192,7 +196,10 @@ final class SubscriptionStateMachine {
         newEpoch,
         a -> {
           a.markRecovering();
-          a.dispatchAssignment(newEpoch);
+          // scheduled rather than dispatched, so the policy's first delay applies to the first
+          // attempt of the episode: reacting to a disruption immediately means querying a broker
+          // whose own view of the topology is usually still the one that just broke
+          a.scheduleAssignment(newEpoch, null);
         });
   }
 
