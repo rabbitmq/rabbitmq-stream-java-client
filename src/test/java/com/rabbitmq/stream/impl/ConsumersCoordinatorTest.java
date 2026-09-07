@@ -2131,6 +2131,50 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
+  void aSupersededAttemptShouldNotTouchTheBroker() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // long enough that the parked attempt is still waiting when it gets superseded
+    Duration parkedDelay = Duration.ofSeconds(2);
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(50), parkedDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata("stream", null, replicas()))
+        .thenThrow(new IllegalStateException("no metadata for this attempt"))
+        .thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(responseOk());
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the episode's first attempt fails its candidate lookup and parks
+    verify(locator, timeout(TIMEOUT_MS).times(2)).metadata("stream");
+
+    // the watchdog starts a fresh attempt, which succeeds and leaves the parked one stale
+    coordinator.ageWatchdogClocksBy(parkedDelay.plusSeconds(121));
+    coordinator.watchdogTick();
+    verify(client, timeout(TIMEOUT_MS).times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    // the parked attempt fires once its delay is up: it must not look up a candidate, and above
+    // all must not subscribe, since the broker would deliver to it until the release lands and the
+    // application would see those messages twice
+    verify(locator, after(parkedDelay.toMillis() + 500).times(3)).metadata("stream");
+    verify(client, times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+  }
+
+  @Test
   void aFailingCandidateLookupShouldNotHoldARecoveryThread() throws Exception {
     scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);

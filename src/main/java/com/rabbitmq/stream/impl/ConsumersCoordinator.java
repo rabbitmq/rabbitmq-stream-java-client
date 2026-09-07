@@ -650,6 +650,11 @@ final class ConsumersCoordinator implements AutoCloseable {
       trackerEvent(tracker, delayPolicy, SubscriptionStateMachine::onCancelled);
       return;
     }
+    if (superseded(tracker, attemptEpoch)) {
+      // typically an attempt that waited out its back-off delay while newer events took over
+      LOGGER.debug("Skipping superseded assignment attempt for subscription {}", tracker.label());
+      return;
+    }
     List<BrokerWrapper> candidates;
     boolean mustUseReplica =
         this.forceReplica && failedLookups < MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER;
@@ -675,6 +680,12 @@ final class ConsumersCoordinator implements AutoCloseable {
           tracker.hasReceivedSomething
               ? OffsetSpecification.offset(tracker.offset)
               : tracker.initialOffsetSpecification;
+      if (superseded(tracker, attemptEpoch)) {
+        // re-checked after the lookup, the slow part of an attempt, and as late as possible before
+        // the broker gets involved
+        LOGGER.debug("Not assigning superseded attempt for subscription {}", tracker.label());
+        return;
+      }
       addToManager(broker, candidates, tracker, offsetSpecification, false);
       assignmentSucceeded(tracker, delayPolicy, attemptEpoch);
     } catch (Exception e) {
@@ -683,6 +694,29 @@ final class ConsumersCoordinator implements AutoCloseable {
       assignmentFailed(
           tracker, delayPolicy, attemptEpoch, e, SubscriptionStateMachine.recoverable(e));
     }
+  }
+
+  /**
+   * Whether an attempt has been superseded, and so must not touch the broker.
+   *
+   * <p>A superseded attempt that subscribes anyway is undone by the {@code releaseAssignment}
+   * effect, but only once the broker has already started delivering to it, which the application
+   * sees as duplicate messages. The event that superseded it always started an attempt of its own,
+   * so giving up here does not cost the subscription its recovery.
+   */
+  private boolean superseded(SubscriptionTracker tracker, long attemptEpoch) {
+    Boolean superseded =
+        this.state.query(
+            s -> {
+              TrackerState trackerState = s.subscriptions.get(tracker.id);
+              // gone from the map: the subscription reached a terminal state, so there is nothing
+              // left to assign either
+              return trackerState == null
+                  || SubscriptionStateMachine.isStale(trackerState.epoch, attemptEpoch);
+            });
+    // null when the loop did not run the query at all, which means the coordinator is closing:
+    // there is no state left to be current with, so the attempt stops here as well
+    return superseded == null || superseded;
   }
 
   private void submitRecovery(Runnable task) {

@@ -256,7 +256,13 @@ final class SubscriptionStateMachine {
     return false;
   }
 
-  private static boolean isStale(long epoch, long eventEpoch) {
+  /**
+   * Whether something carrying {@code eventEpoch} belongs to an attempt that has been superseded.
+   *
+   * <p>Package-protected because an attempt itself checks this before touching the broker, and it
+   * has to be the same notion of staleness the transitions use.
+   */
+  static boolean isStale(long epoch, long eventEpoch) {
     return eventEpoch != epoch;
   }
 }
