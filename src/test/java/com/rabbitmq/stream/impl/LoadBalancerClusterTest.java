@@ -43,6 +43,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Function;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,9 +71,11 @@ public class LoadBalancerClusterTest {
   EventLoopGroup eventLoopGroup;
   Client locator;
   static final Address LOAD_BALANCER_ADDRESS = new Address("localhost", LB_PORT);
+  ScheduledExecutorService scheduledExecutorService;
 
   @BeforeEach
   void init() {
+    scheduledExecutorService = Executors.newScheduledThreadPool(1);
     mocks = MockitoAnnotations.openMocks(this);
     locator = cf.get(new Client.ClientParameters().port(LB_PORT));
     StreamEnvironment.Locator l = new StreamEnvironment.Locator(-1, new Address("localhost", 5555));
@@ -82,10 +86,12 @@ public class LoadBalancerClusterTest {
     when(environment.addressResolver()).thenReturn(address -> LOAD_BALANCER_ADDRESS);
     when(environment.locatorOperation(any())).thenCallRealMethod();
     when(environment.rpcTimeout()).thenReturn(Duration.ofSeconds(10));
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
   }
 
   @AfterEach
   void tearDown() throws Exception {
+    scheduledExecutorService.shutdownNow();
     mocks.close();
   }
 
