@@ -78,6 +78,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -1990,6 +1991,222 @@ public class ConsumersCoordinatorTest {
     coordinator.watchdogTick();
 
     waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
+  }
+
+  @Test
+  void aFailingCandidateLookupShouldNotHoldARecoveryThread() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+
+    // more than the recovery pool can ever have threads (max(2, min(4, processors))), so the test
+    // does not need to know that number
+    int stuckCount = 8;
+    AtomicInteger stuckStreamLookups = new AtomicInteger();
+    when(locator.metadata("stuck"))
+        .thenAnswer(
+            invocation -> {
+              // answers the initial subscriptions, then never again
+              if (stuckStreamLookups.incrementAndGet() <= stuckCount) {
+                return metadata("stuck", null, replica());
+              }
+              throw new IllegalStateException("no node available to consume from 'stuck'");
+            });
+    when(locator.metadata("healthy")).thenReturn(metadata("healthy", null, replica()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger healthySubscriptions = new AtomicInteger();
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenAnswer(
+            invocation -> {
+              if ("healthy".equals(invocation.getArgument(1))) {
+                healthySubscriptions.incrementAndGet();
+              }
+              return responseOk();
+            });
+
+    for (int i = 0; i < stuckCount; i++) {
+      subscribe("stuck");
+    }
+    // last, so the shutdown listener dispatches its recovery behind all the stuck ones
+    subscribe("healthy");
+    assertThat(healthySubscriptions.get()).isEqualTo(1);
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the subscriptions on 'stuck' now fail their candidate lookup on every attempt. If a failing
+    // lookup retried in place instead of parking, they would own every recovery thread and this
+    // would never get to run
+    waitAtMost(() -> healthySubscriptions.get() == 2);
+  }
+
+  @Test
+  void parkedSubscriptionShouldRecoverWithASingleLookupPerAttempt() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    int failedLookups = 3;
+    when(locator.metadata("stream"))
+        .thenReturn(metadata("stream", null, replicas()))
+        .thenThrow(
+            new IllegalStateException(), new IllegalStateException(), new IllegalStateException())
+        .thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger();
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 2);
+
+    // exactly one lookup per attempt: the initial subscription, one per parked attempt, and the
+    // one that finds the stream back
+    verify(locator, times(1 + failedLookups + 1)).metadata("stream");
+  }
+
+  @Test
+  void parkedSubscriptionShouldBeClosedWhenStreamTurnsOutToBeDeleted() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata("stream", null, replicas()))
+        .thenThrow(new IllegalStateException(), new IllegalStateException())
+        .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // parking keeps re-querying, so a stream that turns out to be gone still ends the subscription
+    verify(consumer, timeout(TIMEOUT_MS).times(1)).closeAfterStreamDeletion();
+  }
+
+  @Test
+  void successfulRecoveryShouldResetTheRetryTimeoutBudget() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // a policy with a retry timeout, so it gives up once the attempt count passes its limit
+    // ((200 - 50) / 50 + 1 == 4)
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(50), ms(50), ms(200)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger();
+    AtomicBoolean failNextSubscribe = new AtomicBoolean(false);
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenAnswer(
+            invocation -> {
+              if (failNextSubscribe.compareAndSet(true, false)) {
+                return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+              }
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    subscribe("stream");
+    assertThat(subscriptionCount.get()).isEqualTo(1);
+
+    int cleanRecoveries = 4;
+    for (int i = 0; i < cleanRecoveries; i++) {
+      this.shutdownListener.handle(
+          new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+      int expected = i + 2;
+      waitAtMost(() -> subscriptionCount.get() == expected);
+    }
+
+    // one more disruption, this time with a failed attempt, so the back-off policy is consulted.
+    // Without a reset on success the attempt count would already be past the policy's limit and
+    // the consumer would be closed instead of recovering
+    failNextSubscribe.set(true);
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == cleanRecoveries + 2);
+    verify(consumer, never()).closeAfterStreamDeletion();
+  }
+
+  @Test
+  void successfulRecoveryShouldResetTheForceReplicaFallbackBudget() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(leader(), replica()))
+        // no replica from now on, so every forced-replica lookup fails
+        .thenReturn(metadata(leader(), emptyList()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    coordinator =
+        new ConsumersCoordinator(
+            environment,
+            MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            clientFactory,
+            true,
+            brokerPicker());
+
+    AtomicInteger subscriptionCount = new AtomicInteger();
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    subscribe("stream");
+
+    // one lookup per parked attempt: the forced-replica ones, then the one accepting the leader
+    int perEpisode = ConsumersCoordinator.MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER + 1;
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    waitAtMost(() -> subscriptionCount.get() == 2);
+    verify(locator, times(1 + perEpisode)).metadata("stream");
+
+    // the budget starts over, otherwise this episode would accept the leader right away
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    waitAtMost(() -> subscriptionCount.get() == 3);
+    verify(locator, times(1 + perEpisode * 2)).metadata("stream");
+  }
+
+  private void subscribe(String stream) {
+    coordinator.subscribe(
+        consumer,
+        stream,
+        null,
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap(),
+        flowStrategy());
   }
 
   @Test

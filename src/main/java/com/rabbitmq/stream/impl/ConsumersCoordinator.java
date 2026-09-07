@@ -72,7 +72,6 @@ import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -113,6 +112,7 @@ final class ConsumersCoordinator implements AutoCloseable {
   // landing on the same node moments later (e.g. during a rolling restart) can reuse it instead
   // of reconnecting
   private static final long IDLE_LINGER_MS = SECONDS.toMillis(3);
+  private static final java.util.function.Consumer<TrackerState> NO_STATE_CHANGE = s -> {};
 
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
@@ -444,12 +444,25 @@ final class ConsumersCoordinator implements AutoCloseable {
       SubscriptionTracker tracker,
       BackOffDelayPolicy delayPolicy,
       BiFunction<State, Long, TransitionResult> decision) {
+    trackerEvent(tracker, delayPolicy, NO_STATE_CHANGE, decision);
+  }
+
+  /**
+   * Same, with a mutation applied to the subscription's counters in the very same loop task as the
+   * decision, for events that both update a counter and transition on it.
+   */
+  private void trackerEvent(
+      SubscriptionTracker tracker,
+      BackOffDelayPolicy delayPolicy,
+      java.util.function.Consumer<TrackerState> beforeDecision,
+      BiFunction<State, Long, TransitionResult> decision) {
     submitState(
         s -> {
           TrackerState trackerState = s.subscriptions.get(tracker.id);
           if (trackerState == null) {
             return;
           }
+          beforeDecision.accept(trackerState);
           TransitionResult result = decision.apply(trackerState.state, trackerState.epoch);
           boolean newAttempt =
               result.state() == State.RECOVERING && result.epoch() != trackerState.epoch;
@@ -459,6 +472,12 @@ final class ConsumersCoordinator implements AutoCloseable {
             trackerState.attempts++;
             trackerState.lastAttemptStartedAt = System.nanoTime();
           }
+          if (result.state() == State.ACTIVE) {
+            // a successful assignment ends the recovery episode: the retry timeout is meant to
+            // bound one episode, not the subscription's whole life
+            trackerState.attempts = 0;
+            trackerState.failedLookups = 0;
+          }
           if (result.state().terminal()) {
             s.subscriptions.remove(tracker.id);
           }
@@ -467,7 +486,8 @@ final class ConsumersCoordinator implements AutoCloseable {
             // (detach before re-assign, for instance), which separate tasks on a multi-threaded
             // pool would not guarantee
             TrackerActions actions =
-                new TrackerActions(tracker, delayPolicy, trackerState.attempts);
+                new TrackerActions(
+                    tracker, delayPolicy, trackerState.attempts, trackerState.failedLookups);
             submitRecovery(
                 () -> {
                   try {
@@ -572,9 +592,39 @@ final class ConsumersCoordinator implements AutoCloseable {
                 st, epoch, attemptEpoch, cause, recoverable));
   }
 
-  /** One assignment attempt. Blocking, so it always runs on the recovery pool. */
+  /**
+   * A failed candidate lookup: count it and park the subscription for another attempt later.
+   *
+   * <p>The counter update and the transition that reads it share one loop task, so the next
+   * attempt's {@link TrackerActions} always sees this failure.
+   */
+  private void lookupFailed(
+      SubscriptionTracker tracker,
+      BackOffDelayPolicy delayPolicy,
+      long attemptEpoch,
+      Throwable cause) {
+    trackerEvent(
+        tracker,
+        delayPolicy,
+        trackerState -> trackerState.failedLookups++,
+        (st, epoch) ->
+            SubscriptionStateMachine.onAssignmentFailed(st, epoch, attemptEpoch, cause, true));
+  }
+
+  /**
+   * One assignment attempt. Blocking, so it always runs on the recovery pool.
+   *
+   * <p>Bounded on purpose: exactly one candidate lookup, then either an assignment or a transition.
+   * A lookup that fails does not retry here — it parks the subscription, so the recovery pool has
+   * only {@code RECOVERY_THREADS} threads and a stream that stays unreachable must never own one
+   * while it waits. The back-off policy is the retry mechanism, and {@link
+   * TrackerActions#scheduleAssignment} is where it gives up.
+   */
   private void assign(
-      SubscriptionTracker tracker, long attemptEpoch, BackOffDelayPolicy delayPolicy) {
+      SubscriptionTracker tracker,
+      long attemptEpoch,
+      BackOffDelayPolicy delayPolicy,
+      int failedLookups) {
     if (!tracker.consumer.isOpen()) {
       LOGGER.debug(
           "Not re-assigning consumer {} (stream '{}') because it has been closed",
@@ -584,22 +634,21 @@ final class ConsumersCoordinator implements AutoCloseable {
       return;
     }
     List<BrokerWrapper> candidates;
+    boolean mustUseReplica =
+        this.forceReplica && failedLookups < MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER;
     try {
-      candidates =
-          Utils.callAndMaybeRetry(
-              findCandidateNodes(tracker.stream),
-              ex -> !(ex instanceof StreamDoesNotExistException),
-              delayPolicy,
-              "Candidate lookup to consume from '%s' (subscription recovery)",
-              tracker.stream);
+      candidates = findCandidateNodes(tracker.stream, mustUseReplica);
+    } catch (StreamDoesNotExistException e) {
+      // the stream is gone: there is nothing to come back to, so this subscription is over
+      LOGGER.debug("Stream '{}' does not exist, closing subscription", tracker.stream);
+      assignmentFailed(tracker, delayPolicy, attemptEpoch, e, false);
+      return;
     } catch (Exception e) {
-      // the lookup exhausted its retry policy, or the stream is gone: there is nowhere to go,
-      // whatever the exception happens to look like
       LOGGER.debug(
-          "Candidate lookup for stream '{}' gave up: {}",
+          "Candidate lookup for stream '{}' failed, parking subscription: {}",
           tracker.stream,
           Utils.exceptionMessage(e));
-      assignmentFailed(tracker, delayPolicy, attemptEpoch, e, false);
+      lookupFailed(tracker, delayPolicy, attemptEpoch, e);
       return;
     }
     try {
@@ -639,17 +688,22 @@ final class ConsumersCoordinator implements AutoCloseable {
     private final SubscriptionTracker tracker;
     private final BackOffDelayPolicy delayPolicy;
     private final int attempts;
+    private final int failedLookups;
 
     private TrackerActions(
-        SubscriptionTracker tracker, BackOffDelayPolicy delayPolicy, int attempts) {
+        SubscriptionTracker tracker,
+        BackOffDelayPolicy delayPolicy,
+        int attempts,
+        int failedLookups) {
       this.tracker = tracker;
       this.delayPolicy = delayPolicy;
       this.attempts = attempts;
+      this.failedLookups = failedLookups;
     }
 
     @Override
     public void dispatchAssignment(long attemptEpoch) {
-      assign(this.tracker, attemptEpoch, this.delayPolicy);
+      assign(this.tracker, attemptEpoch, this.delayPolicy, this.failedLookups);
     }
 
     @Override
@@ -666,7 +720,10 @@ final class ConsumersCoordinator implements AutoCloseable {
       environment
           .scheduledExecutorService()
           .schedule(
-              () -> submitRecovery(() -> assign(this.tracker, attemptEpoch, this.delayPolicy)),
+              () ->
+                  submitRecovery(
+                      () ->
+                          assign(this.tracker, attemptEpoch, this.delayPolicy, this.failedLookups)),
               delay.toMillis(),
               MILLISECONDS);
     }
@@ -838,22 +895,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     LOGGER.debug("Candidates to consume from {}: {}", stream, brokers);
 
     return brokers;
-  }
-
-  private Callable<List<BrokerWrapper>> findCandidateNodes(String stream) {
-    AtomicInteger attemptNumber = new AtomicInteger();
-    return () -> {
-      boolean mustUseReplica;
-      if (forceReplica) {
-        mustUseReplica =
-            attemptNumber.incrementAndGet() <= MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER;
-      } else {
-        mustUseReplica = false;
-      }
-      LOGGER.debug(
-          "Looking for broker(s) for stream {}, forcing replica {}", stream, mustUseReplica);
-      return findCandidateNodes(stream, mustUseReplica);
-    };
   }
 
   public void close() {
@@ -1140,6 +1181,10 @@ final class ConsumersCoordinator implements AutoCloseable {
     private State state = State.OPENING;
     private long epoch = 1;
     private int attempts;
+    // candidate lookups that failed in the current recovery episode. Drives the fallback from
+    // replicas to the leader when forceReplica is on: it must survive across attempts, since an
+    // attempt performs a single lookup and then parks
+    private int failedLookups;
     // set whenever a new RECOVERING attempt starts (see ConsumersCoordinator.trackerEvent);
     // consulted by watchdogTick() to detect an attempt that never called back
     private long lastAttemptStartedAt;
