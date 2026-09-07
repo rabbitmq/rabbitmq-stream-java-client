@@ -256,7 +256,7 @@ public class StreamEnvironmentTest {
   }
 
   @Test
-  void growShrinkResourcesWhenProducersConsumersAreOpenedAndClosed(TestInfo info) {
+  void growShrinkResourcesWhenProducersConsumersAreOpenedAndClosed(TestInfo info) throws Exception {
     int messageCount = 100;
     int streamCount = 20;
     int producersCount = ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT * 3 + 10;
@@ -349,7 +349,12 @@ public class StreamEnvironmentTest {
       environmentInfo = MonitoringTestUtils.extract(environment);
       assertThat(environmentInfo.getProducers().nodesConnected()).hasSize(1);
       assertThat(environmentInfo.getProducers().clientCount()).isLessThan(producerManagerCount);
-      consumerInfo = environmentInfo.getConsumers();
+      // the now-empty consumer connections linger for a bit before they actually close
+      waitAtMost(
+          () ->
+              MonitoringTestUtils.extract(environment).getConsumers().clients().size()
+                  < consumerManagerCount);
+      consumerInfo = MonitoringTestUtils.extract(environment).getConsumers();
       assertThat(consumerInfo.nodesConnected()).hasSize(1);
       assertThat(consumerInfo.clients()).hasSizeLessThan(consumerManagerCount);
 

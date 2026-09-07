@@ -416,7 +416,7 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
-  void subscribePropagateExceptionWhenClientSubscriptionFails() {
+  void subscribePropagateExceptionWhenClientSubscriptionFails() throws Exception {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
@@ -443,11 +443,12 @@ public class ConsumersCoordinatorTest {
                     flowStrategy()))
         .isInstanceOf(StreamException.class)
         .hasMessage(exceptionMessage);
-    assertThat(MonitoringTestUtils.extract(coordinator).isEmpty()).isTrue();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
-  void subscribeShouldThrowStreamExceptionWhenClientSubscribeReturnsNull() {
+  void subscribeShouldThrowStreamExceptionWhenClientSubscribeReturnsNull() throws Exception {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
     when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
@@ -471,7 +472,8 @@ public class ConsumersCoordinatorTest {
                     Collections.emptyMap(),
                     flowStrategy()))
         .isInstanceOf(StreamException.class);
-    assertThat(MonitoringTestUtils.extract(coordinator).isEmpty()).isTrue();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
@@ -1083,7 +1085,8 @@ public class ConsumersCoordinatorTest {
             subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    assertThat(coordinator.managerCount()).isZero();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
@@ -1156,7 +1159,8 @@ public class ConsumersCoordinatorTest {
         subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    assertThat(coordinator.managerCount()).isZero();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
@@ -1208,7 +1212,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
     verify(client, times(0)).unsubscribe(anyByte());
 
-    assertThat(coordinator.managerCount()).isZero();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
@@ -1261,7 +1266,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
     verify(client, times(0)).unsubscribe(anyByte());
 
-    assertThat(coordinator.managerCount()).isZero();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @ParameterizedTest
@@ -1328,11 +1334,12 @@ public class ConsumersCoordinatorTest {
                   closingRunnables.remove(closingRunnable);
                 });
 
-    verify(client, times(1)).close();
+    // the now-empty connection lingers for a bit before it actually closes
+    verify(client, timeout(TIMEOUT_MS).times(1)).close();
 
     closingRunnables.forEach(Runnable::run);
 
-    verify(client, times(2)).close();
+    verify(client, timeout(TIMEOUT_MS).times(2)).close();
   }
 
   @Test

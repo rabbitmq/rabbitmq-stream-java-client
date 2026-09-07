@@ -109,6 +109,10 @@ final class ConsumersCoordinator implements AutoCloseable {
   // uses, so the threshold is generous, not tuned to any known failure timing
   private static final long WATCHDOG_TICK_INTERVAL_MS = SECONDS.toMillis(30);
   private static final long WATCHDOG_STUCK_THRESHOLD_NANOS = SECONDS.toNanos(120);
+  // how long an emptied connection is kept around before actually closing it, so a subscription
+  // landing on the same node moments later (e.g. during a rolling restart) can reuse it instead
+  // of reconnecting
+  private static final long IDLE_LINGER_MS = SECONDS.toMillis(3);
 
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
@@ -1640,7 +1644,7 @@ final class ConsumersCoordinator implements AutoCloseable {
                 return this.isEmpty();
               });
       if (empty) {
-        this.close();
+        this.closeIfEmpty();
       }
     }
 
@@ -1673,7 +1677,31 @@ final class ConsumersCoordinator implements AutoCloseable {
       return this.closed.get() || !this.client.isOpen();
     }
 
+    /**
+     * If this manager is currently empty, close it after a short linger delay instead of right
+     * away, so a subscription landing on the same node moments later (e.g. during a rolling
+     * restart) can reuse the connection instead of paying for a reconnect.
+     *
+     * <p>No epoch guard needed: re-checking {@link #isEmpty()} at the deferred point is enough by
+     * itself. A subscription that arrived in the meantime makes it a no-op; a connection that died
+     * in the meantime was already closed by the shutdown path, and {@link #close()}'s own {@code
+     * closed} CAS makes a second call harmless.
+     */
     void closeIfEmpty() {
+      if (this.isEmpty()) {
+        ConsumersCoordinator.this
+            .environment
+            .scheduledExecutorService()
+            .schedule(
+                () -> ConsumersCoordinator.this.submitRecovery(this::closeIfStillEmpty),
+                IDLE_LINGER_MS,
+                MILLISECONDS);
+      }
+    }
+
+    // the deferred re-check scheduled by closeIfEmpty(); dispatched onto the recovery pool, not
+    // run inline on the shared scheduler thread, because close() can block on network I/O
+    private void closeIfStillEmpty() {
       if (this.isEmpty()) {
         this.close();
       }
