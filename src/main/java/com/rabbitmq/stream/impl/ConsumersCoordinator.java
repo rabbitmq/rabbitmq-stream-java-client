@@ -14,7 +14,6 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
@@ -24,7 +23,6 @@ import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.isSac;
 import static com.rabbitmq.stream.impl.Utils.jsonField;
 import static com.rabbitmq.stream.impl.Utils.keyForNode;
-import static com.rabbitmq.stream.impl.Utils.lock;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.quote;
 import static java.lang.String.format;
@@ -85,8 +83,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -101,6 +98,8 @@ final class ConsumersCoordinator implements AutoCloseable {
   static final int MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER = 5;
   private static final int RECOVERY_THREADS = Math.max(2, Math.min(4, AVAILABLE_PROCESSORS));
   private static final long FIRST_ATTEMPT_EPOCH = 1;
+  // sentinel subscription ID: no slot reserved, or a reservation that was rolled back or freed
+  private static final byte NO_SLOT = -1;
 
   static final OffsetSpecification DEFAULT_OFFSET_SPECIFICATION = OffsetSpecification.next();
 
@@ -238,9 +237,14 @@ final class ConsumersCoordinator implements AutoCloseable {
     assignmentSucceeded(subscriptionTracker, recoveryBackOffDelayPolicy(), FIRST_ATTEMPT_EPOCH);
 
     return () -> {
+      // cancel() first, synchronously: if the assignment is already confirmed, this is the only
+      // remover in the race and always wins it. Posting onCancelled afterward means its async
+      // releaseAssignment effect finds nothing left to do in that case, and remains the sole,
+      // eventual remover for an assignment that was still being established (see
+      // SubscriptionTracker.confirmAssignment)
+      subscriptionTracker.cancel();
       trackerEvent(
           subscriptionTracker, recoveryBackOffDelayPolicy(), SubscriptionStateMachine::onCancelled);
-      subscriptionTracker.cancel();
     };
   }
 
@@ -284,7 +288,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             tracker.label(),
             pickedManager.id,
             pickedManager.name,
-            tracker.subscriptionIdInClient,
+            tracker.subscriptionIdInClient(),
             tracker.consumer.id());
         return;
       } catch (IllegalStateException e) {
@@ -607,10 +611,10 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     @Override
     public void releaseAssignment() {
-      ClientSubscriptionsManager manager = this.tracker.manager;
+      ClientSubscriptionsManager manager = this.tracker.manager();
       if (manager != null) {
-        // remove() is guarded by slot identity, so this is a no-op if the slot has already
-        // been released
+        // detachIfOwnedBy() is idempotent, so this is a no-op if the assignment has already
+        // been released (e.g. by the direct call in cancel())
         manager.remove(this.tracker);
       }
     }
@@ -636,6 +640,27 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     private static Placement waitFor(CompletableFuture<Void> waiter) {
       return new Placement(null, waiter);
+    }
+  }
+
+  /** Result of {@code reserveSlot}: a slot number, or the reason none was reserved. */
+  private static final class SlotReservation {
+
+    private static final SlotReservation FULL = new SlotReservation(NO_SLOT, true, false);
+    private static final SlotReservation DEAD = new SlotReservation(NO_SLOT, false, true);
+
+    private final byte subscriptionId;
+    private final boolean full;
+    private final boolean dead;
+
+    private SlotReservation(byte subscriptionId, boolean full, boolean dead) {
+      this.subscriptionId = subscriptionId;
+      this.full = full;
+      this.dead = dead;
+    }
+
+    private static SlotReservation reserved(byte subscriptionId) {
+      return new SlotReservation(subscriptionId, false, false);
     }
   }
 
@@ -810,19 +835,21 @@ final class ConsumersCoordinator implements AutoCloseable {
                   managerBuilder.append("\"subscriptions\" : [");
                   List<SubscriptionTracker> trackers = m.subscriptionTrackers;
                   managerBuilder.append(
-                      trackers.stream()
-                          .filter(Objects::nonNull)
-                          .map(
-                              t ->
-                                  "{"
-                                      + jsonField("stream", t.stream)
-                                      + ","
-                                      + jsonField("id", t.id)
-                                      + ","
-                                      + jsonField("subscription_id", t.subscriptionIdInClient)
-                                      + ","
-                                      + jsonField("state", t.consumer.state())
-                                      + "}")
+                      IntStream.range(0, trackers.size())
+                          .filter(i -> trackers.get(i) != null)
+                          .mapToObj(
+                              i -> {
+                                SubscriptionTracker t = trackers.get(i);
+                                return "{"
+                                    + jsonField("stream", t.stream)
+                                    + ","
+                                    + jsonField("id", t.id)
+                                    + ","
+                                    + jsonField("subscription_id", i)
+                                    + ","
+                                    + jsonField("state", t.consumer.state())
+                                    + "}";
+                              })
                           .collect(Collectors.joining(",")));
                   managerBuilder.append("]");
                   return managerBuilder.append("}").toString();
@@ -852,10 +879,12 @@ final class ConsumersCoordinator implements AutoCloseable {
     private final Map<String, String> subscriptionProperties;
     private volatile long offset;
     private volatile boolean hasReceivedSomething = false;
-    private volatile byte subscriptionIdInClient;
-    private volatile ClientSubscriptionsManager manager;
+    // set only once a manager has confirmed the subscription with the broker, never during the
+    // reserve-then-dispatch window: a concurrent cancel or supersede sees no manager yet and
+    // defers to the epoch check that runs once the in-flight attempt finishes (see
+    // ConsumersCoordinator.assignmentSucceeded)
+    private final AtomicReference<Assignment> assignment = new AtomicReference<>(Assignment.NONE);
     private final ConsumerFlowStrategy flowStrategy;
-    private final Lock subscriptionTrackerLock = new ReentrantLock();
 
     private SubscriptionTracker(
         long id,
@@ -889,47 +918,56 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
 
     void cancel() {
-      lock(
-          this.subscriptionTrackerLock,
-          () -> {
-            // the flow of messages in the user message handler should stop, we can call the
-            // tracking
-            // closing callback
-            // with automatic offset tracking, it will store the last dispatched offset
-            LOGGER.debug("Calling tracking consumer closing callback (may be no-op)");
-            this.trackingClosingCallback.run();
-            if (this.manager != null) {
-              LOGGER.debug("Removing tracker {} from manager", this.label());
-              this.manager.remove(this);
-            } else {
-              LOGGER.debug("No manager to remove consumer from");
-            }
-          });
+      // the flow of messages in the user message handler should stop, we can call the tracking
+      // closing callback; with automatic offset tracking, it will store the last dispatched
+      // offset
+      LOGGER.debug("Calling tracking consumer closing callback (may be no-op)");
+      this.trackingClosingCallback.run();
+      ClientSubscriptionsManager manager = this.manager();
+      if (manager != null) {
+        LOGGER.debug("Removing tracker {} from manager", this.label());
+        manager.remove(this);
+      } else {
+        LOGGER.debug("No manager to remove consumer from");
+      }
     }
 
-    void assign(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
-      lock(
-          this.subscriptionTrackerLock,
-          () -> {
-            this.subscriptionIdInClient = subscriptionIdInClient;
-            this.manager = manager;
-            if (this.manager == null) {
-              if (consumer != null) {
-                this.consumer.setSubscriptionClient(null);
-              }
-            } else {
-              this.consumer.setSubscriptionClient(this.manager.client);
-            }
-          });
+    ClientSubscriptionsManager manager() {
+      return this.assignment.get().manager;
+    }
+
+    byte subscriptionIdInClient() {
+      return this.assignment.get().subscriptionIdInClient;
+    }
+
+    void confirmAssignment(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
+      this.assignment.set(new Assignment(subscriptionIdInClient, manager));
+      this.consumer.setSubscriptionClient(manager.client);
+    }
+
+    /**
+     * Release this tracker's assignment to {@code expected}, if it is still the current one.
+     *
+     * <p>Idempotent by construction: of two concurrent callers (the direct call in {@link
+     * #cancel()} and the async {@code releaseAssignment} effect), only the one that wins the CAS
+     * gets a slot back to release; the other sees the assignment already cleared and no-ops.
+     */
+    int detachIfOwnedBy(ClientSubscriptionsManager expected) {
+      Assignment current = this.assignment.get();
+      if (current.manager != expected) {
+        return -1;
+      }
+      if (!this.assignment.compareAndSet(current, Assignment.NONE)) {
+        return -1;
+      }
+      // masked to an unsigned 0-255 range: a plain byte cannot serve as its own "no slot"
+      // sentinel, since slot 255's byte representation (0xFF) is indistinguishable from -1
+      return current.subscriptionIdInClient & 0xFF;
     }
 
     void detachFromManager() {
-      lock(
-          this.subscriptionTrackerLock,
-          () -> {
-            this.manager = null;
-            this.consumer.setSubscriptionClient(null);
-          });
+      this.assignment.set(Assignment.NONE);
+      this.consumer.setSubscriptionClient(null);
     }
 
     private void markOpen() {
@@ -948,6 +986,20 @@ final class ConsumersCoordinator implements AutoCloseable {
       return String.format(
           "[id %d, stream %s, name %s, consumer %d]",
           this.id, this.stream, this.offsetTrackingReference, this.consumer.id());
+    }
+  }
+
+  /** A subscription's current manager and slot, or {@link #NONE} if it has none. */
+  private static final class Assignment {
+
+    private static final Assignment NONE = new Assignment(NO_SLOT, null);
+
+    private final byte subscriptionIdInClient;
+    private final ClientSubscriptionsManager manager;
+
+    private Assignment(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
+      this.subscriptionIdInClient = subscriptionIdInClient;
+      this.manager = manager;
     }
   }
 
@@ -1056,17 +1108,15 @@ final class ConsumersCoordinator implements AutoCloseable {
     private final Client client;
     // <host>:<port> (actual or advertised)
     private volatile String name;
-    // the 2 data structures track the subscriptions, they must remain consistent
-    private final Map<String, Set<SubscriptionTracker>> streamToStreamSubscriptions =
-        new ConcurrentHashMap<>();
-    // trackers and tracker count must be kept in sync
+    // trackers and tracker count must be kept in sync; the array has a single writer, the event
+    // loop, so a slot picked there is never picked twice, and a slot freed there is never freed
+    // while its unsubscribe RPC is still in flight (the array stays occupied until then)
     private volatile List<SubscriptionTracker> subscriptionTrackers =
         createSubscriptionTrackerList();
     private final AtomicInteger consumerIndexSequence = new AtomicInteger(0);
     private volatile int trackerCount;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicBoolean clientInitialized = new AtomicBoolean(false);
-    private final Lock subscriptionManagerLock = new ReentrantLock();
 
     private ClientSubscriptionsManager(
         Broker targetNode,
@@ -1188,10 +1238,16 @@ final class ConsumersCoordinator implements AutoCloseable {
           LOGGER.debug(
               "Unexpected shutdown notification on subscription connection {}, notifying subscriptions",
               this.name);
-          LOGGER.debug(
-              "Subscription connection has {} consumer(s) over {} stream(s) to recover",
-              this.subscriptionTrackers.stream().filter(Objects::nonNull).count(),
-              this.streamToStreamSubscriptions.size());
+          if (LOGGER.isDebugEnabled()) {
+            List<SubscriptionTracker> trackers = this.subscriptionTrackers;
+            long consumerCount = trackers.stream().filter(Objects::nonNull).count();
+            long streamCount =
+                trackers.stream().filter(Objects::nonNull).map(t -> t.stream).distinct().count();
+            LOGGER.debug(
+                "Subscription connection has {} consumer(s) over {} stream(s) to recover",
+                consumerCount,
+                streamCount);
+          }
           iterate(
               this.subscriptionTrackers,
               t ->
@@ -1206,46 +1262,46 @@ final class ConsumersCoordinator implements AutoCloseable {
         LOGGER.debug(
             "Received metadata notification for '{}', stream is likely to have become unavailable",
             stream);
-        Set<SubscriptionTracker> affectedSubscriptions;
+        // fire-and-forget: this runs on a netty I/O thread, which must never wait on the loop
+        submitState(
+            s -> {
+              List<SubscriptionTracker> current = this.subscriptionTrackers;
+              List<SubscriptionTracker> affected = new ArrayList<>();
+              for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                SubscriptionTracker t = current.get(i);
+                if (t != null && t.stream.equals(stream)) {
+                  affected.add(t);
+                }
+              }
+              if (affected.isEmpty()) {
+                return;
+              }
+              List<SubscriptionTracker> updated = createSubscriptionTrackerList();
+              for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                updated.set(i, current.get(i));
+              }
+              for (SubscriptionTracker subscription : affected) {
+                LOGGER.debug(
+                    "Subscription {} ({}) was at offset {} (received something? {})",
+                    subscription.subscriptionIdInClient(),
+                    subscription.label(),
+                    subscription.offset,
+                    subscription.hasReceivedSomething);
+                updated.set(subscription.subscriptionIdInClient() & 0xFF, null);
+              }
+              this.setSubscriptionTrackers(updated);
 
-        this.subscriptionManagerLock.lock();
-        try {
-          Set<SubscriptionTracker> subscriptions = streamToStreamSubscriptions.remove(stream);
-          if (subscriptions != null && !subscriptions.isEmpty()) {
-            List<SubscriptionTracker> newSubscriptions = createSubscriptionTrackerList();
-            for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-              newSubscriptions.set(i, subscriptionTrackers.get(i));
-            }
-            for (SubscriptionTracker subscription : subscriptions) {
               LOGGER.debug(
-                  "Subscription {} ({}) was at offset {} (received something? {})",
-                  subscription.subscriptionIdInClient,
-                  subscription.label(),
-                  subscription.offset,
-                  subscription.hasReceivedSomething);
-              newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
-            }
-            this.setSubscriptionTrackers(newSubscriptions);
-          }
-          affectedSubscriptions = subscriptions;
-        } finally {
-          this.subscriptionManagerLock.unlock();
-        }
-
-        if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
-          LOGGER.debug(
-              "Trying to move {} subscription(s) (stream '{}')",
-              affectedSubscriptions.size(),
-              stream);
-          iterate(
-              affectedSubscriptions,
-              t ->
-                  trackerEvent(
-                      t,
-                      metadataUpdateBackOffDelayPolicy(),
-                      SubscriptionStateMachine::onStreamUnavailable));
-          submitRecovery(this::closeIfEmpty);
-        }
+                  "Trying to move {} subscription(s) (stream '{}')", affected.size(), stream);
+              iterate(
+                  affected,
+                  t ->
+                      trackerEvent(
+                          t,
+                          metadataUpdateBackOffDelayPolicy(),
+                          SubscriptionStateMachine::onStreamUnavailable));
+              submitRecovery(this::closeIfEmpty);
+            });
       };
     }
 
@@ -1283,221 +1339,203 @@ final class ConsumersCoordinator implements AutoCloseable {
         SubscriptionTracker tracker,
         OffsetSpecification offsetSpecification,
         boolean isInitialSubscription) {
-      this.subscriptionManagerLock.lock();
+      byte subscriptionId = reserveSlot(tracker);
+      LOGGER.debug(
+          "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
+              + "subscription ID is {}, consumer {}",
+          tracker.stream,
+          offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
+          tracker.offsetTrackingReference,
+          tracker.subscriptionProperties,
+          subscriptionId,
+          tracker.consumer.id());
       try {
-        if (this.isFull()) {
-          LOGGER.debug(
-              "Cannot add subscription tracker for stream '{}', manager is full", tracker.stream);
-          throw new IllegalStateException("Cannot add subscription tracker, the manager is full");
+        String offsetTrackingReference = tracker.offsetTrackingReference;
+        if (offsetTrackingReference != null) {
+          checkNotClosed();
+          QueryOffsetResponse queryOffsetResponse =
+              Utils.callAndMaybeRetry(
+                  () -> client.queryOffset(offsetTrackingReference, tracker.stream),
+                  RETRY_ON_TIMEOUT,
+                  "Offset query for consumer %s on stream '%s' (reference %s)",
+                  tracker.consumer.id(),
+                  tracker.stream,
+                  offsetTrackingReference);
+          if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
+            if (offsetSpecification != null && isInitialSubscription) {
+              // subscription call (not recovery), so telling the user their offset specification
+              // is ignored
+              LOGGER.info(
+                  "Requested offset specification {} not used in favor of stored offset found for reference {}",
+                  offsetSpecification,
+                  offsetTrackingReference);
+            }
+            LOGGER.debug(
+                "Using offset {} to start consuming from {} with consumer {} " + "(instead of {})",
+                queryOffsetResponse.getOffset(),
+                tracker.stream,
+                offsetTrackingReference,
+                offsetSpecification);
+            offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
+          }
         }
-        if (this.isDead()) {
-          LOGGER.debug(
-              "Cannot add subscription tracker for stream '{}', manager is closed", tracker.stream);
-          throw new IllegalStateException("Cannot add subscription tracker, the manager is closed");
-        }
+
+        offsetSpecification =
+            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
+
+        // TODO consider using/emulating ConsumerUpdateListener, to have only one API, not 2
+        // even when the consumer is not a SAC.
+        SubscriptionContext subscriptionContext =
+            new DefaultSubscriptionContext(offsetSpecification, tracker.stream);
+        tracker.subscriptionListener.preSubscribe(subscriptionContext);
+        LOGGER.info(
+            "Computed offset specification {}, offset specification used after subscription listener {}",
+            offsetSpecification,
+            subscriptionContext.offsetSpecification());
 
         checkNotClosed();
-
-        byte subscriptionId =
-            (byte) pickSlot(this.subscriptionTrackers, this.consumerIndexSequence);
-
-        List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
-
-        LOGGER.debug(
-            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
-                + "subscription ID is {}, consumer {}",
-            tracker.stream,
-            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
-            tracker.offsetTrackingReference,
-            tracker.subscriptionProperties,
-            subscriptionId,
-            tracker.consumer.id());
-        try {
-          // updating data structures before subscribing
-          // (to make sure they are up-to-date in case message would arrive super fast)
-          tracker.assign(subscriptionId, this);
-          streamToStreamSubscriptions
-              .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
-              .add(tracker);
-          this.setSubscriptionTrackers(update(previousSubscriptions, subscriptionId, tracker));
-
-          String offsetTrackingReference = tracker.offsetTrackingReference;
-          if (offsetTrackingReference != null) {
-            checkNotClosed();
-            QueryOffsetResponse queryOffsetResponse =
-                Utils.callAndMaybeRetry(
-                    () -> client.queryOffset(offsetTrackingReference, tracker.stream),
-                    RETRY_ON_TIMEOUT,
-                    "Offset query for consumer %s on stream '%s' (reference %s)",
-                    tracker.consumer.id(),
-                    tracker.stream,
-                    offsetTrackingReference);
-            if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
-              if (offsetSpecification != null && isInitialSubscription) {
-                // subscription call (not recovery), so telling the user their offset specification
-                // is
-                // ignored
-                LOGGER.info(
-                    "Requested offset specification {} not used in favor of stored offset found for reference {}",
-                    offsetSpecification,
-                    offsetTrackingReference);
-              }
-              LOGGER.debug(
-                  "Using offset {} to start consuming from {} with consumer {} "
-                      + "(instead of {})",
-                  queryOffsetResponse.getOffset(),
-                  tracker.stream,
-                  offsetTrackingReference,
-                  offsetSpecification);
-              offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
-            }
+        Client.Response subscribeResponse =
+            Utils.callAndMaybeRetry(
+                () ->
+                    client.subscribe(
+                        subscriptionId,
+                        tracker.stream,
+                        subscriptionContext.offsetSpecification(),
+                        tracker.flowStrategy.initialCredits(),
+                        tracker.subscriptionProperties),
+                RETRY_ON_TIMEOUT,
+                "Subscribe request for consumer %d on stream '%s'",
+                tracker.consumer.id(),
+                tracker.stream);
+        if (subscribeResponse == null) {
+          // The subscribe call returned no response: the connection was torn down
+          // between the request being written and the response being read, or the
+          // stream was deleted concurrently.
+          if (!client.isOpen()) {
+            throw new ConnectionStreamException(
+                "Connection closed during subscribe on stream '" + tracker.stream + "'");
           }
-
-          offsetSpecification =
-              offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
-
-          // TODO consider using/emulating ConsumerUpdateListener, to have only one API, not 2
-          // even when the consumer is not a SAC.
-          SubscriptionContext subscriptionContext =
-              new DefaultSubscriptionContext(offsetSpecification, tracker.stream);
-          tracker.subscriptionListener.preSubscribe(subscriptionContext);
-          LOGGER.info(
-              "Computed offset specification {}, offset specification used after subscription listener {}",
-              offsetSpecification,
-              subscriptionContext.offsetSpecification());
-
-          checkNotClosed();
-          Client.Response subscribeResponse =
-              Utils.callAndMaybeRetry(
-                  () ->
-                      client.subscribe(
-                          subscriptionId,
-                          tracker.stream,
-                          subscriptionContext.offsetSpecification(),
-                          tracker.flowStrategy.initialCredits(),
-                          tracker.subscriptionProperties),
-                  RETRY_ON_TIMEOUT,
-                  "Subscribe request for consumer %d on stream '%s'",
-                  tracker.consumer.id(),
-                  tracker.stream);
-          if (subscribeResponse == null) {
-            // The subscribe call returned no response: the connection was torn down
-            // between the request being written and the response being read, or the
-            // stream was deleted concurrently.
-            if (!client.isOpen()) {
-              throw new ConnectionStreamException(
-                  "Connection closed during subscribe on stream '" + tracker.stream + "'");
-            }
-            throw new StreamDoesNotExistException(tracker.stream);
-          }
-          if (!subscribeResponse.isOk()) {
-            String message =
-                "Subscription to stream "
-                    + tracker.stream
-                    + " failed with code "
-                    + formatConstant(subscribeResponse.getResponseCode());
-            LOGGER.debug(message);
-            if (subscribeResponse.getResponseCode()
-                == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS) {
-              if (LOGGER.isDebugEnabled()) {
-                SubscriptionTracker initialTracker = previousSubscriptions.get(subscriptionId);
-                LOGGER.debug("Subscription ID already exists");
-                LOGGER.debug(
-                    "Initial tracker with sub ID {}: consumer {}, stream {}, name {}",
-                    subscriptionId,
-                    initialTracker.consumer.id(),
-                    initialTracker.stream,
-                    initialTracker.offsetTrackingReference);
-              }
-            }
-            throw convertCodeToException(
-                subscribeResponse.getResponseCode(), tracker.stream, () -> message);
-          }
-        } catch (RuntimeException e) {
-          tracker.assign((byte) -1, null);
-          this.setSubscriptionTrackers(previousSubscriptions);
-          streamToStreamSubscriptions
-              .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
-              .remove(tracker);
-          maybeCleanStreamToStreamSubscriptions(tracker.stream);
-          throw e;
+          throw new StreamDoesNotExistException(tracker.stream);
         }
+        if (!subscribeResponse.isOk()) {
+          String message =
+              "Subscription to stream "
+                  + tracker.stream
+                  + " failed with code "
+                  + formatConstant(subscribeResponse.getResponseCode());
+          LOGGER.debug(message);
+          throw convertCodeToException(
+              subscribeResponse.getResponseCode(), tracker.stream, () -> message);
+        }
+        // only confirmed now: a cancellation racing the RPCs above finds no manager yet on the
+        // tracker, and defers to the epoch check that runs once this attempt finishes (see
+        // ConsumersCoordinator.assignmentSucceeded)
+        tracker.confirmAssignment(subscriptionId, this);
         LOGGER.debug("Subscribed to '{}'", tracker.stream);
-      } finally {
-        this.subscriptionManagerLock.unlock();
+      } catch (RuntimeException e) {
+        releaseSlot(subscriptionId);
+        throw e;
       }
     }
 
-    private void maybeCleanStreamToStreamSubscriptions(String stream) {
-      this.streamToStreamSubscriptions.compute(
-          stream,
-          (s, trackers) -> {
-            if (trackers == null || trackers.isEmpty()) {
-              return null;
-            } else {
-              return trackers;
-            }
+    /**
+     * Reserve a slot and publish it in the tracker array, so a fast first chunk finds its tracker
+     * before the subscribe RPC below even completes.
+     *
+     * <p>Atomic by construction: it runs on the event loop, the single writer of the array.
+     */
+    private byte reserveSlot(SubscriptionTracker tracker) {
+      SlotReservation reservation =
+          ConsumersCoordinator.this.state.query(
+              s -> {
+                if (this.isFull()) {
+                  return SlotReservation.FULL;
+                }
+                if (this.isDead()) {
+                  return SlotReservation.DEAD;
+                }
+                byte subscriptionId =
+                    (byte) pickSlot(this.subscriptionTrackers, this.consumerIndexSequence);
+                this.setSubscriptionTrackers(
+                    update(this.subscriptionTrackers, subscriptionId, tracker));
+                return SlotReservation.reserved(subscriptionId);
+              });
+      if (reservation.full) {
+        LOGGER.debug(
+            "Cannot add subscription tracker for stream '{}', manager is full", tracker.stream);
+        throw new IllegalStateException("Cannot add subscription tracker, the manager is full");
+      }
+      if (reservation.dead) {
+        LOGGER.debug(
+            "Cannot add subscription tracker for stream '{}', manager is closed", tracker.stream);
+        throw new IllegalStateException("Cannot add subscription tracker, the manager is closed");
+      }
+      return reservation.subscriptionId;
+    }
+
+    // undo a reservation that failed to subscribe: the tracker was never confirmed, so there is
+    // nothing to unsubscribe, only the array slot to free. Blocking (not fire-and-forget): the
+    // caller is addToManager(), off-loop, which checks isEmpty() right after this returns, so the
+    // free must be visible by then
+    private void releaseSlot(byte subscriptionId) {
+      ConsumersCoordinator.this.state.query(
+          s -> {
+            this.setSubscriptionTrackers(update(this.subscriptionTrackers, subscriptionId, null));
+            return null;
           });
     }
 
     void remove(SubscriptionTracker subscriptionTracker) {
-      Utils.lock(
-          this.subscriptionManagerLock,
-          () -> {
-            byte subscriptionIdInClient = subscriptionTracker.subscriptionIdInClient;
+      int slot = subscriptionTracker.detachIfOwnedBy(this);
+      if (slot < 0) {
+        // already removed, e.g. by the direct call in cancel() racing the async
+        // releaseAssignment effect: detachIfOwnedBy() is idempotent, so this is a no-op
+        return;
+      }
+      byte subscriptionIdInClient = (byte) slot;
 
-            // Prevent stale removals from cancelling a new subscription that reused this slot
-            // a tracker can still refer to its old manager
-            // this is hard to fix because of concurrency and potential deadlocks
-            // so this check guards against this
-            if (this.subscriptionTrackers.get(subscriptionIdInClient & 0xFF)
-                != subscriptionTracker) {
-              return;
-            }
-
-            try {
-              Client.Response unsubscribeResponse =
-                  Utils.callAndMaybeRetry(
-                      () -> {
-                        if (client.isOpen()) {
-                          return client.unsubscribe(subscriptionIdInClient);
-                        } else {
-                          return Client.responseOk();
-                        }
-                      },
-                      RETRY_ON_TIMEOUT,
-                      "Unsubscribe request for consumer %d on stream '%s'",
-                      subscriptionTracker.consumer.id(),
-                      subscriptionTracker.stream);
-              if (!unsubscribeResponse.isOk()) {
-                LOGGER.warn(
-                    "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
-                    subscriptionTracker.stream,
-                    formatConstant(unsubscribeResponse.getResponseCode()),
-                    subscriptionIdInClient);
-              }
-            } catch (TimeoutStreamException e) {
-              LOGGER.debug(
-                  "Reached timeout when trying to unsubscribe consumer {} from stream '{}'",
-                  subscriptionTracker.consumer.id(),
-                  subscriptionTracker.stream);
-            }
-
-            this.setSubscriptionTrackers(
-                update(this.subscriptionTrackers, subscriptionIdInClient, null));
-            streamToStreamSubscriptions.compute(
-                subscriptionTracker.stream,
-                (stream, subscriptionsForThisStream) -> {
-                  if (subscriptionsForThisStream == null || subscriptionsForThisStream.isEmpty()) {
-                    // should not happen
-                    return null;
+      try {
+        Client.Response unsubscribeResponse =
+            Utils.callAndMaybeRetry(
+                () -> {
+                  if (client.isOpen()) {
+                    return client.unsubscribe(subscriptionIdInClient);
                   } else {
-                    subscriptionsForThisStream.remove(subscriptionTracker);
-                    return subscriptionsForThisStream.isEmpty() ? null : subscriptionsForThisStream;
+                    return Client.responseOk();
                   }
-                });
-            closeIfEmpty();
-          });
+                },
+                RETRY_ON_TIMEOUT,
+                "Unsubscribe request for consumer %d on stream '%s'",
+                subscriptionTracker.consumer.id(),
+                subscriptionTracker.stream);
+        if (!unsubscribeResponse.isOk()) {
+          LOGGER.warn(
+              "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
+              subscriptionTracker.stream,
+              formatConstant(unsubscribeResponse.getResponseCode()),
+              subscriptionIdInClient);
+        }
+      } catch (TimeoutStreamException e) {
+        LOGGER.debug(
+            "Reached timeout when trying to unsubscribe consumer {} from stream '{}'",
+            subscriptionTracker.consumer.id(),
+            subscriptionTracker.stream);
+      }
+
+      // the array keeps the slot occupied until now, so no new subscription can reuse the same
+      // numeric ID while the unsubscribe above is in flight; freeing the slot and checking
+      // emptiness happen together so a concurrent add() cannot slip in between and be torn down
+      // by close()
+      boolean empty =
+          ConsumersCoordinator.this.state.query(
+              s -> {
+                this.setSubscriptionTrackers(
+                    update(this.subscriptionTrackers, subscriptionIdInClient, null));
+                return this.isEmpty();
+              });
+      if (empty) {
+        this.close();
+      }
     }
 
     private List<SubscriptionTracker> update(
@@ -1530,51 +1568,38 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
 
     void closeIfEmpty() {
-      Utils.lock(
-          this.subscriptionManagerLock,
-          () -> {
-            if (this.isEmpty()) {
-              this.close();
-            }
-          });
+      if (this.isEmpty()) {
+        this.close();
+      }
     }
 
     void close() {
-      Utils.lock(
-          this.subscriptionManagerLock,
-          () -> {
-            if (this.closed.compareAndSet(false, true)) {
-              removeFromPool(this);
-              LOGGER.debug(
-                  "Closing consumer subscription manager on {}, id {}", this.name, this.id);
-              if (this.client != null && this.client.isOpen()) {
-                for (int i = 0; i < this.subscriptionTrackers.size(); i++) {
-                  SubscriptionTracker tracker = this.subscriptionTrackers.get(i);
-                  if (tracker != null) {
-                    byte subId = tracker.subscriptionIdInClient;
-                    try {
-                      if (this.client.isOpen() && tracker.consumer.isOpen()) {
-                        this.client.unsubscribe(subId);
-                      }
-                    } catch (Exception e) {
-                      // OK, moving on
-                      LOGGER.debug(
-                          "Error while unsubscribing from {}, registration {}",
-                          tracker.stream,
-                          subId);
-                    }
-                  }
-                }
-                this.setSubscriptionTrackers(createSubscriptionTrackerList());
-
-                streamToStreamSubscriptions.clear();
-
-                if (this.client.isOpen()) {
-                  this.client.close();
-                }
+      if (!this.closed.compareAndSet(false, true)) {
+        return;
+      }
+      removeFromPool(this);
+      LOGGER.debug("Closing consumer subscription manager on {}, id {}", this.name, this.id);
+      if (this.client != null && this.client.isOpen()) {
+        List<SubscriptionTracker> trackers = this.subscriptionTrackers;
+        for (int i = 0; i < trackers.size(); i++) {
+          SubscriptionTracker tracker = trackers.get(i);
+          if (tracker != null) {
+            try {
+              if (this.client.isOpen() && tracker.consumer.isOpen()) {
+                this.client.unsubscribe((byte) i);
               }
+            } catch (Exception e) {
+              // OK, moving on
+              LOGGER.debug("Error while unsubscribing from {}, registration {}", tracker.stream, i);
             }
-          });
+          }
+        }
+        submitState(s -> this.setSubscriptionTrackers(createSubscriptionTrackerList()));
+
+        if (this.client.isOpen()) {
+          this.client.close();
+        }
+      }
     }
 
     @Override
