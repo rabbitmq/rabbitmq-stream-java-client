@@ -107,7 +107,7 @@ final class ConsumersCoordinator implements AutoCloseable {
   // known way to get stuck is already fixed by the epoch-supersede mechanism the watchdog itself
   // uses, so the threshold is generous, not tuned to any known failure timing
   private static final long WATCHDOG_TICK_INTERVAL_MS = SECONDS.toMillis(30);
-  private static final long WATCHDOG_STUCK_THRESHOLD_NANOS = SECONDS.toNanos(120);
+  static final long WATCHDOG_STUCK_THRESHOLD_NANOS = SECONDS.toNanos(120);
   // how long an emptied connection is kept around before actually closing it, so a subscription
   // landing on the same node moments later (e.g. during a rolling restart) can reuse it instead
   // of reconnecting
@@ -470,7 +470,12 @@ final class ConsumersCoordinator implements AutoCloseable {
           trackerState.epoch = result.epoch();
           if (newAttempt) {
             trackerState.attempts++;
-            trackerState.lastAttemptStartedAt = System.nanoTime();
+            // the attempt is either dispatched right away or scheduled after the back-off delay,
+            // and which one is only decided in the effect. Assume the delay applies, so the
+            // watchdog measures "stuck" from the point the attempt is due at the latest and never
+            // cuts short a configured back-off
+            trackerState.nextAttemptAt =
+                System.nanoTime() + backOffNanos(delayPolicy, trackerState.attempts);
           }
           if (result.state() == State.ACTIVE) {
             // a successful assignment ends the recovery episode: the retry timeout is meant to
@@ -501,6 +506,30 @@ final class ConsumersCoordinator implements AutoCloseable {
                 });
           }
         });
+  }
+
+  /**
+   * The back-off delay for an attempt, in nanoseconds, or 0 if the policy has given up.
+   *
+   * <p>{@link BackOffDelayPolicy#TIMEOUT} is {@code Duration.ofMillis(Long.MAX_VALUE)}, so it has
+   * to be excluded before converting: {@code toNanos()} would overflow on it.
+   */
+  private static long backOffNanos(BackOffDelayPolicy delayPolicy, int attempts) {
+    Duration delay = delayPolicy.delay(attempts);
+    return BackOffDelayPolicy.TIMEOUT.equals(delay) ? 0 : delay.toNanos();
+  }
+
+  /**
+   * Whether the watchdog should start a fresh attempt for a subscription in this state.
+   *
+   * <p>Measured against when the current attempt is <b>due</b>, not when it was created: a
+   * subscription waiting out its back-off delay is waiting by design, not stuck, so comparing
+   * against the creation time would let the watchdog cut short any configured delay longer than the
+   * stuck threshold.
+   */
+  static boolean watchdogShouldReDispatch(State state, long nextAttemptAt, long now) {
+    // subtraction, not a direct comparison, so this stays correct across a nanoTime() wraparound
+    return state == State.RECOVERING && now - nextAttemptAt > WATCHDOG_STUCK_THRESHOLD_NANOS;
   }
 
   private void ensureWatchdogScheduled() {
@@ -535,8 +564,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           // remove its own entry (e.g. onCancelled, for a consumer that closed while stuck)
           List<TrackerState> stuck = new ArrayList<>();
           for (TrackerState trackerState : s.subscriptions.values()) {
-            if (trackerState.state == State.RECOVERING
-                && now - trackerState.lastAttemptStartedAt > WATCHDOG_STUCK_THRESHOLD_NANOS) {
+            if (watchdogShouldReDispatch(trackerState.state, trackerState.nextAttemptAt, now)) {
               stuck.add(trackerState);
             }
           }
@@ -557,14 +585,14 @@ final class ConsumersCoordinator implements AutoCloseable {
         });
   }
 
-  // test support: age every subscription's watchdog clock past the stuck threshold, so a test can
-  // exercise watchdogTick() deterministically instead of waiting out the real threshold
-  void ageWatchdogClocksPastThreshold() {
+  // test support: bring every subscription's next attempt forward by the given amount, so a test
+  // can exercise watchdogTick() deterministically instead of waiting out the real stuck threshold
+  // or a back-off delay deliberately set longer than it
+  void ageWatchdogClocksBy(Duration duration) {
     this.state.query(
         s -> {
           for (TrackerState trackerState : s.subscriptions.values()) {
-            trackerState.lastAttemptStartedAt -=
-                WATCHDOG_STUCK_THRESHOLD_NANOS + SECONDS.toNanos(1);
+            trackerState.nextAttemptAt -= duration.toNanos();
           }
           return null;
         });
@@ -1185,9 +1213,10 @@ final class ConsumersCoordinator implements AutoCloseable {
     // replicas to the leader when forceReplica is on: it must survive across attempts, since an
     // attempt performs a single lookup and then parks
     private int failedLookups;
-    // set whenever a new RECOVERING attempt starts (see ConsumersCoordinator.trackerEvent);
-    // consulted by watchdogTick() to detect an attempt that never called back
-    private long lastAttemptStartedAt;
+    // when the current attempt is due, i.e. dispatched immediately or at the end of its back-off
+    // delay (see ConsumersCoordinator.trackerEvent); consulted by watchdogTick() to detect an
+    // attempt that never called back
+    private long nextAttemptAt;
 
     private TrackerState(SubscriptionTracker tracker) {
       this.tracker = tracker;

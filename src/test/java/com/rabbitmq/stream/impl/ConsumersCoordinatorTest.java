@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.ConsumersCoordinator.MAX_SUBSCRIPTIONS_PE
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.deprioritizeSuspects;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickBroker;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickSlot;
+import static com.rabbitmq.stream.impl.ConsumersCoordinator.watchdogShouldReDispatch;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
@@ -38,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -59,6 +61,7 @@ import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerCoordinatorInfo;
+import com.rabbitmq.stream.impl.SubscriptionStateMachine.State;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
@@ -596,6 +599,39 @@ public class ConsumersCoordinatorTest {
     assertThat(deprioritizeSuspects(candidates, suspectUntil, now))
         .as("everything suspect falls back to the full candidate list")
         .containsExactlyInAnyOrder(replica1, replica2);
+  }
+
+  @Test
+  void watchdogShouldOnlyReDispatchAnAttemptOverdueByMoreThanTheThreshold() {
+    long threshold = ConsumersCoordinator.WATCHDOG_STUCK_THRESHOLD_NANOS;
+    long now = threshold * 10;
+
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, now - threshold - 1, now))
+        .as("overdue by more than the threshold")
+        .isTrue();
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, now - threshold, now))
+        .as("overdue by exactly the threshold, not yet")
+        .isFalse();
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, now, now)).as("due right now").isFalse();
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, now + threshold * 5, now))
+        .as("waiting out a back-off delay longer than the threshold is not being stuck")
+        .isFalse();
+
+    for (State state : new State[] {State.OPENING, State.ACTIVE, State.CLOSED}) {
+      assertThat(watchdogShouldReDispatch(state, now - threshold - 1, now))
+          .as("only a recovering subscription can be re-dispatched, not " + state)
+          .isFalse();
+    }
+
+    // raw nanoTime() values can wrap, so the comparison must be a subtraction
+    assertThat(
+            watchdogShouldReDispatch(
+                State.RECOVERING, Long.MAX_VALUE - 10, Long.MIN_VALUE + threshold))
+        .as("due just before a wraparound, now well past it")
+        .isTrue();
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, Long.MAX_VALUE - 10, Long.MIN_VALUE + 1))
+        .as("due just before a wraparound, now just past it")
+        .isFalse();
   }
 
   @Test
@@ -1985,12 +2021,63 @@ public class ConsumersCoordinatorTest {
 
     waitAtMost(() -> subscriptionCount.get() == 1 + 1);
 
-    // the failed attempt is now waiting on its 10-minute backoff; age its clock and tick the
-    // watchdog directly instead of waiting out either the backoff or the real tick interval
-    coordinator.ageWatchdogClocksPastThreshold();
+    // the failed attempt is now waiting on its 10-minute backoff; bring it forward past both that
+    // delay and the stuck threshold, then tick the watchdog directly, instead of waiting either out
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
     coordinator.watchdogTick();
 
     waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
+  }
+
+  @Test
+  void watchdogShouldNotCutShortAPendingBackOffDelay() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // longer than the watchdog's stuck threshold, so the two could conflict
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(Duration.ofMinutes(10)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            })
+        .thenAnswer(
+            invocation -> {
+              // this recovery attempt fails, so its retry is scheduled 10 minutes out
+              subscriptionCount.incrementAndGet();
+              return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+            })
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1);
+
+    // past the stuck threshold, but nowhere near the end of the 10-minute delay the subscription
+    // is still waiting out: it is waiting by design, not stuck
+    coordinator.ageWatchdogClocksBy(Duration.ofSeconds(121));
+    coordinator.watchdogTick();
+
+    verify(client, after(300).times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
   }
 
   @Test
