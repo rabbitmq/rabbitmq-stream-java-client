@@ -23,6 +23,7 @@ import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.isSac;
 import static com.rabbitmq.stream.impl.Utils.jsonField;
 import static com.rabbitmq.stream.impl.Utils.keyForNode;
+import static com.rabbitmq.stream.impl.Utils.lock;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.quote;
 import static java.lang.String.format;
@@ -85,6 +86,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -1083,11 +1086,7 @@ final class ConsumersCoordinator implements AutoCloseable {
     // ConsumersCoordinator.assignmentSucceeded)
     private final AtomicReference<Assignment> assignment = new AtomicReference<>(Assignment.NONE);
     private final ConsumerFlowStrategy flowStrategy;
-<<<<<<< HEAD
-=======
     private final CreditAccountant creditAccountant;
-    private final Lock subscriptionTrackerLock = new ReentrantLock();
->>>>>>> 48d50d885e (Implement ByteCreditAccountant)
 
     private SubscriptionTracker(
         long id,
@@ -1343,242 +1342,6 @@ final class ConsumersCoordinator implements AutoCloseable {
         Client.ClientParameters clientParameters) {
       this.id = managerIdSequence.getAndIncrement();
       this.trackerCount = 0;
-<<<<<<< HEAD
-=======
-      AtomicReference<String> nameReference = new AtomicReference<>();
-
-      AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
-      ChunkListener chunkListener =
-          (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
-            ConsumerFlowStrategy.MessageProcessedCallback processCallback;
-            if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
-              subscriptionTracker.creditAccountant.chunkArrived(
-                  client, subscriptionId, chunkByteCount);
-              processCallback =
-                  subscriptionTracker.flowStrategy.start(
-                      new DefaultConsumerFlowStrategyContext(
-                          subscriptionId,
-                          client,
-                          messageCount,
-                          offset,
-                          chunkByteCount,
-                          subscriptionTracker.creditAccountant));
-            } else {
-              LOGGER.debug(
-                  "Could not find stream subscription {} or subscription closing, not providing credits",
-                  subscriptionId & 0xFF);
-              processCallback = null;
-            }
-            return processCallback;
-          };
-
-      CreditNotification creditNotification =
-          (subscriptionId, responseCode) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
-            String stream = subscriptionTracker == null ? "?" : subscriptionTracker.stream;
-            if (responseCode == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
-              // a unit mismatch between the subscription and the credit frame, necessarily a
-              // client bug; the credit was dropped, so the subscription is short of credit for
-              // good
-              LOGGER.warn(
-                  "Received credit notification for subscription {} (stream '{}'): {}",
-                  subscriptionId & 0xFF,
-                  stream,
-                  Utils.formatConstant(responseCode));
-            } else {
-              LOGGER.debug(
-                  "Received credit notification for subscription {} (stream '{}'): {}",
-                  subscriptionId & 0xFF,
-                  stream,
-                  Utils.formatConstant(responseCode));
-            }
-          };
-
-      MessageListener messageListener =
-          (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
-            if (subscriptionTracker != null) {
-              subscriptionTracker.offset = offset;
-              subscriptionTracker.hasReceivedSomething = true;
-              subscriptionTracker.messageHandler.handle(
-                  new MessageHandlerContext(
-                      offset,
-                      chunkTimestamp,
-                      committedChunkId,
-                      subscriptionTracker.consumer,
-                      (ConsumerFlowStrategy.MessageProcessedCallback) chunkContext),
-                  message);
-            } else {
-              LOGGER.debug(
-                  "Could not find stream subscription {} in manager {}, node {} for message listener",
-                  subscriptionId,
-                  this.id,
-                  nameReference.get());
-            }
-          };
-      MessageIgnoredListener messageIgnoredListener =
-          (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext) -> {
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
-            if (subscriptionTracker != null) {
-              // message at the beginning of the first chunk is ignored
-              // we "simulate" the processing if possible
-              if (chunkContext != null) {
-                MessageHandlerContext messageHandlerContext =
-                    new MessageHandlerContext(
-                        offset,
-                        chunkTimestamp,
-                        committedChunkId,
-                        subscriptionTracker.consumer,
-                        (ConsumerFlowStrategy.MessageProcessedCallback) chunkContext);
-                ((ConsumerFlowStrategy.MessageProcessedCallback) chunkContext)
-                    .processed(messageHandlerContext);
-              }
-            } else {
-              LOGGER.debug(
-                  "Could not find stream subscription {} in manager {}, node {} for message ignored listener",
-                  subscriptionId,
-                  this.id,
-                  nameReference.get());
-            }
-          };
-      ShutdownListener shutdownListener =
-          shutdownContext -> {
-            if (clientInitializedInManager.get()) {
-              this.closed.set(true);
-              managers.remove(this);
-            }
-            if (shutdownContext.isShutdownUnexpected()) {
-              LOGGER.debug(
-                  "Unexpected shutdown notification on subscription connection {}, scheduling consumers re-assignment",
-                  nameReference.get());
-              LOGGER.debug(
-                  "Subscription connection has {} consumer(s) over {} stream(s) to recover",
-                  this.subscriptionTrackers.stream().filter(Objects::nonNull).count(),
-                  this.streamToStreamSubscriptions.size());
-              iterate(this.subscriptionTrackers, SubscriptionTracker::markRecovering);
-              environment
-                  .scheduledExecutorService()
-                  .execute(
-                      namedRunnable(
-                          () -> {
-                            if (Thread.currentThread().isInterrupted()) {
-                              return;
-                            }
-                            subscriptionTrackers.stream()
-                                .filter(Objects::nonNull)
-                                .filter(t -> t.state() == SubscriptionState.ACTIVE)
-                                .forEach(SubscriptionTracker::detachFromManager);
-                            for (Entry<String, Set<SubscriptionTracker>> entry :
-                                streamToStreamSubscriptions.entrySet()) {
-                              if (Thread.currentThread().isInterrupted()) {
-                                LOGGER.debug("Interrupting consumer re-assignment task");
-                                break;
-                              }
-                              String stream = entry.getKey();
-                              Set<SubscriptionTracker> trackersToReAssign = entry.getValue();
-                              if (trackersToReAssign == null || trackersToReAssign.isEmpty()) {
-                                LOGGER.debug(
-                                    "No consumer to re-assign to stream {} after disconnection",
-                                    stream);
-                              } else {
-                                LOGGER.debug(
-                                    "Re-assigning {} consumer(s) to stream {} after disconnection",
-                                    trackersToReAssign.size(),
-                                    stream);
-                                assignConsumersToStream(
-                                    trackersToReAssign,
-                                    stream,
-                                    recoveryBackOffDelayPolicy(),
-                                    false);
-                              }
-                            }
-                          },
-                          "Consumers re-assignment after disconnection from %s",
-                          nameReference.get()));
-            }
-          };
-      MetadataListener metadataListener =
-          (stream, code) -> {
-            LOGGER.debug(
-                "Received metadata notification for '{}', stream is likely to have become unavailable",
-                stream);
-            Set<SubscriptionTracker> affectedSubscriptions;
-
-            this.subscriptionManagerLock.lock();
-            try {
-              Set<SubscriptionTracker> subscriptions = streamToStreamSubscriptions.remove(stream);
-              if (subscriptions != null && !subscriptions.isEmpty()) {
-                List<SubscriptionTracker> newSubscriptions = createSubscriptionTrackerList();
-                for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-                  newSubscriptions.set(i, subscriptionTrackers.get(i));
-                }
-                for (SubscriptionTracker subscription : subscriptions) {
-                  LOGGER.debug(
-                      "Subscription {} ({}) was at offset {} (received something? {})",
-                      subscription.subscriptionIdInClient,
-                      subscription.label(),
-                      subscription.offset,
-                      subscription.hasReceivedSomething);
-                  newSubscriptions.set(subscription.subscriptionIdInClient & 0xFF, null);
-                  // do not lock, to avoid a deadlock
-                  subscription.detachFromManagerNoLock();
-                }
-                this.setSubscriptionTrackers(newSubscriptions);
-              }
-              affectedSubscriptions = subscriptions;
-            } finally {
-              this.subscriptionManagerLock.unlock();
-            }
-
-            if (affectedSubscriptions != null && !affectedSubscriptions.isEmpty()) {
-              iterate(affectedSubscriptions, SubscriptionTracker::markRecovering);
-              environment
-                  .scheduledExecutorService()
-                  .execute(
-                      namedRunnable(
-                          () -> {
-                            if (Thread.currentThread().isInterrupted()) {
-                              return;
-                            }
-                            LOGGER.debug(
-                                "Trying to move {} subscription(s) (stream '{}')",
-                                affectedSubscriptions.size(),
-                                stream);
-                            assignConsumersToStream(
-                                affectedSubscriptions,
-                                stream,
-                                metadataUpdateBackOffDelayPolicy(),
-                                true);
-                          },
-                          "Consumers re-assignment after metadata update on stream '%s'",
-                          stream));
-            }
-          };
-      ConsumerUpdateListener consumerUpdateListener =
-          (client, subscriptionId, active) -> {
-            OffsetSpecification result = null;
-            SubscriptionTracker subscriptionTracker =
-                subscriptionTrackers.get(subscriptionId & 0xFF);
-            if (subscriptionTracker != null) {
-              if (isSac(subscriptionTracker.subscriptionProperties)) {
-                result = subscriptionTracker.consumer.consumerUpdate(active);
-              } else {
-                LOGGER.debug(
-                    "Subscription {} is not a single active consumer, nothing to do.",
-                    subscriptionId);
-              }
-            } else {
-              LOGGER.debug(
-                  "Could not find stream subscription {} for consumer update", subscriptionId);
-            }
-            return result;
-          };
->>>>>>> 585b44e382 (Support subscribe_v2 and credit_v2)
       String connectionName = connectionNamingStrategy.apply(ClientConnectionType.CONSUMER);
       ClientFactoryContext clientFactoryContext =
           new ClientFactoryContext(
@@ -1602,14 +1365,20 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
 
     private ChunkListener chunkListener() {
-      return (client, subscriptionId, offset, messageCount, dataSize) -> {
+      return (client, subscriptionId, offset, messageCount, dataSize, chunkByteCount) -> {
         SubscriptionTracker subscriptionTracker = subscriptionTrackers.get(subscriptionId & 0xFF);
         ConsumerFlowStrategy.MessageProcessedCallback processCallback;
         if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
+          subscriptionTracker.creditAccountant.chunkArrived(client, subscriptionId, chunkByteCount);
           processCallback =
               subscriptionTracker.flowStrategy.start(
                   new DefaultConsumerFlowStrategyContext(
-                      subscriptionId, client, messageCount, offset));
+                      subscriptionId,
+                      client,
+                      messageCount,
+                      offset,
+                      chunkByteCount,
+                      subscriptionTracker.creditAccountant));
         } else {
           LOGGER.debug(
               "Could not find stream subscription {} or subscription closing, not providing credits",
@@ -1624,11 +1393,22 @@ final class ConsumersCoordinator implements AutoCloseable {
       return (subscriptionId, responseCode) -> {
         SubscriptionTracker subscriptionTracker = subscriptionTrackers.get(subscriptionId & 0xFF);
         String stream = subscriptionTracker == null ? "?" : subscriptionTracker.stream;
-        LOGGER.debug(
-            "Received credit notification for subscription {} (stream '{}'): {}",
-            subscriptionId & 0xFF,
-            stream,
-            Utils.formatConstant(responseCode));
+        if (responseCode == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
+          // a unit mismatch between the subscription and the credit frame, necessarily a
+          // client bug; the credit was dropped, so the subscription is short of credit for
+          // good
+          LOGGER.warn(
+              "Received credit notification for subscription {} (stream '{}'): {}",
+              subscriptionId & 0xFF,
+              stream,
+              Utils.formatConstant(responseCode));
+        } else {
+          LOGGER.debug(
+              "Received credit notification for subscription {} (stream '{}'): {}",
+              subscriptionId & 0xFF,
+              stream,
+              Utils.formatConstant(responseCode));
+        }
       };
     }
 
@@ -1794,6 +1574,15 @@ final class ConsumersCoordinator implements AutoCloseable {
         SubscriptionTracker tracker,
         OffsetSpecification offsetSpecification,
         boolean isInitialSubscription) {
+      if (tracker.flowStrategy.unit() == CreditUnit.BYTE && !this.client.byteCreditSupported()) {
+        // must not be an IllegalStateException: addToManager treats that as "this manager
+        // cannot take the subscription" and loops looking for another one, which would spin
+        // forever on a node that will never support Subscribe/Credit version 2
+        throw new StreamException(
+            "Byte-based consumer credit requires a broker supporting Subscribe version 2 "
+                + "and Credit version 2");
+      }
+
       byte subscriptionId = reserveSlot(tracker);
       LOGGER.debug(
           "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
@@ -1849,7 +1638,10 @@ final class ConsumersCoordinator implements AutoCloseable {
             subscriptionContext.offsetSpecification());
 
         checkNotClosed();
-<<<<<<< HEAD
+        int initialCredits = tracker.flowStrategy.initialCredits();
+        // resetting on every subscription, including recovery, keeps the mirror correct
+        // after a reconnection or a stream move
+        tracker.creditAccountant.reset(initialCredits);
         Client.Response subscribeResponse =
             Utils.callAndMaybeRetry(
                 () ->
@@ -1857,8 +1649,9 @@ final class ConsumersCoordinator implements AutoCloseable {
                         subscriptionId,
                         tracker.stream,
                         subscriptionContext.offsetSpecification(),
-                        tracker.flowStrategy.initialCredits(),
-                        tracker.subscriptionProperties),
+                        initialCredits,
+                        tracker.subscriptionProperties,
+                        tracker.flowStrategy.unit()),
                 RETRY_ON_TIMEOUT,
                 "Subscribe request for consumer %d on stream '%s'",
                 tracker.consumer.id(),
@@ -1872,145 +1665,6 @@ final class ConsumersCoordinator implements AutoCloseable {
                 "Connection closed during subscribe on stream '" + tracker.stream + "'");
           }
           throw new StreamDoesNotExistException(tracker.stream);
-=======
-        if (tracker.flowStrategy.unit() == CreditUnit.BYTE && !this.client.byteCreditSupported()) {
-          // must not be an IllegalStateException: addToManager treats that as "this manager
-          // cannot take the subscription" and loops looking for another one, which would spin
-          // forever on a node that will never support Subscribe/Credit version 2
-          throw new StreamException(
-              "Byte-based consumer credit requires a broker supporting Subscribe version 2 "
-                  + "and Credit version 2");
-        }
-
-        byte subscriptionId =
-            (byte) pickSlot(this.subscriptionTrackers, this.consumerIndexSequence);
-
-        List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
-
-        LOGGER.debug(
-            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
-                + "subscription ID is {}, consumer {}",
-            tracker.stream,
-            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
-            tracker.offsetTrackingReference,
-            tracker.subscriptionProperties,
-            subscriptionId,
-            tracker.consumer.id());
-        try {
-          // updating data structures before subscribing
-          // (to make sure they are up-to-date in case message would arrive super fast)
-          tracker.assign(subscriptionId, this);
-          streamToStreamSubscriptions
-              .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
-              .add(tracker);
-          this.setSubscriptionTrackers(update(previousSubscriptions, subscriptionId, tracker));
-
-          String offsetTrackingReference = tracker.offsetTrackingReference;
-          if (offsetTrackingReference != null) {
-            checkNotClosed();
-            QueryOffsetResponse queryOffsetResponse =
-                Utils.callAndMaybeRetry(
-                    () -> client.queryOffset(offsetTrackingReference, tracker.stream),
-                    RETRY_ON_TIMEOUT,
-                    "Offset query for consumer %s on stream '%s' (reference %s)",
-                    tracker.consumer.id(),
-                    tracker.stream,
-                    offsetTrackingReference);
-            if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
-              if (offsetSpecification != null && isInitialSubscription) {
-                // subscription call (not recovery), so telling the user their offset specification
-                // is
-                // ignored
-                LOGGER.info(
-                    "Requested offset specification {} not used in favor of stored offset found for reference {}",
-                    offsetSpecification,
-                    offsetTrackingReference);
-              }
-              LOGGER.debug(
-                  "Using offset {} to start consuming from {} with consumer {} "
-                      + "(instead of {})",
-                  queryOffsetResponse.getOffset(),
-                  tracker.stream,
-                  offsetTrackingReference,
-                  offsetSpecification);
-              offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
-            }
-          }
-
-          offsetSpecification =
-              offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
-
-          // TODO consider using/emulating ConsumerUpdateListener, to have only one API, not 2
-          // even when the consumer is not a SAC.
-          SubscriptionContext subscriptionContext =
-              new DefaultSubscriptionContext(offsetSpecification, tracker.stream);
-          tracker.subscriptionListener.preSubscribe(subscriptionContext);
-          LOGGER.info(
-              "Computed offset specification {}, offset specification used after subscription listener {}",
-              offsetSpecification,
-              subscriptionContext.offsetSpecification());
-
-          checkNotClosed();
-          int initialCredits = tracker.flowStrategy.initialCredits();
-          // resetting on every subscription, including recovery, keeps the mirror correct
-          // after a reconnection or a stream move
-          tracker.creditAccountant.reset(initialCredits);
-          Client.Response subscribeResponse =
-              Utils.callAndMaybeRetry(
-                  () ->
-                      client.subscribe(
-                          subscriptionId,
-                          tracker.stream,
-                          subscriptionContext.offsetSpecification(),
-                          initialCredits,
-                          tracker.subscriptionProperties,
-                          tracker.flowStrategy.unit()),
-                  RETRY_ON_TIMEOUT,
-                  "Subscribe request for consumer %d on stream '%s'",
-                  tracker.consumer.id(),
-                  tracker.stream);
-          if (subscribeResponse == null) {
-            // The subscribe call returned no response: the connection was torn down
-            // between the request being written and the response being read, or the
-            // stream was deleted concurrently.
-            if (!client.isOpen()) {
-              throw new ConnectionStreamException(
-                  "Connection closed during subscribe on stream '" + tracker.stream + "'");
-            }
-            throw new StreamDoesNotExistException(tracker.stream);
-          }
-          if (!subscribeResponse.isOk()) {
-            String message =
-                "Subscription to stream "
-                    + tracker.stream
-                    + " failed with code "
-                    + formatConstant(subscribeResponse.getResponseCode());
-            LOGGER.debug(message);
-            if (subscribeResponse.getResponseCode()
-                == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS) {
-              if (LOGGER.isDebugEnabled()) {
-                SubscriptionTracker initialTracker = previousSubscriptions.get(subscriptionId);
-                LOGGER.debug("Subscription ID already exists");
-                LOGGER.debug(
-                    "Initial tracker with sub ID {}: consumer {}, stream {}, name {}",
-                    subscriptionId,
-                    initialTracker.consumer.id(),
-                    initialTracker.stream,
-                    initialTracker.offsetTrackingReference);
-              }
-            }
-            throw convertCodeToException(
-                subscribeResponse.getResponseCode(), tracker.stream, () -> message);
-          }
-        } catch (RuntimeException e) {
-          tracker.assign((byte) -1, null);
-          this.setSubscriptionTrackers(previousSubscriptions);
-          streamToStreamSubscriptions
-              .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
-              .remove(tracker);
-          maybeCleanStreamToStreamSubscriptions(tracker.stream);
-          throw e;
->>>>>>> 48d50d885e (Implement ByteCreditAccountant)
         }
         if (!subscribeResponse.isOk()) {
           String message =
