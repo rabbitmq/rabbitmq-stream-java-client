@@ -180,6 +180,8 @@ public class Client implements AutoCloseable {
   // thread: a chunk holds many entries, so the per-entry cap above does not bound the aggregate
   static final int DEFAULT_MAX_UNCOMPRESSED_SIZE_PER_CHUNK =
       16 * DEFAULT_MAX_UNCOMPRESSED_SUB_ENTRY_BATCH_SIZE;
+  // same as broker
+  static final long MAX_STREAM_INITIAL_OFFSET = (1L << 62) - 1;
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_WRITE_CALLBACK =
       new OutboundMessageWriteCallback();
   static final OutboundEntityWriteCallback OUTBOUND_MESSAGE_BATCH_WRITE_CALLBACK =
@@ -495,8 +497,7 @@ public class Client implements AutoCloseable {
       // until now)
       this.channel
           .pipeline()
-          .replace(
-              NETTY_HANDLER_FRAME_DECODER, NETTY_HANDLER_FRAME_DECODER, frameDecoder());
+          .replace(NETTY_HANDLER_FRAME_DECODER, NETTY_HANDLER_FRAME_DECODER, frameDecoder());
       Set<FrameHandlerInfo> supportedCommands = maybeExchangeCommandVersions();
       AtomicBoolean streamStatsSupported = new AtomicBoolean(false);
       AtomicBoolean filteringSupportedReference = new AtomicBoolean(false);
@@ -2880,6 +2881,18 @@ public class Client implements AutoCloseable {
         throw new IllegalArgumentException("The initial member count must be greater than 0");
       }
       this.parameters.put("initial-cluster-size", String.valueOf(initialMemberCount));
+      return this;
+    }
+
+    public StreamParametersBuilder initialOffset(long initialOffset) {
+      if (initialOffset < 0 || initialOffset > MAX_STREAM_INITIAL_OFFSET) {
+        throw new IllegalArgumentException(
+            "Initial offset must be between 0 and "
+                + MAX_STREAM_INITIAL_OFFSET
+                + ", given: "
+                + Long.toUnsignedString(initialOffset));
+      }
+      this.parameters.put("stream-initial-offset", Long.toUnsignedString(initialOffset));
       return this;
     }
 
