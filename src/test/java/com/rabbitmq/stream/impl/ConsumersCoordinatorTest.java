@@ -40,11 +40,8 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-<<<<<<< HEAD
 import static org.mockito.Mockito.after;
-=======
 import static org.mockito.Mockito.atLeastOnce;
->>>>>>> 48d50d885e (Implement ByteCreditAccountant)
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -2181,7 +2178,8 @@ public class ConsumersCoordinatorTest {
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
-            anyMap()))
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenAnswer(
             invocation -> {
               // initial subscription, to the first candidate (replica1)
@@ -2248,7 +2246,8 @@ public class ConsumersCoordinatorTest {
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
-            anyMap()))
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenAnswer(
             invocation -> {
               // initial subscription
@@ -2316,7 +2315,8 @@ public class ConsumersCoordinatorTest {
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
-            anyMap()))
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenAnswer(
             invocation -> {
               subscriptionCount.incrementAndGet();
@@ -2353,7 +2353,13 @@ public class ConsumersCoordinatorTest {
     coordinator.watchdogTick();
 
     verify(client, after(300).times(2))
-        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+        .subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
   }
 
   @Test
@@ -2372,7 +2378,8 @@ public class ConsumersCoordinatorTest {
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
-            anyMap()))
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
 
     subscribe("stream");
@@ -2383,9 +2390,21 @@ public class ConsumersCoordinatorTest {
     // still only the initial subscription: the recovery attempt is waiting out delay(0), the
     // policy's grace before reacting at all, and not delay(1)
     verify(client, after(300).times(1))
-        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+        .subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
     verify(client, timeout(TIMEOUT_MS).times(2))
-        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+        .subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
   }
 
   @Test
@@ -2407,7 +2426,8 @@ public class ConsumersCoordinatorTest {
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
-            anyMap()))
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
 
     subscribe("stream");
@@ -2422,14 +2442,26 @@ public class ConsumersCoordinatorTest {
     coordinator.ageWatchdogClocksBy(parkedDelay.plusSeconds(121));
     coordinator.watchdogTick();
     verify(client, timeout(TIMEOUT_MS).times(2))
-        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+        .subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
 
     // the parked attempt fires once its delay is up: it must not look up a candidate, and above
     // all must not subscribe, since the broker would deliver to it until the release lands and the
     // application would see those messages twice
     verify(locator, after(parkedDelay.toMillis() + 500).times(3)).metadata("stream");
     verify(client, times(2))
-        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+        .subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
   }
 
   @Test
@@ -2457,7 +2489,12 @@ public class ConsumersCoordinatorTest {
 
     AtomicInteger healthySubscriptions = new AtomicInteger();
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenAnswer(
             invocation -> {
               if ("healthy".equals(invocation.getArgument(1))) {
@@ -2498,7 +2535,12 @@ public class ConsumersCoordinatorTest {
 
     AtomicInteger subscriptionCount = new AtomicInteger();
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenAnswer(
             invocation -> {
               subscriptionCount.incrementAndGet();
@@ -2529,7 +2571,12 @@ public class ConsumersCoordinatorTest {
         .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
     when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
 
     subscribe("stream");
@@ -2556,7 +2603,12 @@ public class ConsumersCoordinatorTest {
     AtomicInteger subscriptionCount = new AtomicInteger();
     AtomicBoolean failNextSubscribe = new AtomicBoolean(false);
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenAnswer(
             invocation -> {
               if (failNextSubscribe.compareAndSet(true, false)) {
@@ -2612,7 +2664,12 @@ public class ConsumersCoordinatorTest {
 
     AtomicInteger subscriptionCount = new AtomicInteger();
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenAnswer(
             invocation -> {
               subscriptionCount.incrementAndGet();
