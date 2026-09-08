@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -43,6 +43,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Function;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,9 +71,11 @@ public class LoadBalancerClusterTest {
   EventLoopGroup eventLoopGroup;
   Client locator;
   static final Address LOAD_BALANCER_ADDRESS = new Address("localhost", LB_PORT);
+  ScheduledExecutorService scheduledExecutorService;
 
   @BeforeEach
   void init() {
+    scheduledExecutorService = Executors.newScheduledThreadPool(1);
     mocks = MockitoAnnotations.openMocks(this);
     locator = cf.get(new Client.ClientParameters().port(LB_PORT));
     StreamEnvironment.Locator l = new StreamEnvironment.Locator(-1, new Address("localhost", 5555));
@@ -81,10 +85,13 @@ public class LoadBalancerClusterTest {
         .thenReturn(new Client.ClientParameters().eventLoopGroup(eventLoopGroup).port(LB_PORT));
     when(environment.addressResolver()).thenReturn(address -> LOAD_BALANCER_ADDRESS);
     when(environment.locatorOperation(any())).thenCallRealMethod();
+    when(environment.rpcTimeout()).thenReturn(Duration.ofSeconds(10));
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
   }
 
   @AfterEach
   void tearDown() throws Exception {
+    scheduledExecutorService.shutdownNow();
     mocks.close();
   }
 
@@ -100,7 +107,8 @@ public class LoadBalancerClusterTest {
             type -> "consumer-connection",
             Utils.coordinatorClientFactory(this.environment, Duration.ofMillis(10)),
             forceReplica,
-            Utils.brokerPicker())) {
+            Utils.brokerPicker(),
+            null)) {
 
       waitAtMost(
           () -> locator.metadata(stream).get(stream).hasReplicas(),

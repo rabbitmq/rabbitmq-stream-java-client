@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -84,10 +84,12 @@ public class RecoveryClusterTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RecoveryClusterTest.class);
 
-  private static final Duration ASSERTION_TIMEOUT = Duration.ofSeconds(20);
   // give some slack before first recovery attempt, especially on Docker
   static final Duration RECOVERY_INITIAL_DELAY = Duration.ofSeconds(10);
   static final Duration RECOVERY_DELAY = Duration.ofSeconds(2);
+  // every assertion using this waits on a producer or consumer that has to recover first, and no
+  // recovery attempt is made before the initial delay above, so the budget has to include it
+  private static final Duration ASSERTION_TIMEOUT = RECOVERY_INITIAL_DELAY.plusSeconds(20);
   static List<String> nodes;
   static final List<String> URIS =
       range(5552, 5555).mapToObj(p -> "rabbitmq-stream://localhost:" + p).collect(toList());
@@ -407,6 +409,7 @@ public class RecoveryClusterTest {
       Callable<Void> checkConsumers =
           () -> {
             waitAtMost(
+                ASSERTION_TIMEOUT,
                 () -> {
                   List<Cli.SubscriptionInfo> subscriptions = Cli.listGroupConsumers(streamArg, app);
                   LOGGER.info("Group consumers: {}", subscriptions);

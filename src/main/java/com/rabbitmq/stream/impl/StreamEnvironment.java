@@ -297,7 +297,8 @@ final class StreamEnvironment implements Environment {
               connectionNamingStrategy,
               coordinatorClientFactory(this, consumerNodeRetryDelay),
               forceReplicaForConsumers,
-              Utils.brokerPicker());
+              Utils.brokerPicker(),
+              null);
       shutdownService.wrap(this.consumersCoordinator::close);
       this.offsetTrackingCoordinator = new OffsetTrackingCoordinator(this);
       shutdownService.wrap(this.offsetTrackingCoordinator::close);

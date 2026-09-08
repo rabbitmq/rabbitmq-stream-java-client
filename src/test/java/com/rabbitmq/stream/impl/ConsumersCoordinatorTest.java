@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,8 +16,10 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.BackOffDelayPolicy.fixedWithInitialDelay;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT;
+import static com.rabbitmq.stream.impl.ConsumersCoordinator.deprioritizeSuspects;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickBroker;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickSlot;
+import static com.rabbitmq.stream.impl.ConsumersCoordinator.watchdogShouldReDispatch;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
@@ -37,8 +39,10 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -57,12 +61,16 @@ import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerCoordinatorInfo;
+import com.rabbitmq.stream.impl.SubscriptionStateMachine.State;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import io.netty.channel.ConnectTimeoutException;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.EventExecutorGroup;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -72,6 +80,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -91,6 +101,8 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.stubbing.Answer;
 
 public class ConsumersCoordinatorTest {
+
+  static final int TIMEOUT_MS = 10_000;
 
   private static final SubscriptionListener NO_OP_SUBSCRIPTION_LISTENER = subscriptionContext -> {};
   private static final Runnable NO_OP_TRACKING_CLOSING_CALLBACK = () -> {};
@@ -176,9 +188,17 @@ public class ConsumersCoordinatorTest {
     when(environment.locatorOperation(any())).thenCallRealMethod();
     when(environment.clientParametersCopy()).thenReturn(clientParameters);
     when(environment.addressResolver()).thenReturn(address -> address);
+    when(environment.rpcTimeout()).thenReturn(Duration.ofSeconds(10));
     when(client.brokerVersion()).thenReturn("3.11.0");
     when(client.isOpen()).thenReturn(true);
     clientAdvertises(replica().get(0));
+    // a bare executor, not createScheduledExecutorService(): it must not start any thread of its
+    // own just by existing, only if actually given a task, so tests that override this stub before
+    // subscribing (as all of them already do) leave nothing running to clean up
+    scheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            ThreadUtils.threadFactory(info.getTestMethod().get().getName() + "-"));
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
 
     coordinator =
         new ConsumersCoordinator(
@@ -187,7 +207,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
   }
 
   @AfterEach
@@ -218,7 +239,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             cf,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -260,7 +282,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             cf,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -302,7 +325,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             cf,
             false,
-            brokers -> brokers.get(0));
+            brokers -> brokers.get(0),
+            null);
 
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -400,7 +424,7 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
-  void subscribePropagateExceptionWhenClientSubscriptionFails() {
+  void subscribePropagateExceptionWhenClientSubscriptionFails() throws Exception {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
@@ -427,11 +451,12 @@ public class ConsumersCoordinatorTest {
                     flowStrategy()))
         .isInstanceOf(StreamException.class)
         .hasMessage(exceptionMessage);
-    assertThat(MonitoringTestUtils.extract(coordinator).isEmpty()).isTrue();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
-  void subscribeShouldThrowStreamExceptionWhenClientSubscribeReturnsNull() {
+  void subscribeShouldThrowStreamExceptionWhenClientSubscribeReturnsNull() throws Exception {
     when(locator.metadata("stream")).thenReturn(metadata(null, replicas()));
     when(clientFactory.client(any())).thenReturn(client);
     when(client.subscribe(
@@ -455,7 +480,8 @@ public class ConsumersCoordinatorTest {
                     Collections.emptyMap(),
                     flowStrategy()))
         .isInstanceOf(StreamException.class);
-    assertThat(MonitoringTestUtils.extract(coordinator).isEmpty()).isTrue();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
@@ -548,6 +574,68 @@ public class ConsumersCoordinatorTest {
             });
     // pick the leader if it is the only one
     assertThat(pickBroker(picker, singletonList(leaderWrapper()))).isEqualTo(leader);
+  }
+
+  @Test
+  void deprioritizeSuspectsShouldDropOnlySuspectAndNotExpiredCandidates() {
+    Utils.BrokerWrapper replica1 = replicaWrappers().get(0);
+    Utils.BrokerWrapper replica2 = replicaWrappers().get(1);
+    List<Utils.BrokerWrapper> candidates = Arrays.asList(replica1, replica2);
+    long now = 10_000L;
+
+    assertThat(deprioritizeSuspects(candidates, new HashMap<>(), now))
+        .as("no suspect entry at all")
+        .containsExactlyInAnyOrder(replica1, replica2);
+
+    Map<String, Long> suspectUntil = new HashMap<>();
+    suspectUntil.put(Utils.keyForNode(replica1.broker()), now + 1_000L);
+    assertThat(deprioritizeSuspects(candidates, suspectUntil, now))
+        .as("replica1 still suspect, replica2 not")
+        .containsExactly(replica2);
+
+    suspectUntil.put(Utils.keyForNode(replica1.broker()), now - 1_000L);
+    assertThat(deprioritizeSuspects(candidates, suspectUntil, now))
+        .as("replica1's suspicion has expired")
+        .containsExactlyInAnyOrder(replica1, replica2);
+
+    suspectUntil.put(Utils.keyForNode(replica1.broker()), now + 1_000L);
+    suspectUntil.put(Utils.keyForNode(replica2.broker()), now + 1_000L);
+    assertThat(deprioritizeSuspects(candidates, suspectUntil, now))
+        .as("everything suspect falls back to the full candidate list")
+        .containsExactlyInAnyOrder(replica1, replica2);
+  }
+
+  @Test
+  void watchdogShouldOnlyReDispatchAnAttemptOverdueByMoreThanTheThreshold() {
+    long threshold = ConsumersCoordinator.WATCHDOG_STUCK_THRESHOLD_NANOS;
+    long now = threshold * 10;
+
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, now - threshold - 1, now))
+        .as("overdue by more than the threshold")
+        .isTrue();
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, now - threshold, now))
+        .as("overdue by exactly the threshold, not yet")
+        .isFalse();
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, now, now)).as("due right now").isFalse();
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, now + threshold * 5, now))
+        .as("waiting out a back-off delay longer than the threshold is not being stuck")
+        .isFalse();
+
+    for (State state : new State[] {State.OPENING, State.ACTIVE, State.CLOSED}) {
+      assertThat(watchdogShouldReDispatch(state, now - threshold - 1, now))
+          .as("only a recovering subscription can be re-dispatched, not " + state)
+          .isFalse();
+    }
+
+    // raw nanoTime() values can wrap, so the comparison must be a subtraction
+    assertThat(
+            watchdogShouldReDispatch(
+                State.RECOVERING, Long.MAX_VALUE - 10, Long.MIN_VALUE + threshold))
+        .as("due just before a wraparound, now well past it")
+        .isTrue();
+    assertThat(watchdogShouldReDispatch(State.RECOVERING, Long.MAX_VALUE - 10, Long.MIN_VALUE + 1))
+        .as("due just before a wraparound, now just past it")
+        .isFalse();
   }
 
   @Test
@@ -868,8 +956,10 @@ public class ConsumersCoordinatorTest {
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
   }
 
+  // named after the old behaviour, where a second trigger was dropped by the in-flight attempt.
+  // it now supersedes it instead, and the two triggers still converge on a single subscription
   @Test
-  void shouldSkipRecoveryIfRecoveryIsAlreadyInProgress() throws Exception {
+  void overlappingRecoveryTriggersShouldConvergeOnOneSubscription() throws Exception {
     scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(100);
@@ -1003,8 +1093,10 @@ public class ConsumersCoordinatorTest {
     this.metadataListeners.forEach(
         ml -> ml.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE));
 
-    // the consumer connection should be reset after the metadata update
-    verify(consumer, times(1)).setSubscriptionClient(isNull());
+    // the consumer connection should be reset after the metadata update. Asynchronously now:
+    // the netty thread only posts the event, because detaching notifies a single active consumer
+    // it became inactive, which is user code
+    verify(consumer, timeout(TIMEOUT_MS).times(1)).setSubscriptionClient(isNull());
 
     // the second consumer does not re-subscribe because it returns it is not open
     waitAtMost(() -> subscriptionCount.get() == 2 + 1);
@@ -1034,7 +1126,8 @@ public class ConsumersCoordinatorTest {
             subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    assertThat(coordinator.managerCount()).isZero();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
@@ -1107,7 +1200,8 @@ public class ConsumersCoordinatorTest {
         subscriptionIdCaptor.getValue(), 0, 0, 0, null, new WrapperMessageBuilder().build());
     assertThat(messageHandlerCalls.get()).isEqualTo(2);
 
-    assertThat(coordinator.managerCount()).isZero();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
@@ -1159,7 +1253,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
     verify(client, times(0)).unsubscribe(anyByte());
 
-    assertThat(coordinator.managerCount()).isZero();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @Test
@@ -1212,7 +1307,8 @@ public class ConsumersCoordinatorTest {
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
     verify(client, times(0)).unsubscribe(anyByte());
 
-    assertThat(coordinator.managerCount()).isZero();
+    // the now-empty connection lingers for a bit before it actually closes
+    waitAtMost(() -> coordinator.managerCount() == 0);
   }
 
   @ParameterizedTest
@@ -1243,7 +1339,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             false,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     List<Runnable> closingRunnables =
         range(0, subscriptionCount)
@@ -1279,11 +1376,12 @@ public class ConsumersCoordinatorTest {
                   closingRunnables.remove(closingRunnable);
                 });
 
-    verify(client, times(1)).close();
+    // the now-empty connection lingers for a bit before it actually closes
+    verify(client, timeout(TIMEOUT_MS).times(1)).close();
 
     closingRunnables.forEach(Runnable::run);
 
-    verify(client, times(2)).close();
+    verify(client, timeout(TIMEOUT_MS).times(2)).close();
   }
 
   @Test
@@ -1792,6 +1890,508 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
+  void shouldAvoidSuspectNodeWhenPickingBrokerAfterConnectionFailure() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    Duration retryDelay = Duration.ofMillis(100);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(retryDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+
+    // deterministic: always pick the first candidate, so which node ends up used is decided
+    // entirely by deprioritizeSuspects, not by chance
+    Function<List<Client.Broker>, Client.Broker> picker = candidates -> candidates.get(0);
+    ConsumersCoordinator c =
+        new ConsumersCoordinator(
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            clientFactory,
+            false,
+            picker,
+            null);
+
+    ArgumentCaptor<Utils.ClientFactoryContext> contextCaptor =
+        ArgumentCaptor.forClass(Utils.ClientFactoryContext.class);
+    when(clientFactory.client(contextCaptor.capture())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              // initial subscription, to the first candidate (replica1)
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            })
+        .thenAnswer(
+            invocation -> {
+              // first recovery attempt: replica1 is not suspect yet, picked again, fails
+              subscriptionCount.incrementAndGet();
+              return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+            })
+        .thenAnswer(
+            invocation -> {
+              // second recovery attempt: replica1 is now suspect, replica2 gets picked instead
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    c.subscribe(
+        consumer,
+        "stream",
+        null,
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap(),
+        flowStrategy());
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
+
+    List<String> targets =
+        contextCaptor.getAllValues().stream()
+            .map(Utils.ClientFactoryContext::targetKey)
+            .collect(toList());
+    assertThat(targets)
+        .containsExactly(
+            Utils.keyForNode(replicas().get(0)),
+            Utils.keyForNode(replicas().get(0)),
+            Utils.keyForNode(replicas().get(1)));
+
+    c.close();
+  }
+
+  @Test
+  void watchdogShouldReDispatchASubscriptionStuckInRecoveringPastTheThreshold() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // a long fixed delay: the natural retry must not fire on its own during this test, so any
+    // further progress can only come from the watchdog
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(Duration.ofMinutes(10)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              // initial subscription
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            })
+        .thenAnswer(
+            invocation -> {
+              // this recovery attempt fails and its retry is scheduled 10 minutes out: the
+              // subscription is now "stuck" in RECOVERING for the purposes of this test
+              subscriptionCount.incrementAndGet();
+              return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+            })
+        .thenAnswer(
+            invocation -> {
+              // the second watchdog-triggered attempt succeeds
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    coordinator.subscribe(
+        consumer,
+        "stream",
+        null,
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap(),
+        flowStrategy());
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the episode's own first attempt is scheduled 10 minutes out, so bring that forward too.
+    // ageWatchdogClocksBy() runs on the event loop, which makes it a barrier for the transition
+    // the shutdown listener posted
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
+    coordinator.watchdogTick();
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1);
+
+    // the failed attempt is now waiting on its 10-minute backoff; bring it forward past both that
+    // delay and the stuck threshold, then tick the watchdog directly, instead of waiting either out
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
+    coordinator.watchdogTick();
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1 + 1);
+  }
+
+  @Test
+  void watchdogShouldNotCutShortAPendingBackOffDelay() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // longer than the watchdog's stuck threshold, so the two could conflict
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(Duration.ofMinutes(10)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger(0);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            })
+        .thenAnswer(
+            invocation -> {
+              // this recovery attempt fails, so its retry is scheduled 10 minutes out
+              subscriptionCount.incrementAndGet();
+              return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+            })
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the episode's first attempt waits out the policy's first delay, so bring that forward to get
+    // the subscription into the state this test is about: an attempt that failed and is now
+    // waiting on its retry
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
+    coordinator.watchdogTick();
+
+    waitAtMost(() -> subscriptionCount.get() == 1 + 1);
+
+    // past the stuck threshold, but nowhere near the end of the 10-minute delay the subscription
+    // is still waiting out: it is waiting by design, not stuck
+    coordinator.ageWatchdogClocksBy(Duration.ofSeconds(121));
+    coordinator.watchdogTick();
+
+    verify(client, after(300).times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+  }
+
+  @Test
+  void firstRecoveryAttemptShouldWaitThePolicyInitialDelay() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // an initial delay much longer than the delay between retries, so which of the two applies to
+    // the first attempt of a recovery episode is observable
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(1000), ms(10)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(responseOk());
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // still only the initial subscription: the recovery attempt is waiting out delay(0), the
+    // policy's grace before reacting at all, and not delay(1)
+    verify(client, after(300).times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+    verify(client, timeout(TIMEOUT_MS).times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+  }
+
+  @Test
+  void aSupersededAttemptShouldNotTouchTheBroker() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // long enough that the parked attempt is still waiting when it gets superseded
+    Duration parkedDelay = Duration.ofSeconds(2);
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(50), parkedDelay));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata("stream", null, replicas()))
+        .thenThrow(new IllegalStateException("no metadata for this attempt"))
+        .thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            subscriptionIdCaptor.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap()))
+        .thenReturn(responseOk());
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the episode's first attempt fails its candidate lookup and parks
+    verify(locator, timeout(TIMEOUT_MS).times(2)).metadata("stream");
+
+    // the watchdog starts a fresh attempt, which succeeds and leaves the parked one stale
+    coordinator.ageWatchdogClocksBy(parkedDelay.plusSeconds(121));
+    coordinator.watchdogTick();
+    verify(client, timeout(TIMEOUT_MS).times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+
+    // the parked attempt fires once its delay is up: it must not look up a candidate, and above
+    // all must not subscribe, since the broker would deliver to it until the release lands and the
+    // application would see those messages twice
+    verify(locator, after(parkedDelay.toMillis() + 500).times(3)).metadata("stream");
+    verify(client, times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+  }
+
+  @Test
+  void aFailingCandidateLookupShouldNotHoldARecoveryThread() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+
+    // more than the recovery pool can ever have threads (max(2, min(4, processors))), so the test
+    // does not need to know that number
+    int stuckCount = 8;
+    AtomicInteger stuckStreamLookups = new AtomicInteger();
+    when(locator.metadata("stuck"))
+        .thenAnswer(
+            invocation -> {
+              // answers the initial subscriptions, then never again
+              if (stuckStreamLookups.incrementAndGet() <= stuckCount) {
+                return metadata("stuck", null, replica());
+              }
+              throw new IllegalStateException("no node available to consume from 'stuck'");
+            });
+    when(locator.metadata("healthy")).thenReturn(metadata("healthy", null, replica()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger healthySubscriptions = new AtomicInteger();
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenAnswer(
+            invocation -> {
+              if ("healthy".equals(invocation.getArgument(1))) {
+                healthySubscriptions.incrementAndGet();
+              }
+              return responseOk();
+            });
+
+    for (int i = 0; i < stuckCount; i++) {
+      subscribe("stuck");
+    }
+    // last, so the shutdown listener dispatches its recovery behind all the stuck ones
+    subscribe("healthy");
+    assertThat(healthySubscriptions.get()).isEqualTo(1);
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the subscriptions on 'stuck' now fail their candidate lookup on every attempt. If a failing
+    // lookup retried in place instead of parking, they would own every recovery thread and this
+    // would never get to run
+    waitAtMost(() -> healthySubscriptions.get() == 2);
+  }
+
+  @Test
+  void parkedSubscriptionShouldRecoverWithASingleLookupPerAttempt() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    int failedLookups = 3;
+    when(locator.metadata("stream"))
+        .thenReturn(metadata("stream", null, replicas()))
+        .thenThrow(
+            new IllegalStateException(), new IllegalStateException(), new IllegalStateException())
+        .thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger();
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == 2);
+
+    // exactly one lookup per attempt: the initial subscription, one per parked attempt, and the
+    // one that finds the stream back
+    verify(locator, times(1 + failedLookups + 1)).metadata("stream");
+  }
+
+  @Test
+  void parkedSubscriptionShouldBeClosedWhenStreamTurnsOutToBeDeleted() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata("stream", null, replicas()))
+        .thenThrow(new IllegalStateException(), new IllegalStateException())
+        .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+
+    subscribe("stream");
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // parking keeps re-querying, so a stream that turns out to be gone still ends the subscription
+    verify(consumer, timeout(TIMEOUT_MS).times(1)).closeAfterStreamDeletion();
+  }
+
+  @Test
+  void successfulRecoveryShouldResetTheRetryTimeoutBudget() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // a policy with a retry timeout, so it gives up once the attempt count passes its limit
+    // ((200 - 50) / 50 + 1 == 4)
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(50), ms(50), ms(200)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    AtomicInteger subscriptionCount = new AtomicInteger();
+    AtomicBoolean failNextSubscribe = new AtomicBoolean(false);
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenAnswer(
+            invocation -> {
+              if (failNextSubscribe.compareAndSet(true, false)) {
+                return new Response(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+              }
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    subscribe("stream");
+    assertThat(subscriptionCount.get()).isEqualTo(1);
+
+    int cleanRecoveries = 4;
+    for (int i = 0; i < cleanRecoveries; i++) {
+      this.shutdownListener.handle(
+          new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+      int expected = i + 2;
+      waitAtMost(() -> subscriptionCount.get() == expected);
+    }
+
+    // one more disruption, this time with a failed attempt, so the back-off policy is consulted.
+    // Without a reset on success the attempt count would already be past the policy's limit and
+    // the consumer would be closed instead of recovering
+    failNextSubscribe.set(true);
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    waitAtMost(() -> subscriptionCount.get() == cleanRecoveries + 2);
+    verify(consumer, never()).closeAfterStreamDeletion();
+  }
+
+  @Test
+  void successfulRecoveryShouldResetTheForceReplicaFallbackBudget() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(leader(), replica()))
+        // no replica from now on, so every forced-replica lookup fails
+        .thenReturn(metadata(leader(), emptyList()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    coordinator =
+        new ConsumersCoordinator(
+            environment,
+            MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            clientFactory,
+            true,
+            brokerPicker(),
+            null);
+
+    AtomicInteger subscriptionCount = new AtomicInteger();
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenAnswer(
+            invocation -> {
+              subscriptionCount.incrementAndGet();
+              return responseOk();
+            });
+
+    subscribe("stream");
+
+    // one lookup per parked attempt: the forced-replica ones, then the one accepting the leader
+    int perEpisode = ConsumersCoordinator.MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER + 1;
+
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    waitAtMost(() -> subscriptionCount.get() == 2);
+    verify(locator, times(1 + perEpisode)).metadata("stream");
+
+    // the budget starts over, otherwise this episode would accept the leader right away
+    this.shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    waitAtMost(() -> subscriptionCount.get() == 3);
+    verify(locator, times(1 + perEpisode * 2)).metadata("stream");
+  }
+
+  private void subscribe(String stream) {
+    coordinator.subscribe(
+        consumer,
+        stream,
+        null,
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        (offset, message) -> {},
+        Collections.emptyMap(),
+        flowStrategy());
+  }
+
+  @Test
   @SuppressWarnings("unchecked")
   void shouldRetryAssignmentOnRecoveryCandidateLookupFailure() throws Exception {
     scheduledExecutorService = createScheduledExecutorService();
@@ -2064,7 +2664,8 @@ public class ConsumersCoordinatorTest {
             type -> "consumer-connection",
             clientFactory,
             true,
-            brokerPicker());
+            brokerPicker(),
+            null);
 
     AtomicInteger messageHandlerCalls = new AtomicInteger();
     Runnable closingRunnable =
@@ -2197,6 +2798,54 @@ public class ConsumersCoordinatorTest {
 
   List<Client.Broker> replica() {
     return replicas().subList(0, 1);
+  }
+
+  @Test
+  void injectedEventExecutorGroupIsNotClosedByTheCoordinator() throws Exception {
+    EventExecutorGroup group = new DefaultEventExecutorGroup(1);
+    try {
+      try (ConsumersCoordinator c =
+          new ConsumersCoordinator(
+              environment,
+              ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+              type -> "consumer-connection",
+              clientFactory,
+              false,
+              brokerPicker(),
+              group)) {
+        assertThat(c).isNotNull();
+      }
+      assertThat(group.isShuttingDown()).isFalse();
+      assertThat(group.isShutdown()).isFalse();
+    } finally {
+      group.shutdownGracefully(0, 10, TimeUnit.SECONDS).get(10, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  void ownEventExecutorGroupIsShutDownOnClose() throws Exception {
+    // the coordinator from init() also holds one, so compare counts rather than absolute presence
+    int before = coordinatorLoopThreadCount();
+    ConsumersCoordinator c =
+        new ConsumersCoordinator(
+            environment,
+            ConsumersCoordinator.MAX_SUBSCRIPTIONS_PER_CLIENT,
+            type -> "consumer-connection",
+            clientFactory,
+            false,
+            brokerPicker(),
+            null);
+    assertThat(coordinatorLoopThreadCount()).isEqualTo(before + 1);
+    c.close();
+    waitAtMost(() -> coordinatorLoopThreadCount() == before);
+  }
+
+  private static int coordinatorLoopThreadCount() {
+    return (int)
+        Thread.getAllStackTraces().keySet().stream()
+            .filter(t -> t.getName().startsWith("rabbitmq-stream-consumer-coordinator-"))
+            .filter(Thread::isAlive)
+            .count();
   }
 
   private MessageListener firstMessageListener() {
