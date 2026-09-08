@@ -1155,11 +1155,13 @@ public class StreamConsumerTest {
             .subEntrySize(10)
             .compression(compression)
             .build();
-    Sync sync = sync(2);
+    Sync sync = sync(1);
     ConfirmationHandler confirmationHandler = ctx -> sync.down();
     producer.send(
         producer.messageBuilder().properties().messageId(1L).messageBuilder().build(),
         confirmationHandler);
+    assertThat(sync).completes();
+    sync.reset(1);
     producer = environment.producerBuilder().stream(stream).build();
     producer.send(
         producer.messageBuilder().properties().messageId(2L).messageBuilder().build(),
