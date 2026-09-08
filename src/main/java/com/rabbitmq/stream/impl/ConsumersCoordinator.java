@@ -34,6 +34,7 @@ import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerFlowStrategy;
+import com.rabbitmq.stream.ConsumerFlowStrategy.CreditUnit;
 import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
@@ -1082,6 +1083,11 @@ final class ConsumersCoordinator implements AutoCloseable {
     // ConsumersCoordinator.assignmentSucceeded)
     private final AtomicReference<Assignment> assignment = new AtomicReference<>(Assignment.NONE);
     private final ConsumerFlowStrategy flowStrategy;
+<<<<<<< HEAD
+=======
+    private final CreditAccountant creditAccountant;
+    private final Lock subscriptionTrackerLock = new ReentrantLock();
+>>>>>>> 48d50d885e (Implement ByteCreditAccountant)
 
     private SubscriptionTracker(
         long id,
@@ -1103,6 +1109,10 @@ final class ConsumersCoordinator implements AutoCloseable {
       this.trackingClosingCallback = trackingClosingCallback;
       this.messageHandler = messageHandler;
       this.flowStrategy = flowStrategy;
+      this.creditAccountant =
+          flowStrategy.unit() == CreditUnit.BYTE
+              ? new ByteCreditAccountant()
+              : ChunkCreditAccountant.INSTANCE;
       if (this.offsetTrackingReference == null) {
         this.subscriptionProperties = subscriptionProperties;
       } else {
@@ -1344,10 +1354,17 @@ final class ConsumersCoordinator implements AutoCloseable {
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             ConsumerFlowStrategy.MessageProcessedCallback processCallback;
             if (subscriptionTracker != null && subscriptionTracker.consumer.isOpen()) {
+              subscriptionTracker.creditAccountant.chunkArrived(
+                  client, subscriptionId, chunkByteCount);
               processCallback =
                   subscriptionTracker.flowStrategy.start(
                       new DefaultConsumerFlowStrategyContext(
-                          subscriptionId, client, messageCount, offset, chunkByteCount));
+                          subscriptionId,
+                          client,
+                          messageCount,
+                          offset,
+                          chunkByteCount,
+                          subscriptionTracker.creditAccountant));
             } else {
               LOGGER.debug(
                   "Could not find stream subscription {} or subscription closing, not providing credits",
@@ -1362,11 +1379,22 @@ final class ConsumersCoordinator implements AutoCloseable {
             SubscriptionTracker subscriptionTracker =
                 subscriptionTrackers.get(subscriptionId & 0xFF);
             String stream = subscriptionTracker == null ? "?" : subscriptionTracker.stream;
-            LOGGER.debug(
-                "Received credit notification for subscription {} (stream '{}'): {}",
-                subscriptionId & 0xFF,
-                stream,
-                Utils.formatConstant(responseCode));
+            if (responseCode == Constants.RESPONSE_CODE_PRECONDITION_FAILED) {
+              // a unit mismatch between the subscription and the credit frame, necessarily a
+              // client bug; the credit was dropped, so the subscription is short of credit for
+              // good
+              LOGGER.warn(
+                  "Received credit notification for subscription {} (stream '{}'): {}",
+                  subscriptionId & 0xFF,
+                  stream,
+                  Utils.formatConstant(responseCode));
+            } else {
+              LOGGER.debug(
+                  "Received credit notification for subscription {} (stream '{}'): {}",
+                  subscriptionId & 0xFF,
+                  stream,
+                  Utils.formatConstant(responseCode));
+            }
           };
 
       MessageListener messageListener =
@@ -1821,6 +1849,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             subscriptionContext.offsetSpecification());
 
         checkNotClosed();
+<<<<<<< HEAD
         Client.Response subscribeResponse =
             Utils.callAndMaybeRetry(
                 () ->
@@ -1843,6 +1872,145 @@ final class ConsumersCoordinator implements AutoCloseable {
                 "Connection closed during subscribe on stream '" + tracker.stream + "'");
           }
           throw new StreamDoesNotExistException(tracker.stream);
+=======
+        if (tracker.flowStrategy.unit() == CreditUnit.BYTE && !this.client.byteCreditSupported()) {
+          // must not be an IllegalStateException: addToManager treats that as "this manager
+          // cannot take the subscription" and loops looking for another one, which would spin
+          // forever on a node that will never support Subscribe/Credit version 2
+          throw new StreamException(
+              "Byte-based consumer credit requires a broker supporting Subscribe version 2 "
+                  + "and Credit version 2");
+        }
+
+        byte subscriptionId =
+            (byte) pickSlot(this.subscriptionTrackers, this.consumerIndexSequence);
+
+        List<SubscriptionTracker> previousSubscriptions = this.subscriptionTrackers;
+
+        LOGGER.debug(
+            "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
+                + "subscription ID is {}, consumer {}",
+            tracker.stream,
+            offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification,
+            tracker.offsetTrackingReference,
+            tracker.subscriptionProperties,
+            subscriptionId,
+            tracker.consumer.id());
+        try {
+          // updating data structures before subscribing
+          // (to make sure they are up-to-date in case message would arrive super fast)
+          tracker.assign(subscriptionId, this);
+          streamToStreamSubscriptions
+              .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
+              .add(tracker);
+          this.setSubscriptionTrackers(update(previousSubscriptions, subscriptionId, tracker));
+
+          String offsetTrackingReference = tracker.offsetTrackingReference;
+          if (offsetTrackingReference != null) {
+            checkNotClosed();
+            QueryOffsetResponse queryOffsetResponse =
+                Utils.callAndMaybeRetry(
+                    () -> client.queryOffset(offsetTrackingReference, tracker.stream),
+                    RETRY_ON_TIMEOUT,
+                    "Offset query for consumer %s on stream '%s' (reference %s)",
+                    tracker.consumer.id(),
+                    tracker.stream,
+                    offsetTrackingReference);
+            if (queryOffsetResponse.isOk() && queryOffsetResponse.getOffset() != 0) {
+              if (offsetSpecification != null && isInitialSubscription) {
+                // subscription call (not recovery), so telling the user their offset specification
+                // is
+                // ignored
+                LOGGER.info(
+                    "Requested offset specification {} not used in favor of stored offset found for reference {}",
+                    offsetSpecification,
+                    offsetTrackingReference);
+              }
+              LOGGER.debug(
+                  "Using offset {} to start consuming from {} with consumer {} "
+                      + "(instead of {})",
+                  queryOffsetResponse.getOffset(),
+                  tracker.stream,
+                  offsetTrackingReference,
+                  offsetSpecification);
+              offsetSpecification = OffsetSpecification.offset(queryOffsetResponse.getOffset() + 1);
+            }
+          }
+
+          offsetSpecification =
+              offsetSpecification == null ? DEFAULT_OFFSET_SPECIFICATION : offsetSpecification;
+
+          // TODO consider using/emulating ConsumerUpdateListener, to have only one API, not 2
+          // even when the consumer is not a SAC.
+          SubscriptionContext subscriptionContext =
+              new DefaultSubscriptionContext(offsetSpecification, tracker.stream);
+          tracker.subscriptionListener.preSubscribe(subscriptionContext);
+          LOGGER.info(
+              "Computed offset specification {}, offset specification used after subscription listener {}",
+              offsetSpecification,
+              subscriptionContext.offsetSpecification());
+
+          checkNotClosed();
+          int initialCredits = tracker.flowStrategy.initialCredits();
+          // resetting on every subscription, including recovery, keeps the mirror correct
+          // after a reconnection or a stream move
+          tracker.creditAccountant.reset(initialCredits);
+          Client.Response subscribeResponse =
+              Utils.callAndMaybeRetry(
+                  () ->
+                      client.subscribe(
+                          subscriptionId,
+                          tracker.stream,
+                          subscriptionContext.offsetSpecification(),
+                          initialCredits,
+                          tracker.subscriptionProperties,
+                          tracker.flowStrategy.unit()),
+                  RETRY_ON_TIMEOUT,
+                  "Subscribe request for consumer %d on stream '%s'",
+                  tracker.consumer.id(),
+                  tracker.stream);
+          if (subscribeResponse == null) {
+            // The subscribe call returned no response: the connection was torn down
+            // between the request being written and the response being read, or the
+            // stream was deleted concurrently.
+            if (!client.isOpen()) {
+              throw new ConnectionStreamException(
+                  "Connection closed during subscribe on stream '" + tracker.stream + "'");
+            }
+            throw new StreamDoesNotExistException(tracker.stream);
+          }
+          if (!subscribeResponse.isOk()) {
+            String message =
+                "Subscription to stream "
+                    + tracker.stream
+                    + " failed with code "
+                    + formatConstant(subscribeResponse.getResponseCode());
+            LOGGER.debug(message);
+            if (subscribeResponse.getResponseCode()
+                == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS) {
+              if (LOGGER.isDebugEnabled()) {
+                SubscriptionTracker initialTracker = previousSubscriptions.get(subscriptionId);
+                LOGGER.debug("Subscription ID already exists");
+                LOGGER.debug(
+                    "Initial tracker with sub ID {}: consumer {}, stream {}, name {}",
+                    subscriptionId,
+                    initialTracker.consumer.id(),
+                    initialTracker.stream,
+                    initialTracker.offsetTrackingReference);
+              }
+            }
+            throw convertCodeToException(
+                subscribeResponse.getResponseCode(), tracker.stream, () -> message);
+          }
+        } catch (RuntimeException e) {
+          tracker.assign((byte) -1, null);
+          this.setSubscriptionTrackers(previousSubscriptions);
+          streamToStreamSubscriptions
+              .computeIfAbsent(tracker.stream, s -> ConcurrentHashMap.newKeySet())
+              .remove(tracker);
+          maybeCleanStreamToStreamSubscriptions(tracker.stream);
+          throw e;
+>>>>>>> 48d50d885e (Implement ByteCreditAccountant)
         }
         if (!subscribeResponse.isOk()) {
           String message =
@@ -2118,20 +2286,37 @@ final class ConsumersCoordinator implements AutoCloseable {
     private final long messageCount;
     private final long chunkId;
     private final long chunkByteCount;
+    private final CreditAccountant creditAccountant;
+    // guards against releasing this chunk's credit more than once, no matter how many times
+    // the strategy calls credits(...) for it
+    private final AtomicBoolean released = new AtomicBoolean(false);
 
     private DefaultConsumerFlowStrategyContext(
-        byte subscriptionId, Client client, long messageCount, long chunkId, long chunkByteCount) {
+        byte subscriptionId,
+        Client client,
+        long messageCount,
+        long chunkId,
+        long chunkByteCount,
+        CreditAccountant creditAccountant) {
       this.subscriptionId = subscriptionId;
       this.client = client;
       this.messageCount = messageCount;
       this.chunkId = chunkId;
       this.chunkByteCount = chunkByteCount;
+      this.creditAccountant = creditAccountant;
     }
 
     @Override
     public void credits(int credits) {
+      if (!this.released.compareAndSet(false, true)) {
+        LOGGER.debug(
+            "Credit already released for subscription {}, chunk {}, ignoring extra call",
+            subscriptionId,
+            chunkId);
+        return;
+      }
       try {
-        client.credit(subscriptionId, credits);
+        this.creditAccountant.release(client, subscriptionId, credits, chunkByteCount);
       } catch (Exception e) {
         LOGGER.info(
             "Error while providing {} credit(s) to subscription {}: {}",
@@ -2154,6 +2339,144 @@ final class ConsumersCoordinator implements AutoCloseable {
     @Override
     public long chunkByteCount() {
       return this.chunkByteCount;
+    }
+  }
+
+  /**
+   * Grants credit for a subscription.
+   *
+   * <p>{@link #chunkArrived(Client, byte, long)} is called once per chunk, before the chunk's
+   * {@link ConsumerFlowStrategy} context is created. {@link #release(Client, byte, int, long)} is
+   * called at most once per chunk, from that chunk's flow strategy context.
+   */
+  interface CreditAccountant {
+
+    void reset(int initialCredits);
+
+    void chunkArrived(Client client, byte subscriptionId, long chunkByteCount);
+
+    void release(Client client, byte subscriptionId, int chunks, long chunkByteCount);
+  }
+
+  /** Chunk-based credit: a pass-through to {@link Client#credit(byte, int)}, today's behavior. */
+  static final class ChunkCreditAccountant implements CreditAccountant {
+
+    static final CreditAccountant INSTANCE = new ChunkCreditAccountant();
+
+    @Override
+    public void reset(int initialCredits) {}
+
+    @Override
+    public void chunkArrived(Client client, byte subscriptionId, long chunkByteCount) {}
+
+    @Override
+    public void release(Client client, byte subscriptionId, int chunks, long chunkByteCount) {
+      client.credit(subscriptionId, chunks);
+    }
+  }
+
+  /**
+   * Byte-based credit: keeps an exact mirror of the broker-side credit for a subscription, and
+   * batches grants instead of sending one {@code Credit} frame per released chunk.
+   *
+   * <p>{@code credit = window + granted - received}, so it only ever decreases in {@link
+   * #chunkArrived(Client, byte, long)} and only ever increases when a grant is flushed. A grant is
+   * flushed once {@code credit} drops to {@code flushThreshold}, three quarters of the window,
+   * deliberately above the broker's {@code send_limit} (half the window, see {@code
+   * rabbit_stream_reader:send_chunks/6}): the client provably owes nothing by the time the broker
+   * can become blocked, so no timer or further delivery is needed to get the grant out.
+   */
+  static final class ByteCreditAccountant implements CreditAccountant {
+
+    // chunks arrive on the connection dispatching thread, processed() can be called from any
+    // application thread
+    private final Lock lock = new ReentrantLock();
+    private long window;
+    private long flushThreshold;
+    private long pending;
+    private long credit;
+
+    @Override
+    public void reset(int initialCredits) {
+      lock(
+          this.lock,
+          () -> {
+            this.window = initialCredits;
+            this.flushThreshold = this.window - this.window / 4;
+            this.credit = this.window;
+            this.pending = 0;
+          });
+    }
+
+    @Override
+    public void chunkArrived(Client client, byte subscriptionId, long chunkByteCount) {
+      long toGrant;
+      this.lock.lock();
+      try {
+        this.credit -= chunkByteCount;
+        toGrant = maybeFlushLocked();
+      } finally {
+        this.lock.unlock();
+      }
+      grant(client, subscriptionId, toGrant);
+    }
+
+    @Override
+    public void release(Client client, byte subscriptionId, int chunks, long chunkByteCount) {
+      if (chunks != 1) {
+        LOGGER.debug(
+            "Byte-based credit release called with {} chunk(s) instead of 1, "
+                + "ignoring the chunk count",
+            chunks);
+      }
+      long toGrant;
+      this.lock.lock();
+      try {
+        this.pending += chunkByteCount;
+        toGrant = maybeFlushLocked();
+      } finally {
+        this.lock.unlock();
+      }
+      grant(client, subscriptionId, toGrant);
+    }
+
+    // must be called with the lock held
+    private long maybeFlushLocked() {
+      if (this.pending > 0 && this.credit <= this.flushThreshold) {
+        long toGrant = this.pending;
+        this.credit += this.pending;
+        this.pending = 0;
+        return toGrant;
+      }
+      return 0;
+    }
+
+    // the Credit frame is written outside the lock, concurrent grants are additive so their
+    // order does not matter
+    private static void grant(Client client, byte subscriptionId, long credit) {
+      if (credit > 0) {
+        client.credit(subscriptionId, (int) credit, CreditUnit.BYTE);
+      }
+    }
+
+    // for tests
+    long credit() {
+      this.lock.lock();
+      try {
+        return this.credit;
+      } finally {
+        this.lock.unlock();
+      }
+    }
+
+    // for tests
+    long pending() {
+      this.lock.lock();
+      try {
+        return this.pending;
+      } finally {
+        this.lock.unlock();
+      }
     }
   }
 
