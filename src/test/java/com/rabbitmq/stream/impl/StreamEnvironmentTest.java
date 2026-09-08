@@ -17,12 +17,14 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.Cli.listLocatorConnections;
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_3_0;
+import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_4_4_0;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.localhost;
 import static com.rabbitmq.stream.impl.TestUtils.localhostTls;
 import static com.rabbitmq.stream.impl.TestUtils.streamName;
+import static com.rabbitmq.stream.impl.TestUtils.sync;
 import static com.rabbitmq.stream.impl.TestUtils.threads;
 import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -855,6 +857,54 @@ public class StreamEnvironmentTest {
       assertThat(client.queryOffset(ref, stream).getOffset()).isEqualTo(43);
       env.storeOffset(ref, stream, 0);
       assertThat(client.queryOffset(ref, stream).getOffset()).isEqualTo(0);
+    }
+  }
+
+  @Test
+  @BrokerVersionAtLeast(RABBITMQ_4_4_0)
+  void streamShouldStartAtInitialOffsetIfParameterSet(TestInfo info) {
+    String s = streamName(info);
+    Environment env = environmentBuilder.build();
+    try {
+      // Clears the upper two bits via bitwise AND
+      // to force the value into the safe 62-bit range [0, MAX_STREAM_INITIAL_OFFSET].
+      long initialOffset = new Random().nextLong() & Client.MAX_STREAM_INITIAL_OFFSET;
+      env.streamCreator().name(s).initialOffset(initialOffset).create();
+      assertThat(env.streamExists(s)).isTrue();
+      TestUtils.Sync publishSync = sync();
+      Producer producer = env.producerBuilder().stream(s).build();
+      producer.send(producer.messageBuilder().build(), ctx -> publishSync.down());
+      assertThat(publishSync).completes();
+      producer.close();
+
+      TestUtils.Sync consumerSync = sync();
+      AtomicLong firstOffset = new AtomicLong();
+      Consumer consumer =
+          env.consumerBuilder().stream(s)
+              .offset(OffsetSpecification.first())
+              .messageHandler(
+                  (ctx, msg) -> {
+                    firstOffset.set(ctx.offset());
+                    consumerSync.down();
+                  })
+              .build();
+      assertThat(consumerSync).completes();
+      assertThat(firstOffset).hasValue(initialOffset);
+      consumer.close();
+    } finally {
+      env.deleteStream(s);
+      env.close();
+    }
+  }
+
+  @Test
+  @BrokerVersionAtLeast(RABBITMQ_4_4_0)
+  void streamCreatorShouldThrowForIncorrectInitialOffset(TestInfo info) {
+    String s = streamName(info);
+    try (Environment env = environmentBuilder.build()) {
+      long initialOffset = Client.MAX_STREAM_INITIAL_OFFSET + 1;
+      assertThatThrownBy(() -> env.streamCreator().name(s).initialOffset(initialOffset).create())
+          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 

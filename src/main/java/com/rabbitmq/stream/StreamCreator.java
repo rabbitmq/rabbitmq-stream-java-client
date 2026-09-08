@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -101,6 +101,16 @@ public interface StreamCreator {
    *     Factor</a>
    */
   StreamCreator initialMemberCount(int initialMemberCount);
+
+  /**
+   * Set the initial offset for the stream.
+   *
+   * <p>Requires RabbitMQ 4.4.0 or more.
+   *
+   * @param initialOffset initial offset of the stream
+   * @return this creator instance
+   */
+  StreamCreator initialOffset(long initialOffset);
 
   /**
    * Set an argument for the stream creation.

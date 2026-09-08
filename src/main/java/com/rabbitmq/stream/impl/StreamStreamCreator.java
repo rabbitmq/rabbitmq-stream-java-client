@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -89,6 +89,12 @@ class StreamStreamCreator implements StreamCreator {
   @Override
   public StreamCreator initialMemberCount(int initialMemberCount) {
     streamParametersBuilder.initialMemberCount(initialMemberCount);
+    return this;
+  }
+
+  @Override
+  public StreamCreator initialOffset(long initialOffset) {
+    streamParametersBuilder.initialOffset(initialOffset);
     return this;
   }
 
