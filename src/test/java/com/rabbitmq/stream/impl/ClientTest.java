@@ -79,7 +79,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import java.util.function.LongConsumer;
+import java.util.function.IntConsumer;
 import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -535,7 +535,9 @@ public class ClientTest {
   @ValueSource(booleans = {true, false})
   void publishAndConsume(boolean directBuffer) throws Exception {
     ByteBufAllocator allocator = new PooledByteBufAllocator(directBuffer);
-    int publishCount = 1_000_000;
+    int batchSize = 20;
+    int batchCount = 50_000;
+    int publishCount = batchSize * batchCount;
 
     CountDownLatch consumedLatch = new CountDownLatch(publishCount);
     Client.ChunkListener chunkListener =
@@ -559,51 +561,35 @@ public class ClientTest {
     client.subscribe(b(1), stream, OffsetSpecification.first(), credit);
 
     CountDownLatch confirmedLatch = new CountDownLatch(publishCount);
-    Set<Long> sent = ConcurrentHashMap.newKeySet(publishCount);
     Client publisher =
         cf.get(
             new Client.ClientParameters()
                 .byteBufAllocator(allocator)
                 .publishConfirmListener(
-                    (publisherId, correlationId) -> {
-                      sent.remove(correlationId);
-                      confirmedLatch.countDown();
-                    }));
+                    (publisherId, correlationId) -> confirmedLatch.countDown()));
     publisher.declarePublisher(b(1), null, stream);
-    LongConsumer publish =
-        messageId -> {
-          sent.add(messageId);
-          publisher.publish(
-              b(1),
-              Collections.singletonList(
-                  publisher
-                      .messageBuilder()
-                      .addData(("message" + messageId).getBytes(StandardCharsets.UTF_8))
-                      .build()),
-              msg -> messageId);
+    IntConsumer publish =
+        batchId -> {
+          List<Message> messages =
+              IntStream.range(batchId, batchId + batchSize)
+                  .mapToObj(
+                      messageId ->
+                          publisher
+                              .messageBuilder()
+                              .addData(("message" + messageId).getBytes(StandardCharsets.UTF_8))
+                              .build())
+                  .collect(Collectors.toList());
+          publisher.publish(b(1), messages);
         };
     new Thread(
             () -> {
-              int messageId = 0;
-              while (messageId < publishCount) {
-                messageId++;
-                publish.accept(messageId);
+              int batchId = 0;
+              while (batchId < batchCount) {
+                publish.accept(batchId);
+                batchId++;
               }
             })
         .start();
-
-    int attempt = 0;
-    while (attempt < 3) {
-      boolean allConfirmed = confirmedLatch.await(15, SECONDS);
-      if (allConfirmed) {
-        break;
-      } else {
-        attempt++;
-        for (Long messageIdNotConfirmed : sent) {
-          publish.accept(messageIdNotConfirmed);
-        }
-      }
-    }
     assertThat(consumedLatch.await(15, SECONDS)).isTrue();
     client.unsubscribe(b(1));
   }
