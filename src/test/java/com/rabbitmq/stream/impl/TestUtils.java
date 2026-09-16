@@ -594,6 +594,14 @@ public final class TestUtils {
     BrokerVersion value();
   }
 
+  @Target({ElementType.TYPE, ElementType.METHOD})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Documented
+  @ExtendWith(ErlangMajorVersionAtLeastCondition.class)
+  public @interface ErlangVersionAtLeast {
+    int value();
+  }
+
   interface TaskWithException {
 
     void run(Object context) throws Exception;
@@ -987,6 +995,65 @@ public final class TestUtils {
         return ConditionEvaluationResult.enabled("Multi-node cluster");
       } else {
         return ConditionEvaluationResult.disabled("Not a multi-node cluster");
+      }
+    }
+  }
+
+  private static class ErlangMajorVersionAtLeastCondition implements ExecutionCondition {
+
+    private final Function<ExtensionContext, Integer> versionProvider;
+
+    private ErlangMajorVersionAtLeastCondition() {
+      this.versionProvider =
+          context -> {
+            ErlangVersionAtLeast annotation =
+                context.getElement().get().getAnnotation(ErlangVersionAtLeast.class);
+            return annotation == null ? 0 : annotation.value();
+          };
+    }
+
+    @Override
+    public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
+      if (!context.getTestMethod().isPresent()) {
+        return ConditionEvaluationResult.enabled("Apply only to methods");
+      }
+      int expectedVersion = versionProvider.apply(context);
+      Integer erlangVersion =
+          context
+              .getRoot()
+              .getStore(Namespace.GLOBAL)
+              .getOrComputeIfAbsent(
+                  "erlangMajorVersion",
+                  k -> {
+                    EventLoopGroup eventLoopGroup =
+                        StreamTestInfrastructureExtension.eventLoopGroup(context);
+                    if (eventLoopGroup == null) {
+                      throw new IllegalStateException(
+                          "The event loop group must be in the test context to use "
+                              + ErlangMajorVersionAtLeastCondition.class.getSimpleName()
+                              + ", use the "
+                              + StreamTestInfrastructureExtension.class.getSimpleName()
+                              + " extension in the test");
+                    }
+                    try (Client client =
+                        new Client(new ClientParameters().eventLoopGroup(eventLoopGroup))) {
+                      return erlangMajorVersion(client.serverProperty("platform"));
+                    }
+                  },
+                  Integer.class);
+
+      if (erlangVersion != null && erlangVersion >= expectedVersion) {
+        return ConditionEvaluationResult.enabled(
+            "Erlang version requirement met, expected "
+                + expectedVersion
+                + ", actual "
+                + erlangVersion);
+      } else {
+        return ConditionEvaluationResult.disabled(
+            "Erlang version requirement not met, expected "
+                + expectedVersion
+                + ", actual "
+                + erlangVersion);
       }
     }
   }

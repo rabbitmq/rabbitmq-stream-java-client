@@ -19,9 +19,11 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        rabbitmq-image:
-          - pivotalrabbitmq/rabbitmq:v4.3.x-otp27
-          - pivotalrabbitmq/rabbitmq:main-otp28
+        include:
+          - rabbitmq-image: pivotalrabbitmq/rabbitmq:v4.3.x-otp27
+            erlang-version: 27
+          - rabbitmq-image: pivotalrabbitmq/rabbitmq:main-otp28
+            erlang-version: 28
     name:  Test against ${{ matrix.rabbitmq-image }}
     steps:
       - uses: actions/checkout@v7
@@ -40,12 +42,10 @@ jobs:
         run: ci/start-broker.sh
         env:
           RABBITMQ_IMAGE: ${{ matrix.rabbitmq-image }}
+          ERLANG_VERSION: ${{ matrix.erlang-version }}
       - name: Test
         run: |
-          ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq \
-          -Dca.certificate=./tls-gen/basic/result/ca_certificate.pem \
-          -Dclient.certificate=./tls-gen/basic/result/client_$(hostname)_certificate.pem \
-          -Dclient.key=./tls-gen/basic/result/client_$(hostname)_key.pem
+          ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq
       - name: Stop broker
         run: docker stop rabbitmq && docker rm rabbitmq
       - name: Start cluster

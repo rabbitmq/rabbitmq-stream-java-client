@@ -18,7 +18,9 @@ import static com.rabbitmq.stream.impl.TestUtils.BrokerVersion.RABBITMQ_3_13_0;
 import static com.rabbitmq.stream.impl.TestUtils.ExceptionConditions.responseCode;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
-import static com.rabbitmq.stream.impl.Utils.TRUST_EVERYTHING_TRUST_MANAGER;
+import static com.rabbitmq.stream.impl.TlsTestUtils.caCertificate;
+import static com.rabbitmq.stream.impl.TlsTestUtils.clientCertificate;
+import static com.rabbitmq.stream.impl.TlsTestUtils.clientKey;
 import static java.lang.String.format;
 import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,29 +39,16 @@ import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfAuthMechanismSslNotEnabled;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfTlsNotEnabled;
 import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
-import io.netty.handler.ssl.OpenSslContextOption;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
-import java.io.File;
-import java.io.FileInputStream;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.security.KeyFactory;
-import java.security.PrivateKey;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.Base64;
 import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.IntStream;
 import javax.net.ssl.SNIHostName;
-import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -76,75 +65,12 @@ public class TlsTest {
   @Parameter SslProvider sslProvider;
 
   String stream;
-  Integer erlangMajorVersion;
 
   TestUtils.ClientFactory cf;
   int credit = 10;
 
   SslContext alwaysTrustSslContext() {
-    try {
-      return builder()
-          .trustManager(TRUST_EVERYTHING_TRUST_MANAGER)
-          .endpointIdentificationAlgorithm(null)
-          .build();
-    } catch (SSLException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  static X509Certificate caCertificate() throws Exception {
-    return loadCertificate(caCertificateFile());
-  }
-
-  static String caCertificateFile() {
-    return tlsArtefactPath(
-        System.getProperty("ca.certificate", "/tmp/tls-gen/basic/result/ca_certificate.pem"));
-  }
-
-  static X509Certificate clientCertificate() throws Exception {
-    return loadCertificate(clientCertificateFile());
-  }
-
-  static String clientCertificateFile() {
-    return tlsArtefactPath(
-        System.getProperty(
-            "client.certificate",
-            "/tmp/tls-gen/basic/result/client_" + hostname() + "_certificate.pem"));
-  }
-
-  static PrivateKey clientKey() throws Exception {
-    return loadPrivateKey(clientKeyFile());
-  }
-
-  static PrivateKey loadPrivateKey(String filename) throws Exception {
-    File file = new File(filename);
-    String key = new String(Files.readAllBytes(file.toPath()), Charset.defaultCharset());
-
-    String privateKeyPEM =
-        key.replace("-----BEGIN PRIVATE KEY-----", "")
-            .replaceAll(System.lineSeparator(), "")
-            .replace("-----END PRIVATE KEY-----", "");
-
-    byte[] decoded = Base64.getDecoder().decode(privateKeyPEM);
-
-    KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-    PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(decoded);
-    PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
-    return privateKey;
-  }
-
-  static String clientKeyFile() {
-    return tlsArtefactPath(
-        System.getProperty(
-            "client.key", "/tmp/tls-gen/basic/result/client_" + hostname() + "_key.pem"));
-  }
-
-  static X509Certificate loadCertificate(String file) throws Exception {
-    try (FileInputStream inputStream = new FileInputStream(file)) {
-      CertificateFactory fact = CertificateFactory.getInstance("X.509");
-      X509Certificate certificate = (X509Certificate) fact.generateCertificate(inputStream);
-      return certificate;
-    }
+    return TlsTestUtils.alwaysTrustSslContext(builder());
   }
 
   @Test
@@ -249,19 +175,6 @@ public class TlsTest {
             .keyManager(clientKey(), clientCertificate())
             .build();
 
-    cf.get(new ClientParameters().sslContext(context));
-  }
-
-  @Test
-  void groups() throws Exception {
-    SslContextBuilder builder =
-        builder().trustManager(caCertificate()).keyManager(clientKey(), clientCertificate());
-    if (this.erlangMajorVersion != null
-        && this.erlangMajorVersion.compareTo(28) >= 0
-        && SslProvider.OPENSSL == this.sslProvider) {
-      builder.option(OpenSslContextOption.GROUPS, new String[] {"X25519MLKEM768"});
-    }
-    SslContext context = builder.build();
     cf.get(new ClientParameters().sslContext(context));
   }
 
@@ -379,18 +292,6 @@ public class TlsTest {
   void clientShouldContainServerAdvertisedTlsPort() {
     Client client = cf.get(new ClientParameters().sslContext(alwaysTrustSslContext()));
     assertThat(client.serverAdvertisedPort()).isEqualTo(Client.DEFAULT_TLS_PORT);
-  }
-
-  private static String hostname() {
-    try {
-      return InetAddress.getLocalHost().getHostName();
-    } catch (UnknownHostException e) {
-      return Cli.hostname();
-    }
-  }
-
-  private static String tlsArtefactPath(String in) {
-    return in.replace("$(hostname)", hostname()).replace("$(hostname -s)", hostname());
   }
 
   private SslContextBuilder builder() {
