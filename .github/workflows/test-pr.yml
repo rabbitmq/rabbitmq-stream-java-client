@@ -32,6 +32,7 @@ jobs:
         run: ci/start-broker.sh
         env:
           RABBITMQ_IMAGE: pivotalrabbitmq/rabbitmq:pr-17185-otp28
+          ERLANG_VERSION: 28
       - name: Test
         run: |
           ./mvnw test -Drabbitmqctl.bin=DOCKER:rabbitmq
