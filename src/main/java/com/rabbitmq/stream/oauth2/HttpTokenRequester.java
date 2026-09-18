@@ -16,28 +16,31 @@ package com.rabbitmq.stream.oauth2;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Token requester using HTTP(S) to request an OAuth2 Access token.
  *
- * <p>Uses {@link HttpURLConnection} for the HTTP operations.
+ * <p>Uses {@link java.net.http.HttpClient} for the HTTP operations.
  */
 public final class HttpTokenRequester implements TokenRequester {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(HttpTokenRequester.class);
 
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
@@ -49,10 +52,12 @@ public final class HttpTokenRequester implements TokenRequester {
 
   private final Map<String, String> parameters;
 
-  private final Consumer<HttpURLConnection> connectionConfigurator;
-  private final Consumer<HttpURLConnection> requestConfigurator;
+  private final HttpClient client;
+  private final Consumer<HttpRequest.Builder> requestConfigurator;
 
   private final TokenParser parser;
+
+  private final AtomicBoolean closed = new AtomicBoolean(false);
 
   public HttpTokenRequester(
       String tokenEndpointUri,
@@ -60,32 +65,53 @@ public final class HttpTokenRequester implements TokenRequester {
       String clientSecret,
       String grantType,
       Map<String, String> parameters,
-      Consumer<HttpURLConnection> connectionConfigurator,
-      Consumer<HttpURLConnection> requestConfigurator,
+      Consumer<HttpClient.Builder> clientConfigurator,
+      Consumer<HttpRequest.Builder> requestConfigurator,
       TokenParser parser) {
     try {
       this.tokenEndpointUri = new URI(tokenEndpointUri);
     } catch (URISyntaxException e) {
       throw new IllegalArgumentException(
-          "Invalid URI syntax (" + e.getReason() + " at index " + e.getIndex() + ")"
-      );
+          "Invalid URI syntax (" + e.getReason() + " at index " + e.getIndex() + ")");
+    }
+    if (!this.tokenEndpointUri.isAbsolute()
+        || !("http".equalsIgnoreCase(this.tokenEndpointUri.getScheme())
+            || "https".equalsIgnoreCase(this.tokenEndpointUri.getScheme()))) {
+      throw new IllegalArgumentException(
+          "Token endpoint URI must be absolute and use the http or https scheme: "
+              + tokenEndpointUri);
     }
     this.clientId = clientId;
     this.clientSecret = clientSecret;
     this.grantType = grantType;
     this.parameters = Map.copyOf(parameters);
     this.parser = parser;
-    this.connectionConfigurator = connectionConfigurator;
     if (requestConfigurator == null) {
       this.requestConfigurator =
-          connection -> {
-            connection.setReadTimeout((int) REQUEST_TIMEOUT.toMillis());
-            connection.setRequestProperty(
-                "Authorization", authorization(this.clientId, this.clientSecret));
+          b -> {
+            b.timeout(REQUEST_TIMEOUT);
+            b.header("Authorization", authorization(this.clientId, this.clientSecret));
           };
     } else {
       this.requestConfigurator = requestConfigurator;
     }
+
+    // HTTP/2 negotiation is transparent over TLS (ALPN), but on cleartext it adds h2c upgrade
+    // headers to the request, so stay on HTTP/1.1 there
+    HttpClient.Version version =
+        "https".equalsIgnoreCase(this.tokenEndpointUri.getScheme())
+            ? HttpClient.Version.HTTP_2
+            : HttpClient.Version.HTTP_1_1;
+    HttpClient.Builder builder =
+        HttpClient.newBuilder()
+            .version(version)
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .proxy(ProxySelector.getDefault())
+            .connectTimeout(CONNECT_TIMEOUT);
+    if (clientConfigurator != null) {
+      clientConfigurator.accept(builder);
+    }
+    this.client = builder.build();
   }
 
   @Override
@@ -97,37 +123,40 @@ public final class HttpTokenRequester implements TokenRequester {
     }
     byte[] postData = urlParameters.toString().getBytes(UTF_8);
 
+    HttpRequest.Builder builder =
+        HttpRequest.newBuilder(this.tokenEndpointUri)
+            .POST(HttpRequest.BodyPublishers.ofByteArray(postData))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("Charset", UTF_8.name())
+            .header("Accept", "application/json");
+    this.requestConfigurator.accept(builder);
+
     try {
-      URL url = this.tokenEndpointUri.toURL();
-      HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-      connection.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
-      connection.setRequestMethod("POST");
-      connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-      connection.setRequestProperty("Charset", UTF_8.name());
-      connection.setRequestProperty("Accept", "application/json");
-      connection.setDoOutput(true);
-
-      if (this.connectionConfigurator != null) {
-        this.connectionConfigurator.accept(connection);
-      }
-      this.requestConfigurator.accept(connection);
-
-      try (OutputStream os = connection.getOutputStream()) {
-        os.write(postData);
-      }
-
-      int responseCode = connection.getResponseCode();
-      checkStatusCode(responseCode);
-      checkContentType(connection.getContentType());
-
-      try (InputStream is = connection.getInputStream();
-          BufferedReader reader = new BufferedReader(new InputStreamReader(is, UTF_8))) {
-        String responseBody = reader.lines().collect(Collectors.joining("\n"));
-        return this.parser.parse(responseBody);
-      }
-
+      HttpResponse<String> response =
+          this.client.send(builder.build(), BodyHandlers.ofString(UTF_8));
+      checkStatusCode(response.statusCode());
+      checkContentType(response.headers().firstValue("content-type").orElse(null));
+      return this.parser.parse(response.body());
     } catch (IOException e) {
       throw new OAuth2Exception("Error while retrieving OAuth 2 token", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new OAuth2Exception("Interrupted while retrieving OAuth 2 token", e);
+    }
+  }
+
+  @Override
+  public void close() {
+    if (this.closed.compareAndSet(false, true)) {
+      // HttpClient implements AutoCloseable as of Java 21
+      // it relies on GC for clean-up before
+      if (this.client instanceof AutoCloseable) {
+        try {
+          ((AutoCloseable) this.client).close();
+        } catch (Exception e) {
+          LOGGER.debug("Error while closing HTTP client: {}", e.getMessage());
+        }
+      }
     }
   }
 

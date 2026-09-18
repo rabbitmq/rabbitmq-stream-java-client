@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -23,6 +23,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.oauth2.CredentialsManager.Registration;
@@ -148,6 +149,31 @@ public class TokenCredentialsManagerTest {
     Thread.sleep(tokenExpiry.multipliedBy(2).toMillis());
     // no new refresh
     assertThat(totalRefreshCount).hasValue(finalRefreshCount);
+  }
+
+  @Test
+  void closingManagerStopsRefreshAndClosesRequester() throws Exception {
+    Duration tokenExpiry = ofMillis(50);
+    AtomicInteger requestCount = new AtomicInteger(0);
+    when(this.requester.request())
+        .thenAnswer(
+            ignored -> {
+              requestCount.incrementAndGet();
+              return token("ok", Instant.now().plus(tokenExpiry));
+            });
+    TokenCredentialsManager credentials =
+        new TokenCredentialsManager(
+            this.requester, this.scheduledExecutorService, DEFAULT_REFRESH_DELAY_STRATEGY);
+    Registration registration = credentials.register("", (u, p) -> {});
+    registration.connect(connectionCallback(() -> {}));
+    waitAtMost(ofSeconds(5), ofMillis(10), () -> requestCount.get() >= 2);
+
+    credentials.close();
+    int countAfterClose = requestCount.get();
+    Thread.sleep(tokenExpiry.multipliedBy(2).toMillis());
+
+    assertThat(requestCount).hasValue(countAfterClose);
+    verify(this.requester).close();
   }
 
   @Test

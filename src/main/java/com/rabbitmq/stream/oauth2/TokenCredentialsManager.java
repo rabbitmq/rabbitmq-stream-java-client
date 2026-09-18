@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -54,6 +54,7 @@ public final class TokenCredentialsManager implements CredentialsManager {
   private final AtomicBoolean schedulingRefresh = new AtomicBoolean(false);
   private final Function<Instant, Duration> refreshDelayStrategy;
   private volatile ScheduledFuture<?> refreshTask;
+  private final AtomicBoolean closed = new AtomicBoolean(false);
 
   public TokenCredentialsManager(
       TokenRequester requester,
@@ -206,6 +207,21 @@ public final class TokenCredentialsManager implements CredentialsManager {
 
   private static String format(Instant instant) {
     return DateTimeFormatter.ISO_INSTANT.format(instant);
+  }
+
+  @Override
+  public void close() {
+    if (this.closed.compareAndSet(false, true)) {
+      lock();
+      try {
+        if (this.refreshTask != null) {
+          this.refreshTask.cancel(true);
+        }
+      } finally {
+        unlock();
+      }
+      this.requester.close();
+    }
   }
 
   private final class RegistrationImpl implements Registration {

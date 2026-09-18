@@ -127,6 +127,7 @@ final class StreamEnvironment implements Environment {
   private final ExecutorServiceFactory executorServiceFactory;
   private final ObservationCollector<?> observationCollector;
   private final Duration rpcTimeout;
+  private final CredentialsManager credentialsManager;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -263,11 +264,11 @@ final class StreamEnvironment implements Environment {
       }
       this.scheduledExecutorService = executorService;
 
-      CredentialsManager credentialsManager =
-          CredentialsManagerFactory.get(oauth, this.scheduledExecutorService);
+      this.credentialsManager = CredentialsManagerFactory.get(oauth, this.scheduledExecutorService);
+      shutdownService.wrap(this.credentialsManager::close);
 
       clientParametersPrototype =
-          clientParametersPrototype.duplicate().credentialsManager(credentialsManager);
+          clientParametersPrototype.duplicate().credentialsManager(this.credentialsManager);
 
       if (clientParametersPrototype.eventLoopGroup == null) {
         this.eventLoopGroup = Utils.eventLoopGroup();
@@ -735,6 +736,12 @@ final class StreamEnvironment implements Environment {
         } catch (Exception e) {
           LOGGER.warn("Error while closing locator client", e);
         }
+      }
+
+      try {
+        this.credentialsManager.close();
+      } catch (Exception e) {
+        LOGGER.warn("Error while closing credentials manager", e);
       }
 
       try {

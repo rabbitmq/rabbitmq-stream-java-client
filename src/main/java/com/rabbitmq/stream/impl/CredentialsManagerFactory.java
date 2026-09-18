@@ -20,10 +20,9 @@ import com.rabbitmq.stream.oauth2.GsonTokenParser;
 import com.rabbitmq.stream.oauth2.HttpTokenRequester;
 import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
 import com.rabbitmq.stream.oauth2.TokenRequester;
-import java.net.HttpURLConnection;
+import java.net.http.HttpClient;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 
 final class CredentialsManagerFactory {
@@ -39,23 +38,28 @@ final class CredentialsManagerFactory {
         public void close() {}
       };
 
+  // shared, stateless instance: closing it is a no-op, which is correct as long as it stays
+  // stateless -- if it ever gains state, it must become per-environment
   private static final CredentialsManager CREDENTIALS_MANAGER =
-      (name, updateCallback) -> CALLBACK_DELEGATING_REGISTRATION;
+      new CredentialsManager() {
+        @Override
+        public Registration register(String name, AuthenticationCallback updateCallback) {
+          return CALLBACK_DELEGATING_REGISTRATION;
+        }
+
+        @Override
+        public void close() {}
+      };
 
   static CredentialsManager get(
       DefaultOAuth2Configuration oauth2, ScheduledExecutorService scheduledExecutorService) {
     if (oauth2 != null && oauth2.enabled()) {
-      Consumer<HttpURLConnection> connectionConfigurator;
+      Consumer<HttpClient.Builder> clientConfigurator;
       if (oauth2.tlsEnabled()) {
         SSLContext sslContext = oauth2.sslContext();
-        connectionConfigurator =
-            c -> {
-              if (c instanceof HttpsURLConnection) {
-                ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
-              }
-            };
+        clientConfigurator = b -> b.sslContext(sslContext);
       } else {
-        connectionConfigurator = c -> {};
+        clientConfigurator = b -> {};
       }
       TokenRequester tokenRequester =
           new HttpTokenRequester(
@@ -64,7 +68,7 @@ final class CredentialsManagerFactory {
               oauth2.clientSecret(),
               oauth2.grantType(),
               oauth2.parameters(),
-              connectionConfigurator,
+              clientConfigurator,
               null,
               new GsonTokenParser());
       return new TokenCredentialsManager(

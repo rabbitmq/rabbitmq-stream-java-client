@@ -40,7 +40,6 @@ import java.util.Collections;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Function;
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -161,9 +160,9 @@ public class OAuth2ClientTest {
             "rabbitmq",
             "client_credentials",
             Collections.emptyMap(),
-            c -> {
-              if (sslContext != null && c instanceof HttpsURLConnection) {
-                ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
+            b -> {
+              if (sslContext != null) {
+                b.sslContext(sslContext);
               }
             },
             null,

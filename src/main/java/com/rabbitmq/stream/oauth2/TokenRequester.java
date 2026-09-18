@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -15,7 +15,7 @@
 package com.rabbitmq.stream.oauth2;
 
 /** Contract to request a token (usually on HTTP). */
-public interface TokenRequester {
+public interface TokenRequester extends AutoCloseable {
 
   /**
    * Request a token.
@@ -23,4 +23,7 @@ public interface TokenRequester {
    * @return the token
    */
   Token request();
+
+  @Override
+  void close();
 }

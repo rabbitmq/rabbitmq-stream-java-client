@@ -23,7 +23,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
+import java.net.http.HttpClient;
 import java.security.KeyStore;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,11 +33,11 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -57,7 +57,7 @@ public class HttpTokenRequesterTest {
   void requestToken(boolean tls) throws Exception {
     String protocol;
     KeyStore keyStore;
-    Consumer<HttpURLConnection> connectionConfigurator;
+    Consumer<HttpClient.Builder> clientConfigurator;
     if (tls) {
       protocol = "https";
       keyStore = OAuth2TestUtils.generateKeyPair();
@@ -65,16 +65,11 @@ public class HttpTokenRequesterTest {
       TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
       tmf.init(keyStore);
       sslContext.init(null, tmf.getTrustManagers(), null);
-      connectionConfigurator =
-          c -> {
-            if (c instanceof HttpsURLConnection) {
-              ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
-            }
-          };
+      clientConfigurator = b -> b.sslContext(sslContext);
     } else {
       protocol = "http";
       keyStore = null;
-      connectionConfigurator = b -> {};
+      clientConfigurator = b -> {};
     }
     String uri = String.format("%s://localhost:%d%s", protocol, port, contextPath);
     AtomicReference<String> httpMethod = new AtomicReference<>();
@@ -115,14 +110,14 @@ public class HttpTokenRequesterTest {
               responseBody.close();
             });
 
-    TokenRequester requester =
+    HttpTokenRequester requester =
         new HttpTokenRequester(
             uri,
             "rabbit_client",
             "rabbit_secret",
             "password",
             Map.of("username", "rabbit_username", "password", "rabbit_password"),
-            connectionConfigurator,
+            clientConfigurator,
             null,
             StringToken::new);
 
@@ -146,6 +141,25 @@ public class HttpTokenRequesterTest {
         .containsEntry("grant_type", "password")
         .containsEntry("username", "rabbit_username")
         .containsEntry("password", "rabbit_password");
+
+    requester.close();
+    requester.close();
+  }
+
+  @Test
+  void closingRequesterIsIdempotent() {
+    HttpTokenRequester requester =
+        new HttpTokenRequester(
+            "http://localhost:" + port + contextPath,
+            "rabbit_client",
+            "rabbit_secret",
+            "password",
+            Map.of(),
+            b -> {},
+            null,
+            StringToken::new);
+    requester.close();
+    requester.close();
   }
 
   @AfterEach
