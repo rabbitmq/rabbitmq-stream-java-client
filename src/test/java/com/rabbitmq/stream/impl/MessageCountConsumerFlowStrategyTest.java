@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2023-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -18,7 +18,9 @@ import static com.rabbitmq.stream.ConsumerFlowStrategy.creditOnProcessedMessageC
 import static java.util.stream.LongStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.ConsumerFlowStrategy;
+import com.rabbitmq.stream.ConsumerFlowStrategy.CreditUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -54,6 +56,19 @@ public class MessageCountConsumerFlowStrategyTest {
     assertThat(requestedCredits).hasValue(1);
   }
 
+  @Test
+  void byteBasedStrategyBehavesLikeChunkBased() {
+    ConsumerFlowStrategy strategy = creditOnProcessedMessageCount(ByteCapacity.B(10), 0.5);
+    assertThat(strategy.unit()).isEqualTo(CreditUnit.BYTE);
+    assertThat(strategy.initialCredits()).isEqualTo(10);
+    long messageCount = 1000;
+    ConsumerFlowStrategy.MessageProcessedCallback callback = strategy.start(context(messageCount));
+    range(0, messageCount / 2 - 1).forEach(ignored -> callback.processed(null));
+    assertThat(requestedCredits).hasValue(0);
+    callback.processed(null);
+    assertThat(requestedCredits).hasValue(1);
+  }
+
   ConsumerFlowStrategy build(double ratio) {
     return creditOnProcessedMessageCount(10, ratio);
   }
@@ -73,6 +88,11 @@ public class MessageCountConsumerFlowStrategyTest {
 
       @Override
       public long chunkId() {
+        return 0;
+      }
+
+      @Override
+      public long chunkByteCount() {
         return 0;
       }
     };
