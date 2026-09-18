@@ -32,6 +32,8 @@ import io.netty.handler.ssl.SslProvider;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
+import org.bouncycastle.jsse.BCSSLEngine;
+import org.bouncycastle.jsse.BCSSLParameters;
 import org.bouncycastle.jsse.provider.BouncyCastleJsseProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledForJreRange;
@@ -41,6 +43,9 @@ import org.junit.jupiter.api.condition.EnabledForJreRange;
 class AdvancedTlsTest {
 
   TestUtils.ClientFactory cf;
+  String group = "X25519MLKEM768";
+  String cipher = "TLS_AES_256_GCM_SHA384";
+  String protocol = "TLSv1.3";
 
   @Test
   @ErlangVersionAtLeast(28)
@@ -51,8 +56,6 @@ class AdvancedTlsTest {
             .trustManager(caCertificate())
             .keyManager(clientKey(), clientCertificate());
 
-    String group = "X25519MLKEM768";
-    String cipherSuite = "TLS_AES_256_GCM_SHA384";
     builder.option(OpenSslContextOption.GROUPS, new String[] {group});
 
     SslContext context = builder.build();
@@ -65,7 +68,8 @@ class AdvancedTlsTest {
     SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
     assertThat(sslHandler).isNotNull();
     SSLSession session = sslHandler.engine().getSession();
-    assertThat(session.getCipherSuite()).isEqualTo(cipherSuite);
+    assertThat(session.getCipherSuite()).isEqualTo(cipher);
+    assertThat(session.getProtocol()).isEqualTo(protocol);
     assertThat(session).isInstanceOf(OpenSslSession.class);
     OpenSslSession openSslSession = (OpenSslSession) session;
     assertThat(openSslSession.getNamedGroup())
@@ -83,9 +87,6 @@ class AdvancedTlsTest {
             .trustManager(caCertificate())
             .keyManager(clientKey(), clientCertificate());
 
-    String group = "X25519MLKEM768";
-    String cipherSuite = "TLS_AES_256_GCM_SHA384";
-
     SslContext context = builder.build();
     AtomicReference<Channel> channel = new AtomicReference<>();
     cf.get(
@@ -99,7 +100,7 @@ class AdvancedTlsTest {
                     SSLParameters sslParams = sslHandler.engine().getSSLParameters();
                     // to compile on Java < 20
                     TlsTestUtils.setNamesGroups(sslParams, new String[] {group});
-                    sslParams.setCipherSuites(new String[] {cipherSuite});
+                    sslParams.setCipherSuites(new String[] {cipher});
                     sslHandler.engine().setSSLParameters(sslParams);
                   }
                 }));
@@ -110,7 +111,8 @@ class AdvancedTlsTest {
     SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
     assertThat(sslHandler).isNotNull();
     SSLSession session = sslHandler.engine().getSession();
-    assertThat(session.getCipherSuite()).isEqualTo(cipherSuite);
+    assertThat(session.getCipherSuite()).isEqualTo(cipher);
+    assertThat(session.getProtocol()).isEqualTo(protocol);
     // there is no way to check the key exchange algorithm used
   }
 
@@ -127,9 +129,6 @@ class AdvancedTlsTest {
             .trustManager(caCertificate())
             .keyManager(clientKey(), clientCertificate());
 
-    String group = "X25519MLKEM768";
-    String cipherSuite = "TLS_AES_256_GCM_SHA384";
-
     SslContext context = builder.build();
     AtomicReference<Channel> channel = new AtomicReference<>();
     cf.get(
@@ -137,14 +136,14 @@ class AdvancedTlsTest {
             .sslContext(context)
             .channelCustomizer(
                 ch -> {
-                  channel.set(ch);
                   SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
-                  if (sslHandler != null) {
-                    SSLParameters sslParams = sslHandler.engine().getSSLParameters();
-                    // Set named groups and cipher suite on the BC SSL engine
-                    TlsTestUtils.setNamesGroups(sslParams, new String[] {group});
-                    sslParams.setCipherSuites(new String[] {cipherSuite});
-                    sslHandler.engine().setSSLParameters(sslParams);
+                  if (sslHandler != null && sslHandler.engine() instanceof BCSSLEngine) {
+                    channel.set(ch);
+                    // use BC API, to set named groups with Java < 20
+                    BCSSLEngine engine = (BCSSLEngine) sslHandler.engine();
+                    BCSSLParameters sslParams = engine.getParameters();
+                    sslParams.setNamedGroups(new String[] {group});
+                    engine.setParameters(sslParams);
                   }
                 }));
 
@@ -154,7 +153,8 @@ class AdvancedTlsTest {
     SslHandler sslHandler = ch.pipeline().get(SslHandler.class);
     assertThat(sslHandler).isNotNull();
     SSLSession session = sslHandler.engine().getSession();
-    assertThat(session.getCipherSuite()).isEqualTo(cipherSuite);
+    assertThat(session.getCipherSuite()).isEqualTo(cipher);
+    assertThat(session.getProtocol()).isEqualTo(protocol);
     assertThat(session.getClass().getName()).containsIgnoringCase("bouncycastle");
   }
 
