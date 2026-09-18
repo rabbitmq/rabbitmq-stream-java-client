@@ -24,7 +24,6 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.security.KeyStore;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,9 +32,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -70,24 +67,18 @@ public class HttpTokenRequesterTest {
   void requestToken(boolean tls) throws Exception {
     String protocol;
     KeyStore keyStore;
-    Consumer<HttpURLConnection> connectionConfigurator;
+    SSLContext sslContext;
     if (tls) {
       protocol = "https";
       keyStore = OAuth2TestUtils.generateKeyPair();
-      SSLContext sslContext = SSLContext.getInstance("TLS");
+      sslContext = SSLContext.getInstance("TLS");
       TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
       tmf.init(keyStore);
       sslContext.init(null, tmf.getTrustManagers(), null);
-      connectionConfigurator =
-          c -> {
-            if (c instanceof HttpsURLConnection) {
-              ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
-            }
-          };
     } else {
       protocol = "http";
       keyStore = null;
-      connectionConfigurator = b -> {};
+      sslContext = null;
     }
     String uri = String.format("%s://localhost:%d%s", protocol, port, contextPath);
     AtomicReference<String> httpMethod = new AtomicReference<>();
@@ -135,7 +126,7 @@ public class HttpTokenRequesterTest {
             .clientSecret("rabbit_secret")
             .grantType("password")
             .parameters(Map.of("username", "rabbit_username", "password", "rabbit_password"))
-            .connectionConfigurator(connectionConfigurator)
+            .sslContext(sslContext)
             .parser(StringToken::new)
             .build();
 

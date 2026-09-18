@@ -40,7 +40,6 @@ import java.util.Collections;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Function;
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -161,12 +160,7 @@ public class OAuth2ClientTest {
             .clientSecret("rabbitmq")
             .grantType("client_credentials")
             .parameters(Collections.emptyMap())
-            .connectionConfigurator(
-                c -> {
-                  if (sslContext != null && c instanceof HttpsURLConnection) {
-                    ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
-                  }
-                })
+            .sslContext(sslContext)
             .parser(new GsonTokenParser())
             .build();
     // the broker works at the second level for expiration

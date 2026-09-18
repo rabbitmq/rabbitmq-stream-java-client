@@ -100,8 +100,7 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       return uri;
     } catch (URISyntaxException e) {
       throw new IllegalArgumentException(
-          "Invalid URI syntax (" + e.getReason() + " at index " + e.getIndex() + ")"
-      );
+          "Invalid URI syntax (" + e.getReason() + " at index " + e.getIndex() + ")");
     }
   }
 
@@ -504,6 +503,8 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     private Function<Instant, Duration> refreshDelayStrategy =
         TokenCredentialsManager.DEFAULT_REFRESH_DELAY_STRATEGY;
     private SSLContext sslContext;
+    private String[] namedGroups;
+    private String[] ciphers;
 
     DefaultOAuth2Configuration(StreamEnvironmentBuilder builder) {
       this.builder = builder;
@@ -552,6 +553,18 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
     }
 
     @Override
+    public OAuth2Configuration namedGroups(String... namedGroups) {
+      this.namedGroups = namedGroups == null ? null : namedGroups.clone();
+      return this;
+    }
+
+    @Override
+    public OAuth2Configuration ciphers(String... ciphers) {
+      this.ciphers = ciphers == null ? null : ciphers.clone();
+      return this;
+    }
+
+    @Override
     public EnvironmentBuilder environmentBuilder() {
       return this.builder;
     }
@@ -590,12 +603,16 @@ public class StreamEnvironmentBuilder implements EnvironmentBuilder {
       return this.sslContext;
     }
 
-    boolean enabled() {
-      return this.tokenEndpointUri != null;
+    String[] namedGroups() {
+      return this.namedGroups == null ? null : this.namedGroups.clone();
     }
 
-    boolean tlsEnabled() {
-      return this.sslContext != null;
+    String[] ciphers() {
+      return this.ciphers == null ? null : this.ciphers.clone();
+    }
+
+    boolean enabled() {
+      return this.tokenEndpointUri != null;
     }
   }
 }

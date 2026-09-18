@@ -33,6 +33,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 
 /**
  * Token requester using HTTP(S) to request an OAuth 2 access token.
@@ -59,6 +62,7 @@ public final class HttpTokenRequester implements TokenRequester {
   private final byte[] postData;
 
   private final Consumer<HttpURLConnection> connectionConfigurator;
+  private final SSLSocketFactory socketFactory;
 
   private final TokenParser parser;
 
@@ -68,9 +72,12 @@ public final class HttpTokenRequester implements TokenRequester {
       String clientSecret,
       String grantType,
       Map<String, String> parameters,
+      SSLContext sslContext,
+      String[] ciphers,
+      String[] namedGroups,
       Consumer<HttpURLConnection> connectionConfigurator,
       TokenParser parser) {
-    URI uri = validateTokenEndpointUri(tokenEndpointUri);
+    URI uri = validateTokenEndpointUri(tokenEndpointUri, sslContext);
     try {
       this.tokenEndpointUrl = uri.toURL();
     } catch (MalformedURLException e) {
@@ -82,6 +89,7 @@ public final class HttpTokenRequester implements TokenRequester {
     this.parameters = validateParameters(parameters);
     this.parser = nonNull(parser, "parser");
     this.connectionConfigurator = connectionConfigurator;
+    this.socketFactory = createSocketFactory(sslContext, ciphers, namedGroups);
     this.postData = encodeParameters(this.grantType, this.parameters);
   }
 
@@ -89,7 +97,21 @@ public final class HttpTokenRequester implements TokenRequester {
     return new Builder();
   }
 
-  private static URI validateTokenEndpointUri(String tokenEndpointUri) {
+  private static SSLSocketFactory createSocketFactory(
+      SSLContext sslContext, String[] ciphers, String[] namedGroups) {
+    if (ciphers != null && sslContext == null) {
+      throw new IllegalArgumentException("ciphers requires an sslContext to be set");
+    }
+    if (namedGroups != null && sslContext == null) {
+      throw new IllegalArgumentException("namedGroups requires an sslContext to be set");
+    }
+    if (sslContext == null) {
+      return null;
+    }
+    return new HardenedSslSocketFactory(sslContext.getSocketFactory(), ciphers, namedGroups);
+  }
+
+  private static URI validateTokenEndpointUri(String tokenEndpointUri, SSLContext sslContext) {
     nonNull(tokenEndpointUri, "tokenEndpointUri");
     URI uri;
     try {
@@ -113,6 +135,10 @@ public final class HttpTokenRequester implements TokenRequester {
     if (uri.getUserInfo() != null) {
       throw new IllegalArgumentException(
           "Token endpoint URI must not carry user information, it is ignored by HttpURLConnection");
+    }
+    if (scheme.equals("https") && sslContext == null) {
+      throw new IllegalArgumentException(
+          "An https token endpoint URI requires an sslContext to be set");
     }
     return uri;
   }
@@ -153,6 +179,10 @@ public final class HttpTokenRequester implements TokenRequester {
           "Authorization", authorization(this.clientId, this.clientSecret));
       connection.setDoOutput(true);
       connection.setFixedLengthStreamingMode(this.postData.length);
+
+      if (this.socketFactory != null && connection instanceof HttpsURLConnection) {
+        ((HttpsURLConnection) connection).setSSLSocketFactory(this.socketFactory);
+      }
 
       if (this.connectionConfigurator != null) {
         this.connectionConfigurator.accept(connection);
@@ -289,6 +319,9 @@ public final class HttpTokenRequester implements TokenRequester {
     private String grantType;
     private final Map<String, String> parameters = new HashMap<>();
     private TokenParser parser;
+    private SSLContext sslContext;
+    private String[] ciphers;
+    private String[] namedGroups;
     private Consumer<HttpURLConnection> connectionConfigurator;
 
     private Builder() {}
@@ -334,6 +367,47 @@ public final class HttpTokenRequester implements TokenRequester {
     }
 
     /**
+     * {@link SSLContext} to use for HTTPS requests.
+     *
+     * <p>Required for an {@code https} token endpoint URI, for {@link #namedGroups(String...)} and
+     * for {@link #ciphers(String...)}.
+     *
+     * @param sslContext the SSL context
+     * @return this builder
+     */
+    public Builder sslContext(SSLContext sslContext) {
+      this.sslContext = sslContext;
+      return this;
+    }
+
+    /**
+     * TLS named groups (key exchange groups) for HTTPS requests, e.g. {@code X25519MLKEM768} for
+     * post-quantum key exchange.
+     *
+     * <p>Requires {@link #sslContext(SSLContext)} to be set, and Java 20 or more.
+     *
+     * @param namedGroups the named groups, in order of preference
+     * @return this builder
+     */
+    public Builder namedGroups(String... namedGroups) {
+      this.namedGroups = namedGroups == null ? null : namedGroups.clone();
+      return this;
+    }
+
+    /**
+     * TLS cipher suites for HTTPS requests.
+     *
+     * <p>Requires {@link #sslContext(SSLContext)} to be set.
+     *
+     * @param ciphers the cipher suites, in order of preference
+     * @return this builder
+     */
+    public Builder ciphers(String... ciphers) {
+      this.ciphers = ciphers == null ? null : ciphers.clone();
+      return this;
+    }
+
+    /**
      * Sets a configurator applied to the connection after all library defaults (timeouts, headers,
      * {@code Authorization}) have been set. The configurator runs last and may override any of
      * them.
@@ -353,6 +427,9 @@ public final class HttpTokenRequester implements TokenRequester {
           this.clientSecret,
           this.grantType,
           this.parameters,
+          this.sslContext,
+          this.ciphers,
+          this.namedGroups,
           this.connectionConfigurator,
           this.parser);
     }
