@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -148,6 +148,30 @@ public class TokenCredentialsManagerTest {
     Thread.sleep(tokenExpiry.multipliedBy(2).toMillis());
     // no new refresh
     assertThat(totalRefreshCount).hasValue(finalRefreshCount);
+  }
+
+  @Test
+  void refreshShouldBeRetriedAfterTransientFailure() throws InterruptedException {
+    Duration tokenExpiry = ofMillis(50);
+    AtomicInteger requestCount = new AtomicInteger(0);
+    when(this.requester.request())
+        .thenAnswer(
+            ignored -> {
+              int count = requestCount.incrementAndGet();
+              if (count == 2) {
+                throw new OAuth2Exception("simulated transient failure");
+              }
+              return token("ok", Instant.now().plus(tokenExpiry));
+            });
+    TokenCredentialsManager credentials =
+        new TokenCredentialsManager(
+            this.requester, this.scheduledExecutorService, DEFAULT_REFRESH_DELAY_STRATEGY);
+    CountDownLatch refreshLatch = new CountDownLatch(1);
+    Registration registration = credentials.register("", (u, p) -> refreshLatch.countDown());
+    registration.connect(connectionCallback(() -> {}));
+    // the first scheduled refresh fails, but the task recovers and retries
+    assertThat(refreshLatch.await(ofSeconds(10).toMillis(), MILLISECONDS)).isTrue();
+    assertThat(requestCount.get()).isGreaterThanOrEqualTo(3);
   }
 
   @Test

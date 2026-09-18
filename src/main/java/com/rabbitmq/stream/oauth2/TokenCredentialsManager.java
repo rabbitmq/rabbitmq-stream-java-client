@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -43,6 +43,7 @@ public final class TokenCredentialsManager implements CredentialsManager {
 
   public static final Function<Instant, Duration> DEFAULT_REFRESH_DELAY_STRATEGY =
       ratioRefreshDelayStrategy(0.8f);
+  private static final Duration FAILED_REFRESH_RETRY_DELAY = Duration.ofSeconds(1);
   private static final Logger LOGGER = LoggerFactory.getLogger(TokenCredentialsManager.class);
 
   private final TokenRequester requester;
@@ -172,28 +173,7 @@ public final class TokenCredentialsManager implements CredentialsManager {
         }
         this.refreshTask =
             this.scheduledExecutorService.schedule(
-                () -> {
-                  if (debug()) {
-                    LOGGER.debug("Starting token update task");
-                  }
-                  Token previousToken = this.token;
-                  this.lock();
-                  try {
-                    if (this.token.equals(previousToken)) {
-                      Token newToken = getToken();
-                      token(newToken);
-                      updateRegistrations(newToken);
-                    } else {
-                      if (debug()) {
-                        LOGGER.debug("Token has already been updated");
-                      }
-                    }
-                  } finally {
-                    unlock();
-                  }
-                },
-                delay.toMillis(),
-                TimeUnit.MILLISECONDS);
+                this::refreshToken, delay.toMillis(), TimeUnit.MILLISECONDS);
         if (debug()) {
           LOGGER.debug("Task scheduled");
         }
@@ -201,6 +181,35 @@ public final class TokenCredentialsManager implements CredentialsManager {
         this.refreshTask = null;
       }
       this.schedulingRefresh.set(false);
+    }
+  }
+
+  private void refreshToken() {
+    if (debug()) {
+      LOGGER.debug("Starting token update task");
+    }
+    Token previousToken = this.token;
+    this.lock();
+    try {
+      if (this.token.equals(previousToken)) {
+        Token newToken = getToken();
+        token(newToken);
+        updateRegistrations(newToken);
+      } else {
+        if (debug()) {
+          LOGGER.debug("Token has already been updated");
+        }
+      }
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Error while refreshing token, retrying in {}: {}",
+          FAILED_REFRESH_RETRY_DELAY,
+          e.getMessage());
+      this.refreshTask =
+          this.scheduledExecutorService.schedule(
+              this::refreshToken, FAILED_REFRESH_RETRY_DELAY.toMillis(), TimeUnit.MILLISECONDS);
+    } finally {
+      unlock();
     }
   }
 

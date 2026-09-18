@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -33,10 +33,28 @@ public class GsonTokenParser implements TokenParser {
 
   @Override
   public Token parse(String tokenAsString) {
-    Map<String, Object> tokenAsMap = GSON.fromJson(tokenAsString, MAP_TYPE);
-    String accessToken = (String) tokenAsMap.get("access_token");
+    Map<String, Object> tokenAsMap;
+    try {
+      tokenAsMap = GSON.fromJson(tokenAsString, MAP_TYPE);
+    } catch (Exception e) {
+      throw new OAuth2Exception("Error while parsing token response as JSON", e);
+    }
+    if (tokenAsMap == null) {
+      throw new OAuth2Exception("Token response is not a JSON object: " + tokenAsString);
+    }
+    Object accessTokenValue = tokenAsMap.get("access_token");
+    if (!(accessTokenValue instanceof String)) {
+      throw new OAuth2Exception(
+          "Token response has no 'access_token' string field: " + tokenAsString);
+    }
+    String accessToken = (String) accessTokenValue;
+    Object expiresInValue = tokenAsMap.get("expires_in");
+    if (!(expiresInValue instanceof Number)) {
+      throw new OAuth2Exception(
+          "Token response has no 'expires_in' number field: " + tokenAsString);
+    }
     // in seconds, see https://www.rfc-editor.org/rfc/rfc6749#section-5.1
-    Duration expiresIn = Duration.ofSeconds(((Number) tokenAsMap.get("expires_in")).longValue());
+    Duration expiresIn = Duration.ofSeconds(((Number) expiresInValue).longValue());
     Instant expirationTime =
         Instant.ofEpochMilli(System.currentTimeMillis() + expiresIn.toMillis());
     return new DefaultTokenInfo(accessToken, expirationTime);
