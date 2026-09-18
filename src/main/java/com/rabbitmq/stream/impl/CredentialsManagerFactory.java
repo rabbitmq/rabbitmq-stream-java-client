@@ -58,15 +58,15 @@ final class CredentialsManagerFactory {
         connectionConfigurator = c -> {};
       }
       TokenRequester tokenRequester =
-          new HttpTokenRequester(
-              oauth2.tokenEndpointUri(),
-              oauth2.clientId(),
-              oauth2.clientSecret(),
-              oauth2.grantType(),
-              oauth2.parameters(),
-              connectionConfigurator,
-              null,
-              new GsonTokenParser());
+          HttpTokenRequester.builder()
+              .tokenEndpointUri(oauth2.tokenEndpointUri())
+              .clientId(oauth2.clientId())
+              .clientSecret(oauth2.clientSecret())
+              .grantType(oauth2.grantType())
+              .parameters(oauth2.parameters())
+              .connectionConfigurator(connectionConfigurator)
+              .parser(new GsonTokenParser())
+              .build();
       return new TokenCredentialsManager(
           tokenRequester, scheduledExecutorService, oauth2.refreshDelayStrategy());
     } else {

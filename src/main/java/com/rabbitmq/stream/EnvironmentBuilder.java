@@ -593,8 +593,8 @@ public interface EnvironmentBuilder {
      * Set the URI to access to get the token.
      *
      * <p>TLS is supported by providing a <code>HTTPS</code> URI and setting a {@link
-     * javax.net.ssl.SSLContext}. See {@link #tls()} for more information. <em>Applications in
-     * production should always use HTTPS to retrieve tokens.</em>
+     * javax.net.ssl.SSLContext}. See {@link #sslContext(javax.net.ssl.SSLContext)} for more
+     * information. <em>Applications in production should always use HTTPS to retrieve tokens.</em>
      *
      * @param uri access URI
      * @return OAuth 2 configuration

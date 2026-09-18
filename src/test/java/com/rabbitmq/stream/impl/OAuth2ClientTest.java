@@ -155,19 +155,20 @@ public class OAuth2ClientTest {
             "%s://localhost:%d%s",
             sslContext == null ? "http" : "https", this.port, this.contextPath);
     HttpTokenRequester tokenRequester =
-        new HttpTokenRequester(
-            uri,
-            "rabbitmq",
-            "rabbitmq",
-            "client_credentials",
-            Collections.emptyMap(),
-            c -> {
-              if (sslContext != null && c instanceof HttpsURLConnection) {
-                ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
-              }
-            },
-            null,
-            new GsonTokenParser());
+        HttpTokenRequester.builder()
+            .tokenEndpointUri(uri)
+            .clientId("rabbitmq")
+            .clientSecret("rabbitmq")
+            .grantType("client_credentials")
+            .parameters(Collections.emptyMap())
+            .connectionConfigurator(
+                c -> {
+                  if (sslContext != null && c instanceof HttpsURLConnection) {
+                    ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
+                  }
+                })
+            .parser(new GsonTokenParser())
+            .build();
     // the broker works at the second level for expiration
     // we have to make sure to renew fast enough for short-lived tokens
     Function<Instant, Duration> refreshDelayStrategy =
