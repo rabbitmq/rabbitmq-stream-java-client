@@ -593,8 +593,8 @@ public interface EnvironmentBuilder {
      * Set the URI to access to get the token.
      *
      * <p>TLS is supported by providing a <code>HTTPS</code> URI and setting a {@link
-     * javax.net.ssl.SSLContext}. See {@link #tls()} for more information. <em>Applications in
-     * production should always use HTTPS to retrieve tokens.</em>
+     * javax.net.ssl.SSLContext}. See {@link #sslContext(javax.net.ssl.SSLContext)} for more
+     * information. <em>Applications in production should always use HTTPS to retrieve tokens.</em>
      *
      * @param uri access URI
      * @return OAuth 2 configuration
@@ -649,6 +649,32 @@ public interface EnvironmentBuilder {
      * @return OAuth 2 configuration
      */
     OAuth2Configuration sslContext(SSLContext sslContext);
+
+    /**
+     * TLS named groups (key exchange groups) for HTTPS requests.
+     *
+     * <p>Use this to select post-quantum or hybrid post-quantum key exchange, e.g. <code>
+     * X25519MLKEM768</code>. Requires {@link #sslContext(javax.net.ssl.SSLContext)} to be set, and
+     * Java 20 or more.
+     *
+     * @param namedGroups the named groups, in order of preference
+     * @return OAuth 2 configuration
+     * @since 1.12.0
+     */
+    OAuth2Configuration namedGroups(String... namedGroups);
+
+    /**
+     * TLS cipher suites for HTTPS requests.
+     *
+     * <p>Note this does not affect the key exchange algorithm with TLS 1.3, see {@link
+     * #namedGroups(String...)} for post-quantum key exchange. Requires {@link
+     * #sslContext(javax.net.ssl.SSLContext)} to be set.
+     *
+     * @param ciphers the cipher suites, in order of preference
+     * @return OAuth 2 configuration
+     * @since 1.12.0
+     */
+    OAuth2Configuration ciphers(String... ciphers);
 
     /**
      * Go back to the environment builder

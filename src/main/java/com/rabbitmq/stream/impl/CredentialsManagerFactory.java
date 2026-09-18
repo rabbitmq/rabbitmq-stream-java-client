@@ -20,11 +20,7 @@ import com.rabbitmq.stream.oauth2.GsonTokenParser;
 import com.rabbitmq.stream.oauth2.HttpTokenRequester;
 import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
 import com.rabbitmq.stream.oauth2.TokenRequester;
-import java.net.HttpURLConnection;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.function.Consumer;
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
 
 final class CredentialsManagerFactory {
 
@@ -45,28 +41,18 @@ final class CredentialsManagerFactory {
   static CredentialsManager get(
       DefaultOAuth2Configuration oauth2, ScheduledExecutorService scheduledExecutorService) {
     if (oauth2 != null && oauth2.enabled()) {
-      Consumer<HttpURLConnection> connectionConfigurator;
-      if (oauth2.tlsEnabled()) {
-        SSLContext sslContext = oauth2.sslContext();
-        connectionConfigurator =
-            c -> {
-              if (c instanceof HttpsURLConnection) {
-                ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
-              }
-            };
-      } else {
-        connectionConfigurator = c -> {};
-      }
       TokenRequester tokenRequester =
-          new HttpTokenRequester(
-              oauth2.tokenEndpointUri(),
-              oauth2.clientId(),
-              oauth2.clientSecret(),
-              oauth2.grantType(),
-              oauth2.parameters(),
-              connectionConfigurator,
-              null,
-              new GsonTokenParser());
+          HttpTokenRequester.builder()
+              .tokenEndpointUri(oauth2.tokenEndpointUri())
+              .clientId(oauth2.clientId())
+              .clientSecret(oauth2.clientSecret())
+              .grantType(oauth2.grantType())
+              .parameters(oauth2.parameters())
+              .sslContext(oauth2.sslContext())
+              .namedGroups(oauth2.namedGroups())
+              .ciphers(oauth2.ciphers())
+              .parser(new GsonTokenParser())
+              .build();
       return new TokenCredentialsManager(
           tokenRequester, scheduledExecutorService, oauth2.refreshDelayStrategy());
     } else {

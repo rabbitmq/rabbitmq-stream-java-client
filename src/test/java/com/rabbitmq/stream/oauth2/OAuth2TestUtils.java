@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
 import java.io.IOException;
 import java.math.BigInteger;
@@ -37,6 +38,7 @@ import java.util.Date;
 import java.util.function.Supplier;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.cert.X509CertificateHolder;
@@ -119,6 +121,16 @@ public final class OAuth2TestUtils {
 
   public static HttpServer startServer(
       int port, String path, KeyStore keyStore, HttpHandler handler) {
+    return startServer(port, path, keyStore, null, null, handler);
+  }
+
+  public static HttpServer startServer(
+      int port,
+      String path,
+      KeyStore keyStore,
+      String[] cipherSuites,
+      String[] namedGroups,
+      HttpHandler handler) {
     HttpServer server;
     try {
       if (keyStore != null) {
@@ -128,7 +140,21 @@ public final class OAuth2TestUtils {
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(keyManagerFactory.getKeyManagers(), null, null);
         server = HttpsServer.create(new InetSocketAddress(port), 0);
-        ((HttpsServer) server).setHttpsConfigurator(new HttpsConfigurator(sslContext));
+        ((HttpsServer) server)
+            .setHttpsConfigurator(
+                new HttpsConfigurator(sslContext) {
+                  @Override
+                  public void configure(HttpsParameters params) {
+                    SSLParameters sslParameters = getSSLContext().getDefaultSSLParameters();
+                    if (cipherSuites != null) {
+                      sslParameters.setCipherSuites(cipherSuites);
+                    }
+                    if (namedGroups != null) {
+                      TlsUtils.setNamedGroups(sslParameters, namedGroups);
+                    }
+                    params.setSSLParameters(sslParameters);
+                  }
+                });
       } else {
         server = HttpServer.create(new InetSocketAddress(port), 0);
       }
@@ -141,6 +167,10 @@ public final class OAuth2TestUtils {
   }
 
   public static KeyStore generateKeyPair() {
+    return generateKeyPair("localhost");
+  }
+
+  public static KeyStore generateKeyPair(String commonName) {
     try {
       KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
       keyStore.load(null, KEY_STORE_PASSWORD);
@@ -153,11 +183,11 @@ public final class OAuth2TestUtils {
 
       JcaX509v3CertificateBuilder certificateBuilder =
           new JcaX509v3CertificateBuilder(
-              new X500NameBuilder().addRDN(BCStyle.CN, "localhost").build(),
+              new X500NameBuilder().addRDN(BCStyle.CN, commonName).build(),
               BigInteger.valueOf(new SecureRandom().nextInt()),
               Date.from(Instant.now().minus(10, ChronoUnit.DAYS)),
               Date.from(Instant.now().plus(10, ChronoUnit.DAYS)),
-              new X500NameBuilder().addRDN(BCStyle.CN, "localhost").build(),
+              new X500NameBuilder().addRDN(BCStyle.CN, commonName).build(),
               kp.getPublic());
 
       X509CertificateHolder certificateHolder =

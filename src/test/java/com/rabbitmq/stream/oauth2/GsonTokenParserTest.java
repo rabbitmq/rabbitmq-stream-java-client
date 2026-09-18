@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -17,6 +17,7 @@ package com.rabbitmq.stream.oauth2;
 import static com.rabbitmq.stream.oauth2.OAuth2TestUtils.sampleJsonToken;
 import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import java.time.Duration;
@@ -38,5 +39,40 @@ public class GsonTokenParserTest {
     assertThat(token.value()).isEqualTo(accessToken);
     assertThat(token.expirationTime())
         .isCloseTo(Instant.now().plus(expireIn), within(1, ChronoUnit.SECONDS));
+  }
+
+  @Test
+  void parseRejectsNonJsonBody() {
+    assertThatThrownBy(() -> parser.parse("not json")).isInstanceOf(OAuth2Exception.class);
+  }
+
+  @Test
+  void parseRejectsJsonArray() {
+    assertThatThrownBy(() -> parser.parse("[1, 2, 3]")).isInstanceOf(OAuth2Exception.class);
+  }
+
+  @Test
+  void parseRejectsMissingAccessToken() {
+    assertThatThrownBy(() -> parser.parse("{\"expires_in\": 60}"))
+        .isInstanceOf(OAuth2Exception.class);
+  }
+
+  @Test
+  void parseRejectsNonStringAccessToken() {
+    assertThatThrownBy(() -> parser.parse("{\"access_token\": 123, \"expires_in\": 60}"))
+        .isInstanceOf(OAuth2Exception.class);
+  }
+
+  @Test
+  void parseRejectsMissingExpiresIn() {
+    assertThatThrownBy(() -> parser.parse("{\"access_token\": \"token\"}"))
+        .isInstanceOf(OAuth2Exception.class);
+  }
+
+  @Test
+  void parseRejectsNonNumberExpiresIn() {
+    assertThatThrownBy(
+            () -> parser.parse("{\"access_token\": \"token\", \"expires_in\": \"soon\"}"))
+        .isInstanceOf(OAuth2Exception.class);
   }
 }

@@ -40,7 +40,6 @@ import java.util.Collections;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Function;
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -155,19 +154,15 @@ public class OAuth2ClientTest {
             "%s://localhost:%d%s",
             sslContext == null ? "http" : "https", this.port, this.contextPath);
     HttpTokenRequester tokenRequester =
-        new HttpTokenRequester(
-            uri,
-            "rabbitmq",
-            "rabbitmq",
-            "client_credentials",
-            Collections.emptyMap(),
-            c -> {
-              if (sslContext != null && c instanceof HttpsURLConnection) {
-                ((HttpsURLConnection) c).setSSLSocketFactory(sslContext.getSocketFactory());
-              }
-            },
-            null,
-            new GsonTokenParser());
+        HttpTokenRequester.builder()
+            .tokenEndpointUri(uri)
+            .clientId("rabbitmq")
+            .clientSecret("rabbitmq")
+            .grantType("client_credentials")
+            .parameters(Collections.emptyMap())
+            .sslContext(sslContext)
+            .parser(new GsonTokenParser())
+            .build();
     // the broker works at the second level for expiration
     // we have to make sure to renew fast enough for short-lived tokens
     Function<Instant, Duration> refreshDelayStrategy =
