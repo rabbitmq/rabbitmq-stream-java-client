@@ -103,6 +103,13 @@ class ServerFrameHandler {
   static final int INITIAL_DECOMPRESSION_BUFFER_SIZE = 64 * 1024;
   // transfer buffer size
   private static final int DECOMPRESSION_TRANSFER_BUFFER_SIZE = 1024;
+  // the chunk cost is the contract with the broker, not derived from the chunk header: it is
+  // the frame size minus the command id, version and subscription ID (5 bytes)
+  static final int CHUNK_COST_DELIVER_V1_OFFSET = 5;
+  // the chunk cost is the contract with the broker, not derived from the chunk header: it is
+  // the frame size minus the command id, version, subscription ID, and committed chunk ID (13
+  // bytes)
+  static final int CHUNK_COST_DELIVER_V2_OFFSET = 13;
 
   private static final FrameHandler[][] HANDLERS;
 
@@ -324,7 +331,8 @@ class ServerFrameHandler {
     public void handle(Client client, int frameSize, ChannelHandlerContext ctx, ByteBuf message) {
       int readerIndexBefore = message.readerIndex();
       try {
-        int read = doHandle(client, ctx, message) + 4; // already read the command id and version
+        // already read the command id and version
+        int read = doHandle(client, ctx, message, frameSize) + 4;
         if (read != frameSize) {
           LOGGER.warn("Read {} bytes in frame, expecting {}", read, frameSize);
         }
@@ -341,7 +349,15 @@ class ServerFrameHandler {
       }
     }
 
-    abstract int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message);
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+      throw new UnsupportedOperationException();
+    }
+
+    // overridden by handlers that need the frame size (e.g. to compute a byte cost); defaults to
+    // the frame-size-agnostic variant
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message, int frameSize) {
+      return doHandle(client, ctx, message);
+    }
 
     protected void logMissingOutstandingRequest(int correlationId) {
       LOGGER.warn(
@@ -444,7 +460,8 @@ class ServerFrameHandler {
         MessageIgnoredListener messageIgnoredListener,
         Codec codec,
         ChunkChecksum chunkChecksum,
-        MetricsCollector metricsCollector) {
+        MetricsCollector metricsCollector,
+        long chunkByteCount) {
       return handleDeliver(
           message,
           client,
@@ -457,8 +474,8 @@ class ServerFrameHandler {
           metricsCollector,
           message.readByte(), // subscription ID
           0, // last committed offset
-          1 // byte read count
-          );
+          1, // byte read count
+          chunkByteCount);
     }
 
     static int handleDeliver(
@@ -473,7 +490,8 @@ class ServerFrameHandler {
         MetricsCollector metricsCollector,
         byte subscriptionId,
         long committedOffset,
-        int read) {
+        int read,
+        long chunkByteCount) {
       /*
       %% <<
       %%   Magic=5:4/unsigned,
@@ -520,7 +538,8 @@ class ServerFrameHandler {
       read += 4;
 
       Object chunkContext =
-          chunkListener.handle(client, subscriptionId, offset, numRecords, dataLength);
+          chunkListener.handle(
+              client, subscriptionId, offset, numRecords, dataLength, chunkByteCount);
 
       long offsetLimit = client.extractInitialSubscriptionOffset(subscriptionId);
 
@@ -722,7 +741,7 @@ class ServerFrameHandler {
     }
 
     @Override
-    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message, int frameSize) {
       return handleDeliverVersion1(
           message,
           client,
@@ -732,7 +751,8 @@ class ServerFrameHandler {
           client.messageIgnoredListener,
           client.codec,
           client.chunkChecksum,
-          client.metricsCollector);
+          client.metricsCollector,
+          frameSize - CHUNK_COST_DELIVER_V1_OFFSET);
     }
   }
 
@@ -744,7 +764,7 @@ class ServerFrameHandler {
     }
 
     @Override
-    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message) {
+    int doHandle(Client client, ChannelHandlerContext ctx, ByteBuf message, int frameSize) {
       return DeliverVersion1FrameHandler.handleDeliver(
           message,
           client,
@@ -757,8 +777,8 @@ class ServerFrameHandler {
           client.metricsCollector,
           message.readByte(), // subscription ID
           message.readLong(), // committed chunk ID, unsigned long
-          9 // byte read count, 1 + 9
-          );
+          9, // byte read count, 1 + 9
+          frameSize - CHUNK_COST_DELIVER_V2_OFFSET);
     }
   }
 
