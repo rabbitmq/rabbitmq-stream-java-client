@@ -1547,6 +1547,9 @@ final class ProducersCoordinator implements AutoCloseable {
                 byte publisherId =
                     (byte) pickSlot(this.producerTrackers, this.producerIndexSequence);
                 this.setProducerTrackers(update(this.producerTrackers, publisherId, tracker));
+                // the poison is for an older attempt, which is stale by now, and its release can
+                // lag behind this attempt's validation
+                this.poisoned.remove(tracker);
                 return SlotReservation.reserved(publisherId);
               });
       checkReservation(reservation, tracker);
@@ -1565,6 +1568,8 @@ final class ProducersCoordinator implements AutoCloseable {
                 }
                 this.trackingConsumerTrackers.add(tracker);
                 this.trackingConsumerCount = this.trackingConsumerTrackers.size();
+                // see reserveSlot
+                this.poisoned.remove(tracker);
                 return SlotReservation.reserved(NO_SLOT);
               });
       checkReservation(reservation, tracker);

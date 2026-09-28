@@ -1409,6 +1409,53 @@ public class ConsumersCoordinatorTest {
   }
 
   @Test
+  void poisonOfASupersededAttemptShouldNotInvalidateTheNextOne() {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    AtomicInteger opened = new AtomicInteger();
+    doAnswer(invocation -> opened.incrementAndGet()).when(consumer).markOpen();
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+    Client client2 = mockClient(new AtomicBoolean(true));
+    AtomicInteger subscribeCount = new AtomicInteger();
+    when(client2.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .then(
+            invocation -> {
+              if (subscribeCount.incrementAndGet() == 1) {
+                metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+              }
+              return responseOk();
+            });
+    AtomicBoolean firstUnsubscribe = new AtomicBoolean(true);
+    when(client2.unsubscribe(anyByte()))
+        .then(
+            invocation -> {
+              if (firstUnsubscribe.getAndSet(false)) {
+                // the superseded attempt's release lags behind the next attempt
+                waitAtMost(() -> opened.get() == 2 || subscribeCount.get() >= 3);
+              }
+              return responseOk();
+            });
+    when(clientFactory.client(any())).thenReturn(client, client2);
+
+    subscribe(consumer, "stream", (offset, message) -> {});
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    verify(consumer, timeout(10_000).times(2)).markOpen();
+    verify(client2, after(300).times(2))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+    verify(client2, times(1)).unsubscribe(anyByte());
+  }
+
+  @Test
   void subscriptionShouldFailIfStreamBecomesUnavailableDuringSubscribe() {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));

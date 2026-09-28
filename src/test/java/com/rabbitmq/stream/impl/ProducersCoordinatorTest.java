@@ -881,6 +881,48 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
+  void poisonOfASupersededAttemptShouldNotInvalidateTheNextOne() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(producer.isOpen()).thenReturn(true);
+    AtomicInteger running = new AtomicInteger();
+    doAnswer(answer(running::incrementAndGet)).when(producer).running();
+    Client client2 = mockClient(new AtomicBoolean(true));
+    AtomicInteger declareCount = new AtomicInteger();
+    when(client2.declarePublisher(anyByte(), isNull(), anyString()))
+        .then(
+            invocation -> {
+              if (declareCount.incrementAndGet() == 1) {
+                metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+              }
+              return new Response(Constants.RESPONSE_CODE_OK);
+            });
+    AtomicBoolean firstDelete = new AtomicBoolean(true);
+    when(client2.deletePublisher(anyByte()))
+        .then(
+            invocation -> {
+              if (firstDelete.getAndSet(false)) {
+                // the superseded attempt's release lags behind the next attempt
+                waitAtMost(() -> running.get() == 1 || declareCount.get() >= 3);
+              }
+              return new Response(Constants.RESPONSE_CODE_OK);
+            });
+    when(clientFactory.client(any())).thenReturn(client, client2);
+
+    coordinator.registerProducer(producer, null, "stream");
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    verify(producer, timeout(10_000)).running();
+    verify(client2, after(300).times(2)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(client2, times(1)).deletePublisher(anyByte());
+  }
+
+  @Test
   void producerRegistrationShouldFailIfStreamBecomesUnavailableDuringDeclarePublisher() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(producer.isOpen()).thenReturn(true);

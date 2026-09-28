@@ -1638,6 +1638,9 @@ final class ConsumersCoordinator implements AutoCloseable {
                 this.setSubscriptionTrackers(
                     update(this.subscriptionTrackers, subscriptionId, tracker));
                 this.slotEpochs[subscriptionId & 0xFF] = attemptEpoch;
+                // the poison is for an older attempt, which is stale by now, and its release can
+                // lag behind this attempt's validation
+                this.poisoned.remove(tracker);
                 return SlotReservation.reserved(subscriptionId);
               });
       if (reservation.full) {
