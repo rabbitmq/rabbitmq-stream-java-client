@@ -22,7 +22,6 @@ import static com.rabbitmq.stream.impl.Utils.callAndMaybeRetry;
 import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.jsonField;
 import static com.rabbitmq.stream.impl.Utils.keyForNode;
-import static com.rabbitmq.stream.impl.Utils.lock;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.quote;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -51,9 +50,11 @@ import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import io.netty.util.concurrent.EventExecutorGroup;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
@@ -62,7 +63,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -73,12 +73,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,6 +87,8 @@ final class ProducersCoordinator implements AutoCloseable {
   static final int MAX_TRACKING_CONSUMERS_PER_CLIENT = 50;
   private static final int RECOVERY_THREADS = Math.max(2, Math.min(4, AVAILABLE_PROCESSORS));
   private static final long FIRST_ATTEMPT_EPOCH = 1;
+  // sentinel publisher ID: no slot reserved, or a reservation that was rolled back or freed
+  private static final byte NO_SLOT = -1;
   private static final boolean DEBUG = false;
   private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
   private final StreamEnvironment environment;
@@ -826,8 +827,7 @@ final class ProducersCoordinator implements AutoCloseable {
     builder.append(jsonField("client_count", connections.size())).append(",");
     builder
         .append(
-            jsonField(
-                "producer_count", connections.stream().mapToInt(m -> m.producers.size()).sum()))
+            jsonField("producer_count", connections.stream().mapToInt(m -> m.producerCount).sum()))
         .append(",");
     builder
         .append(
@@ -849,23 +849,27 @@ final class ProducersCoordinator implements AutoCloseable {
                       .append(",")
                       .append(jsonField("node", m.name))
                       .append(",")
-                      .append(jsonField("producer_count", m.producers.size()))
+                      .append(jsonField("producer_count", m.producerCount))
                       .append(",")
                       .append(
                           jsonField("tracking_consumer_count", m.trackingConsumerTrackers.size()))
                       .append(",");
                   managerBuilder.append("\"producers\" : [");
+                  List<ProducerTracker> trackers = m.producerTrackers;
                   managerBuilder.append(
-                      m.producers.values().stream()
-                          .map(
-                              p ->
-                                  "{"
-                                      + jsonField("stream", p.stream())
-                                      + ","
-                                      + jsonField("producer_id", p.publisherId)
-                                      + ","
-                                      + jsonField("state", p.producer.state())
-                                      + "}")
+                      IntStream.range(0, trackers.size())
+                          .filter(i -> trackers.get(i) != null)
+                          .mapToObj(
+                              i -> {
+                                ProducerTracker p = trackers.get(i);
+                                return "{"
+                                    + jsonField("stream", p.stream())
+                                    + ","
+                                    + jsonField("producer_id", i)
+                                    + ","
+                                    + jsonField("state", p.producer.state())
+                                    + "}";
+                              })
                           .collect(Collectors.joining(",")));
                   managerBuilder.append("],");
                   managerBuilder.append("\"tracking_consumers\" : [");
@@ -894,7 +898,7 @@ final class ProducersCoordinator implements AutoCloseable {
                     b.append(quote("stream")).append(":").append(quote(t.stream)).append(",");
                     b.append(quote("node")).append(":");
                     Client client = null;
-                    ClientProducersManager manager = t.clientProducersManager;
+                    ClientProducersManager manager = t.manager();
                     if (manager != null) {
                       client = manager.client;
                     }
@@ -930,6 +934,13 @@ final class ProducersCoordinator implements AutoCloseable {
 
     ClientProducersManager manager();
 
+    /**
+     * Release the assignment to {@code expected}, if it is still the current one.
+     *
+     * @return the slot to free, or a negative value if there is nothing to release
+     */
+    int detachIfOwnedBy(ClientProducersManager expected);
+
     void running();
 
     void cancel();
@@ -957,9 +968,9 @@ final class ProducersCoordinator implements AutoCloseable {
     private final String reference;
     private final String stream;
     private final StreamProducer producer;
-    private volatile byte publisherId;
-    private volatile ClientProducersManager clientProducersManager;
-    private final Lock trackerLock = new ReentrantLock();
+    // set only once the broker has confirmed the publisher declaration, never while the slot is
+    // merely reserved
+    private final AtomicReference<Assignment> assignment = new AtomicReference<>(Assignment.NONE);
 
     private ProducerTracker(
         long uniqueId, String reference, String stream, StreamProducer producer) {
@@ -971,12 +982,7 @@ final class ProducersCoordinator implements AutoCloseable {
 
     @Override
     public void assign(byte producerId, Client client, ClientProducersManager manager) {
-      lock(
-          this.trackerLock,
-          () -> {
-            this.publisherId = producerId;
-            this.clientProducersManager = manager;
-          });
+      this.assignment.set(new Assignment(producerId, manager));
       this.producer.setPublisherId(producerId);
       this.producer.setClient(client);
     }
@@ -988,7 +994,7 @@ final class ProducersCoordinator implements AutoCloseable {
 
     @Override
     public byte id() {
-      return this.publisherId;
+      return this.assignment.get().publisherId;
     }
 
     @Override
@@ -1009,12 +1015,33 @@ final class ProducersCoordinator implements AutoCloseable {
 
     @Override
     public void detachFromManager() {
-      lock(this.trackerLock, () -> this.clientProducersManager = null);
+      this.assignment.set(Assignment.NONE);
     }
 
     @Override
     public ClientProducersManager manager() {
-      return this.clientProducersManager;
+      return this.assignment.get().manager;
+    }
+
+    /**
+     * Release this tracker's assignment to {@code expected}, if it is still the current one.
+     *
+     * <p>Idempotent by construction: of two concurrent callers (the direct call in {@link
+     * #cancel()} and the async {@code releaseAssignment} effect), only the one that wins the CAS
+     * gets a slot back to release; the other sees the assignment already cleared and no-ops.
+     */
+    @Override
+    public int detachIfOwnedBy(ClientProducersManager expected) {
+      Assignment current = this.assignment.get();
+      if (current.manager != expected) {
+        return -1;
+      }
+      if (!this.assignment.compareAndSet(current, Assignment.NONE)) {
+        return -1;
+      }
+      // masked to an unsigned 0-255 range: a plain byte cannot serve as its own "no slot"
+      // sentinel, since slot 255's byte representation (0xFF) is indistinguishable from -1
+      return current.publisherId & 0xFF;
     }
 
     @Override
@@ -1024,14 +1051,10 @@ final class ProducersCoordinator implements AutoCloseable {
 
     @Override
     public void cancel() {
-      lock(
-          this.trackerLock,
-          () -> {
-            ClientProducersManager manager = this.clientProducersManager;
-            if (manager != null) {
-              manager.unregister(this);
-            }
-          });
+      ClientProducersManager manager = this.manager();
+      if (manager != null) {
+        manager.unregister(this);
+      }
     }
 
     @Override
@@ -1055,13 +1078,26 @@ final class ProducersCoordinator implements AutoCloseable {
     }
   }
 
+  /** A producer's current manager and publisher ID, or {@link #NONE} if it has none. */
+  private static final class Assignment {
+
+    private static final Assignment NONE = new Assignment(NO_SLOT, null);
+
+    private final byte publisherId;
+    private final ClientProducersManager manager;
+
+    private Assignment(byte publisherId, ClientProducersManager manager) {
+      this.publisherId = publisherId;
+      this.manager = manager;
+    }
+  }
+
   private static class TrackingConsumerTracker implements AgentTracker {
 
     private final long uniqueId;
     private final String stream;
     private final StreamConsumer consumer;
-    private volatile ClientProducersManager clientProducersManager;
-    private final Lock trackerLock = new ReentrantLock();
+    private final AtomicReference<ClientProducersManager> manager = new AtomicReference<>();
 
     private TrackingConsumerTracker(long uniqueId, String stream, StreamConsumer consumer) {
       this.uniqueId = uniqueId;
@@ -1071,7 +1107,7 @@ final class ProducersCoordinator implements AutoCloseable {
 
     @Override
     public void assign(byte producerId, Client client, ClientProducersManager manager) {
-      lock(this.trackerLock, () -> this.clientProducersManager = manager);
+      this.manager.set(manager);
       this.consumer.setTrackingClient(client);
     }
 
@@ -1103,12 +1139,18 @@ final class ProducersCoordinator implements AutoCloseable {
 
     @Override
     public void detachFromManager() {
-      lock(this.trackerLock, () -> this.clientProducersManager = null);
+      this.manager.set(null);
     }
 
     @Override
     public ClientProducersManager manager() {
-      return this.clientProducersManager;
+      return this.manager.get();
+    }
+
+    // no slot to give back, only the ownership, hence 0 for the winner of the CAS
+    @Override
+    public int detachIfOwnedBy(ClientProducersManager expected) {
+      return expected != null && this.manager.compareAndSet(expected, null) ? 0 : -1;
     }
 
     @Override
@@ -1118,14 +1160,10 @@ final class ProducersCoordinator implements AutoCloseable {
 
     @Override
     public void cancel() {
-      lock(
-          this.trackerLock,
-          () -> {
-            ClientProducersManager manager = this.clientProducersManager;
-            if (manager != null) {
-              manager.unregister(this);
-            }
-          });
+      ClientProducersManager manager = this.manager();
+      if (manager != null) {
+        manager.unregister(this);
+      }
     }
 
     @Override
@@ -1155,16 +1193,20 @@ final class ProducersCoordinator implements AutoCloseable {
     private final long id;
     private final String name;
     private final Broker node;
-    private final ConcurrentMap<Byte, ProducerTracker> producers =
-        new ConcurrentHashMap<>(maxProducersByClient);
+    // trackers and producer count must be kept in sync; the array has a single writer, the event
+    // loop, so a slot picked there is never picked twice, and a slot freed there is never freed
+    // while its delete-publisher RPC is still in flight (the array stays occupied until then)
+    private volatile List<ProducerTracker> producerTrackers = createProducerTrackerList();
     private final AtomicInteger producerIndexSequence = new AtomicInteger(0);
+    // written by the event loop only, concurrent because the shutdown listener iterates it on a
+    // netty thread
     private final Set<AgentTracker> trackingConsumerTrackers =
         ConcurrentHashMap.newKeySet(maxTrackingConsumersByClient);
+    // written by the event loop only, but concurrent on purpose: the metadata listener reads it
+    // on a netty thread, to flip the affected agents inline before posting to the loop
     private final Map<String, Set<AgentTracker>> streamToTrackers = new ConcurrentHashMap<>();
     private final Client client;
     private final AtomicBoolean closed = new AtomicBoolean(false);
-    private final Lock managerLock = new ReentrantLock();
-    // lock-free copies of the collection sizes, for the predicates the event loop reads
     private volatile int producerCount;
     private volatile int trackingConsumerCount;
 
@@ -1178,7 +1220,7 @@ final class ProducersCoordinator implements AutoCloseable {
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       PublishConfirmListener publishConfirmListener =
           (publisherId, publishingId) -> {
-            ProducerTracker producerTracker = producers.get(publisherId);
+            ProducerTracker producerTracker = producerTrackers.get(publisherId & 0xFF);
             if (producerTracker == null) {
               LOGGER.info("Received publish confirm for unknown producer: {}", publisherId);
             } else {
@@ -1187,7 +1229,7 @@ final class ProducersCoordinator implements AutoCloseable {
           };
       PublishErrorListener publishErrorListener =
           (publisherId, publishingId, errorCode) -> {
-            ProducerTracker producerTracker = producers.get(publisherId);
+            ProducerTracker producerTracker = producerTrackers.get(publisherId & 0xFF);
             if (producerTracker == null) {
               LOGGER.info(
                   "Received publish error for unknown producer: {}, error code {}",
@@ -1206,19 +1248,17 @@ final class ProducersCoordinator implements AutoCloseable {
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
                   "Recovering {} producer(s) and {} tracking consumer(s) after unexpected connection termination",
-                  producers.size(),
+                  producerCount,
                   trackingConsumerTrackers.size());
+              // only the confirmed assignments: a slot reserved for an attempt still in flight
+              // belongs to that attempt, which fails on its own with the connection
+              List<AgentTracker> affected = new ArrayList<>();
+              iterate(this.producerTrackers, t -> addIfAssignedHere(t, affected));
+              iterate(this.trackingConsumerTrackers, t -> addIfAssignedHere(t, affected));
               // inline, on the thread that saw the disruption: publishing must stop before
               // anything else
-              producers.forEach((publisherId, tracker) -> tracker.markUnavailable());
-              trackingConsumerTrackers.forEach(AgentTracker::markUnavailable);
-              producers.forEach(
-                  (publisherId, tracker) ->
-                      trackerEvent(
-                          tracker,
-                          recoveryBackOffDelayPolicy(),
-                          AgentStateMachine::onConnectionLost));
-              trackingConsumerTrackers.forEach(
+              affected.forEach(AgentTracker::markUnavailable);
+              affected.forEach(
                   tracker ->
                       trackerEvent(
                           tracker,
@@ -1247,21 +1287,24 @@ final class ProducersCoordinator implements AutoCloseable {
                 s -> {
                   // one by one, not the whole stream entry: a tracker registered for this stream
                   // since the collection above must stay reachable by the next notification.
-                  // No managerLock here, register() holds it across a broker round-trip
+                  // Slots are found by identity, the inline flip above cleared the assignments
+                  Set<AgentTracker> affectedSet =
+                      Collections.newSetFromMap(new IdentityHashMap<>());
+                  affectedSet.addAll(affected);
+                  List<ProducerTracker> updated = createProducerTrackerList();
+                  List<ProducerTracker> current = this.producerTrackers;
+                  for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
+                    ProducerTracker t = current.get(i);
+                    updated.set(i, affectedSet.contains(t) ? null : t);
+                  }
+                  this.setProducerTrackers(updated);
                   for (AgentTracker tracker : affected) {
-                    if (tracker.identifiable()) {
-                      producers.remove(tracker.id(), tracker);
-                    } else {
+                    if (!tracker.identifiable()) {
                       trackingConsumerTrackers.remove(tracker);
                     }
-                    streamToTrackers.computeIfPresent(
-                        stream,
-                        (st, trackers) -> {
-                          trackers.remove(tracker);
-                          return trackers.isEmpty() ? null : trackers;
-                        });
+                    removeFromStreamToTrackers(tracker);
                   }
-                  countersChanged();
+                  this.trackingConsumerCount = this.trackingConsumerTrackers.size();
                   affected.forEach(
                       t ->
                           trackerEvent(
@@ -1290,108 +1333,225 @@ final class ProducersCoordinator implements AutoCloseable {
       ref.set(this.client);
     }
 
+    private void addIfAssignedHere(AgentTracker tracker, List<AgentTracker> trackers) {
+      if (tracker.manager() == this) {
+        trackers.add(tracker);
+      }
+    }
+
     private List<AgentTracker> trackersFor(String stream) {
       Set<AgentTracker> trackers = this.streamToTrackers.get(stream);
       return trackers == null ? Collections.emptyList() : new ArrayList<>(trackers);
     }
 
     private void register(AgentTracker tracker) {
-      lock(
-          this.managerLock,
-          () -> {
-            // the collections, not the counters: this is the authoritative check, and a counter
-            // can lag behind its collection
-            boolean full =
-                tracker.identifiable()
-                    ? this.producers.size() >= maxProducersByClient
-                    : this.trackingConsumerTrackers.size() >= maxTrackingConsumersByClient;
-            if (full) {
-              throw new IllegalStateException(
-                  "Cannot add subscription tracker, the manager is full");
+      if (tracker.identifiable()) {
+        ProducerTracker producerTracker = (ProducerTracker) tracker;
+        byte publisherId = reserveSlot(producerTracker);
+        try {
+          checkNotClosed();
+          Response response =
+              callAndMaybeRetry(
+                  () ->
+                      this.client.declarePublisher(
+                          publisherId, tracker.reference(), tracker.stream()),
+                  RETRY_ON_TIMEOUT,
+                  "Declare publisher request for publisher %d on stream '%s'",
+                  producerTracker.uniqueId(),
+                  producerTracker.stream());
+          if (!response.isOk()) {
+            String message =
+                "Error while declaring publisher: "
+                    + formatConstant(response.getResponseCode())
+                    + ". Could not assign producer to client.";
+            LOGGER.info(message);
+            throw new StreamException(message, response.getResponseCode());
+          }
+          tracker.assign(publisherId, this.client, this);
+        } catch (RuntimeException e) {
+          releaseSlot(publisherId, producerTracker);
+          throw e;
+        }
+      } else {
+        reserveTrackingConsumer(tracker);
+        tracker.assign((byte) 0, this.client, this);
+      }
+      queryState(
+          s -> {
+            // not if it has been detached in the meantime, e.g. by a cancellation: the entry would
+            // outlive the unregistration that was meant to remove it
+            if (tracker.manager() == this) {
+              this.streamToTrackers
+                  .computeIfAbsent(tracker.stream(), st -> ConcurrentHashMap.newKeySet())
+                  .add(tracker);
             }
-            if (this.isDead()) {
-              throw new IllegalStateException(
-                  "Cannot add subscription tracker, the manager is closed");
-            }
-            checkNotClosed();
-            if (tracker.identifiable()) {
-              ProducerTracker producerTracker = (ProducerTracker) tracker;
-              int index = pickSlot(this.producers, producerTracker, this.producerIndexSequence);
-              this.checkNotClosed();
-              Response response =
-                  callAndMaybeRetry(
-                      () ->
-                          this.client.declarePublisher(
-                              (byte) index, tracker.reference(), tracker.stream()),
-                      RETRY_ON_TIMEOUT,
-                      "Declare publisher request for publisher %d on stream '%s'",
-                      producerTracker.uniqueId(),
-                      producerTracker.stream());
-              if (response.isOk()) {
-                tracker.assign((byte) index, this.client, this);
-              } else {
-                String message =
-                    "Error while declaring publisher: "
-                        + formatConstant(response.getResponseCode())
-                        + ". Could not assign producer to client.";
-                LOGGER.info(message);
-                throw new StreamException(message, response.getResponseCode());
-              }
-              producers.put(tracker.id(), producerTracker);
-            } else {
-              tracker.assign((byte) 0, this.client, this);
-              trackingConsumerTrackers.add(tracker);
-            }
-            streamToTrackers
-                .computeIfAbsent(tracker.stream(), s -> ConcurrentHashMap.newKeySet())
-                .add(tracker);
-            countersChanged();
-          });
+            return null;
+          },
+          null);
+    }
+
+    /**
+     * Reserve a slot and publish it in the tracker array, so a publish confirm arriving right after
+     * the declare-publisher RPC finds its tracker.
+     *
+     * <p>Atomic by construction: it runs on the event loop, the single writer of the array.
+     */
+    private byte reserveSlot(ProducerTracker tracker) {
+      SlotReservation reservation =
+          ProducersCoordinator.this.state.query(
+              s -> {
+                if (this.isFullFor(tracker)) {
+                  return SlotReservation.FULL;
+                }
+                if (this.isDead()) {
+                  return SlotReservation.DEAD;
+                }
+                byte publisherId =
+                    (byte)
+                        ConsumersCoordinator.pickSlot(
+                            this.producerTrackers, this.producerIndexSequence);
+                this.setProducerTrackers(update(this.producerTrackers, publisherId, tracker));
+                return SlotReservation.reserved(publisherId);
+              });
+      checkReservation(reservation, tracker);
+      return reservation.publisherId;
+    }
+
+    private void reserveTrackingConsumer(AgentTracker tracker) {
+      SlotReservation reservation =
+          ProducersCoordinator.this.state.query(
+              s -> {
+                if (this.isFullFor(tracker)) {
+                  return SlotReservation.FULL;
+                }
+                if (this.isDead()) {
+                  return SlotReservation.DEAD;
+                }
+                this.trackingConsumerTrackers.add(tracker);
+                this.trackingConsumerCount = this.trackingConsumerTrackers.size();
+                return SlotReservation.reserved(NO_SLOT);
+              });
+      checkReservation(reservation, tracker);
+    }
+
+    private void checkReservation(SlotReservation reservation, AgentTracker tracker) {
+      if (reservation != null && reservation.full) {
+        LOGGER.debug(
+            "Cannot add {} for stream '{}', manager is full", tracker.type(), tracker.stream());
+        throw new IllegalStateException("Cannot add " + tracker.type() + ", the manager is full");
+      }
+      // null when the loop declined the query, i.e. the coordinator is closing
+      if (reservation == null || reservation.dead) {
+        LOGGER.debug(
+            "Cannot add {} for stream '{}', manager is closed", tracker.type(), tracker.stream());
+        throw new IllegalStateException("Cannot add " + tracker.type() + ", the manager is closed");
+      }
+    }
+
+    // undo a reservation that failed to declare the publisher: the tracker was never confirmed, so
+    // there is nothing to delete on the broker, only the array slot to free. Blocking (not
+    // fire-and-forget): the caller is addToManager(), off-loop, which checks isEmpty() right after
+    // this returns, so the free must be visible by then
+    private void releaseSlot(byte publisherId, ProducerTracker tracker) {
+      queryState(
+          s -> {
+            this.freeSlot(publisherId & 0xFF, tracker);
+            return null;
+          },
+          null);
+    }
+
+    // only if the slot still holds this tracker: the metadata listener frees slots too, and the
+    // slot may have been handed to another producer in between
+    private void freeSlot(int slot, ProducerTracker tracker) {
+      if (this.producerTrackers.get(slot) == tracker) {
+        this.setProducerTrackers(update(this.producerTrackers, (byte) slot, null));
+      }
     }
 
     private void unregister(AgentTracker tracker) {
-      lock(
-          this.managerLock,
-          () -> {
-            LOGGER.debug(
-                "Unregistering {} {} from manager on {}",
-                tracker.type(),
-                tracker.uniqueId(),
-                this.name);
-            if (tracker.identifiable()) {
-              // only if the slot is still this tracker's: unregister() can run twice for one
-              // tracker (cancel() and the release effect), and the slot may have been handed to
-              // another producer in between
-              producers.remove(tracker.id(), tracker);
-            } else {
-              trackingConsumerTrackers.remove(tracker);
-            }
-            streamToTrackers.compute(
+      int slot = tracker.detachIfOwnedBy(this);
+      if (slot < 0) {
+        // already removed, e.g. by the direct call in cancel() racing the async
+        // releaseAssignment effect: detachIfOwnedBy() is idempotent, so this is a no-op
+        return;
+      }
+      LOGGER.debug(
+          "Unregistering {} {} from manager on {}", tracker.type(), tracker.uniqueId(), this.name);
+      if (tracker.identifiable() && this.client.isOpen()) {
+        try {
+          Response response =
+              callAndMaybeRetry(
+                  () -> this.client.deletePublisher((byte) slot),
+                  RETRY_ON_TIMEOUT,
+                  "Delete publisher request for publisher %d on stream '%s'",
+                  tracker.uniqueId(),
+                  tracker.stream());
+          if (!response.isOk()) {
+            LOGGER.warn(
+                "Unexpected response code when deleting publisher on stream '{}': {} (publisher ID {})",
                 tracker.stream(),
-                (s, trackersForThisStream) -> {
-                  if (s == null || trackersForThisStream == null) {
-                    // should not happen
-                    return null;
-                  } else {
-                    trackersForThisStream.remove(tracker);
-                    return trackersForThisStream.isEmpty() ? null : trackersForThisStream;
-                  }
-                });
-            countersChanged();
-            closeIfEmpty();
+                formatConstant(response.getResponseCode()),
+                slot);
+          }
+        } catch (TimeoutStreamException e) {
+          LOGGER.debug(
+              "Reached timeout when trying to delete publisher {} on stream '{}'",
+              tracker.uniqueId(),
+              tracker.stream());
+        }
+      }
+      // the slot stays occupied until now, so no new producer can reuse the same publisher ID while
+      // the delete above is in flight; freeing the slot and checking emptiness happen together so a
+      // concurrent register() cannot slip in between and be torn down by close()
+      Boolean empty =
+          queryState(
+              s -> {
+                if (tracker.identifiable()) {
+                  this.freeSlot(slot, (ProducerTracker) tracker);
+                } else {
+                  this.trackingConsumerTrackers.remove(tracker);
+                  this.trackingConsumerCount = this.trackingConsumerTrackers.size();
+                }
+                this.removeFromStreamToTrackers(tracker);
+                return this.isEmpty();
+              },
+              false);
+      if (Boolean.TRUE.equals(empty)) {
+        this.closeIfEmpty();
+      }
+    }
+
+    private void removeFromStreamToTrackers(AgentTracker tracker) {
+      this.streamToTrackers.computeIfPresent(
+          tracker.stream(),
+          (st, trackers) -> {
+            trackers.remove(tracker);
+            return trackers.isEmpty() ? null : trackers;
           });
     }
 
-    // recomputed rather than adjusted: unregister() is idempotent by design (cancel() and the
-    // async release effect both call it), and a counter stepped down twice for one removal would
-    // make a non-empty manager look empty
-    private void countersChanged() {
-      this.producerCount = this.producers.size();
-      this.trackingConsumerCount = this.trackingConsumerTrackers.size();
+    private List<ProducerTracker> createProducerTrackerList() {
+      List<ProducerTracker> trackers = new ArrayList<>(MAX_PRODUCERS_PER_CLIENT);
+      IntStream.range(0, MAX_PRODUCERS_PER_CLIENT).forEach(i -> trackers.add(null));
+      return trackers;
     }
 
-    // lock-free, because the event loop reads it: taking managerLock there would invert the lock
-    // order against register()
+    private List<ProducerTracker> update(
+        List<ProducerTracker> original, byte index, ProducerTracker newValue) {
+      List<ProducerTracker> newTrackers = createProducerTrackerList();
+      int intIndex = index & 0xFF;
+      for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
+        newTrackers.set(i, i == intIndex ? newValue : original.get(i));
+      }
+      return newTrackers;
+    }
+
+    private void setProducerTrackers(List<ProducerTracker> trackers) {
+      this.producerTrackers = trackers;
+      this.producerCount = (int) this.producerTrackers.stream().filter(Objects::nonNull).count();
+    }
+
     boolean isFullFor(AgentTracker tracker) {
       if (tracker.identifiable()) {
         return this.producerCount >= maxProducersByClient;
@@ -1488,14 +1648,33 @@ final class ProducersCoordinator implements AutoCloseable {
   private static final Predicate<Exception> RETRY_ON_TIMEOUT =
       e -> e instanceof TimeoutStreamException;
 
-  static <T> int pickSlot(ConcurrentMap<Byte, T> map, T tracker, AtomicInteger sequence) {
-    int index = -1;
-    T previousValue = tracker;
-    while (previousValue != null) {
-      index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_PRODUCERS_PER_CLIENT);
-      previousValue = map.putIfAbsent((byte) index, tracker);
+  /** Result of {@code reserveSlot}: a slot number, or the reason none was reserved. */
+  private static final class SlotReservation {
+
+    private static final SlotReservation FULL = new SlotReservation(NO_SLOT, true, false);
+    private static final SlotReservation DEAD = new SlotReservation(NO_SLOT, false, true);
+
+    private final byte publisherId;
+    private final boolean full;
+    private final boolean dead;
+
+    private SlotReservation(byte publisherId, boolean full, boolean dead) {
+      this.publisherId = publisherId;
+      this.full = full;
+      this.dead = dead;
     }
-    return index;
+
+    private static SlotReservation reserved(byte publisherId) {
+      return new SlotReservation(publisherId, false, false);
+    }
+  }
+
+  private static <T> void iterate(Collection<T> trackers, java.util.function.Consumer<T> action) {
+    for (T tracker : trackers) {
+      if (tracker != null) {
+        action.accept(tracker);
+      }
+    }
   }
 
   /**

@@ -15,7 +15,6 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT;
-import static com.rabbitmq.stream.impl.ProducersCoordinator.pickSlot;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.answer;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
@@ -48,13 +47,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -783,28 +779,6 @@ public class ProducersCoordinatorTest {
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     assertThat(setClientLatch).is(completed());
-  }
-
-  @Test
-  void pickSlotTest() {
-    ConcurrentMap<Byte, String> map = new ConcurrentHashMap<>();
-    AtomicInteger sequence = new AtomicInteger(0);
-    assertThat(pickSlot(map, "0", sequence)).isZero();
-    assertThat(sequence).hasValue(1);
-    assertThat(map).hasSize(1);
-    assertThat(pickSlot(map, "1", sequence)).isEqualTo(1);
-    assertThat(pickSlot(map, "2", sequence)).isEqualTo(2);
-    assertThat(pickSlot(map, "3", sequence)).isEqualTo(3);
-    map.remove((byte) 1);
-    assertThat(pickSlot(map, "4", sequence)).isEqualTo(4);
-    assertThat(map).hasSize(4);
-
-    sequence.set(ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT - 2);
-    assertThat(pickSlot(map, "254", sequence)).isEqualTo(254);
-    assertThat(pickSlot(map, "255", sequence)).isEqualTo(255);
-    // 0 is already taken, so we should get index 1 when we overflow
-    assertThat(pickSlot(map, "256", sequence)).isEqualTo(1);
-    assertThat(pickSlot(map, "257", sequence)).isEqualTo(5);
   }
 
   @Test
