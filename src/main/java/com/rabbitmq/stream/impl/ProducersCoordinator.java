@@ -234,7 +234,7 @@ final class ProducersCoordinator implements AutoCloseable {
   }
 
   private void registerAgent(AgentTracker tracker) {
-    submitState(s -> s.agents.put(tracker.uniqueId(), new TrackerState(tracker)));
+    state.submitIfOpen(s -> s.agents.put(tracker.uniqueId(), new TrackerState(tracker)));
   }
 
   /**
@@ -247,7 +247,7 @@ final class ProducersCoordinator implements AutoCloseable {
       AgentTracker tracker,
       BackOffDelayPolicy delayPolicy,
       BiFunction<State, Long, TransitionResult> decision) {
-    submitState(s -> applyTransition(s, tracker, delayPolicy, decision, null));
+    state.submitIfOpen(s -> applyTransition(s, tracker, delayPolicy, decision, null));
   }
 
   /**
@@ -365,7 +365,7 @@ final class ProducersCoordinator implements AutoCloseable {
    * tick interval.
    */
   void watchdogTick() {
-    submitState(
+    state.submitIfOpen(
         s -> {
           long now = System.nanoTime();
           // collected first, then dispatched from a separate pass: dispatching inline while
@@ -412,7 +412,7 @@ final class ProducersCoordinator implements AutoCloseable {
       Assignment assignment,
       BackOffDelayPolicy delayPolicy,
       long attemptEpoch) {
-    submitState(
+    state.submitIfOpen(
         s ->
             applyTransition(
                 s,
@@ -432,7 +432,7 @@ final class ProducersCoordinator implements AutoCloseable {
       AgentTracker tracker, Assignment assignment, BackOffDelayPolicy delayPolicy) {
     AtomicReference<RuntimeException> invalidation = new AtomicReference<>();
     // not run if the coordinator is closing: no failure to report then
-    queryState(
+    state.queryIfOpen(
         s -> {
           applyTransition(
               s,
@@ -804,45 +804,13 @@ final class ProducersCoordinator implements AutoCloseable {
   }
 
   private void creationFinished(Broker node, ClientProducersManager manager) {
-    submitState(s -> s.pool.creationFinished(node, manager));
-  }
-
-  /**
-   * Read loop-owned state for monitoring, falling back when the loop is gone.
-   *
-   * <p>Monitoring outlives the coordinator: {@code StreamEnvironment.toString()} is legitimately
-   * called on a closed environment, and must not throw.
-   */
-  private <R> R queryState(Function<CoordinatorState, R> query, R valueIfClosed) {
-    if (this.state.isClosed()) {
-      return valueIfClosed;
-    }
-    try {
-      return this.state.query(query);
-    } catch (IllegalStateException e) {
-      // the loop was closed concurrently
-      return valueIfClosed;
-    }
-  }
-
-  /**
-   * Post to the loop, tolerating a closed loop.
-   *
-   * <p>Callers include netty I/O threads, whose connection events can arrive while the coordinator
-   * is closing; an exception there would surface on an I/O thread.
-   */
-  private void submitState(java.util.function.Consumer<CoordinatorState> task) {
-    try {
-      this.state.submit(task);
-    } catch (IllegalStateException e) {
-      LOGGER.debug("Coordinator event loop is closed, dropping task");
-    }
+    state.submitIfOpen(s -> s.pool.creationFinished(node, manager));
   }
 
   // the connection pool is coordinator-owned state, so managers do not reach into it directly
   private void removeFromPool(ClientProducersManager manager) {
     // fire-and-forget: this is called from netty I/O threads, which must never wait on the loop
-    submitState(s -> s.pool.remove(manager));
+    state.submitIfOpen(s -> s.pool.remove(manager));
   }
 
   // package protected for testing
@@ -906,7 +874,7 @@ final class ProducersCoordinator implements AutoCloseable {
       this.watchdogTask.cancel(false);
     }
     List<ClientProducersManager> connections =
-        queryState(s -> s.pool.drain(), Collections.emptyList());
+        state.queryIfOpen(s -> s.pool.drain(), Collections.emptyList());
     for (ClientProducersManager manager : connections) {
       try {
         manager.close();
@@ -931,36 +899,23 @@ final class ProducersCoordinator implements AutoCloseable {
     }
     this.recoveryExecutor.shutdownNow();
     if (this.privateEventExecutorGroup) {
-      closeEventExecutorGroup(this.eventExecutorGroup);
-    }
-  }
-
-  private static void closeEventExecutorGroup(EventExecutorGroup group) {
-    try {
-      if (!group.isShuttingDown()) {
-        // no quiet period: the loop is a control plane, there is no in-flight batch to drain
-        group.shutdownGracefully(0, 10, SECONDS).get(10, SECONDS);
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    } catch (Exception e) {
-      LOGGER.info("Error while closing coordinator event executor group: {}", e.getMessage());
+      CoordinatorUtils.closeEventExecutorGroup(this.eventExecutorGroup);
     }
   }
 
   int clientCount() {
-    return queryState(s -> s.pool.size(), 0);
+    return state.queryIfOpen(s -> s.pool.size(), 0);
   }
 
   int nodesConnected() {
-    return queryState(
+    return state.queryIfOpen(
         s -> s.pool.connections().stream().map(m -> m.name).collect(toSet()).size(), 0);
   }
 
   @Override
   public String toString() {
     List<ClientProducersManager> connections =
-        queryState(s -> s.pool.connections(), Collections.emptyList());
+        state.queryIfOpen(s -> s.pool.connections(), Collections.emptyList());
     StringBuilder builder = new StringBuilder("{");
     builder.append(jsonField("client_count", connections.size())).append(",");
     builder
@@ -1392,7 +1347,7 @@ final class ProducersCoordinator implements AutoCloseable {
             // fire-and-forget: this runs on a netty I/O thread, which must never wait on the loop.
             // Submitted even if nothing was collected above: an agent assigned here but not
             // indexed by stream yet is only found by the sweep below
-            submitState(
+            state.submitIfOpen(
                 s -> {
                   // one by one, not the whole stream entry: a tracker registered for this stream
                   // since the collection above must stay reachable by the next notification.
@@ -1658,7 +1613,7 @@ final class ProducersCoordinator implements AutoCloseable {
     // fire-and-forget): the caller is addToManager(), off-loop, which checks isEmpty() right after
     // this returns, so the free must be visible by then
     private void releaseSlot(byte publisherId, ProducerTracker tracker) {
-      queryState(
+      state.queryIfOpen(
           s -> {
             this.freeSlot(publisherId & 0xFF, tracker);
             return null;
@@ -1692,7 +1647,8 @@ final class ProducersCoordinator implements AutoCloseable {
       // may belong to another producer by now
       boolean held =
           tracker.identifiable()
-              && Boolean.TRUE.equals(queryState(s -> this.holds(tracker, assignment), false));
+              && Boolean.TRUE.equals(
+                  state.queryIfOpen(s -> this.holds(tracker, assignment), false));
       if (held && this.client.isOpen()) {
         try {
           Response response =
@@ -1720,7 +1676,7 @@ final class ProducersCoordinator implements AutoCloseable {
       // the delete above is in flight; freeing the slot and checking emptiness happen together so a
       // concurrent register() cannot slip in between and be torn down by close()
       Boolean empty =
-          queryState(
+          state.queryIfOpen(
               s -> {
                 // another attempt of the agent can have landed here too
                 boolean stillAssignedHere = tracker.manager() == this;

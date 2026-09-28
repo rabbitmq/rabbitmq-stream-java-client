@@ -119,6 +119,26 @@ public class EventLoopTest {
   }
 
   @Test
+  void ifOpenVariantsApplyToAnOpenClient() {
+    client.submitIfOpen(s -> s.a = 42);
+    assertThat(client.queryIfOpen(s -> s.a, -1)).isEqualTo(42);
+  }
+
+  @Test
+  void ifOpenVariantsTolerateAClosedClient() {
+    client.close();
+    assertThatCode(() -> client.submitIfOpen(s -> s.a = 42)).doesNotThrowAnyException();
+    assertThat(client.queryIfOpen(s -> s.a, -1)).isEqualTo(-1);
+  }
+
+  @Test
+  void ifOpenVariantsTolerateAClosedLoop() {
+    loop.close();
+    assertThatCode(() -> client.submitIfOpen(s -> s.a = 42)).doesNotThrowAnyException();
+    assertThat(client.queryIfOpen(s -> s.a, -1)).isEqualTo(-1);
+  }
+
+  @Test
   void stateOfOneClientIsNotVisibleToAnother() {
     EventLoop.Client<State> other = loop.register(State::new);
     client.submit(s -> s.a = 42);

@@ -188,6 +188,38 @@ final class EventLoop implements AutoCloseable {
       return this.loop.query(this, queryFunction);
     }
 
+    /**
+     * Post to the loop, dropping the task if the loop is closed.
+     *
+     * <p>For callers such as netty I/O threads, whose connection events can arrive while the owner
+     * is closing: an exception there would surface on an I/O thread.
+     */
+    void submitIfOpen(Consumer<S> task) {
+      try {
+        this.submit(task);
+      } catch (IllegalStateException e) {
+        LOGGER.debug("Event loop is closed, dropping task");
+      }
+    }
+
+    /**
+     * Query the loop, falling back to a value if the loop is closed.
+     *
+     * <p>For callers that must not throw once the owner is closed, e.g. monitoring: {@code
+     * StreamEnvironment.toString()} is legitimately called on a closed environment.
+     */
+    <R> R queryIfOpen(Function<S, R> queryFunction, R valueIfClosed) {
+      if (this.isClosed()) {
+        return valueIfClosed;
+      }
+      try {
+        return this.query(queryFunction);
+      } catch (IllegalStateException e) {
+        // the loop was closed concurrently
+        return valueIfClosed;
+      }
+    }
+
     @Override
     public void close() {
       if (this.closed.compareAndSet(false, true)) {

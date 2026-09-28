@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2025-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -14,12 +14,19 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.StreamNotAvailableException;
+import io.netty.util.concurrent.EventExecutorGroup;
 import java.nio.channels.ClosedChannelException;
 import java.util.function.Predicate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 final class CoordinatorUtils {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(CoordinatorUtils.class);
 
   private static final Predicate<Throwable> REFRESH_CANDIDATES =
       e ->
@@ -32,6 +39,19 @@ final class CoordinatorUtils {
 
   static boolean shouldRefreshCandidates(Throwable e) {
     return REFRESH_CANDIDATES.test(e) || REFRESH_CANDIDATES.test(e.getCause());
+  }
+
+  static void closeEventExecutorGroup(EventExecutorGroup group) {
+    try {
+      if (!group.isShuttingDown()) {
+        // no quiet period: the loop is a control plane, there is no in-flight batch to drain
+        group.shutdownGracefully(0, 10, SECONDS).get(10, SECONDS);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (Exception e) {
+      LOGGER.info("Error while closing coordinator event executor group: {}", e.getMessage());
+    }
   }
 
   static class ClientClosedException extends StreamException {
