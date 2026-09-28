@@ -299,7 +299,8 @@ final class StreamEnvironment implements Environment {
               maxTrackingConsumersByConnection,
               connectionNamingStrategy,
               coordinatorClientFactory(this, producerNodeRetryDelay),
-              forceLeaderForProducers);
+              forceLeaderForProducers,
+              null);
       shutdownService.wrap(this.producersCoordinator::close);
       this.consumersCoordinator =
           new ConsumersCoordinator(

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -15,20 +15,26 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT;
-import static com.rabbitmq.stream.impl.ProducersCoordinator.pickSlot;
+import static com.rabbitmq.stream.impl.ProducersCoordinator.recoverable;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.answer;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
+import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.util.stream.Collectors.toList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyByte;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,7 +43,10 @@ import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.CoordinatorUtils.ClientClosedException;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import io.netty.channel.ConnectTimeoutException;
 import java.time.Duration;
@@ -45,13 +54,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -59,6 +66,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.stubbing.Answer;
@@ -136,6 +144,12 @@ public class ProducersCoordinatorTest {
         .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
     when(client.serverAdvertisedHost()).thenReturn(leader().getHost());
     when(client.serverAdvertisedPort()).thenReturn(leader().getPort());
+    when(environment.rpcTimeout()).thenReturn(Duration.ofSeconds(10));
+    // a bare executor, not createScheduledExecutorService(): it must not start any thread of its
+    // own just by existing, only if actually given a task, so tests that override this stub before
+    // registering leave nothing running to clean up
+    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     coordinator =
         new ProducersCoordinator(
             environment,
@@ -143,7 +157,8 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             clientFactory,
-            true);
+            true,
+            null);
     when(client.isOpen()).thenReturn(true);
     when(client.deletePublisher(anyByte())).thenReturn(new Response(Constants.RESPONSE_CODE_OK));
   }
@@ -200,6 +215,23 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
+  void initialRegistrationShouldNotMarkTheAgentRunning() {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(producer.isOpen()).thenReturn(true);
+    when(trackingConsumer.isOpen()).thenReturn(true);
+
+    coordinator.registerProducer(producer, null, "stream");
+    coordinator.registerTrackingConsumer(trackingConsumer);
+
+    verify(producer, times(1)).setClient(client);
+    verify(trackingConsumer, times(1)).setTrackingClient(client);
+    // registration runs inside the agent's constructor, running() would touch unset state
+    verify(producer, after(500).never()).running();
+    verify(trackingConsumer, never()).running();
+  }
+
+  @Test
   void
       shouldRetryUntilGettingExactNodeWithAdvertisedHostNameClientFactoryAndNotExactNodeOnFirstTime() {
     ClientFactory cf =
@@ -213,19 +245,24 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             cf,
-            true);
+            true,
+            null);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
 
     when(client.serverAdvertisedHost()).thenReturn("foo").thenReturn(leader().getHost());
     when(client.serverAdvertisedPort()).thenReturn(42).thenReturn(leader().getPort());
 
-    Runnable cleanTask = c.registerProducer(producer, null, "stream");
+    try {
+      Runnable cleanTask = c.registerProducer(producer, null, "stream");
 
-    verify(clientFactory, times(2)).client(any());
-    verify(producer, times(1)).setClient(client);
+      verify(clientFactory, times(2)).client(any());
+      verify(producer, times(1)).setClient(client);
 
-    cleanTask.run();
+      cleanTask.run();
+    } finally {
+      c.close();
+    }
   }
 
   @Test
@@ -241,24 +278,29 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             cf,
-            true);
+            true,
+            null);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
 
     when(client.serverAdvertisedHost()).thenReturn(leader().getHost());
     when(client.serverAdvertisedPort()).thenReturn(leader().getPort());
 
-    Runnable cleanTask = c.registerProducer(producer, null, "stream");
+    try {
+      Runnable cleanTask = c.registerProducer(producer, null, "stream");
 
-    verify(clientFactory, times(1)).client(any());
-    verify(producer, times(1)).setClient(client);
+      verify(clientFactory, times(1)).client(any());
+      verify(producer, times(1)).setClient(client);
 
-    cleanTask.run();
+      cleanTask.run();
+    } finally {
+      c.close();
+    }
   }
 
   @Test
   void shouldRedistributeProducerAndTrackingConsumerIfConnectionIsLost() throws Exception {
-    scheduledExecutorService = createScheduledExecutorService();
+    scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -323,8 +365,256 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
+  void firstRecoveryAttemptShouldWaitThePolicyInitialDelay() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // an initial delay much longer than the delay between retries, so which of the two applies to
+    // the first attempt of a recovery episode is observable
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(1000), ms(10)));
+    when(producer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    coordinator.registerProducer(producer, null, "stream");
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // still only the initial declaration: the recovery attempt is waiting out delay(0), the
+    // policy's grace before reacting at all, and not delay(1)
+    verify(client, after(300).times(1)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(client, timeout(10_000).times(2)).declarePublisher(anyByte(), isNull(), anyString());
+  }
+
+  @Test
+  void producerClosedDuringItsRecoveryAssignmentShouldBeReleased() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    // open when the attempt starts, closed by the time the assignment is done
+    when(producer.isOpen()).thenReturn(true, false);
+
+    coordinator.registerProducer(producer, null, "stream");
+    assertThat(coordinator.clientCount()).isEqualTo(1);
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    verify(producer, timeout(5_000).times(2)).setClient(client);
+    // the new connection had the closed producer only, so it goes away once it is released
+    waitAtMost(() -> coordinator.clientCount() == 0);
+    verify(producer, never()).running();
+  }
+
+  @Test
+  void aSupersededAttemptShouldNotTouchTheBroker() {
+    scheduledExecutorService = spy(createScheduledExecutorService(2));
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // long enough that the parked attempt is still waiting when it gets superseded
+    Duration parkedDelay = Duration.ofSeconds(2);
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(50), parkedDelay));
+    when(producer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(leader(), replicas()))
+        .thenThrow(new IllegalStateException("no metadata for this attempt"))
+        .thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    coordinator.registerProducer(producer, null, "stream");
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the episode's first attempt fails its candidate lookup and parks
+    verifyRetryScheduled(parkedDelay, 1);
+
+    // the watchdog starts a fresh attempt, which succeeds and leaves the parked one stale
+    coordinator.ageWatchdogClocksBy(parkedDelay.plusSeconds(121));
+    coordinator.watchdogTick();
+    verify(client, timeout(10_000).times(2)).declarePublisher(anyByte(), isNull(), anyString());
+
+    // the parked attempt fires once its delay is up: it must not look up a candidate, and above
+    // all must not declare a publisher, which would take the producer away from the fresh attempt
+    verify(locator, after(parkedDelay.toMillis() + 500).times(3)).metadata("stream");
+    verify(client, times(2)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(producer, times(1)).running();
+  }
+
+  @Test
+  void shouldNotStrandAnAgentWhenAnAttemptGivesUp() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(producer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    // the first recovery ends in an error once the producer is reassigned
+    doThrow(new IllegalStateException("running() failure")).doNothing().when(producer).running();
+
+    coordinator.registerProducer(producer, null, "stream");
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    verify(producer, timeout(10_000).times(1)).running();
+
+    // a disruption on the connection the producer recovered to
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    verify(producer, timeout(10_000).times(2)).running();
+    verify(producer, times(3)).setClient(client);
+  }
+
+  @Test
+  void shouldNotOpenTwoConnectionsToTheSameNodeForConcurrentRecoveries() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(locator.metadata("stream-1")).thenReturn(metadata("stream-1", leader(), replicas()));
+    when(locator.metadata("stream-2")).thenReturn(metadata("stream-2", leader(), replicas()));
+    when(clientFactory.client(any()))
+        .thenReturn(client)
+        .thenAnswer(
+            invocation -> {
+              // slow enough for both recoveries to need a connection at the same time
+              Thread.sleep(500);
+              return client;
+            });
+    StreamProducer producer2 = mock(StreamProducer.class);
+    when(producer.isOpen()).thenReturn(true);
+    when(producer2.isOpen()).thenReturn(true);
+
+    coordinator.registerProducer(producer, null, "stream-1");
+    coordinator.registerProducer(producer2, null, "stream-2");
+    assertThat(coordinator.clientCount()).isEqualTo(1);
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    verify(producer, timeout(10_000).times(1)).running();
+    verify(producer2, timeout(10_000).times(1)).running();
+    verify(clientFactory, times(2)).client(any());
+    assertThat(coordinator.clientCount()).isEqualTo(1);
+  }
+
+  @Test
+  void aCancelledAgentDuringRecoveryShouldNotBeReassigned() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(500), ms(50)));
+    AtomicBoolean open = new AtomicBoolean(true);
+    when(producer.isOpen()).thenAnswer(invocation -> open.get());
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    coordinator.registerProducer(producer, null, "stream");
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    // closed while its recovery waits out the initial delay
+    open.set(false);
+
+    verify(client, after(1000).times(1)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(locator, times(1)).metadata("stream");
+    verify(clientFactory, times(1)).client(any());
+    verify(producer, times(1)).setClient(client);
+    verify(producer, never()).running();
+  }
+
+  @Test
+  void watchdogShouldReDispatchAStuckAgent() {
+    scheduledExecutorService = spy(createScheduledExecutorService(2));
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // a long fixed delay: the natural retry must not fire on its own during this test, so any
+    // further progress can only come from the watchdog
+    Duration delay = Duration.ofMinutes(10);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(delay));
+    when(producer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.declarePublisher(anyByte(), isNull(), anyString()))
+        .thenReturn(new Response(Constants.RESPONSE_CODE_OK))
+        // the recovery attempt fails and its retry is scheduled 10 minutes out
+        .thenReturn(new Response(Constants.RESPONSE_CODE_PRECONDITION_FAILED))
+        .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
+
+    coordinator.registerProducer(producer, null, "stream");
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // the episode's own first attempt is scheduled 10 minutes out, so bring that forward too
+    coordinator.ageWatchdogClocksBy(delay.plusSeconds(121));
+    coordinator.watchdogTick();
+    verify(client, timeout(10_000).times(2)).declarePublisher(anyByte(), isNull(), anyString());
+    verifyRetryScheduled(delay, 2);
+
+    coordinator.ageWatchdogClocksBy(delay.plusSeconds(121));
+    coordinator.watchdogTick();
+    verify(client, timeout(10_000).times(3)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(producer, timeout(10_000).times(1)).running();
+  }
+
+  @Test
+  void watchdogShouldNotCutShortABackOffDelay() {
+    scheduledExecutorService = spy(createScheduledExecutorService(2));
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // longer than the watchdog's stuck threshold, so the two could conflict
+    Duration delay = Duration.ofMinutes(10);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(delay));
+    when(producer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.declarePublisher(anyByte(), isNull(), anyString()))
+        .thenReturn(new Response(Constants.RESPONSE_CODE_OK))
+        .thenReturn(new Response(Constants.RESPONSE_CODE_PRECONDITION_FAILED))
+        .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
+
+    coordinator.registerProducer(producer, null, "stream");
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // bring the episode's first attempt forward, to get to an attempt that failed and is now
+    // waiting on its retry
+    coordinator.ageWatchdogClocksBy(delay.plusSeconds(121));
+    coordinator.watchdogTick();
+    verifyRetryScheduled(delay, 2);
+
+    // past the stuck threshold, but nowhere near the end of the delay: waiting by design, not stuck
+    coordinator.ageWatchdogClocksBy(Duration.ofSeconds(121));
+    coordinator.watchdogTick();
+
+    verify(client, after(300).times(2)).declarePublisher(anyByte(), isNull(), anyString());
+  }
+
+  @Test
+  void releasingAProducerShouldDeleteItsPublisher() {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    ArgumentCaptor<Byte> publisherId = ArgumentCaptor.forClass(Byte.class);
+
+    Runnable cleanTask = coordinator.registerProducer(producer, null, "stream");
+    Runnable trackingConsumerCleanTask = coordinator.registerTrackingConsumer(trackingConsumer);
+    verify(producer).setPublisherId(publisherId.capture());
+
+    trackingConsumerCleanTask.run();
+    verify(client, never()).deletePublisher(anyByte());
+
+    cleanTask.run();
+    verify(client, times(1)).deletePublisher(publisherId.getValue());
+    // a second release has nothing left to delete
+    cleanTask.run();
+    verify(client, times(1)).deletePublisher(anyByte());
+  }
+
+  @Test
   void shouldRecoverOnConnectionTimeout() throws Exception {
-    scheduledExecutorService = createScheduledExecutorService();
+    scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(retryDelay));
@@ -357,7 +647,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void shouldDisposeProducerAndNotTrackingConsumerIfRecoveryTimesOut() throws Exception {
-    scheduledExecutorService = createScheduledExecutorService();
+    scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.recoveryBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -367,6 +657,9 @@ public class ProducersCoordinatorTest {
         .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
+
+    // a producer is still open while it recovers
+    when(producer.isOpen()).thenReturn(true);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown()))
@@ -392,13 +685,13 @@ public class ProducersCoordinatorTest {
     verify(trackingConsumer, times(1)).setTrackingClient(client);
     verify(trackingConsumer, never()).running();
     verify(trackingConsumer, never()).closeAfterStreamDeletion();
-    assertThat(coordinator.nodesConnected()).isEqualTo(0);
-    assertThat(coordinator.clientCount()).isEqualTo(0);
+    waitAtMost(() -> coordinator.nodesConnected() == 0);
+    waitAtMost(() -> coordinator.clientCount() == 0);
   }
 
   @Test
   void shouldRedistributeProducersAndTrackingConsumersOnMetadataUpdate() throws Exception {
-    scheduledExecutorService = createScheduledExecutorService();
+    scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     Duration retryDelay = Duration.ofMillis(50);
     when(environment.topologyUpdateBackOffDelayPolicy())
@@ -495,7 +788,7 @@ public class ProducersCoordinatorTest {
 
   @Test
   void shouldDisposeProducerIfStreamIsDeleted() throws Exception {
-    scheduledExecutorService = createScheduledExecutorService();
+    scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -504,6 +797,9 @@ public class ProducersCoordinatorTest {
         .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
+
+    // a producer is still open while it recovers
+    when(producer.isOpen()).thenReturn(true);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown()))
@@ -518,16 +814,41 @@ public class ProducersCoordinatorTest {
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
     assertThat(closeClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+    verify(producer, times(1))
+        .closeAfterStreamDeletion(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
     verify(producer, times(1)).unavailable();
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
 
-    assertThat(coordinator.clientCount()).isEqualTo(0);
+    waitAtMost(() -> coordinator.clientCount() == 0);
+  }
+
+  @Test
+  void producerShouldBeClosedWithStreamDoesNotExistCodeIfStreamIsDeletedDuringRecovery()
+      throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(leader(), replicas()))
+        .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(producer.isOpen()).thenReturn(true);
+
+    coordinator.registerProducer(producer, null, "stream");
+    metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+    verify(producer, timeout(5000).times(1))
+        .closeAfterStreamDeletion(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    verify(locator, times(2)).metadata("stream");
+    verify(producer, never()).running();
+    waitAtMost(() -> coordinator.clientCount() == 0);
   }
 
   @Test
   void shouldDisposeProducerAndNotTrackingConsumerIfMetadataUpdateTimesOut() throws Exception {
-    scheduledExecutorService = createScheduledExecutorService();
+    scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())
         .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
@@ -537,6 +858,9 @@ public class ProducersCoordinatorTest {
         .thenReturn(metadata(null, replicas()));
 
     when(clientFactory.client(any())).thenReturn(client);
+
+    // a producer is still open while it recovers
+    when(producer.isOpen()).thenReturn(true);
 
     CountDownLatch closeClientLatch = new CountDownLatch(1);
     doAnswer(answer(() -> closeClientLatch.countDown()))
@@ -561,13 +885,14 @@ public class ProducersCoordinatorTest {
     verify(trackingConsumer, times(1)).setTrackingClient(client);
     verify(trackingConsumer, never()).running();
     verify(trackingConsumer, never()).closeAfterStreamDeletion();
-    assertThat(coordinator.nodesConnected()).isEqualTo(0);
-    assertThat(coordinator.clientCount()).isEqualTo(0);
+    waitAtMost(() -> coordinator.nodesConnected() == 0);
+    waitAtMost(() -> coordinator.clientCount() == 0);
   }
 
   @ParameterizedTest
   @ValueSource(ints = {50, ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT})
-  void growShrinkResourcesBasedOnProducersAndTrackingConsumersCount(int maxProducersByClient) {
+  void growShrinkResourcesBasedOnProducersAndTrackingConsumersCount(int maxProducersByClient)
+      throws Exception {
     scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
@@ -577,6 +902,7 @@ public class ProducersCoordinatorTest {
     int extraProducerCount = maxProducersByClient / 5;
     int producerCount = maxProducersByClient + extraProducerCount;
 
+    coordinator.close();
     coordinator =
         new ProducersCoordinator(
             environment,
@@ -584,7 +910,8 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             clientFactory,
-            true);
+            true,
+            null);
 
     class ProducerInfo {
       StreamProducer producer;
@@ -645,7 +972,8 @@ public class ProducersCoordinatorTest {
               trackingConsumerInfos.remove(0);
             });
 
-    assertThat(coordinator.clientCount()).isEqualTo(2);
+    // the emptied connection is closed after the idle linger
+    waitAtMost(() -> coordinator.clientCount() == 2);
 
     // let's free the rest of tracking consumers
     trackingConsumerInfos.forEach(info -> info.cleaningCallback.run());
@@ -681,8 +1009,8 @@ public class ProducersCoordinatorTest {
       producerInfo.cleaningCallback.run();
     }
 
+    waitAtMost(() -> coordinator.clientCount() == 1);
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
-    assertThat(coordinator.clientCount()).isEqualTo(1);
   }
 
   @Test
@@ -718,28 +1046,6 @@ public class ProducersCoordinatorTest {
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     assertThat(setClientLatch).is(completed());
-  }
-
-  @Test
-  void pickSlotTest() {
-    ConcurrentMap<Byte, String> map = new ConcurrentHashMap<>();
-    AtomicInteger sequence = new AtomicInteger(0);
-    assertThat(pickSlot(map, "0", sequence)).isZero();
-    assertThat(sequence).hasValue(1);
-    assertThat(map).hasSize(1);
-    assertThat(pickSlot(map, "1", sequence)).isEqualTo(1);
-    assertThat(pickSlot(map, "2", sequence)).isEqualTo(2);
-    assertThat(pickSlot(map, "3", sequence)).isEqualTo(3);
-    map.remove((byte) 1);
-    assertThat(pickSlot(map, "4", sequence)).isEqualTo(4);
-    assertThat(map).hasSize(4);
-
-    sequence.set(ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT - 2);
-    assertThat(pickSlot(map, "254", sequence)).isEqualTo(254);
-    assertThat(pickSlot(map, "255", sequence)).isEqualTo(255);
-    // 0 is already taken, so we should get index 1 when we overflow
-    assertThat(pickSlot(map, "256", sequence)).isEqualTo(1);
-    assertThat(pickSlot(map, "257", sequence)).isEqualTo(5);
   }
 
   @Test
@@ -779,7 +1085,40 @@ public class ProducersCoordinatorTest {
         .containsAll(replicaWrappers());
   }
 
+  @Test
+  void failureClassificationShouldRetryOnlyTransientFailures() {
+    assertThat(recoverable(new ConnectionStreamException("closed"))).isTrue();
+    assertThat(recoverable(new ClientClosedException())).isTrue();
+    assertThat(recoverable(new StreamNotAvailableException("stream"))).isTrue();
+    assertThat(
+            recoverable(
+                new StreamException("declared", Constants.RESPONSE_CODE_PRECONDITION_FAILED)))
+        .isTrue();
+    assertThat(
+            recoverable(
+                new StreamException("deleted", Constants.RESPONSE_CODE_PUBLISHER_DOES_NOT_EXIST)))
+        .isTrue();
+    assertThat(recoverable(new StreamException("refused", Constants.RESPONSE_CODE_ACCESS_REFUSED)))
+        .isFalse();
+    assertThat(recoverable(new StreamDoesNotExistException("stream"))).isFalse();
+    assertThat(recoverable(new IllegalStateException("boom"))).isFalse();
+    assertThat(recoverable(null)).isFalse();
+  }
+
+  // the transition that parked an attempt has been applied once its retry is scheduled
+  private void verifyRetryScheduled(Duration delay, int times) {
+    verify(scheduledExecutorService, timeout(10_000).times(times))
+        .schedule(any(Runnable.class), eq(delay.toMillis()), eq(TimeUnit.MILLISECONDS));
+  }
+
   private static ScheduledExecutorService createScheduledExecutorService() {
-    return new ScheduledExecutorServiceWrapper(Executors.newSingleThreadScheduledExecutor());
+    return createScheduledExecutorService(1);
+  }
+
+  private static ScheduledExecutorService createScheduledExecutorService(int nbThreads) {
+    return new ScheduledExecutorServiceWrapper(
+        nbThreads == 1
+            ? Executors.newSingleThreadScheduledExecutor()
+            : Executors.newScheduledThreadPool(nbThreads));
   }
 }
