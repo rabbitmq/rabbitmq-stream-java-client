@@ -1296,6 +1296,7 @@ public class ConsumersCoordinatorTest {
 
       // the subscription under test is closed before its detach effect runs
       closeUnderTest.run();
+      verify(client, never()).unsubscribe(slotUnderTest);
 
       messageListener.handle(slotUnderTest, 0, 0, 0, null, new WrapperMessageBuilder().build());
       assertThat(newOwnerMessageCount).hasValue(1);
@@ -2409,6 +2410,168 @@ public class ConsumersCoordinatorTest {
     verify(locator, after(parkedDelay.toMillis() + 500).times(3)).metadata("stream");
     verify(client, times(2))
         .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+  }
+
+  @Test
+  void staleAttemptLandingLastShouldNotOrphanTheCurrentSubscription() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(50), Duration.ofMinutes(10)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+    Client client2 = mockClient(new AtomicBoolean(true));
+    CountDownLatch staleSubscribeStarted = new CountDownLatch(1);
+    CountDownLatch releaseStaleSubscribe = new CountDownLatch(1);
+    holdFirstSubscribe(client2, staleSubscribeStarted, releaseStaleSubscribe);
+    when(clientFactory.client(any())).thenReturn(client, client2);
+
+    Runnable closing = subscribe(consumer, "stream", (offset, message) -> {});
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    assertThat(staleSubscribeStarted.await(10, TimeUnit.SECONDS)).isTrue();
+
+    // the watchdog supersedes the attempt held in its subscription, the new attempt completes
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
+    coordinator.watchdogTick();
+    verify(consumer, timeout(TIMEOUT_MS).times(2)).markOpen();
+
+    releaseStaleSubscribe.countDown();
+
+    ArgumentCaptor<Byte> subscribedIds = ArgumentCaptor.forClass(Byte.class);
+    verify(client2, times(2))
+        .subscribe(
+            subscribedIds.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap());
+    byte staleId = subscribedIds.getAllValues().get(0);
+    byte currentId = subscribedIds.getAllValues().get(1);
+    verify(client2, timeout(TIMEOUT_MS)).unsubscribe(staleId);
+    verify(client2, after(300).never()).unsubscribe(currentId);
+
+    closing.run();
+    verify(client2, timeout(TIMEOUT_MS)).unsubscribe(currentId);
+  }
+
+  @Test
+  void staleReservationOnADyingConnectionShouldNotRecoverAHealthySubscription() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(50), Duration.ofMinutes(10)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+    AtomicBoolean client2Open = new AtomicBoolean(true);
+    Client client2 = mockClient(client2Open);
+    Client client3 = mockClient(new AtomicBoolean(true));
+    CountDownLatch staleSubscribeStarted = new CountDownLatch(1);
+    CountDownLatch releaseStaleSubscribe = new CountDownLatch(1);
+    holdFirstSubscribe(client2, staleSubscribeStarted, releaseStaleSubscribe);
+    when(clientFactory.client(any())).thenReturn(client, client2, client3);
+    // one subscription per connection, so the two attempts land on different connections
+    coordinator.close();
+    coordinator =
+        new ConsumersCoordinator(
+            environment,
+            1,
+            type -> "consumer-connection",
+            clientFactory,
+            false,
+            brokerPicker(),
+            null);
+
+    Runnable closing = subscribe(consumer, "stream", (offset, message) -> {});
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    assertThat(staleSubscribeStarted.await(10, TimeUnit.SECONDS)).isTrue();
+    Client.ShutdownListener staleConnectionListener = shutdownListener;
+
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
+    coordinator.watchdogTick();
+    verify(consumer, timeout(TIMEOUT_MS).times(2)).markOpen();
+
+    try {
+      // the connection the stale attempt is held on dies
+      client2Open.set(false);
+      staleConnectionListener.handle(
+          new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+      // barriers: the listener's loop task, then the events it posted, have run
+      coordinator.managerCount();
+      coordinator.managerCount();
+    } finally {
+      releaseStaleSubscribe.countDown();
+    }
+
+    // only the disruption of the initial connection
+    verify(consumer, after(300).times(1)).markRecovering();
+    verify(client3, times(1))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+    closing.run();
+    verify(client3, timeout(TIMEOUT_MS)).unsubscribe(anyByte());
+  }
+
+  @Test
+  void consumerClosedDuringItsRecoveryAssignmentShouldBeUnsubscribed() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(fixedWithInitialDelay(ms(50), ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+    Client client2 = mockClient(new AtomicBoolean(true));
+    CountDownLatch subscribeStarted = new CountDownLatch(1);
+    CountDownLatch releaseSubscribe = new CountDownLatch(1);
+    holdFirstSubscribe(client2, subscribeStarted, releaseSubscribe);
+    when(clientFactory.client(any())).thenReturn(client, client2);
+
+    Runnable closing = subscribe(consumer, "stream", (offset, message) -> {});
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    assertThat(subscribeStarted.await(10, TimeUnit.SECONDS)).isTrue();
+
+    try {
+      closing.run();
+      // nothing to release yet, the attempt has not subscribed
+      verify(client2, after(300).never()).unsubscribe(anyByte());
+    } finally {
+      releaseSubscribe.countDown();
+    }
+
+    ArgumentCaptor<Byte> subscribedId = ArgumentCaptor.forClass(Byte.class);
+    verify(client2)
+        .subscribe(
+            subscribedId.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap());
+    verify(client2, timeout(TIMEOUT_MS)).unsubscribe(subscribedId.getValue());
+  }
+
+  // the first subscribe on the connection blocks until released
+  private static void holdFirstSubscribe(
+      Client c, CountDownLatch subscribeStarted, CountDownLatch releaseSubscribe) {
+    AtomicBoolean first = new AtomicBoolean(true);
+    when(c.subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .then(
+            invocation -> {
+              if (first.getAndSet(false)) {
+                subscribeStarted.countDown();
+                releaseSubscribe.await(10, TimeUnit.SECONDS);
+              }
+              return responseOk();
+            });
   }
 
   @Test
