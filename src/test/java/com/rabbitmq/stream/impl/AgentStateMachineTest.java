@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.AgentStateMachine.State.CLOSED;
 import static com.rabbitmq.stream.impl.AgentStateMachine.State.OPENING;
 import static com.rabbitmq.stream.impl.AgentStateMachine.State.RECOVERING;
 import static com.rabbitmq.stream.impl.AgentStateMachine.onAssignmentFailed;
+import static com.rabbitmq.stream.impl.AgentStateMachine.onAssignmentInvalidated;
 import static com.rabbitmq.stream.impl.AgentStateMachine.onAssignmentSucceeded;
 import static com.rabbitmq.stream.impl.AgentStateMachine.onCancelled;
 import static com.rabbitmq.stream.impl.AgentStateMachine.onConnectionLost;
@@ -204,6 +205,38 @@ public class AgentStateMachineTest {
     TransitionResult r = run(onAssignmentFailed(OPENING, 1, 1, CONNECTION_ERROR, true));
     assertThat(r.state()).isEqualTo(CLOSED);
     assertThat(actions.calls).isEmpty();
+  }
+
+  @Test
+  void invalidatedAssignmentWhileRecoveringReleasesItThenSchedulesAnotherAttempt() {
+    TransitionResult r = run(onAssignmentInvalidated(RECOVERING, 3, 3, CONNECTION_ERROR));
+    assertThat(r.state()).isEqualTo(RECOVERING);
+    assertThat(r.epoch()).isEqualTo(4);
+    assertThat(actions.calls).containsExactly("releaseAssignment", "scheduleAssignment(4)");
+  }
+
+  @Test
+  void invalidatedAssignmentWhileOpeningReleasesItAndCloses() {
+    TransitionResult r = run(onAssignmentInvalidated(OPENING, 1, 1, CONNECTION_ERROR));
+    assertThat(r.state()).isEqualTo(CLOSED);
+    assertThat(r.epoch()).isEqualTo(1);
+    assertThat(actions.calls).containsExactly("releaseAssignment");
+  }
+
+  @Test
+  void staleInvalidatedAssignmentOnlyReleasesIt() {
+    TransitionResult r = run(onAssignmentInvalidated(RECOVERING, 4, 3, CONNECTION_ERROR));
+    assertThat(r.state()).isEqualTo(RECOVERING);
+    assertThat(r.epoch()).isEqualTo(4);
+    assertThat(actions.calls).containsExactly("releaseAssignment");
+  }
+
+  @Test
+  void invalidatedAssignmentOnAClosedAgentOnlyReleasesIt() {
+    TransitionResult r = run(onAssignmentInvalidated(CLOSED, 5, 5, CONNECTION_ERROR));
+    assertThat(r.state()).isEqualTo(CLOSED);
+    assertThat(r.epoch()).isEqualTo(5);
+    assertThat(actions.calls).containsExactly("releaseAssignment");
   }
 
   @Test

@@ -40,6 +40,7 @@ import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
 import com.rabbitmq.stream.impl.AgentStateMachine.State;
@@ -67,6 +68,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
@@ -224,21 +226,22 @@ final class ConsumersCoordinator implements AutoCloseable {
             flowStrategy);
 
     registerSubscription(subscriptionTracker);
+    ClientSubscriptionsManager manager;
     try {
-      addToManager(newNode, candidates, subscriptionTracker, offsetSpecification, true);
+      manager = addToManager(newNode, candidates, subscriptionTracker, offsetSpecification, true);
     } catch (RuntimeException e) {
       // the initial subscription does not retry, the failure goes back to the caller
       trackerEvent(
           subscriptionTracker,
           recoveryBackOffDelayPolicy(),
           (st, epoch) -> AgentStateMachine.onAssignmentFailed(st, epoch, epoch, e, false));
-      if (e instanceof ConnectionStreamException) {
-        // these exceptions are not public
-        throw new StreamException(e.getMessage());
-      }
-      throw e;
+      throw publicException(e);
     }
-    assignmentSucceeded(subscriptionTracker, recoveryBackOffDelayPolicy(), FIRST_ATTEMPT_EPOCH);
+    RuntimeException invalidation =
+        completeInitialAssignment(subscriptionTracker, manager, recoveryBackOffDelayPolicy());
+    if (invalidation != null) {
+      throw publicException(invalidation);
+    }
 
     return () -> {
       // cancel() first, synchronously: if the assignment is already confirmed, this is the only
@@ -252,7 +255,15 @@ final class ConsumersCoordinator implements AutoCloseable {
     };
   }
 
-  private void addToManager(
+  private static RuntimeException publicException(RuntimeException e) {
+    if (e instanceof ConnectionStreamException) {
+      // these exceptions are not public
+      return new StreamException(e.getMessage());
+    }
+    return e;
+  }
+
+  private ClientSubscriptionsManager addToManager(
       Broker node,
       List<BrokerWrapper> candidates,
       SubscriptionTracker tracker,
@@ -294,7 +305,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             pickedManager.name,
             tracker.subscriptionIdInClient(),
             tracker.consumer.id());
-        return;
+        return pickedManager;
       } catch (IllegalStateException e) {
         // full or closed in the meantime, pick again
       } catch (RuntimeException e) {
@@ -442,60 +453,65 @@ final class ConsumersCoordinator implements AutoCloseable {
       BackOffDelayPolicy delayPolicy,
       java.util.function.Consumer<TrackerState> beforeDecision,
       BiFunction<State, Long, TransitionResult> decision) {
-    submitState(
-        s -> {
-          TrackerState trackerState = s.subscriptions.get(tracker.id);
-          if (trackerState == null) {
-            return;
-          }
-          beforeDecision.accept(trackerState);
-          TransitionResult result = decision.apply(trackerState.state, trackerState.epoch);
-          boolean newAttempt =
-              result.state() == State.RECOVERING && result.epoch() != trackerState.epoch;
-          trackerState.state = result.state();
-          trackerState.epoch = result.epoch();
-          // 0-based, as BackOffDelayPolicy defines it (see AsyncRetry): delay(0) is the wait before
-          // an episode's first attempt, delay(n) the wait after n failed ones. Read before the
-          // increment and passed to the effect, so the deadline below and the delay
-          // scheduleAssignment applies come from the same index
-          int backOffIndex = trackerState.attempts;
-          if (newAttempt) {
-            trackerState.attempts++;
-            // the attempt is either scheduled after its back-off delay or, for a watchdog rescue,
-            // dispatched right away, and which one is only decided in the effect. Assume the delay
-            // applies, so the watchdog measures "stuck" from the point the attempt is due at the
-            // latest and never cuts short a configured back-off
-            trackerState.nextAttemptAt =
-                System.nanoTime() + backOffNanos(delayPolicy, backOffIndex);
-          }
-          if (result.state() == State.ACTIVE) {
-            // a successful assignment ends the recovery episode: the retry timeout is meant to
-            // bound one episode, not the subscription's whole life
-            trackerState.attempts = 0;
-            trackerState.failedLookups = 0;
-          }
-          if (result.state().terminal()) {
-            s.subscriptions.remove(tracker.id);
-          }
-          if (result.hasEffect()) {
-            // the whole effect goes to a single task: the effects of one transition are ordered
-            // (detach before re-assign, for instance), which separate tasks on a multi-threaded
-            // pool would not guarantee
-            TrackerActions actions =
-                new TrackerActions(tracker, delayPolicy, backOffIndex, trackerState.failedLookups);
-            submitRecovery(
-                () -> {
-                  try {
-                    result.applyEffect(actions);
-                  } catch (Throwable e) {
-                    LOGGER.warn(
-                        "Error while applying transition effect for subscription {}: {}",
-                        tracker.label(),
-                        e.getMessage());
-                  }
-                });
-          }
-        });
+    submitState(s -> applyTransition(s, tracker, delayPolicy, beforeDecision, decision));
+  }
+
+  // loop only
+  private void applyTransition(
+      CoordinatorState s,
+      SubscriptionTracker tracker,
+      BackOffDelayPolicy delayPolicy,
+      java.util.function.Consumer<TrackerState> beforeDecision,
+      BiFunction<State, Long, TransitionResult> decision) {
+    TrackerState trackerState = s.subscriptions.get(tracker.id);
+    if (trackerState == null) {
+      return;
+    }
+    beforeDecision.accept(trackerState);
+    TransitionResult result = decision.apply(trackerState.state, trackerState.epoch);
+    boolean newAttempt = result.state() == State.RECOVERING && result.epoch() != trackerState.epoch;
+    trackerState.state = result.state();
+    trackerState.epoch = result.epoch();
+    // 0-based, as BackOffDelayPolicy defines it (see AsyncRetry): delay(0) is the wait before
+    // an episode's first attempt, delay(n) the wait after n failed ones. Read before the
+    // increment and passed to the effect, so the deadline below and the delay
+    // scheduleAssignment applies come from the same index
+    int backOffIndex = trackerState.attempts;
+    if (newAttempt) {
+      trackerState.attempts++;
+      // the attempt is either scheduled after its back-off delay or, for a watchdog rescue,
+      // dispatched right away, and which one is only decided in the effect. Assume the delay
+      // applies, so the watchdog measures "stuck" from the point the attempt is due at the
+      // latest and never cuts short a configured back-off
+      trackerState.nextAttemptAt = System.nanoTime() + backOffNanos(delayPolicy, backOffIndex);
+    }
+    if (result.state() == State.ACTIVE) {
+      // a successful assignment ends the recovery episode: the retry timeout is meant to
+      // bound one episode, not the subscription's whole life
+      trackerState.attempts = 0;
+      trackerState.failedLookups = 0;
+    }
+    if (result.state().terminal()) {
+      s.subscriptions.remove(tracker.id);
+    }
+    if (result.hasEffect()) {
+      // the whole effect goes to a single task: the effects of one transition are ordered
+      // (detach before re-assign, for instance), which separate tasks on a multi-threaded
+      // pool would not guarantee
+      TrackerActions actions =
+          new TrackerActions(tracker, delayPolicy, backOffIndex, trackerState.failedLookups);
+      submitRecovery(
+          () -> {
+            try {
+              result.applyEffect(actions);
+            } catch (Throwable e) {
+              LOGGER.warn(
+                  "Error while applying transition effect for subscription {}: {}",
+                  tracker.label(),
+                  e.getMessage());
+            }
+          });
+    }
   }
 
   /**
@@ -589,11 +605,61 @@ final class ConsumersCoordinator implements AutoCloseable {
   }
 
   private void assignmentSucceeded(
-      SubscriptionTracker tracker, BackOffDelayPolicy delayPolicy, long attemptEpoch) {
-    trackerEvent(
-        tracker,
-        delayPolicy,
-        (st, epoch) -> AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch));
+      SubscriptionTracker tracker,
+      ClientSubscriptionsManager manager,
+      BackOffDelayPolicy delayPolicy,
+      long attemptEpoch) {
+    trackerEvent(tracker, delayPolicy, successDecision(tracker, manager, attemptEpoch, null));
+  }
+
+  /**
+   * The initial subscription's success, applied synchronously so the subscribing thread can fail if
+   * the assignment is already gone.
+   *
+   * @return the reason the assignment is no longer valid, or null
+   */
+  private RuntimeException completeInitialAssignment(
+      SubscriptionTracker tracker,
+      ClientSubscriptionsManager manager,
+      BackOffDelayPolicy delayPolicy) {
+    AtomicReference<RuntimeException> invalidation = new AtomicReference<>();
+    // not run if the coordinator is closing: no failure to report then
+    queryState(
+        s -> {
+          applyTransition(
+              s,
+              tracker,
+              delayPolicy,
+              NO_STATE_CHANGE,
+              successDecision(tracker, manager, FIRST_ATTEMPT_EPOCH, invalidation));
+          return null;
+        },
+        null);
+    return invalidation.get();
+  }
+
+  private BiFunction<State, Long, TransitionResult> successDecision(
+      SubscriptionTracker tracker,
+      ClientSubscriptionsManager manager,
+      long attemptEpoch,
+      AtomicReference<RuntimeException> invalidationHolder) {
+    return (st, epoch) -> {
+      if (AgentStateMachine.isStale(epoch, attemptEpoch) || st.terminal()) {
+        return AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch);
+      }
+      RuntimeException invalidation = manager.invalidation(tracker);
+      if (invalidation == null) {
+        return AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch);
+      }
+      LOGGER.debug(
+          "Assignment of subscription {} is already gone: {}",
+          tracker.label(),
+          Utils.exceptionMessage(invalidation));
+      if (invalidationHolder != null) {
+        invalidationHolder.set(invalidation);
+      }
+      return AgentStateMachine.onAssignmentInvalidated(st, epoch, attemptEpoch, invalidation);
+    };
   }
 
   private void assignmentFailed(
@@ -685,8 +751,9 @@ final class ConsumersCoordinator implements AutoCloseable {
         LOGGER.debug("Not assigning superseded attempt for subscription {}", tracker.label());
         return;
       }
-      addToManager(broker, candidates, tracker, offsetSpecification, false);
-      assignmentSucceeded(tracker, delayPolicy, attemptEpoch);
+      ClientSubscriptionsManager manager =
+          addToManager(broker, candidates, tracker, offsetSpecification, false);
+      assignmentSucceeded(tracker, manager, delayPolicy, attemptEpoch);
     } catch (Exception e) {
       LOGGER.debug(
           "Error while assigning subscription {}: {}", tracker.label(), Utils.exceptionMessage(e));
@@ -1339,6 +1406,12 @@ final class ConsumersCoordinator implements AutoCloseable {
     private volatile List<SubscriptionTracker> subscriptionTrackers =
         createSubscriptionTrackerList();
     private final AtomicInteger consumerIndexSequence = new AtomicInteger(0);
+    // loop only: subscriptions whose attempt was in flight here when their stream became
+    // unavailable. Their assignment must not become active, but their slot stays theirs until the
+    // attempt releases it, so its ID cannot be reused while its subscribe or unsubscribe is in
+    // flight
+    private final Set<SubscriptionTracker> poisoned =
+        Collections.newSetFromMap(new IdentityHashMap<>());
     private volatile int trackerCount;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicBoolean clientInitialized = new AtomicBoolean(false);
@@ -1506,10 +1579,12 @@ final class ConsumersCoordinator implements AutoCloseable {
                         t.offset,
                         t.hasReceivedSomething);
                     updated.set(i, null);
+                  } else {
+                    // an attempt is in flight in this slot: it releases the slot itself, freeing
+                    // it here would let it be reused while the attempt's subscribe or
+                    // unsubscribe for this ID is still in flight
+                    this.poisoned.add(t);
                   }
-                  // otherwise an attempt is in flight in this slot: it releases the slot itself,
-                  // freeing it here would let it be reused while the attempt's subscribe or
-                  // unsubscribe for this ID is still in flight
                 }
               }
               if (affected.isEmpty()) {
@@ -1717,6 +1792,27 @@ final class ConsumersCoordinator implements AutoCloseable {
       if (this.subscriptionTrackers.get(slot) == tracker) {
         this.setSubscriptionTrackers(update(this.subscriptionTrackers, (byte) slot, null));
       }
+      this.poisoned.remove(tracker);
+    }
+
+    /**
+     * Loop only: why an assignment made here by the subscription's current attempt must not become
+     * active, or null if it still stands.
+     *
+     * <p>Sound for the connection case without any lock: the shutdown listener sets {@code closed}
+     * and then reads the slots, the attempt reserves its slot before this reads {@code closed}.
+     * Either this sees the connection dead, or the listener reads the slot after this has run, and
+     * the event it posts starts a recovery. The metadata listener's loop task runs before the
+     * success event it races with, since the listener posts it before the attempt returns.
+     */
+    private RuntimeException invalidation(SubscriptionTracker tracker) {
+      if (this.isDead()) {
+        return new ClientClosedException();
+      }
+      if (this.poisoned.contains(tracker) || !this.subscriptionTrackers.contains(tracker)) {
+        return new StreamNotAvailableException(tracker.stream);
+      }
+      return null;
     }
 
     // loop only: the tracker is active and its confirmed assignment is this very slot, as opposed

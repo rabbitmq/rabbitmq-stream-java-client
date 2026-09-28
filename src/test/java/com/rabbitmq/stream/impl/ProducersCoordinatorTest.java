@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -67,6 +68,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.stubbing.Answer;
@@ -593,6 +595,160 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
+  void producerShouldRecoverAgainIfConnectionDiesRightAfterDeclarePublisher() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(producer.isOpen()).thenReturn(true);
+    AtomicBoolean client2Open = new AtomicBoolean(true);
+    Client client2 = mockClient(client2Open);
+    Client client3 = mockClient(new AtomicBoolean(true));
+    when(client2.declarePublisher(anyByte(), isNull(), anyString()))
+        .then(
+            invocation -> {
+              // the broker accepted the publisher, but the connection dies before the response
+              // makes it back to the attempt
+              client2Open.set(false);
+              shutdownListener.handle(
+                  new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+              return new Response(Constants.RESPONSE_CODE_OK);
+            });
+    when(clientFactory.client(any())).thenReturn(client, client2, client3);
+
+    coordinator.registerProducer(producer, null, "stream");
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    verify(client3, timeout(10_000)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(producer, timeout(10_000)).running();
+    InOrder inOrder = inOrder(producer);
+    inOrder.verify(producer).setClient(client3);
+    inOrder.verify(producer).running();
+    verify(producer, after(300).times(1)).running();
+  }
+
+  @Test
+  void producerRegistrationShouldFailIfConnectionDiesRightAfterDeclarePublisher() throws Exception {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(producer.isOpen()).thenReturn(true);
+    AtomicBoolean clientOpen = new AtomicBoolean(true);
+    Client client = mockClient(clientOpen);
+    when(client.declarePublisher(anyByte(), isNull(), anyString()))
+        .then(
+            invocation -> {
+              clientOpen.set(false);
+              shutdownListener.handle(
+                  new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+              return new Response(Constants.RESPONSE_CODE_OK);
+            });
+    when(clientFactory.client(any())).thenReturn(client);
+
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, null, "stream"))
+        .isInstanceOf(ClientClosedException.class);
+    verify(producer, after(300).never()).running();
+    waitAtMost(() -> coordinator.clientCount() == 0);
+  }
+
+  @Test
+  void producerShouldRecoverAgainIfStreamBecomesUnavailableDuringDeclarePublisher() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(producer.isOpen()).thenReturn(true);
+    Client client2 = mockClient(new AtomicBoolean(true));
+    AtomicBoolean firstDeclare = new AtomicBoolean(true);
+    when(client2.declarePublisher(anyByte(), isNull(), anyString()))
+        .then(
+            invocation -> {
+              if (firstDeclare.getAndSet(false)) {
+                // the broker accepted the publisher, then dropped it with the stream
+                metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+              }
+              return new Response(Constants.RESPONSE_CODE_OK);
+            });
+    when(clientFactory.client(any())).thenReturn(client, client2);
+
+    coordinator.registerProducer(producer, null, "stream");
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    ArgumentCaptor<Byte> publisherIds = ArgumentCaptor.forClass(Byte.class);
+    verify(client2, timeout(10_000).times(2))
+        .declarePublisher(publisherIds.capture(), isNull(), anyString());
+    verify(client2, timeout(10_000)).deletePublisher(publisherIds.getAllValues().get(0));
+    verify(producer, timeout(10_000)).running();
+    verify(producer, after(300).times(1)).running();
+    verify(client2, times(1)).deletePublisher(anyByte());
+  }
+
+  @Test
+  void producerRegistrationShouldFailIfStreamBecomesUnavailableDuringDeclarePublisher() {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(producer.isOpen()).thenReturn(true);
+    when(client.declarePublisher(anyByte(), isNull(), anyString()))
+        .then(
+            invocation -> {
+              metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+              return new Response(Constants.RESPONSE_CODE_OK);
+            });
+    when(clientFactory.client(any())).thenReturn(client);
+
+    assertThatThrownBy(() -> coordinator.registerProducer(producer, null, "stream"))
+        .isInstanceOf(StreamNotAvailableException.class);
+    verify(client, timeout(10_000)).deletePublisher(anyByte());
+    verify(producer, never()).running();
+  }
+
+  @Test
+  void trackingConsumerRegistrationShouldFailIfConnectionDiesRightAfterAssignment()
+      throws Exception {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(trackingConsumer.isOpen()).thenReturn(true);
+    AtomicBoolean clientOpen = new AtomicBoolean(true);
+    Client client = mockClient(clientOpen);
+    doAnswer(
+            answer(
+                () -> {
+                  clientOpen.set(false);
+                  shutdownListener.handle(
+                      new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+                }))
+        .when(trackingConsumer)
+        .setTrackingClient(client);
+    when(clientFactory.client(any())).thenReturn(client);
+
+    assertThatThrownBy(() -> coordinator.registerTrackingConsumer(trackingConsumer))
+        .isInstanceOf(ClientClosedException.class);
+    verify(trackingConsumer, after(300).never()).running();
+    waitAtMost(() -> coordinator.clientCount() == 0);
+  }
+
+  @Test
+  void trackingConsumerRegistrationShouldFailIfStreamBecomesUnavailableRightAfterAssignment()
+      throws Exception {
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(trackingConsumer.isOpen()).thenReturn(true);
+    doAnswer(
+            answer(
+                () ->
+                    metadataListener.handle(
+                        "stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE)))
+        .when(trackingConsumer)
+        .setTrackingClient(client);
+    when(clientFactory.client(any())).thenReturn(client);
+
+    assertThatThrownBy(() -> coordinator.registerTrackingConsumer(trackingConsumer))
+        .isInstanceOf(StreamNotAvailableException.class);
+    verify(trackingConsumer, after(300).never()).running();
+    // the tracking consumer was the connection's only agent
+    waitAtMost(() -> coordinator.clientCount() == 0);
+  }
+
+  @Test
   void releasingAProducerShouldDeleteItsPublisher() {
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
@@ -1109,6 +1265,18 @@ public class ProducersCoordinatorTest {
   private void verifyRetryScheduled(Duration delay, int times) {
     verify(scheduledExecutorService, timeout(10_000).times(times))
         .schedule(any(Runnable.class), eq(delay.toMillis()), eq(TimeUnit.MILLISECONDS));
+  }
+
+  // a connection of its own, open as long as the flag says so
+  private static Client mockClient(AtomicBoolean open) {
+    Client c = mock(Client.class);
+    when(c.isOpen()).then(invocation -> open.get());
+    when(c.serverAdvertisedHost()).thenReturn(leader().getHost());
+    when(c.serverAdvertisedPort()).thenReturn(leader().getPort());
+    when(c.declarePublisher(anyByte(), isNull(), anyString()))
+        .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
+    when(c.deletePublisher(anyByte())).thenReturn(new Response(Constants.RESPONSE_CODE_OK));
+    return c;
   }
 
   private static ScheduledExecutorService createScheduledExecutorService() {

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2021-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.ObservationCollector;
+import com.rabbitmq.stream.Resource;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.SimpleCodec;
 import com.rabbitmq.stream.compression.Compression;
@@ -58,6 +59,7 @@ import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -321,6 +323,42 @@ public class StreamProducerUnitTest {
 
     assertThat(interruptedLatch.await(5, TimeUnit.SECONDS)).isTrue();
     assertThat(confirmCalled).isFalse();
+  }
+
+  @Test
+  void producerFlippedUnavailableDuringConstructionShouldNotBeOpened() {
+    doAnswer(
+            (Answer<Runnable>)
+                invocationOnMock -> {
+                  StreamProducer p = invocationOnMock.getArgument(0);
+                  p.setClient(client);
+                  p.setPublisherId((byte) 0);
+                  // a disruption right after the registration, before the constructor returns
+                  p.unavailable();
+                  return () -> {};
+                })
+        .when(env)
+        .registerProducer(any(StreamProducer.class), nullable(String.class), anyString());
+
+    StreamProducer producer =
+        new StreamProducer(
+            null,
+            "stream",
+            1,
+            10,
+            true,
+            Compression.NONE,
+            Duration.ofMillis(100),
+            100,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(10),
+            true,
+            null,
+            emptyList(),
+            env);
+
+    assertThat(producer.state()).isEqualTo(Resource.State.RECOVERING);
+    producer.close();
   }
 
   @ParameterizedTest

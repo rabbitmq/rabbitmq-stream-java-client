@@ -142,6 +142,29 @@ final class AgentStateMachine {
   }
 
   /**
+   * A current attempt assigned, but the assignment was already gone by the time the loop applied
+   * it: treat it as a recoverable failure that also releases what the attempt established.
+   */
+  static TransitionResult onAssignmentInvalidated(
+      State state, long epoch, long eventEpoch, Throwable cause) {
+    if (isStale(epoch, eventEpoch) || state.terminal()) {
+      return onAssignmentSucceeded(state, epoch, eventEpoch);
+    }
+    if (state == State.OPENING) {
+      // like any other initial failure: reported to the caller that registered the agent
+      return TransitionResult.of(State.CLOSED, epoch, Actions::releaseAssignment);
+    }
+    long newEpoch = epoch + 1;
+    return TransitionResult.of(
+        State.RECOVERING,
+        newEpoch,
+        a -> {
+          a.releaseAssignment();
+          a.scheduleAssignment(newEpoch, cause);
+        });
+  }
+
+  /**
    * @param recoverable whether another attempt is worth making. The caller decides, because the
    *     same exception type means different things depending on which phase failed: a {@link
    *     TimeoutStreamException} from opening a connection is worth retrying, whereas the same

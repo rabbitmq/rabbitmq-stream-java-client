@@ -1241,7 +1241,8 @@ public class ConsumersCoordinatorTest {
     // frees slot 0, which the next subscription gets
     closingRunnables.get(0).run();
 
-    subscribe(consumer, "stream", (offset, message) -> {});
+    assertThatThrownBy(() -> subscribe(consumer, "stream", (offset, message) -> {}))
+        .isInstanceOf(StreamNotAvailableException.class);
     verify(clientFactory, times(1)).client(any());
     verify(client, times(1)).subscribe(eq(b(0)), eq("stream"), any(), anyInt(), anyMap());
 
@@ -1301,6 +1302,129 @@ public class ConsumersCoordinatorTest {
     } finally {
       blockersReleased.countDown();
     }
+  }
+
+  @Test
+  void consumerShouldRecoverAgainIfConnectionDiesRightAfterSubscribe() {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+    AtomicBoolean client2Open = new AtomicBoolean(true);
+    Client client2 = mockClient(client2Open);
+    Client client3 = mockClient(new AtomicBoolean(true));
+    when(client2.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .then(
+            invocation -> {
+              // the broker accepted the subscription, but the connection dies before the
+              // response makes it back to the attempt
+              client2Open.set(false);
+              shutdownListener.handle(
+                  new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+              return responseOk();
+            });
+    when(clientFactory.client(any())).thenReturn(client, client2, client3);
+
+    subscribe(consumer, "stream", (offset, message) -> {});
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    verify(client3, timeout(10_000))
+        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+    // the initial subscription, then the recovery on the third connection
+    verify(consumer, timeout(10_000).times(2)).markOpen();
+    verify(consumer, after(300).times(2)).markOpen();
+  }
+
+  @Test
+  void subscriptionShouldFailIfConnectionDiesRightAfterSubscribe() throws Exception {
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    AtomicBoolean clientOpen = new AtomicBoolean(true);
+    Client client = mockClient(clientOpen);
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .then(
+            invocation -> {
+              clientOpen.set(false);
+              shutdownListener.handle(
+                  new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+              return responseOk();
+            });
+    when(clientFactory.client(any())).thenReturn(client);
+
+    assertThatThrownBy(() -> subscribe(consumer, "stream", (offset, message) -> {}))
+        .isInstanceOf(ClientClosedException.class);
+    verify(consumer, after(300).never()).markOpen();
+    waitAtMost(() -> coordinator.managerCount() == 0);
+  }
+
+  @Test
+  void consumerShouldRecoverAgainIfStreamBecomesUnavailableDuringSubscribe() {
+    scheduledExecutorService = createScheduledExecutorService();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+    Client client2 = mockClient(new AtomicBoolean(true));
+    AtomicBoolean firstSubscribe = new AtomicBoolean(true);
+    when(client2.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .then(
+            invocation -> {
+              if (firstSubscribe.getAndSet(false)) {
+                // the broker accepted the subscription, then dropped it with the stream
+                metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+              }
+              return responseOk();
+            });
+    when(clientFactory.client(any())).thenReturn(client, client2);
+
+    subscribe(consumer, "stream", (offset, message) -> {});
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    ArgumentCaptor<Byte> subscriptionIds = ArgumentCaptor.forClass(Byte.class);
+    verify(client2, timeout(10_000).times(2))
+        .subscribe(
+            subscriptionIds.capture(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap());
+    verify(client2, timeout(10_000)).unsubscribe(subscriptionIds.getAllValues().get(0));
+    verify(consumer, timeout(10_000).times(2)).markOpen();
+    verify(client2, after(300).times(1)).unsubscribe(anyByte());
+  }
+
+  @Test
+  void subscriptionShouldFailIfStreamBecomesUnavailableDuringSubscribe() {
+    when(consumer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.unsubscribe(anyByte())).thenReturn(responseOk());
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .then(
+            invocation -> {
+              metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+              return responseOk();
+            });
+
+    assertThatThrownBy(() -> subscribe(consumer, "stream", (offset, message) -> {}))
+        .isInstanceOf(StreamNotAvailableException.class);
+    verify(client, timeout(10_000)).unsubscribe(anyByte());
+    verify(consumer, never()).markOpen();
   }
 
   private Runnable subscribe(
@@ -3001,6 +3125,19 @@ public class ConsumersCoordinatorTest {
         nbThreads == 1
             ? Executors.newSingleThreadScheduledExecutor(tf)
             : Executors.newScheduledThreadPool(nbThreads, tf));
+  }
+
+  // a connection of its own, open as long as the flag says so
+  private Client mockClient(AtomicBoolean open) {
+    Client c = mock(Client.class);
+    when(c.isOpen()).then(invocation -> open.get());
+    when(c.brokerVersion()).thenReturn("3.11.0");
+    when(c.serverAdvertisedHost()).thenReturn(replica().get(0).getHost());
+    when(c.serverAdvertisedPort()).thenReturn(replica().get(0).getPort());
+    when(c.subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+    when(c.unsubscribe(anyByte())).thenReturn(responseOk());
+    return c;
   }
 
   private static Response responseOk() {

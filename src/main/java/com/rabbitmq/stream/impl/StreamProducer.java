@@ -283,7 +283,9 @@ final class StreamProducer extends ResourceBase implements Producer {
                   confirmTimeout.toMillis(),
                   TimeUnit.MILLISECONDS);
     }
-    this.state(State.OPEN);
+    // not unconditional: a disruption may already have flipped the producer to recovering, or a
+    // stream deletion closed it, during the registration above
+    this.compareAndSetState(State.OPENING, State.OPEN);
   }
 
   private Runnable confirmTimeoutTask(Duration confirmTimeout) {
