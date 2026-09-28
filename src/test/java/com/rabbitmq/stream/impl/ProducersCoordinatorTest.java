@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -136,6 +136,7 @@ public class ProducersCoordinatorTest {
         .thenReturn(new Response(Constants.RESPONSE_CODE_OK));
     when(client.serverAdvertisedHost()).thenReturn(leader().getHost());
     when(client.serverAdvertisedPort()).thenReturn(leader().getPort());
+    when(environment.rpcTimeout()).thenReturn(Duration.ofSeconds(10));
     coordinator =
         new ProducersCoordinator(
             environment,
@@ -143,7 +144,8 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             clientFactory,
-            true);
+            true,
+            null);
     when(client.isOpen()).thenReturn(true);
     when(client.deletePublisher(anyByte())).thenReturn(new Response(Constants.RESPONSE_CODE_OK));
   }
@@ -213,19 +215,24 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             cf,
-            true);
+            true,
+            null);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
 
     when(client.serverAdvertisedHost()).thenReturn("foo").thenReturn(leader().getHost());
     when(client.serverAdvertisedPort()).thenReturn(42).thenReturn(leader().getPort());
 
-    Runnable cleanTask = c.registerProducer(producer, null, "stream");
+    try {
+      Runnable cleanTask = c.registerProducer(producer, null, "stream");
 
-    verify(clientFactory, times(2)).client(any());
-    verify(producer, times(1)).setClient(client);
+      verify(clientFactory, times(2)).client(any());
+      verify(producer, times(1)).setClient(client);
 
-    cleanTask.run();
+      cleanTask.run();
+    } finally {
+      c.close();
+    }
   }
 
   @Test
@@ -241,19 +248,24 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             cf,
-            true);
+            true,
+            null);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
     when(clientFactory.client(any())).thenReturn(client);
 
     when(client.serverAdvertisedHost()).thenReturn(leader().getHost());
     when(client.serverAdvertisedPort()).thenReturn(leader().getPort());
 
-    Runnable cleanTask = c.registerProducer(producer, null, "stream");
+    try {
+      Runnable cleanTask = c.registerProducer(producer, null, "stream");
 
-    verify(clientFactory, times(1)).client(any());
-    verify(producer, times(1)).setClient(client);
+      verify(clientFactory, times(1)).client(any());
+      verify(producer, times(1)).setClient(client);
 
-    cleanTask.run();
+      cleanTask.run();
+    } finally {
+      c.close();
+    }
   }
 
   @Test
@@ -577,6 +589,7 @@ public class ProducersCoordinatorTest {
     int extraProducerCount = maxProducersByClient / 5;
     int producerCount = maxProducersByClient + extraProducerCount;
 
+    coordinator.close();
     coordinator =
         new ProducersCoordinator(
             environment,
@@ -584,7 +597,8 @@ public class ProducersCoordinatorTest {
             ProducersCoordinator.MAX_TRACKING_CONSUMERS_PER_CLIENT,
             type -> "producer-connection",
             clientFactory,
-            true);
+            true,
+            null);
 
     class ProducerInfo {
       StreamProducer producer;

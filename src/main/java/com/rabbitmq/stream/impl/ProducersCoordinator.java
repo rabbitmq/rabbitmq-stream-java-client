@@ -16,6 +16,7 @@ package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.CoordinatorUtils.ClientClosedException;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
+import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Tuples.pair;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
 import static com.rabbitmq.stream.impl.Utils.callAndMaybeRetry;
@@ -26,6 +27,8 @@ import static com.rabbitmq.stream.impl.Utils.lock;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 import static com.rabbitmq.stream.impl.Utils.quote;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
 
@@ -45,18 +48,25 @@ import com.rabbitmq.stream.impl.Utils.BrokerWrapper;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import com.rabbitmq.stream.impl.Utils.ClientFactoryContext;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.EventExecutorGroup;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Iterator;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -80,51 +90,66 @@ final class ProducersCoordinator implements AutoCloseable {
   private final int maxProducersByClient, maxTrackingConsumersByClient;
   private final Function<ClientConnectionType, String> connectionNamingStrategy;
   private final AtomicLong managerIdSequence = new AtomicLong(0);
-  private final NavigableSet<ClientProducersManager> managers = new ConcurrentSkipListSet<>();
   private final AtomicLong trackerIdSequence = new AtomicLong(0);
   private final List<ProducerTracker> producerTrackers = new CopyOnWriteArrayList<>();
   private final ExecutorServiceFactory executorServiceFactory =
       new DefaultExecutorServiceFactory(
           AVAILABLE_PROCESSORS, 10, "rabbitmq-stream-producer-connection-");
-  private final Lock coordinatorLock = new ReentrantLock();
   private final boolean forceLeader;
+  private final EventExecutorGroup eventExecutorGroup;
+  private final boolean privateEventExecutorGroup;
+  private final EventLoop eventLoop;
+  private final EventLoop.Client<CoordinatorState> state;
 
+  /**
+   * @param eventExecutorGroup the group backing the control-plane event loop, or null for the
+   *     coordinator to create and own its own. It must have exactly one thread: the loop state is
+   *     shared across all connections and agents, so a second thread would silently split it. Tests
+   *     inject a deterministic group here; a caller-supplied group is not closed by {@link
+   *     #close()}.
+   */
   ProducersCoordinator(
       StreamEnvironment environment,
       int maxProducersByClient,
       int maxTrackingConsumersByClient,
       Function<ClientConnectionType, String> connectionNamingStrategy,
       ClientFactory clientFactory,
-      boolean forceLeader) {
+      boolean forceLeader,
+      EventExecutorGroup eventExecutorGroup) {
     this.environment = environment;
     this.clientFactory = clientFactory;
     this.maxProducersByClient = maxProducersByClient;
     this.maxTrackingConsumersByClient = maxTrackingConsumersByClient;
     this.connectionNamingStrategy = connectionNamingStrategy;
     this.forceLeader = forceLeader;
+    if (eventExecutorGroup == null) {
+      // not the environment's netty I/O group on purpose: sharing with channel I/O would let the
+      // loop thread be the thread blocked on a socket
+      this.eventExecutorGroup =
+          new DefaultEventExecutorGroup(1, threadFactory("rabbitmq-stream-producer-coordinator-"));
+      this.privateEventExecutorGroup = true;
+    } else {
+      this.eventExecutorGroup = eventExecutorGroup;
+      this.privateEventExecutorGroup = false;
+    }
+    this.eventLoop = new EventLoop(this.eventExecutorGroup, environment.rpcTimeout());
+    this.state = this.eventLoop.register(CoordinatorState::new);
   }
 
   Runnable registerProducer(StreamProducer producer, String reference, String stream) {
-    return lock(
-        this.coordinatorLock,
-        () -> {
-          ProducerTracker tracker =
-              new ProducerTracker(trackerIdSequence.getAndIncrement(), reference, stream, producer);
-          if (DEBUG) {
-            this.producerTrackers.add(tracker);
-          }
-          return registerAgentTracker(tracker, stream);
-        });
+    ProducerTracker tracker =
+        new ProducerTracker(trackerIdSequence.getAndIncrement(), reference, stream, producer);
+    if (DEBUG) {
+      this.producerTrackers.add(tracker);
+    }
+    return registerAgentTracker(tracker, stream);
   }
 
   Runnable registerTrackingConsumer(StreamConsumer consumer) {
-    return lock(
-        this.coordinatorLock,
-        () ->
-            registerAgentTracker(
-                new TrackingConsumerTracker(
-                    trackerIdSequence.getAndIncrement(), consumer.stream(), consumer),
-                consumer.stream()));
+    return registerAgentTracker(
+        new TrackingConsumerTracker(
+            trackerIdSequence.getAndIncrement(), consumer.stream(), consumer),
+        consumer.stream());
   }
 
   private Runnable registerAgentTracker(AgentTracker tracker, String stream) {
@@ -157,29 +182,26 @@ final class ProducersCoordinator implements AutoCloseable {
             .port(node.getPort())
             .executorServiceFactory(this.executorServiceFactory)
             .dispatchingExecutorServiceFactory(Utils.NO_OP_EXECUTOR_SERVICE_FACTORY);
-    ClientProducersManager pickedManager = null;
-    while (pickedManager == null) {
-      Iterator<ClientProducersManager> iterator = this.managers.iterator();
-      while (iterator.hasNext()) {
-        pickedManager = iterator.next();
-        if (pickedManager.isClosed()) {
-          iterator.remove();
-          pickedManager = null;
-        } else {
-          if (node.equals(pickedManager.node) && !pickedManager.isFullFor(tracker)) {
-            // let's try this one
-            break;
-          } else {
-            pickedManager = null;
-          }
-        }
+    while (true) {
+      Placement placement = placement(node, tracker);
+      if (placement.waitFor != null) {
+        // a connection to this node is being opened, share it instead of opening another one
+        awaitConnectionCreation(placement.waitFor);
+        continue;
       }
+      ClientProducersManager pickedManager = placement.manager;
       if (pickedManager == null) {
         String name = keyForNode(node);
         LOGGER.debug("Trying to create producer manager on {}", name);
-        pickedManager =
-            new ClientProducersManager(node, candidates, this.clientFactory, clientParameters);
+        try {
+          pickedManager =
+              new ClientProducersManager(node, candidates, this.clientFactory, clientParameters);
+        } catch (RuntimeException e) {
+          creationFinished(node, null);
+          throw e;
+        }
         LOGGER.debug("Created producer manager on {}, id {}", name, pickedManager.id);
+        creationFinished(node, pickedManager);
       }
       try {
         pickedManager.register(tracker);
@@ -191,9 +213,9 @@ final class ProducersCoordinator implements AutoCloseable {
             pickedManager.id,
             pickedManager.name,
             tracker.identifiable() ? tracker.id() : "N/A");
-        this.managers.add(pickedManager);
+        return;
       } catch (IllegalStateException e) {
-        pickedManager = null;
+        // full or closed in the meantime, pick again
       } catch (RuntimeException e) {
         if (shouldRefreshCandidates(e)) {
           // manager connection is dead or stream not available
@@ -211,6 +233,98 @@ final class ProducersCoordinator implements AutoCloseable {
         throw e;
       }
     }
+  }
+
+  /**
+   * Pick an existing connection to the node with spare capacity for the agent, or reserve the right
+   * to open one.
+   *
+   * <p>Atomic by construction: it runs on the event loop, which is the single writer of the pool.
+   */
+  private Placement placement(Broker node, AgentTracker tracker) {
+    String key = keyForNode(node);
+    return this.state.query(
+        s -> {
+          s.connections.removeIf(ClientProducersManager::isDead);
+          for (ClientProducersManager manager : s.connections) {
+            if (node.equals(manager.node) && !manager.isFullFor(tracker)) {
+              return Placement.use(manager);
+            }
+          }
+          if (s.creating.add(key)) {
+            return Placement.create();
+          }
+          CompletableFuture<Void> waiter = new CompletableFuture<>();
+          s.waiters.computeIfAbsent(key, k -> new ArrayList<>()).add(waiter);
+          return Placement.waitFor(waiter);
+        });
+  }
+
+  private void creationFinished(Broker node, ClientProducersManager manager) {
+    String key = keyForNode(node);
+    submitState(
+        s -> {
+          s.creating.remove(key);
+          if (manager != null) {
+            s.connections.add(manager);
+          }
+          List<CompletableFuture<Void>> waiters = s.waiters.remove(key);
+          if (waiters != null) {
+            waiters.forEach(w -> w.complete(null));
+          }
+        });
+  }
+
+  private void awaitConnectionCreation(CompletableFuture<Void> waiter) {
+    try {
+      waiter.get(this.environment.rpcTimeout().toMillis(), MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new StreamException("Interrupted while waiting for a producer connection", e);
+    } catch (ExecutionException e) {
+      throw new StreamException("Error while waiting for a producer connection", e);
+    } catch (TimeoutException e) {
+      throw new TimeoutStreamException("Timeout while waiting for a producer connection");
+    }
+  }
+
+  /**
+   * Read loop-owned state for monitoring, falling back when the loop is gone.
+   *
+   * <p>Monitoring outlives the coordinator: {@code StreamEnvironment.toString()} is legitimately
+   * called on a closed environment, and must not throw.
+   */
+  private <R> R queryState(
+      java.util.function.Function<CoordinatorState, R> query, R valueIfClosed) {
+    if (this.state.isClosed()) {
+      return valueIfClosed;
+    }
+    try {
+      return this.state.query(query);
+    } catch (IllegalStateException e) {
+      // the loop was closed concurrently
+      return valueIfClosed;
+    }
+  }
+
+  /**
+   * Post to the loop, tolerating a closed loop.
+   *
+   * <p>Callers include netty I/O threads, whose connection events can arrive while the coordinator
+   * is closing; an exception there would surface on an I/O thread.
+   */
+  private void submitState(java.util.function.Consumer<CoordinatorState> task) {
+    try {
+      this.state.submit(task);
+    } catch (IllegalStateException e) {
+      LOGGER.debug("Coordinator event loop is closed, dropping task");
+    }
+  }
+
+  // the connection pool is coordinator-owned state, so managers do not reach into it directly
+  private void removeFromPool(ClientProducersManager manager) {
+    // fire-and-forget: this is called from netty I/O threads, which must never wait on the loop
+    submitState(s -> s.connections.remove(manager));
   }
 
   // package protected for testing
@@ -267,11 +381,19 @@ final class ProducersCoordinator implements AutoCloseable {
   }
 
   public void close() {
-    Iterator<ClientProducersManager> iterator = this.managers.iterator();
-    while (iterator.hasNext()) {
-      ClientProducersManager manager = iterator.next();
+    if (this.state.isClosed()) {
+      return;
+    }
+    List<ClientProducersManager> connections =
+        queryState(
+            s -> {
+              List<ClientProducersManager> all = new ArrayList<>(s.connections);
+              s.connections.clear();
+              return all;
+            },
+            Collections.emptyList());
+    for (ClientProducersManager manager : connections) {
       try {
-        iterator.remove();
         manager.close();
       } catch (Exception e) {
         LOGGER.info(
@@ -286,37 +408,61 @@ final class ProducersCoordinator implements AutoCloseable {
     } catch (Exception e) {
       LOGGER.info("Error while closing executor service factory: {}", e.getMessage());
     }
+    try {
+      this.state.close();
+      this.eventLoop.close();
+    } catch (Exception e) {
+      LOGGER.info("Error while closing coordinator event loop: {}", e.getMessage());
+    }
+    if (this.privateEventExecutorGroup) {
+      closeEventExecutorGroup(this.eventExecutorGroup);
+    }
+  }
+
+  private static void closeEventExecutorGroup(EventExecutorGroup group) {
+    try {
+      if (!group.isShuttingDown()) {
+        // no quiet period: the loop is a control plane, there is no in-flight batch to drain
+        group.shutdownGracefully(0, 10, SECONDS).get(10, SECONDS);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (Exception e) {
+      LOGGER.info("Error while closing coordinator event executor group: {}", e.getMessage());
+    }
   }
 
   int clientCount() {
-    return this.managers.size();
+    return queryState(s -> s.connections.size(), 0);
   }
 
   int nodesConnected() {
-    return this.managers.stream().map(m -> m.name).collect(toSet()).size();
+    return queryState(s -> s.connections.stream().map(m -> m.name).collect(toSet()).size(), 0);
   }
 
   @Override
   public String toString() {
+    List<ClientProducersManager> connections =
+        queryState(s -> new ArrayList<>(s.connections), Collections.emptyList());
     StringBuilder builder = new StringBuilder("{");
-    builder.append(jsonField("client_count", this.managers.size())).append(",");
+    builder.append(jsonField("client_count", connections.size())).append(",");
     builder
         .append(
             jsonField(
-                "producer_count", this.managers.stream().mapToInt(m -> m.producers.size()).sum()))
+                "producer_count", connections.stream().mapToInt(m -> m.producers.size()).sum()))
         .append(",");
     builder
         .append(
             jsonField(
                 "tracking_consumer_count",
-                this.managers.stream().mapToInt(m -> m.trackingConsumerTrackers.size()).sum()))
+                connections.stream().mapToInt(m -> m.trackingConsumerTrackers.size()).sum()))
         .append(",");
     if (DEBUG) {
       builder.append(jsonField("producer_tracker_count", this.producerTrackers.size())).append(",");
     }
     builder.append(quote("clients")).append(" : [");
     builder.append(
-        this.managers.stream()
+        connections.stream()
             .map(
                 m -> {
                   StringBuilder managerBuilder = new StringBuilder("{");
@@ -623,6 +769,9 @@ final class ProducersCoordinator implements AutoCloseable {
     private final Client client;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Lock managerLock = new ReentrantLock();
+    // lock-free copies of the collection sizes, for the predicates the event loop reads
+    private volatile int producerCount;
+    private volatile int trackingConsumerCount;
 
     private ClientProducersManager(
         Broker targetNode,
@@ -658,7 +807,7 @@ final class ProducersCoordinator implements AutoCloseable {
           shutdownContext -> {
             if (clientInitializedInManager.get()) {
               this.closed.set(true);
-              managers.remove(this);
+              removeFromPool(this);
             }
             if (shutdownContext.isShutdownUnexpected()) {
               LOGGER.debug(
@@ -710,6 +859,7 @@ final class ProducersCoordinator implements AutoCloseable {
                         trackingConsumerTrackers.remove(tracker);
                       }
                     });
+                countersChanged();
               }
             } finally {
               this.managerLock.unlock();
@@ -874,11 +1024,17 @@ final class ProducersCoordinator implements AutoCloseable {
       lock(
           this.managerLock,
           () -> {
-            if (this.isFullFor(tracker)) {
+            // the collections, not the counters: this is the authoritative check, and a counter
+            // can lag behind its collection
+            boolean full =
+                tracker.identifiable()
+                    ? this.producers.size() >= maxProducersByClient
+                    : this.trackingConsumerTrackers.size() >= maxTrackingConsumersByClient;
+            if (full) {
               throw new IllegalStateException(
                   "Cannot add subscription tracker, the manager is full");
             }
-            if (this.isClosed()) {
+            if (this.isDead()) {
               throw new IllegalStateException(
                   "Cannot add subscription tracker, the manager is closed");
             }
@@ -914,6 +1070,7 @@ final class ProducersCoordinator implements AutoCloseable {
             streamToTrackers
                 .computeIfAbsent(tracker.stream(), s -> ConcurrentHashMap.newKeySet())
                 .add(tracker);
+            countersChanged();
           });
     }
 
@@ -942,25 +1099,31 @@ final class ProducersCoordinator implements AutoCloseable {
                     return trackersForThisStream.isEmpty() ? null : trackersForThisStream;
                   }
                 });
+            countersChanged();
             closeIfEmpty();
           });
     }
 
+    // recomputed rather than adjusted: unregister() is idempotent by design (cancel() and the
+    // async release effect both call it), and a counter stepped down twice for one removal would
+    // make a non-empty manager look empty
+    private void countersChanged() {
+      this.producerCount = this.producers.size();
+      this.trackingConsumerCount = this.trackingConsumerTrackers.size();
+    }
+
+    // lock-free, because the event loop reads it: taking managerLock there would invert the lock
+    // order against register()
     boolean isFullFor(AgentTracker tracker) {
-      return lock(
-          this.managerLock,
-          () -> {
-            if (tracker.identifiable()) {
-              return producers.size() == maxProducersByClient;
-            } else {
-              return trackingConsumerTrackers.size() == maxTrackingConsumersByClient;
-            }
-          });
+      if (tracker.identifiable()) {
+        return this.producerCount >= maxProducersByClient;
+      } else {
+        return this.trackingConsumerCount >= maxTrackingConsumersByClient;
+      }
     }
 
     boolean isEmpty() {
-      return lock(
-          this.managerLock, () -> producers.isEmpty() && trackingConsumerTrackers.isEmpty());
+      return this.producerCount == 0 && this.trackingConsumerCount == 0;
     }
 
     private void checkNotClosed() {
@@ -969,30 +1132,25 @@ final class ProducersCoordinator implements AutoCloseable {
       }
     }
 
-    boolean isClosed() {
-      if (!this.client.isOpen()) {
-        this.close();
-      }
-      return this.closed.get();
+    // deliberately side-effect free: a predicate that closes a connection and mutates the pool
+    // makes this class impossible to reason about, and the loop must never close inline
+    boolean isDead() {
+      return this.closed.get() || !this.client.isOpen();
     }
 
     private void closeIfEmpty() {
       if (!closed.get()) {
-        lock(
-            this.managerLock,
-            () -> {
-              if (this.isEmpty()) {
-                this.close();
-              } else {
-                LOGGER.debug("Not closing producer manager {} because it is not empty", this.id);
-              }
-            });
+        if (this.isEmpty()) {
+          this.close();
+        } else {
+          LOGGER.debug("Not closing producer manager {} because it is not empty", this.id);
+        }
       }
     }
 
     private void close() {
       if (closed.compareAndSet(false, true)) {
-        managers.remove(this);
+        removeFromPool(this);
         try {
           if (this.client.isOpen()) {
             this.client.close();
@@ -1026,6 +1184,29 @@ final class ProducersCoordinator implements AutoCloseable {
     }
   }
 
+  private static final class Placement {
+
+    private final ClientProducersManager manager;
+    private final CompletableFuture<Void> waitFor;
+
+    private Placement(ClientProducersManager manager, CompletableFuture<Void> waitFor) {
+      this.manager = manager;
+      this.waitFor = waitFor;
+    }
+
+    private static Placement use(ClientProducersManager manager) {
+      return new Placement(manager, null);
+    }
+
+    private static Placement create() {
+      return new Placement(null, null);
+    }
+
+    private static Placement waitFor(CompletableFuture<Void> waiter) {
+      return new Placement(null, waiter);
+    }
+  }
+
   private static final Predicate<Exception> RETRY_ON_TIMEOUT =
       e -> e instanceof TimeoutStreamException;
 
@@ -1037,5 +1218,20 @@ final class ProducersCoordinator implements AutoCloseable {
       previousValue = map.putIfAbsent((byte) index, tracker);
     }
     return index;
+  }
+
+  /**
+   * Control-plane state owned by the event loop.
+   *
+   * <p>The rule this class exists to enforce: the loop is the <b>single writer</b> of the
+   * connection pool. Netty I/O threads only post to it and never wait on it.
+   */
+  static final class CoordinatorState {
+
+    private final NavigableSet<ClientProducersManager> connections = new TreeSet<>();
+    // one connection creation at a time per node, so concurrent placements share the connection
+    // being opened instead of each opening their own
+    private final Set<String> creating = new HashSet<>();
+    private final Map<String, List<CompletableFuture<Void>>> waiters = new HashMap<>();
   }
 }

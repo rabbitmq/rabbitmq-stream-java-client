@@ -159,7 +159,8 @@ public class LoadBalancerClusterTest {
             maxAgentPerClient,
             type -> "producer-connection",
             Utils.coordinatorClientFactory(this.environment, Duration.ofMillis(10)),
-            forceLeader)) {
+            forceLeader,
+            null)) {
 
       range(0, agentCount)
           .forEach(
