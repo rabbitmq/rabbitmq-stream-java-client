@@ -37,6 +37,7 @@ import java.security.KeyStore;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Function;
@@ -55,16 +56,19 @@ public class OAuth2ClientTest {
   String contextPath = "/uaa/oauth/token";
   int port;
   ScheduledExecutorService scheduledExecutorService;
+  ExecutorService executorService;
 
   @BeforeEach
   void init() throws Exception {
     this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    this.executorService = Executors.newSingleThreadExecutor();
     this.port = TestUtils.randomNetworkPort();
   }
 
   @AfterEach
   void tearDown() {
     this.scheduledExecutorService.shutdown();
+    this.executorService.shutdownNow();
     if (this.server != null) {
       server.stop(0);
     }
@@ -168,6 +172,6 @@ public class OAuth2ClientTest {
     Function<Instant, Duration> refreshDelayStrategy =
         TokenCredentialsManager.ratioRefreshDelayStrategy(0.4f);
     return new TokenCredentialsManager(
-        tokenRequester, this.scheduledExecutorService, refreshDelayStrategy);
+        tokenRequester, this.scheduledExecutorService, this.executorService, refreshDelayStrategy);
   }
 }

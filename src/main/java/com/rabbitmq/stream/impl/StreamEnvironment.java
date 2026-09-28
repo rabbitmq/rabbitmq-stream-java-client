@@ -77,6 +77,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -127,6 +128,8 @@ final class StreamEnvironment implements Environment {
   private final ExecutorServiceFactory executorServiceFactory;
   private final ObservationCollector<?> observationCollector;
   private final Duration rpcTimeout;
+  private final CredentialsManager credentialsManager;
+  private final ExecutorService oauthExecutor;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -263,8 +266,16 @@ final class StreamEnvironment implements Environment {
       }
       this.scheduledExecutorService = executorService;
 
-      CredentialsManager credentialsManager =
-          CredentialsManagerFactory.get(oauth, this.scheduledExecutorService);
+      if (oauth != null && oauth.enabled()) {
+        ThreadFactory threadFactory = threadFactory("rabbitmq-stream-environment-oauth-");
+        this.oauthExecutor = Executors.newCachedThreadPool(threadFactory);
+        shutdownService.wrap(this.oauthExecutor::shutdownNow);
+      } else {
+        this.oauthExecutor = null;
+      }
+      this.credentialsManager =
+          CredentialsManagerFactory.get(oauth, this.scheduledExecutorService, this.oauthExecutor);
+      shutdownService.wrap(credentialsManager::close);
 
       clientParametersPrototype =
           clientParametersPrototype.duplicate().credentialsManager(credentialsManager);
@@ -744,6 +755,12 @@ final class StreamEnvironment implements Environment {
       }
 
       this.clockRefreshFuture.cancel(false);
+
+      this.credentialsManager.close();
+      if (this.oauthExecutor != null) {
+        this.oauthExecutor.shutdownNow();
+      }
+
       if (privateScheduleExecutorService) {
         this.scheduledExecutorService.shutdownNow();
       }

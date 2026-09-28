@@ -18,17 +18,22 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -37,44 +42,176 @@ import org.slf4j.LoggerFactory;
 /**
  * Credentials manager implementation that requests and refreshes tokens.
  *
- * <p>It also keeps track of registration and update them with refreshed tokens when appropriate.
+ * <p>It also keeps track of registrations and updates them with refreshed tokens when appropriate.
+ *
+ * <p>All mutable state of this class (the cached token, the pending waiters, the registration
+ * table, the in-flight request flag, the refresh task and its generation) is confined to a single
+ * serial executor ({@code loop}): it is read and written only by tasks running on that executor.
+ * Nothing running on the serial executor performs blocking I/O (no token request, no {@link
+ * AuthenticationCallback} invocation, no {@code Future.get()}): blocking work is dispatched to the
+ * {@code executorService} passed to the constructor, and its result is posted back to the serial
+ * executor as an event. {@link Registration#connect(AuthenticationCallback)} must not be called
+ * from the serial executor, or it throws {@link IllegalStateException} (it would deadlock
+ * otherwise).
  */
 public final class TokenCredentialsManager implements CredentialsManager {
 
   public static final Function<Instant, Duration> DEFAULT_REFRESH_DELAY_STRATEGY =
       ratioRefreshDelayStrategy(0.8f);
   private static final Duration FAILED_REFRESH_RETRY_DELAY = Duration.ofSeconds(1);
+  private static final Duration USABLE_MARGIN = Duration.ofSeconds(1);
+  private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(120);
   private static final Logger LOGGER = LoggerFactory.getLogger(TokenCredentialsManager.class);
 
   private final TokenRequester requester;
   private final ScheduledExecutorService scheduledExecutorService;
-  private volatile Token token;
-  private final Lock lock = new ReentrantLock();
-  private final Map<Long, RegistrationImpl> registrations = new ConcurrentHashMap<>();
-  private final AtomicLong registrationSequence = new AtomicLong(0);
-  private final AtomicBoolean schedulingRefresh = new AtomicBoolean(false);
+  private final Executor executorService;
   private final Function<Instant, Duration> refreshDelayStrategy;
-  private volatile ScheduledFuture<?> refreshTask;
+  private final SerialExecutor loop;
+  private final Duration connectTimeout;
+  private final AtomicBoolean closed = new AtomicBoolean(false);
+  private final AtomicLong registrationSequence = new AtomicLong(0);
 
+  // confined to the serial executor (loop)
+  private Token token;
+  private boolean requestInFlight = false;
+  private final List<Waiter> waiters = new ArrayList<>();
+  private final Map<Long, RegistrationImpl> registrations = new HashMap<>();
+  private ScheduledFuture<?> refreshTask;
+  private long refreshGeneration;
+
+  /**
+   * Creates an instance.
+   *
+   * @param requester used to request tokens
+   * @param scheduledExecutorService used to schedule refresh timers
+   * @param executorService used for blocking work (token requests) and as the delegate of the
+   *     internal serial executor
+   * @param refreshDelayStrategy computes the delay before the next refresh from a token expiration
+   *     time
+   */
   public TokenCredentialsManager(
       TokenRequester requester,
       ScheduledExecutorService scheduledExecutorService,
+      Executor executorService,
       Function<Instant, Duration> refreshDelayStrategy) {
+    this(
+        requester,
+        scheduledExecutorService,
+        executorService,
+        refreshDelayStrategy,
+        DEFAULT_CONNECT_TIMEOUT);
+  }
+
+  TokenCredentialsManager(
+      TokenRequester requester,
+      ScheduledExecutorService scheduledExecutorService,
+      Executor executorService,
+      Function<Instant, Duration> refreshDelayStrategy,
+      Duration connectTimeout) {
     this.requester = requester;
     this.scheduledExecutorService = scheduledExecutorService;
+    this.executorService = executorService;
     this.refreshDelayStrategy = refreshDelayStrategy;
+    this.loop = new SerialExecutor(executorService);
+    this.connectTimeout = connectTimeout;
   }
 
-  private void lock() {
-    this.lock.lock();
+  @Override
+  public Registration register(String name, AuthenticationCallback updateCallback) {
+    if (this.closed.get()) {
+      throw new IllegalStateException("Credentials manager is closed");
+    }
+    long id = this.registrationSequence.getAndIncrement();
+    RegistrationImpl registration =
+        new RegistrationImpl(
+            id, name == null ? String.valueOf(id) : name, updateCallback, this.executorService);
+    this.loop.execute(() -> onRegister(registration));
+    return registration;
   }
 
-  private void unlock() {
-    this.lock.unlock();
+  private void onRegister(RegistrationImpl registration) {
+    if (this.closed.get()) {
+      registration.markClosed();
+    } else {
+      this.registrations.put(registration.id, registration);
+    }
   }
 
-  private boolean expiresSoon(Token ignores) {
-    return false;
+  @Override
+  public void close() {
+    if (this.closed.compareAndSet(false, true)) {
+      try {
+        this.loop.execute(this::onClose);
+      } catch (RejectedExecutionException e) {
+        LOGGER.debug("Could not schedule credentials manager closing, executor is shut down", e);
+      }
+    }
+  }
+
+  private void onClose() {
+    cancelRefreshTask();
+    this.refreshGeneration++;
+    failWaiters(new IllegalStateException("Credentials manager is closed"));
+    for (RegistrationImpl registration : this.registrations.values()) {
+      registration.markClosed();
+    }
+    this.registrations.clear();
+    this.token = null;
+  }
+
+  private boolean usable(Token t) {
+    return t != null && t.expirationTime().isAfter(Instant.now().plus(USABLE_MARGIN));
+  }
+
+  private void giveToken(RegistrationImpl registration, Token t) {
+    registration.lastToken = t;
+    registration.currentToken = t;
+  }
+
+  private void onConnect(RegistrationImpl registration, CompletableFuture<Token> future) {
+    if (this.closed.get() || registration.isClosed()) {
+      future.completeExceptionally(
+          new IllegalStateException("Credentials manager or registration is closed"));
+      return;
+    }
+    if (usable(this.token)) {
+      giveToken(registration, this.token);
+      ensureRefreshScheduled();
+      future.complete(this.token);
+    } else {
+      this.waiters.add(new Waiter(registration, future));
+      requestToken();
+    }
+  }
+
+  private void requestToken() {
+    if (this.requestInFlight) {
+      return;
+    }
+    this.requestInFlight = true;
+    try {
+      this.executorService.execute(
+          () -> {
+            try {
+              Token t = getToken();
+              postToLoop(() -> onTokenReceived(t));
+            } catch (Exception e) {
+              postToLoop(() -> onTokenFailure(e));
+            }
+          });
+    } catch (RejectedExecutionException e) {
+      this.requestInFlight = false;
+      failWaiters(e);
+    }
+  }
+
+  private void postToLoop(Runnable task) {
+    try {
+      this.loop.execute(task);
+    } catch (RejectedExecutionException e) {
+      LOGGER.debug("Could not post event to serial executor, it is shut down", e);
+    }
   }
 
   private Token getToken() {
@@ -86,130 +223,154 @@ public final class TokenCredentialsManager implements CredentialsManager {
     if (debug()) {
       start = System.nanoTime();
     }
-    Token token = requester.request();
+    Token t = this.requester.request();
     if (debug()) {
       LOGGER.debug(
           "Got new token in {} ms, token expires on {} ({})",
           Duration.ofNanos(System.nanoTime() - start),
-          format(token.expirationTime()),
+          format(t.expirationTime()),
           registrationSummary(this.registrations.values()));
     }
-    return token;
+    return t;
   }
 
-  @Override
-  public Registration register(String name, AuthenticationCallback updateCallback) {
-    Long id = this.registrationSequence.getAndIncrement();
-    name = name == null ? id.toString() : name;
-    RegistrationImpl registration = new RegistrationImpl(id, name, updateCallback);
-    this.registrations.put(id, registration);
-    return registration;
-  }
-
-  private void updateRegistrations(Token t) {
-    this.scheduledExecutorService.execute(
-        () -> {
-          LOGGER.debug("Updating {} registration(s)", this.registrations.size());
-          int refreshedCount = 0;
-          for (RegistrationImpl registration : this.registrations.values()) {
-            if (t.equals(this.token)) {
-              if (!registration.isClosed() && !registration.hasSameToken(t)) {
-                // the registration does not have the new token yet
-                try {
-                  registration.updateCallback().authenticate("", this.token.value());
-                } catch (Exception e) {
-                  LOGGER.warn(
-                      "Error while updating token for registration '{}': {}",
-                      registration.name(),
-                      e.getMessage());
-                }
-                registration.registrationToken = this.token;
-                refreshedCount++;
-              } else {
-                if (debug()) {
-                  LOGGER.debug(
-                      "Not updating registration {} (closed or already has the new token)",
-                      registration.name());
-                }
-              }
-            } else {
-              if (debug()) {
-                LOGGER.debug(
-                    "Not updating registration {} (the token has changed)", registration.name());
-              }
-            }
-          }
-          LOGGER.debug("Updated {} registration(s)", refreshedCount);
-        });
-  }
-
-  private void token(Token t) {
-    lock();
-    try {
-      if (!t.equals(this.token)) {
-        this.token = t;
-        scheduleTokenRefresh(t);
-      }
-    } finally {
-      unlock();
+  private void onTokenReceived(Token t) {
+    this.requestInFlight = false;
+    if (this.closed.get()) {
+      return;
     }
-  }
-
-  private void scheduleTokenRefresh(Token t) {
-    if (this.schedulingRefresh.compareAndSet(false, true)) {
-      if (this.refreshTask != null) {
-        if (debug()) {
-          LOGGER.debug("Cancelling refresh task (scheduling a new one)");
-        }
-        this.refreshTask.cancel(false);
-      }
-      Duration delay = this.refreshDelayStrategy.apply(t.expirationTime());
-      if (!this.registrations.isEmpty()) {
-        if (debug()) {
-          LOGGER.debug(
-              "Scheduling token update in {} ({})",
-              delay,
-              registrationSummary(this.registrations.values()));
-        }
-        this.refreshTask =
-            this.scheduledExecutorService.schedule(
-                this::refreshToken, delay.toMillis(), TimeUnit.MILLISECONDS);
-        if (debug()) {
-          LOGGER.debug("Task scheduled");
-        }
+    this.token = t;
+    List<Waiter> currentWaiters = new ArrayList<>(this.waiters);
+    this.waiters.clear();
+    for (Waiter waiter : currentWaiters) {
+      if (!waiter.registration.isClosed()) {
+        giveToken(waiter.registration, t);
+        waiter.future.complete(t);
       } else {
-        this.refreshTask = null;
+        waiter.future.completeExceptionally(new IllegalStateException("Registration is closed"));
       }
-      this.schedulingRefresh.set(false);
     }
+    if (!this.registrations.isEmpty()) {
+      scheduleRefresh(t);
+    }
+    dispatchUpdates(t);
   }
 
-  private void refreshToken() {
-    if (debug()) {
-      LOGGER.debug("Starting token update task");
+  private void onTokenFailure(Exception e) {
+    this.requestInFlight = false;
+    if (this.closed.get()) {
+      return;
     }
-    Token previousToken = this.token;
-    this.lock();
-    try {
-      if (this.token.equals(previousToken)) {
-        Token newToken = getToken();
-        token(newToken);
-        updateRegistrations(newToken);
-      } else {
-        if (debug()) {
-          LOGGER.debug("Token has already been updated");
-        }
-      }
-    } catch (Exception e) {
+    failWaiters(e);
+    boolean hasConnectedRegistration =
+        this.registrations.values().stream().anyMatch(r -> !r.isClosed() && r.lastToken != null);
+    if (hasConnectedRegistration) {
       LOGGER.warn(
           "Error while refreshing token, retrying in {}: {}",
           FAILED_REFRESH_RETRY_DELAY,
           e.getMessage());
+      scheduleTimer(FAILED_REFRESH_RETRY_DELAY);
+    }
+  }
+
+  private void failWaiters(Exception e) {
+    List<Waiter> currentWaiters = new ArrayList<>(this.waiters);
+    this.waiters.clear();
+    for (Waiter waiter : currentWaiters) {
+      waiter.future.completeExceptionally(e);
+    }
+  }
+
+  private void scheduleRefresh(Token t) {
+    Duration delay = this.refreshDelayStrategy.apply(t.expirationTime());
+    scheduleTimer(delay);
+  }
+
+  private void scheduleTimer(Duration delay) {
+    cancelRefreshTask();
+    this.refreshGeneration++;
+    long generation = this.refreshGeneration;
+    try {
       this.refreshTask =
           this.scheduledExecutorService.schedule(
-              this::refreshToken, FAILED_REFRESH_RETRY_DELAY.toMillis(), TimeUnit.MILLISECONDS);
-    } finally {
-      unlock();
+              () -> postToLoop(() -> onRefreshTimer(generation)),
+              delay.toMillis(),
+              TimeUnit.MILLISECONDS);
+      if (debug()) {
+        LOGGER.debug(
+            "Scheduled token update in {} ({})",
+            delay,
+            registrationSummary(this.registrations.values()));
+      }
+    } catch (RejectedExecutionException e) {
+      LOGGER.debug("Could not schedule token refresh, scheduler is shut down", e);
+    }
+  }
+
+  private void cancelRefreshTask() {
+    if (this.refreshTask != null) {
+      if (debug()) {
+        LOGGER.debug("Cancelling refresh task");
+      }
+      this.refreshTask.cancel(false);
+      this.refreshTask = null;
+    }
+  }
+
+  private void ensureRefreshScheduled() {
+    if (this.refreshTask == null && usable(this.token)) {
+      scheduleRefresh(this.token);
+    }
+  }
+
+  private void onRefreshTimer(long generation) {
+    if (generation != this.refreshGeneration || this.closed.get() || this.registrations.isEmpty()) {
+      return;
+    }
+    this.refreshTask = null;
+    requestToken();
+  }
+
+  private void dispatchUpdates(Token t) {
+    int dispatchedCount = 0;
+    for (RegistrationImpl registration : this.registrations.values()) {
+      if (!registration.isClosed() && !t.equals(registration.lastToken)) {
+        giveToken(registration, t);
+        registration.callbackExecutor.execute(() -> deliver(registration, t));
+        dispatchedCount++;
+      }
+    }
+    if (debug() || dispatchedCount > 0) {
+      LOGGER.debug("Updated {} registration(s)", dispatchedCount);
+    }
+  }
+
+  private void deliver(RegistrationImpl registration, Token t) {
+    if (registration.isClosed() || registration.currentToken != t) {
+      return;
+    }
+    try {
+      registration.updateCallback.authenticate("", t.value());
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Error while updating token for registration '{}': {}",
+          registration.name,
+          e.getMessage());
+    }
+  }
+
+  private void onUnregister(RegistrationImpl registration) {
+    this.registrations.remove(registration.id);
+    for (Waiter waiter : new ArrayList<>(this.waiters)) {
+      if (waiter.registration.equals(registration)) {
+        this.waiters.remove(waiter);
+        waiter.future.completeExceptionally(new IllegalStateException("Registration is closed"));
+      }
+    }
+    if (this.registrations.isEmpty()) {
+      cancelRefreshTask();
+      this.refreshGeneration++;
+      this.token = null;
     }
   }
 
@@ -217,86 +378,97 @@ public final class TokenCredentialsManager implements CredentialsManager {
     return DateTimeFormatter.ISO_INSTANT.format(instant);
   }
 
+  private static final class Waiter {
+
+    private final RegistrationImpl registration;
+    private final CompletableFuture<Token> future;
+
+    private Waiter(RegistrationImpl registration, CompletableFuture<Token> future) {
+      this.registration = registration;
+      this.future = future;
+    }
+  }
+
   private final class RegistrationImpl implements Registration {
 
-    private final Long id;
+    private final long id;
     private final String name;
     private final AuthenticationCallback updateCallback;
-    private volatile Token registrationToken;
+    private final SerialExecutor callbackExecutor;
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    // confined to the loop
+    private Token lastToken;
+    // written on the loop, read by callback tasks
+    private volatile Token currentToken;
 
-    private RegistrationImpl(Long id, String name, AuthenticationCallback updateCallback) {
+    private RegistrationImpl(
+        long id, String name, AuthenticationCallback updateCallback, Executor executorService) {
       this.id = id;
       this.name = name;
       this.updateCallback = updateCallback;
+      this.callbackExecutor = new SerialExecutor(executorService);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>May block while a token is requested. Throws {@link OAuth2Exception} if the request fails
+     * or times out, {@link IllegalStateException} if the manager or this registration is closed.
+     */
     @Override
     public void connect(AuthenticationCallback callback) {
+      if (loop.inExecutor()) {
+        throw new IllegalStateException(
+            "Registration.connect(...) must not be called from the credentials manager's "
+                + "internal executor");
+      }
+      if (closed() || this.isClosed()) {
+        throw new IllegalStateException("Credentials manager or registration is closed");
+      }
       if (debug()) {
         LOGGER.debug("Connecting registration {}", this.name);
       }
-      boolean shouldRefresh = false;
-      Token tokenToUse;
-      lock();
+      CompletableFuture<Token> future = new CompletableFuture<>();
+      loop.execute(() -> onConnect(this, future));
+      Token t;
       try {
-        Token globalToken = token;
-        if (globalToken == null) {
-          token(getToken());
-        } else if (expiresSoon(globalToken)) {
-          shouldRefresh = true;
-          token(getToken());
+        t = future.get(connectTimeout.toMillis(), TimeUnit.MILLISECONDS);
+      } catch (ExecutionException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof RuntimeException) {
+          throw (RuntimeException) cause;
         }
-        if (!token.equals(this.registrationToken)) {
-          this.registrationToken = token;
-        }
-        tokenToUse = this.registrationToken;
-        if (refreshTask == null) {
-          scheduleTokenRefresh(tokenToUse);
-        }
-      } finally {
-        unlock();
+        throw new OAuth2Exception("Error while requesting token", cause);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new OAuth2Exception("Interrupted while requesting token", e);
+      } catch (TimeoutException e) {
+        throw new OAuth2Exception("Timeout while requesting token", e);
       }
       if (debug()) {
-        if (debug()) {
-          LOGGER.debug("Authenticating registration {}", this.name);
-        }
+        LOGGER.debug("Authenticating registration {}", this.name);
       }
-      callback.authenticate("", tokenToUse.value());
-      if (shouldRefresh) {
-        updateRegistrations(tokenToUse);
-      }
+      callback.authenticate("", t.value());
+    }
+
+    private boolean closed() {
+      return TokenCredentialsManager.this.closed.get();
     }
 
     @Override
     public void close() {
       if (this.closed.compareAndSet(false, true)) {
         LOGGER.debug("Closing credentials registration {}", this.name);
-        registrations.remove(this.id);
-        ScheduledFuture<?> task = refreshTask;
-        if (registrations.isEmpty() && task != null) {
-          lock();
-          try {
-            if (refreshTask != null) {
-              refreshTask.cancel(false);
-            }
-          } finally {
-            unlock();
-          }
+        try {
+          loop.execute(() -> onUnregister(this));
+        } catch (RejectedExecutionException e) {
+          LOGGER.debug("Could not schedule registration closing, executor is shut down", e);
         }
       }
     }
 
-    private AuthenticationCallback updateCallback() {
-      return this.updateCallback;
-    }
-
-    private String name() {
-      return this.name;
-    }
-
-    private boolean hasSameToken(Token t) {
-      return t.equals(this.registrationToken);
+    private void markClosed() {
+      this.closed.set(true);
     }
 
     private boolean isClosed() {
@@ -307,7 +479,7 @@ public final class TokenCredentialsManager implements CredentialsManager {
     public boolean equals(Object o) {
       if (o == null || getClass() != o.getClass()) return false;
       RegistrationImpl that = (RegistrationImpl) o;
-      return Objects.equals(id, that.id);
+      return id == that.id;
     }
 
     @Override
@@ -317,7 +489,7 @@ public final class TokenCredentialsManager implements CredentialsManager {
 
     @Override
     public String toString() {
-      return this.name();
+      return this.name;
     }
   }
 
