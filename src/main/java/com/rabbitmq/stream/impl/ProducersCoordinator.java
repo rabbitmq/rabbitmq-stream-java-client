@@ -15,9 +15,15 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.CoordinatorUtils.ClientClosedException;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.NO_SLOT;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.SLOTS_PER_CLIENT;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.SlotReservation;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.WATCHDOG_TICK_INTERVAL_MS;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.backOffNanos;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.emptySlots;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.pickSlot;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.update;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.watchdogShouldReDispatch;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
@@ -84,12 +90,10 @@ import org.slf4j.LoggerFactory;
 
 final class ProducersCoordinator implements AutoCloseable {
 
-  static final int MAX_PRODUCERS_PER_CLIENT = 256;
+  static final int MAX_PRODUCERS_PER_CLIENT = SLOTS_PER_CLIENT;
   static final int MAX_TRACKING_CONSUMERS_PER_CLIENT = 50;
   private static final int RECOVERY_THREADS = Math.max(2, Math.min(4, AVAILABLE_PROCESSORS));
   private static final long FIRST_ATTEMPT_EPOCH = 1;
-  // sentinel publisher ID: no slot reserved, or a reservation that was rolled back or freed
-  private static final byte NO_SLOT = -1;
   // how long an emptied connection is kept around before actually closing it, so an agent landing
   // on the same node moments later (e.g. during a rolling restart) can reuse it instead of
   // reconnecting. Has to outlast the recovery back-off delay (5s by default), since a
@@ -1152,8 +1156,8 @@ final class ProducersCoordinator implements AutoCloseable {
   }
 
   /**
-   * The manager and publisher ID an attempt established, {@link #NO_SLOT} for a tracking consumer,
-   * or {@link #NONE}.
+   * The manager and publisher ID an attempt established, {@link CoordinatorUtils#NO_SLOT} for a
+   * tracking consumer, or {@link #NONE}.
    *
    * <p>Compared by identity: two attempts landing on the same manager make two assignments.
    */
@@ -1231,7 +1235,7 @@ final class ProducersCoordinator implements AutoCloseable {
     // trackers and producer count must be kept in sync; the array has a single writer, the event
     // loop, so a slot picked there is never picked twice, and a slot freed there is never freed
     // while its delete-publisher RPC is still in flight (the array stays occupied until then)
-    private volatile List<ProducerTracker> producerTrackers = createProducerTrackerList();
+    private volatile List<ProducerTracker> producerTrackers = emptySlots();
     private final AtomicInteger producerIndexSequence = new AtomicInteger(0);
     // written by the event loop only, concurrent because the shutdown listener iterates it on a
     // netty thread
@@ -1332,7 +1336,7 @@ final class ProducersCoordinator implements AutoCloseable {
                   // live assignments the collection above missed, and attempts in flight here
                   List<AgentTracker> missed = new ArrayList<>();
                   List<AgentTracker> inFlight = new ArrayList<>();
-                  List<ProducerTracker> updated = createProducerTrackerList();
+                  List<ProducerTracker> updated = emptySlots();
                   List<ProducerTracker> current = this.producerTrackers;
                   for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
                     ProducerTracker t = current.get(i);
@@ -1541,14 +1545,12 @@ final class ProducersCoordinator implements AutoCloseable {
                   return SlotReservation.DEAD;
                 }
                 byte publisherId =
-                    (byte)
-                        ConsumersCoordinator.pickSlot(
-                            this.producerTrackers, this.producerIndexSequence);
+                    (byte) pickSlot(this.producerTrackers, this.producerIndexSequence);
                 this.setProducerTrackers(update(this.producerTrackers, publisherId, tracker));
                 return SlotReservation.reserved(publisherId);
               });
       checkReservation(reservation, tracker);
-      return reservation.publisherId;
+      return reservation.slot;
     }
 
     private void reserveTrackingConsumer(AgentTracker tracker) {
@@ -1688,22 +1690,6 @@ final class ProducersCoordinator implements AutoCloseable {
           });
     }
 
-    private List<ProducerTracker> createProducerTrackerList() {
-      List<ProducerTracker> trackers = new ArrayList<>(MAX_PRODUCERS_PER_CLIENT);
-      IntStream.range(0, MAX_PRODUCERS_PER_CLIENT).forEach(i -> trackers.add(null));
-      return trackers;
-    }
-
-    private List<ProducerTracker> update(
-        List<ProducerTracker> original, byte index, ProducerTracker newValue) {
-      List<ProducerTracker> newTrackers = createProducerTrackerList();
-      int intIndex = index & 0xFF;
-      for (int i = 0; i < MAX_PRODUCERS_PER_CLIENT; i++) {
-        newTrackers.set(i, i == intIndex ? newValue : original.get(i));
-      }
-      return newTrackers;
-    }
-
     private void setProducerTrackers(List<ProducerTracker> trackers) {
       this.producerTrackers = trackers;
       this.producerCount = (int) this.producerTrackers.stream().filter(Objects::nonNull).count();
@@ -1811,27 +1797,6 @@ final class ProducersCoordinator implements AutoCloseable {
 
   private static final Predicate<Exception> RETRY_ON_TIMEOUT =
       e -> e instanceof TimeoutStreamException;
-
-  /** Result of {@code reserveSlot}: a slot number, or the reason none was reserved. */
-  private static final class SlotReservation {
-
-    private static final SlotReservation FULL = new SlotReservation(NO_SLOT, true, false);
-    private static final SlotReservation DEAD = new SlotReservation(NO_SLOT, false, true);
-
-    private final byte publisherId;
-    private final boolean full;
-    private final boolean dead;
-
-    private SlotReservation(byte publisherId, boolean full, boolean dead) {
-      this.publisherId = publisherId;
-      this.full = full;
-      this.dead = dead;
-    }
-
-    private static SlotReservation reserved(byte publisherId) {
-      return new SlotReservation(publisherId, false, false);
-    }
-  }
 
   private static <T> void iterate(Collection<T> trackers, java.util.function.Consumer<T> action) {
     for (T tracker : trackers) {

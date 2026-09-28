@@ -23,6 +23,9 @@ import com.rabbitmq.stream.impl.AgentStateMachine.State;
 import io.netty.util.concurrent.EventExecutorGroup;
 import java.nio.channels.ClosedChannelException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +33,11 @@ import org.slf4j.LoggerFactory;
 final class CoordinatorUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(CoordinatorUtils.class);
+
+  // agent IDs on a connection are bytes
+  static final int SLOTS_PER_CLIENT = 256;
+  // sentinel agent ID: no slot reserved, or a reservation that was rolled back or freed
+  static final byte NO_SLOT = -1;
 
   // insurance against an agent stuck in RECOVERING because of a bug not yet found: every known way
   // to get stuck is already fixed by the epoch-supersede mechanism the watchdog itself uses, so
@@ -84,6 +92,53 @@ final class CoordinatorUtils {
       Thread.currentThread().interrupt();
     } catch (Exception e) {
       LOGGER.info("Error while closing coordinator event executor group: {}", e.getMessage());
+    }
+  }
+
+  static <T> List<T> emptySlots() {
+    List<T> slots = new ArrayList<>(SLOTS_PER_CLIENT);
+    for (int i = 0; i < SLOTS_PER_CLIENT; i++) {
+      slots.add(null);
+    }
+    return slots;
+  }
+
+  // copy-on-write: the slot arrays are read off-loop, e.g. by the connection's frame handlers
+  static <T> List<T> update(List<T> original, byte index, T newValue) {
+    List<T> updated = emptySlots();
+    int intIndex = index & 0xFF;
+    for (int i = 0; i < SLOTS_PER_CLIENT; i++) {
+      updated.set(i, i == intIndex ? newValue : original.get(i));
+    }
+    return updated;
+  }
+
+  static <T> int pickSlot(List<T> list, AtomicInteger sequence) {
+    int index = Integer.remainderUnsigned(sequence.getAndIncrement(), SLOTS_PER_CLIENT);
+    while (list.get(index) != null) {
+      index = Integer.remainderUnsigned(sequence.getAndIncrement(), SLOTS_PER_CLIENT);
+    }
+    return index;
+  }
+
+  /** Result of {@code reserveSlot}: a slot number, or the reason none was reserved. */
+  static final class SlotReservation {
+
+    static final SlotReservation FULL = new SlotReservation(NO_SLOT, true, false);
+    static final SlotReservation DEAD = new SlotReservation(NO_SLOT, false, true);
+
+    final byte slot;
+    final boolean full;
+    final boolean dead;
+
+    private SlotReservation(byte slot, boolean full, boolean dead) {
+      this.slot = slot;
+      this.full = full;
+      this.dead = dead;
+    }
+
+    static SlotReservation reserved(byte slot) {
+      return new SlotReservation(slot, false, false);
     }
   }
 

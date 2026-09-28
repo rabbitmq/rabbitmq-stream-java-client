@@ -15,9 +15,15 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.NO_SLOT;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.SLOTS_PER_CLIENT;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.SlotReservation;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.WATCHDOG_TICK_INTERVAL_MS;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.backOffNanos;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.emptySlots;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.pickSlot;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.update;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.watchdogShouldReDispatch;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
@@ -94,12 +100,10 @@ import org.slf4j.LoggerFactory;
 
 final class ConsumersCoordinator implements AutoCloseable {
 
-  static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
+  static final int MAX_SUBSCRIPTIONS_PER_CLIENT = SLOTS_PER_CLIENT;
   static final int MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER = 5;
   private static final int RECOVERY_THREADS = Math.max(2, Math.min(4, AVAILABLE_PROCESSORS));
   private static final long FIRST_ATTEMPT_EPOCH = 1;
-  // sentinel subscription ID: no slot reserved, or a reservation that was rolled back or freed
-  private static final byte NO_SLOT = -1;
   // how long a node that just failed a connection attempt is deprioritized for new placements;
   // short enough that a node which has actually come back is not avoided for long
   private static final long SUSPECT_TTL_NANOS = SECONDS.toNanos(5);
@@ -847,27 +851,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
   }
 
-  /** Result of {@code reserveSlot}: a slot number, or the reason none was reserved. */
-  private static final class SlotReservation {
-
-    private static final SlotReservation FULL = new SlotReservation(NO_SLOT, true, false);
-    private static final SlotReservation DEAD = new SlotReservation(NO_SLOT, false, true);
-
-    private final byte subscriptionId;
-    private final boolean full;
-    private final boolean dead;
-
-    private SlotReservation(byte subscriptionId, boolean full, boolean dead) {
-      this.subscriptionId = subscriptionId;
-      this.full = full;
-      this.dead = dead;
-    }
-
-    private static SlotReservation reserved(byte subscriptionId) {
-      return new SlotReservation(subscriptionId, false, false);
-    }
-  }
-
   int managerCount() {
     return state.queryIfOpen(s -> s.pool.size(), 0);
   }
@@ -1281,8 +1264,7 @@ final class ConsumersCoordinator implements AutoCloseable {
     // trackers and tracker count must be kept in sync; the array has a single writer, the event
     // loop, so a slot picked there is never picked twice, and a slot freed there is never freed
     // while its unsubscribe RPC is still in flight (the array stays occupied until then)
-    private volatile List<SubscriptionTracker> subscriptionTrackers =
-        createSubscriptionTrackerList();
+    private volatile List<SubscriptionTracker> subscriptionTrackers = emptySlots();
     private final AtomicInteger consumerIndexSequence = new AtomicInteger(0);
     // loop only: subscriptions whose attempt was in flight here when their stream became
     // unavailable. Their assignment must not become active, but their slot stays theirs until the
@@ -1464,7 +1446,7 @@ final class ConsumersCoordinator implements AutoCloseable {
         state.submitIfOpen(
             s -> {
               List<SubscriptionTracker> current = this.subscriptionTrackers;
-              List<SubscriptionTracker> updated = createSubscriptionTrackerList();
+              List<SubscriptionTracker> updated = emptySlots();
               List<SubscriptionTracker> affected = new ArrayList<>();
               for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
                 SubscriptionTracker t = current.get(i);
@@ -1522,12 +1504,6 @@ final class ConsumersCoordinator implements AutoCloseable {
         }
         return result;
       };
-    }
-
-    private List<SubscriptionTracker> createSubscriptionTrackerList() {
-      List<SubscriptionTracker> newSubscriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
-      IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> newSubscriptions.add(null));
-      return newSubscriptions;
     }
 
     private void checkNotClosed() {
@@ -1674,7 +1650,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             "Cannot add subscription tracker for stream '{}', manager is closed", tracker.stream);
         throw new IllegalStateException("Cannot add subscription tracker, the manager is closed");
       }
-      return reservation.subscriptionId;
+      return reservation.slot;
     }
 
     // undo a reservation that failed to subscribe: the tracker was never confirmed, so there is
@@ -1802,16 +1778,6 @@ final class ConsumersCoordinator implements AutoCloseable {
       }
     }
 
-    private List<SubscriptionTracker> update(
-        List<SubscriptionTracker> original, byte index, SubscriptionTracker newValue) {
-      List<SubscriptionTracker> newSubcriptions = createSubscriptionTrackerList();
-      int intIndex = index & 0xFF;
-      for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-        newSubcriptions.set(i, i == intIndex ? newValue : original.get(i));
-      }
-      return newSubcriptions;
-    }
-
     private void setSubscriptionTrackers(List<SubscriptionTracker> trackers) {
       this.subscriptionTrackers = trackers;
       this.trackerCount = (int) this.subscriptionTrackers.stream().filter(Objects::nonNull).count();
@@ -1888,7 +1854,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             }
           }
         }
-        state.submitIfOpen(s -> this.setSubscriptionTrackers(createSubscriptionTrackerList()));
+        state.submitIfOpen(s -> this.setSubscriptionTrackers(emptySlots()));
 
         if (this.client.isOpen()) {
           this.client.close();
@@ -1991,14 +1957,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     public long chunkId() {
       return this.chunkId;
     }
-  }
-
-  static <T> int pickSlot(List<T> list, AtomicInteger sequence) {
-    int index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
-    while (list.get(index) != null) {
-      index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
-    }
-    return index;
   }
 
   private static List<Broker> keepReplicasIfPossible(Collection<BrokerWrapper> brokers) {
