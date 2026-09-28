@@ -15,6 +15,7 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.impl.ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT;
+import static com.rabbitmq.stream.impl.ProducersCoordinator.recoverable;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
 import static com.rabbitmq.stream.impl.TestUtils.answer;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
@@ -42,7 +43,10 @@ import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
+import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.CoordinatorUtils.ClientClosedException;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import io.netty.channel.ConnectTimeoutException;
 import java.time.Duration;
@@ -810,10 +814,35 @@ public class ProducersCoordinatorTest {
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
     assertThat(closeClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+    verify(producer, times(1))
+        .closeAfterStreamDeletion(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
     verify(producer, times(1)).unavailable();
     verify(producer, times(1)).setClient(client);
     verify(producer, never()).running();
 
+    waitAtMost(() -> coordinator.clientCount() == 0);
+  }
+
+  @Test
+  void producerShouldBeClosedWithStreamDoesNotExistCodeIfStreamIsDeletedDuringRecovery()
+      throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.topologyUpdateBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(10), ms(10), ms(100)));
+    when(locator.metadata("stream"))
+        .thenReturn(metadata(leader(), replicas()))
+        .thenReturn(metadata("stream", null, null, Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(producer.isOpen()).thenReturn(true);
+
+    coordinator.registerProducer(producer, null, "stream");
+    metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+
+    verify(producer, timeout(5000).times(1))
+        .closeAfterStreamDeletion(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    verify(locator, times(2)).metadata("stream");
+    verify(producer, never()).running();
     waitAtMost(() -> coordinator.clientCount() == 0);
   }
 
@@ -1054,6 +1083,26 @@ public class ProducersCoordinatorTest {
     assertThat(coordinator.findCandidateNodes("stream", false))
         .hasSize(2)
         .containsAll(replicaWrappers());
+  }
+
+  @Test
+  void failureClassificationShouldRetryOnlyTransientFailures() {
+    assertThat(recoverable(new ConnectionStreamException("closed"))).isTrue();
+    assertThat(recoverable(new ClientClosedException())).isTrue();
+    assertThat(recoverable(new StreamNotAvailableException("stream"))).isTrue();
+    assertThat(
+            recoverable(
+                new StreamException("declared", Constants.RESPONSE_CODE_PRECONDITION_FAILED)))
+        .isTrue();
+    assertThat(
+            recoverable(
+                new StreamException("deleted", Constants.RESPONSE_CODE_PUBLISHER_DOES_NOT_EXIST)))
+        .isTrue();
+    assertThat(recoverable(new StreamException("refused", Constants.RESPONSE_CODE_ACCESS_REFUSED)))
+        .isFalse();
+    assertThat(recoverable(new StreamDoesNotExistException("stream"))).isFalse();
+    assertThat(recoverable(new IllegalStateException("boom"))).isFalse();
+    assertThat(recoverable(null)).isFalse();
   }
 
   // the transition that parked an attempt has been applied once its retry is scheduled
