@@ -20,9 +20,12 @@ import com.rabbitmq.stream.oauth2.GsonTokenParser;
 import com.rabbitmq.stream.oauth2.HttpTokenRequester;
 import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
 import com.rabbitmq.stream.oauth2.TokenRequester;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 
 final class CredentialsManagerFactory {
+
+  private CredentialsManagerFactory() {}
 
   private static final CredentialsManager.Registration CALLBACK_DELEGATING_REGISTRATION =
       new CredentialsManager.Registration() {
@@ -36,10 +39,20 @@ final class CredentialsManagerFactory {
       };
 
   private static final CredentialsManager CREDENTIALS_MANAGER =
-      (name, updateCallback) -> CALLBACK_DELEGATING_REGISTRATION;
+      new CredentialsManager() {
+        @Override
+        public Registration register(String name, AuthenticationCallback updateCallback) {
+          return CALLBACK_DELEGATING_REGISTRATION;
+        }
+
+        @Override
+        public void close() {}
+      };
 
   static CredentialsManager get(
-      DefaultOAuth2Configuration oauth2, ScheduledExecutorService scheduledExecutorService) {
+      DefaultOAuth2Configuration oauth2,
+      ScheduledExecutorService scheduledExecutorService,
+      Executor executor) {
     if (oauth2 != null && oauth2.enabled()) {
       TokenRequester tokenRequester =
           HttpTokenRequester.builder()
@@ -54,7 +67,7 @@ final class CredentialsManagerFactory {
               .parser(new GsonTokenParser())
               .build();
       return new TokenCredentialsManager(
-          tokenRequester, scheduledExecutorService, oauth2.refreshDelayStrategy());
+          tokenRequester, scheduledExecutorService, executor, oauth2.refreshDelayStrategy());
     } else {
       return CREDENTIALS_MANAGER;
     }

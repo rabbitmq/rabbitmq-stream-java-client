@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -19,7 +19,7 @@ package com.rabbitmq.stream.oauth2;
  *
  * <p>A typical "application component" is a connection.
  */
-public interface CredentialsManager {
+public interface CredentialsManager extends AutoCloseable {
 
   /** No-op credentials manager. */
   CredentialsManager NO_OP = new NoOpCredentialsManager();
@@ -33,6 +33,10 @@ public interface CredentialsManager {
    */
   Registration register(String name, AuthenticationCallback updateCallback);
 
+  /** Close the credentials manager and release its resources. */
+  @Override
+  void close();
+
   /** A component registration. */
   interface Registration extends AutoCloseable {
 
@@ -40,8 +44,8 @@ public interface CredentialsManager {
      * Connection request from the component.
      *
      * <p>The component calls this method when it needs to authenticate. The underlying credentials
-     * manager implementation must take care of providing the component with the appropriate
-     * credentials in the callback.
+     * manager implementation must take of providing the component with the appropriate credentials
+     * in the callback.
      *
      * @param callback client code to authenticate the component
      */
@@ -74,6 +78,9 @@ public interface CredentialsManager {
     public Registration register(String name, AuthenticationCallback updateCallback) {
       return new NoOpRegistration();
     }
+
+    @Override
+    public void close() {}
   }
 
   class NoOpRegistration implements Registration {
