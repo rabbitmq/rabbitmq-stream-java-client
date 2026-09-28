@@ -24,7 +24,6 @@ import static com.rabbitmq.stream.Resource.State.CLOSED;
 import static com.rabbitmq.stream.Resource.State.CLOSING;
 import static com.rabbitmq.stream.Resource.State.OPEN;
 import static com.rabbitmq.stream.Resource.State.RECOVERING;
-import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.namedRunnable;
 
 import com.rabbitmq.stream.Codec;
@@ -37,7 +36,6 @@ import com.rabbitmq.stream.Producer;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
-import com.rabbitmq.stream.impl.Client.Response;
 import com.rabbitmq.stream.impl.ProducerUtils.AccumulatedEntity;
 import io.netty.buffer.ByteBuf;
 import java.time.Duration;
@@ -451,19 +449,6 @@ final class StreamProducer extends ResourceBase implements Producer {
   public void close() {
     if (this.closed.compareAndSet(false, true)) {
       this.state(CLOSING);
-      if (this.state() == OPEN && this.client != null) {
-        LOGGER.debug("Deleting producer {}", this.publisherId);
-        Response response = this.client.deletePublisher(this.publisherId);
-        if (!response.isOk()) {
-          LOGGER.info(
-              "Could not delete publisher {} on producer closing: {}",
-              this.publisherId,
-              formatConstant(response.getResponseCode()));
-        }
-      } else {
-        LOGGER.debug(
-            "No need to delete producer {}, it is currently unavailable", this.publisherId);
-      }
       this.environment.removeProducer(this);
       closeFromEnvironment();
     }

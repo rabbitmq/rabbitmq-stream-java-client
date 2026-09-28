@@ -856,8 +856,7 @@ final class ProducersCoordinator implements AutoCloseable {
    * <p>Monitoring outlives the coordinator: {@code StreamEnvironment.toString()} is legitimately
    * called on a closed environment, and must not throw.
    */
-  private <R> R queryState(
-      java.util.function.Function<CoordinatorState, R> query, R valueIfClosed) {
+  private <R> R queryState(Function<CoordinatorState, R> query, R valueIfClosed) {
     if (this.state.isClosed()) {
       return valueIfClosed;
     }
@@ -1374,7 +1373,6 @@ final class ProducersCoordinator implements AutoCloseable {
         ClientFactory cf,
         Client.ClientParameters clientParameters) {
       this.id = managerIdSequence.getAndIncrement();
-      AtomicReference<Client> ref = new AtomicReference<>();
       AtomicBoolean clientInitializedInManager = new AtomicBoolean(false);
       PublishConfirmListener publishConfirmListener =
           (publisherId, publishingId) -> {
@@ -1552,7 +1550,6 @@ final class ProducersCoordinator implements AutoCloseable {
       this.name = keyForNode(this.node);
       LOGGER.debug("Created producer connection '{}'", connectionName);
       clientInitializedInManager.set(true);
-      ref.set(this.client);
     }
 
     // loop only: the agent is active and its confirmed assignment is this very slot (NO_SLOT for a
@@ -1895,7 +1892,7 @@ final class ProducersCoordinator implements AutoCloseable {
             this.client.close();
           }
         } catch (Exception e) {
-          LOGGER.debug("Error while closing client producer connection: ", e.getMessage());
+          LOGGER.debug("Error while closing client producer connection: {}", e.getMessage());
         }
       }
     }

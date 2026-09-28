@@ -1140,7 +1140,7 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
-  void shouldDisposeProducerIfStreamIsDeleted() throws Exception {
+  void shouldDisposeProducerIfNoLeaderComesBackInTime() throws Exception {
     scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(environment.topologyUpdateBackOffDelayPolicy())

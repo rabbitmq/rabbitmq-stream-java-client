@@ -400,8 +400,7 @@ final class ConsumersCoordinator implements AutoCloseable {
    * <p>Monitoring outlives the coordinator: {@code StreamEnvironment.toString()} is legitimately
    * called on a closed environment, and must not throw.
    */
-  private <R> R queryState(
-      java.util.function.Function<CoordinatorState, R> query, R valueIfClosed) {
+  private <R> R queryState(Function<CoordinatorState, R> query, R valueIfClosed) {
     if (this.state.isClosed()) {
       return valueIfClosed;
     }
