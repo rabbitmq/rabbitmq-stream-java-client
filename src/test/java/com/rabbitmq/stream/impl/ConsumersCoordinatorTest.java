@@ -20,7 +20,7 @@ import static com.rabbitmq.stream.impl.ConsumersCoordinator.deprioritizeSuspects
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickBroker;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickSlot;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.recoverable;
-import static com.rabbitmq.stream.impl.ConsumersCoordinator.watchdogShouldReDispatch;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.watchdogShouldReDispatch;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
 import static com.rabbitmq.stream.impl.TestUtils.metadata;
@@ -612,7 +612,7 @@ public class ConsumersCoordinatorTest {
 
   @Test
   void watchdogShouldOnlyReDispatchAnAttemptOverdueByMoreThanTheThreshold() {
-    long threshold = ConsumersCoordinator.WATCHDOG_STUCK_THRESHOLD_NANOS;
+    long threshold = CoordinatorUtils.WATCHDOG_STUCK_THRESHOLD_NANOS;
     long now = threshold * 10;
 
     assertThat(watchdogShouldReDispatch(State.RECOVERING, now - threshold - 1, now))

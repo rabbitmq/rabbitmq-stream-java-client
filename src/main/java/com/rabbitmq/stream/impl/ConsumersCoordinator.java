@@ -15,7 +15,10 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.WATCHDOG_TICK_INTERVAL_MS;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.backOffNanos;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.watchdogShouldReDispatch;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
 import static com.rabbitmq.stream.impl.Utils.brokerFromClient;
@@ -100,11 +103,6 @@ final class ConsumersCoordinator implements AutoCloseable {
   // how long a node that just failed a connection attempt is deprioritized for new placements;
   // short enough that a node which has actually come back is not avoided for long
   private static final long SUSPECT_TTL_NANOS = SECONDS.toNanos(5);
-  // insurance against a subscription stuck in RECOVERING because of a bug not yet found: every
-  // known way to get stuck is already fixed by the epoch-supersede mechanism the watchdog itself
-  // uses, so the threshold is generous, not tuned to any known failure timing
-  private static final long WATCHDOG_TICK_INTERVAL_MS = SECONDS.toMillis(30);
-  static final long WATCHDOG_STUCK_THRESHOLD_NANOS = SECONDS.toNanos(120);
   // how long an emptied connection is kept around before actually closing it, so a subscription
   // landing on the same node moments later (e.g. during a rolling restart) can reuse it instead
   // of reconnecting. Has to outlast the recovery back-off delay (5s by default), since a
@@ -455,30 +453,6 @@ final class ConsumersCoordinator implements AutoCloseable {
             }
           });
     }
-  }
-
-  /**
-   * The back-off delay for an attempt, in nanoseconds, or 0 if the policy has given up.
-   *
-   * <p>{@link BackOffDelayPolicy#TIMEOUT} is {@code Duration.ofMillis(Long.MAX_VALUE)}, so it has
-   * to be excluded before converting: {@code toNanos()} would overflow on it.
-   */
-  private static long backOffNanos(BackOffDelayPolicy delayPolicy, int attempts) {
-    Duration delay = delayPolicy.delay(attempts);
-    return BackOffDelayPolicy.TIMEOUT.equals(delay) ? 0 : delay.toNanos();
-  }
-
-  /**
-   * Whether the watchdog should start a fresh attempt for a subscription in this state.
-   *
-   * <p>Measured against when the current attempt is <b>due</b>, not when it was created: a
-   * subscription waiting out its back-off delay is waiting by design, not stuck, so comparing
-   * against the creation time would let the watchdog cut short any configured delay longer than the
-   * stuck threshold.
-   */
-  static boolean watchdogShouldReDispatch(State state, long nextAttemptAt, long now) {
-    // subtraction, not a direct comparison, so this stays correct across a nanoTime() wraparound
-    return state == State.RECOVERING && now - nextAttemptAt > WATCHDOG_STUCK_THRESHOLD_NANOS;
   }
 
   private void ensureWatchdogScheduled() {
