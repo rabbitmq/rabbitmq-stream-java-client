@@ -67,22 +67,16 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeSet;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -277,13 +271,14 @@ final class ConsumersCoordinator implements AutoCloseable {
             .port(node.getPort());
     LOGGER.debug("Finding a manager for consumer {}", tracker.consumer.id());
     while (true) {
-      Placement placement = placement(node);
-      if (placement.waitFor != null) {
+      ConnectionPool.Placement<ClientSubscriptionsManager> placement = placement(node);
+      if (placement.waitFor() != null) {
         // a connection to this node is being opened, share it instead of opening another one
-        awaitConnectionCreation(placement.waitFor);
+        ConnectionPool.awaitCreation(
+            placement.waitFor(), this.environment.rpcTimeout(), "consumer");
         continue;
       }
-      ClientSubscriptionsManager pickedManager = placement.manager;
+      ClientSubscriptionsManager pickedManager = placement.connection();
       if (pickedManager == null) {
         String name = keyForNode(node);
         LOGGER.debug("Creating subscription manager on {}", name);
@@ -337,23 +332,8 @@ final class ConsumersCoordinator implements AutoCloseable {
    *
    * <p>Atomic by construction: it runs on the event loop, which is the single writer of the pool.
    */
-  private Placement placement(Broker node) {
-    String key = keyForNode(node);
-    return this.state.query(
-        s -> {
-          s.connections.removeIf(ClientSubscriptionsManager::isDead);
-          for (ClientSubscriptionsManager manager : s.connections) {
-            if (node.equals(manager.node) && !manager.isFull()) {
-              return Placement.use(manager);
-            }
-          }
-          if (s.creating.add(key)) {
-            return Placement.create();
-          }
-          CompletableFuture<Void> waiter = new CompletableFuture<>();
-          s.waiters.computeIfAbsent(key, k -> new ArrayList<>()).add(waiter);
-          return Placement.waitFor(waiter);
-        });
+  private ConnectionPool.Placement<ClientSubscriptionsManager> placement(Broker node) {
+    return this.state.query(s -> s.pool.placement(node, m -> !m.isFull()));
   }
 
   /**
@@ -367,31 +347,7 @@ final class ConsumersCoordinator implements AutoCloseable {
   }
 
   private void creationFinished(Broker node, ClientSubscriptionsManager manager) {
-    String key = keyForNode(node);
-    submitState(
-        s -> {
-          s.creating.remove(key);
-          if (manager != null) {
-            s.connections.add(manager);
-          }
-          List<CompletableFuture<Void>> waiters = s.waiters.remove(key);
-          if (waiters != null) {
-            waiters.forEach(w -> w.complete(null));
-          }
-        });
-  }
-
-  private void awaitConnectionCreation(CompletableFuture<Void> waiter) {
-    try {
-      waiter.get(this.environment.rpcTimeout().toMillis(), MILLISECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new StreamException("Interrupted while waiting for a consumer connection", e);
-    } catch (ExecutionException e) {
-      throw new StreamException("Error while waiting for a consumer connection", e);
-    } catch (TimeoutException e) {
-      throw new TimeoutStreamException("Timeout while waiting for a consumer connection");
-    }
+    submitState(s -> s.pool.creationFinished(node, manager));
   }
 
   /**
@@ -912,29 +868,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
   }
 
-  private static final class Placement {
-
-    private final ClientSubscriptionsManager manager;
-    private final CompletableFuture<Void> waitFor;
-
-    private Placement(ClientSubscriptionsManager manager, CompletableFuture<Void> waitFor) {
-      this.manager = manager;
-      this.waitFor = waitFor;
-    }
-
-    private static Placement use(ClientSubscriptionsManager manager) {
-      return new Placement(manager, null);
-    }
-
-    private static Placement create() {
-      return new Placement(null, null);
-    }
-
-    private static Placement waitFor(CompletableFuture<Void> waiter) {
-      return new Placement(null, waiter);
-    }
-  }
-
   /** Result of {@code reserveSlot}: a slot number, or the reason none was reserved. */
   private static final class SlotReservation {
 
@@ -957,14 +890,14 @@ final class ConsumersCoordinator implements AutoCloseable {
   }
 
   int managerCount() {
-    return queryState(s -> s.connections.size(), 0);
+    return queryState(s -> s.pool.size(), 0);
   }
 
   // the connection pool is coordinator-owned state, so managers do not reach into it directly.
   // step 4 of the redesign replaces this call with an event posted to the event loop
   private void removeFromPool(ClientSubscriptionsManager manager) {
     // fire-and-forget: this is called from netty I/O threads, which must never wait on the loop
-    submitState(s -> s.connections.remove(manager));
+    submitState(s -> s.pool.remove(manager));
   }
 
   // package protected for testing
@@ -1040,13 +973,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       this.watchdogTask.cancel(false);
     }
     List<ClientSubscriptionsManager> connections =
-        queryState(
-            s -> {
-              List<ClientSubscriptionsManager> all = new ArrayList<>(s.connections);
-              s.connections.clear();
-              return all;
-            },
-            Collections.emptyList());
+        queryState(s -> s.pool.drain(), Collections.emptyList());
     for (ClientSubscriptionsManager manager : connections) {
       try {
         manager.close();
@@ -1091,7 +1018,7 @@ final class ConsumersCoordinator implements AutoCloseable {
   @Override
   public String toString() {
     List<ClientSubscriptionsManager> connections =
-        queryState(s -> new ArrayList<>(s.connections), Collections.emptyList());
+        queryState(s -> s.pool.connections(), Collections.emptyList());
     StringBuilder builder = new StringBuilder("{");
     builder.append(jsonField("client_count", connections.size())).append(", ");
     builder
@@ -1297,12 +1224,8 @@ final class ConsumersCoordinator implements AutoCloseable {
    */
   static final class CoordinatorState {
 
-    private final NavigableSet<ClientSubscriptionsManager> connections = new TreeSet<>();
+    private final ConnectionPool<ClientSubscriptionsManager> pool = new ConnectionPool<>();
     private final Map<Long, TrackerState> subscriptions = new HashMap<>();
-    // one connection creation at a time per node, so concurrent placements share the connection
-    // being opened instead of each opening their own
-    private final Set<String> creating = new HashSet<>();
-    private final Map<String, List<CompletableFuture<Void>>> waiters = new HashMap<>();
     // broker key -> suspect-until deadline (System.nanoTime() terms); consulted lazily by
     // deprioritizeSuspects, so a stale entry just stops mattering once its TTL passes, no active
     // expiry needed
@@ -1392,7 +1315,8 @@ final class ConsumersCoordinator implements AutoCloseable {
    * <p>It dispatches inbound messages to the appropriate {@link SubscriptionTracker} and
    * re-allocates {@link SubscriptionTracker}s in case of stream unavailability or disconnection.
    */
-  private class ClientSubscriptionsManager implements Comparable<ClientSubscriptionsManager> {
+  private class ClientSubscriptionsManager
+      implements ConnectionPool.PooledConnection, Comparable<ClientSubscriptionsManager> {
 
     private final long id;
     private final Broker node;
@@ -1901,9 +1825,15 @@ final class ConsumersCoordinator implements AutoCloseable {
       return this.trackerCount == 0;
     }
 
+    @Override
+    public Broker node() {
+      return this.node;
+    }
+
     // deliberately side-effect free: a predicate that closes a connection and mutates the pool
     // makes this class impossible to reason about, and the loop must never close inline
-    boolean isDead() {
+    @Override
+    public boolean isDead() {
       return this.closed.get() || !this.client.isOpen();
     }
 
