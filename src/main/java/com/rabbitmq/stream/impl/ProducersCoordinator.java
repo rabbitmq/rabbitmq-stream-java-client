@@ -68,6 +68,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -89,6 +90,17 @@ final class ProducersCoordinator implements AutoCloseable {
   private static final long FIRST_ATTEMPT_EPOCH = 1;
   // sentinel publisher ID: no slot reserved, or a reservation that was rolled back or freed
   private static final byte NO_SLOT = -1;
+  // insurance against an agent stuck in RECOVERING because of a bug not yet found: every known way
+  // to get stuck is already fixed by the epoch-supersede mechanism the watchdog itself uses, so
+  // the threshold is generous, not tuned to any known failure timing
+  private static final long WATCHDOG_TICK_INTERVAL_MS = SECONDS.toMillis(30);
+  static final long WATCHDOG_STUCK_THRESHOLD_NANOS = SECONDS.toNanos(120);
+  // how long an emptied connection is kept around before actually closing it, so an agent landing
+  // on the same node moments later (e.g. during a rolling restart) can reuse it instead of
+  // reconnecting. Has to outlast the recovery back-off delay (5s by default), since a
+  // redistributed agent only comes back once its first attempt is due, but not by much: the
+  // connection is held idle for the whole window and the cost of being wrong is one reconnect
+  private static final long IDLE_LINGER_MS = SECONDS.toMillis(6);
   private static final boolean DEBUG = false;
   private static final Logger LOGGER = LoggerFactory.getLogger(ProducersCoordinator.class);
   private final StreamEnvironment environment;
@@ -109,6 +121,10 @@ final class ProducersCoordinator implements AutoCloseable {
   // recovery must not share the environment scheduler: blocking recovery work there starves
   // the scheduled continuations it depends on
   private final ExecutorService recoveryExecutor;
+  // lazily started by the first registration, not the constructor: no point ticking before there
+  // is anything to watch
+  private final AtomicBoolean watchdogScheduled = new AtomicBoolean(false);
+  private volatile ScheduledFuture<?> watchdogTask;
 
   /**
    * @param eventExecutorGroup the group backing the control-plane event loop, or null for the
@@ -173,6 +189,7 @@ final class ProducersCoordinator implements AutoCloseable {
   }
 
   private Runnable registerAgentTracker(AgentTracker tracker, String stream) {
+    ensureWatchdogScheduled();
     List<BrokerWrapper> candidates = findCandidateNodes(stream, this.forceLeader);
     Broker broker = pickBroker(candidates);
     registerAgent(tracker);
@@ -289,6 +306,85 @@ final class ProducersCoordinator implements AutoCloseable {
   private static long backOffNanos(BackOffDelayPolicy delayPolicy, int attempts) {
     Duration delay = delayPolicy.delay(attempts);
     return BackOffDelayPolicy.TIMEOUT.equals(delay) ? 0 : delay.toNanos();
+  }
+
+  /**
+   * Whether the watchdog should start a fresh attempt for an agent in this state.
+   *
+   * <p>Measured against when the current attempt is <b>due</b>, not when it was created: an agent
+   * waiting out its back-off delay is waiting by design, not stuck, so comparing against the
+   * creation time would let the watchdog cut short any configured delay longer than the stuck
+   * threshold.
+   */
+  static boolean watchdogShouldReDispatch(State state, long nextAttemptAt, long now) {
+    // subtraction, not a direct comparison, so this stays correct across a nanoTime() wraparound
+    return state == State.RECOVERING && now - nextAttemptAt > WATCHDOG_STUCK_THRESHOLD_NANOS;
+  }
+
+  private void ensureWatchdogScheduled() {
+    if (this.watchdogScheduled.compareAndSet(false, true)) {
+      this.watchdogTask =
+          this.environment
+              .scheduledExecutorService()
+              .scheduleAtFixedRate(
+                  this::watchdogTick,
+                  WATCHDOG_TICK_INTERVAL_MS,
+                  WATCHDOG_TICK_INTERVAL_MS,
+                  MILLISECONDS);
+    }
+  }
+
+  /**
+   * Re-trigger any agent that has been {@code RECOVERING} past the stuck threshold.
+   *
+   * <p>Insurance against bugs not yet found, not a fix for a known one: every known way to get
+   * stuck in {@code RECOVERING} is already fixed by the epoch-supersede mechanism this reuses (see
+   * {@link AgentStateMachine}).
+   *
+   * <p>Package-protected for testing: a test can call this directly instead of waiting out the real
+   * tick interval.
+   */
+  void watchdogTick() {
+    submitState(
+        s -> {
+          long now = System.nanoTime();
+          // collected first, then dispatched from a separate pass: dispatching inline while
+          // iterating s.agents.values() would corrupt the iterator, since a transition can remove
+          // its own entry (e.g. onCancelled, for an agent that closed while stuck)
+          List<TrackerState> stuck = new ArrayList<>();
+          for (TrackerState trackerState : s.agents.values()) {
+            if (watchdogShouldReDispatch(trackerState.state, trackerState.nextAttemptAt, now)) {
+              stuck.add(trackerState);
+            }
+          }
+          for (TrackerState trackerState : stuck) {
+            long attemptEpoch = trackerState.epoch;
+            if (!trackerState.tracker.isOpen()) {
+              trackerEvent(
+                  trackerState.tracker,
+                  recoveryBackOffDelayPolicy(),
+                  AgentStateMachine::onCancelled);
+            } else {
+              trackerEvent(
+                  trackerState.tracker,
+                  recoveryBackOffDelayPolicy(),
+                  (st, epoch) -> AgentStateMachine.onWatchdogTick(st, epoch, attemptEpoch));
+            }
+          }
+        });
+  }
+
+  // test support: bring every agent's next attempt forward by the given amount, so a test can
+  // exercise watchdogTick() deterministically instead of waiting out the real stuck threshold or a
+  // back-off delay deliberately set longer than it
+  void ageWatchdogClocksBy(Duration duration) {
+    this.state.query(
+        s -> {
+          for (TrackerState trackerState : s.agents.values()) {
+            trackerState.nextAttemptAt -= duration.toNanos();
+          }
+          return null;
+        });
   }
 
   private void assignmentSucceeded(
@@ -761,6 +857,9 @@ final class ProducersCoordinator implements AutoCloseable {
   public void close() {
     if (this.state.isClosed()) {
       return;
+    }
+    if (this.watchdogTask != null) {
+      this.watchdogTask.cancel(false);
     }
     List<ClientProducersManager> connections =
         queryState(
@@ -1576,13 +1675,37 @@ final class ProducersCoordinator implements AutoCloseable {
       return this.closed.get() || !this.client.isOpen();
     }
 
+    /**
+     * If this manager is currently empty, close it after a short linger delay instead of right
+     * away, so an agent landing on the same node moments later (e.g. during a rolling restart) can
+     * reuse the connection instead of paying for a reconnect.
+     *
+     * <p>No epoch guard needed: re-checking {@link #isEmpty()} at the deferred point is enough by
+     * itself. An agent that arrived in the meantime makes it a no-op; a connection that died in the
+     * meantime was already closed by the shutdown path, and {@link #close()}'s own {@code closed}
+     * CAS makes a second call harmless.
+     */
     private void closeIfEmpty() {
       if (!closed.get()) {
         if (this.isEmpty()) {
-          this.close();
+          ProducersCoordinator.this
+              .environment
+              .scheduledExecutorService()
+              .schedule(
+                  () -> ProducersCoordinator.this.submitRecovery(this::closeIfStillEmpty),
+                  IDLE_LINGER_MS,
+                  MILLISECONDS);
         } else {
           LOGGER.debug("Not closing producer manager {} because it is not empty", this.id);
         }
+      }
+    }
+
+    // the deferred re-check scheduled by closeIfEmpty(); dispatched onto the recovery pool, not
+    // run inline on the shared scheduler thread, because close() can block on network I/O
+    private void closeIfStillEmpty() {
+      if (this.isEmpty()) {
+        this.close();
       }
     }
 

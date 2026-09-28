@@ -348,6 +348,11 @@ public class StreamEnvironmentTest {
       producers.removeAll(subProducers);
       consumers.removeAll(subConsumers);
 
+      // the now-empty producer connections linger for a bit before they actually close
+      waitAtMost(
+          () ->
+              MonitoringTestUtils.extract(environment).getProducers().clientCount()
+                  < producerManagerCount);
       environmentInfo = MonitoringTestUtils.extract(environment);
       assertThat(environmentInfo.getProducers().nodesConnected()).hasSize(1);
       assertThat(environmentInfo.getProducers().clientCount()).isLessThan(producerManagerCount);

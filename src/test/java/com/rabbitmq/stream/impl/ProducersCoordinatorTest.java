@@ -136,6 +136,11 @@ public class ProducersCoordinatorTest {
     when(client.serverAdvertisedHost()).thenReturn(leader().getHost());
     when(client.serverAdvertisedPort()).thenReturn(leader().getPort());
     when(environment.rpcTimeout()).thenReturn(Duration.ofSeconds(10));
+    // a bare executor, not createScheduledExecutorService(): it must not start any thread of its
+    // own just by existing, only if actually given a task, so tests that override this stub before
+    // registering leave nothing running to clean up
+    scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     coordinator =
         new ProducersCoordinator(
             environment,
@@ -348,6 +353,29 @@ public class ProducersCoordinatorTest {
     verify(producerClosedAfterDisconnection, never()).running();
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
+  }
+
+  @Test
+  void firstRecoveryAttemptShouldWaitThePolicyInitialDelay() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    // an initial delay much longer than the delay between retries, so which of the two applies to
+    // the first attempt of a recovery episode is observable
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(1000), ms(10)));
+    when(producer.isOpen()).thenReturn(true);
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+
+    coordinator.registerProducer(producer, null, "stream");
+
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    // still only the initial declaration: the recovery attempt is waiting out delay(0), the
+    // policy's grace before reacting at all, and not delay(1)
+    verify(client, after(300).times(1)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(client, timeout(10_000).times(2)).declarePublisher(anyByte(), isNull(), anyString());
   }
 
   @Test
@@ -626,7 +654,8 @@ public class ProducersCoordinatorTest {
 
   @ParameterizedTest
   @ValueSource(ints = {50, ProducersCoordinator.MAX_PRODUCERS_PER_CLIENT})
-  void growShrinkResourcesBasedOnProducersAndTrackingConsumersCount(int maxProducersByClient) {
+  void growShrinkResourcesBasedOnProducersAndTrackingConsumersCount(int maxProducersByClient)
+      throws Exception {
     scheduledExecutorService = createScheduledExecutorService();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
     when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
@@ -706,7 +735,8 @@ public class ProducersCoordinatorTest {
               trackingConsumerInfos.remove(0);
             });
 
-    assertThat(coordinator.clientCount()).isEqualTo(2);
+    // the emptied connection is closed after the idle linger
+    waitAtMost(() -> coordinator.clientCount() == 2);
 
     // let's free the rest of tracking consumers
     trackingConsumerInfos.forEach(info -> info.cleaningCallback.run());
@@ -742,8 +772,8 @@ public class ProducersCoordinatorTest {
       producerInfo.cleaningCallback.run();
     }
 
+    waitAtMost(() -> coordinator.clientCount() == 1);
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
-    assertThat(coordinator.clientCount()).isEqualTo(1);
   }
 
   @Test
