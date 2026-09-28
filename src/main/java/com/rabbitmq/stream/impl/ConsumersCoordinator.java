@@ -14,6 +14,7 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
@@ -41,6 +42,8 @@ import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
+import com.rabbitmq.stream.impl.AgentStateMachine.State;
+import com.rabbitmq.stream.impl.AgentStateMachine.TransitionResult;
 import com.rabbitmq.stream.impl.Client.Broker;
 import com.rabbitmq.stream.impl.Client.ChunkListener;
 import com.rabbitmq.stream.impl.Client.ClientParameters;
@@ -52,8 +55,6 @@ import com.rabbitmq.stream.impl.Client.MetadataListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.ShutdownListener;
 import com.rabbitmq.stream.impl.CoordinatorUtils.ClientClosedException;
-import com.rabbitmq.stream.impl.SubscriptionStateMachine.State;
-import com.rabbitmq.stream.impl.SubscriptionStateMachine.TransitionResult;
 import com.rabbitmq.stream.impl.Utils.BrokerWrapper;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
@@ -230,7 +231,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       trackerEvent(
           subscriptionTracker,
           recoveryBackOffDelayPolicy(),
-          (st, epoch) -> SubscriptionStateMachine.onAssignmentFailed(st, epoch, epoch, e, false));
+          (st, epoch) -> AgentStateMachine.onAssignmentFailed(st, epoch, epoch, e, false));
       if (e instanceof ConnectionStreamException) {
         // these exceptions are not public
         throw new StreamException(e.getMessage());
@@ -247,7 +248,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       // SubscriptionTracker.confirmAssignment)
       subscriptionTracker.cancel();
       trackerEvent(
-          subscriptionTracker, recoveryBackOffDelayPolicy(), SubscriptionStateMachine::onCancelled);
+          subscriptionTracker, recoveryBackOffDelayPolicy(), AgentStateMachine::onCancelled);
     };
   }
 
@@ -539,7 +540,7 @@ final class ConsumersCoordinator implements AutoCloseable {
    *
    * <p>Insurance against bugs not yet found, not a fix for a known one: every known way to get
    * stuck in {@code RECOVERING} is already fixed by the epoch-supersede mechanism this reuses (see
-   * {@link SubscriptionStateMachine}).
+   * {@link AgentStateMachine}).
    *
    * <p>Package-protected for testing: a test can call this directly instead of waiting out the real
    * tick interval.
@@ -563,12 +564,12 @@ final class ConsumersCoordinator implements AutoCloseable {
               trackerEvent(
                   trackerState.tracker,
                   recoveryBackOffDelayPolicy(),
-                  SubscriptionStateMachine::onCancelled);
+                  AgentStateMachine::onCancelled);
             } else {
               trackerEvent(
                   trackerState.tracker,
                   recoveryBackOffDelayPolicy(),
-                  (st, epoch) -> SubscriptionStateMachine.onWatchdogTick(st, epoch, attemptEpoch));
+                  (st, epoch) -> AgentStateMachine.onWatchdogTick(st, epoch, attemptEpoch));
             }
           }
         });
@@ -592,7 +593,7 @@ final class ConsumersCoordinator implements AutoCloseable {
     trackerEvent(
         tracker,
         delayPolicy,
-        (st, epoch) -> SubscriptionStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch));
+        (st, epoch) -> AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch));
   }
 
   private void assignmentFailed(
@@ -605,8 +606,7 @@ final class ConsumersCoordinator implements AutoCloseable {
         tracker,
         delayPolicy,
         (st, epoch) ->
-            SubscriptionStateMachine.onAssignmentFailed(
-                st, epoch, attemptEpoch, cause, recoverable));
+            AgentStateMachine.onAssignmentFailed(st, epoch, attemptEpoch, cause, recoverable));
   }
 
   /**
@@ -624,8 +624,7 @@ final class ConsumersCoordinator implements AutoCloseable {
         tracker,
         delayPolicy,
         trackerState -> trackerState.failedLookups++,
-        (st, epoch) ->
-            SubscriptionStateMachine.onAssignmentFailed(st, epoch, attemptEpoch, cause, true));
+        (st, epoch) -> AgentStateMachine.onAssignmentFailed(st, epoch, attemptEpoch, cause, true));
   }
 
   /**
@@ -647,7 +646,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           "Not re-assigning consumer {} (stream '{}') because it has been closed",
           tracker.consumer.id(),
           tracker.stream);
-      trackerEvent(tracker, delayPolicy, SubscriptionStateMachine::onCancelled);
+      trackerEvent(tracker, delayPolicy, AgentStateMachine::onCancelled);
       return;
     }
     if (superseded(tracker, attemptEpoch)) {
@@ -691,9 +690,26 @@ final class ConsumersCoordinator implements AutoCloseable {
     } catch (Exception e) {
       LOGGER.debug(
           "Error while assigning subscription {}: {}", tracker.label(), Utils.exceptionMessage(e));
-      assignmentFailed(
-          tracker, delayPolicy, attemptEpoch, e, SubscriptionStateMachine.recoverable(e));
+      assignmentFailed(tracker, delayPolicy, attemptEpoch, e, recoverable(e));
     }
+  }
+
+  /**
+   * Whether a failed assignment is worth another attempt, mirroring the classification the blocking
+   * recovery loop performed.
+   */
+  static boolean recoverable(Throwable cause) {
+    if (cause == null) {
+      return false;
+    }
+    if (shouldRefreshCandidates(cause)) {
+      return true;
+    }
+    if (cause instanceof StreamException) {
+      short code = ((StreamException) cause).getCode();
+      return code == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
+    }
+    return false;
   }
 
   /**
@@ -712,7 +728,7 @@ final class ConsumersCoordinator implements AutoCloseable {
               // gone from the map: the subscription reached a terminal state, so there is nothing
               // left to assign either
               return trackerState == null
-                  || SubscriptionStateMachine.isStale(trackerState.epoch, attemptEpoch);
+                  || AgentStateMachine.isStale(trackerState.epoch, attemptEpoch);
             });
     // null when the loop did not run the query at all, which means the coordinator is closing:
     // there is no state left to be current with, so the attempt stops here as well
@@ -734,7 +750,7 @@ final class ConsumersCoordinator implements AutoCloseable {
    * here block, and the consumer notifications take {@link StreamConsumer}'s lock, which is shared
    * with the offset-tracking coordinator.
    */
-  private final class TrackerActions implements SubscriptionStateMachine.Actions {
+  private final class TrackerActions implements AgentStateMachine.Actions {
 
     private final SubscriptionTracker tracker;
     private final BackOffDelayPolicy delayPolicy;
@@ -811,7 +827,7 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
 
     @Override
-    public void closeConsumerAfterStreamDeletion(Throwable cause) {
+    public void closeAfterStreamDeletion(Throwable cause) {
       try {
         this.tracker.consumer.closeAfterStreamDeletion();
       } catch (Exception e) {
@@ -1461,7 +1477,7 @@ final class ConsumersCoordinator implements AutoCloseable {
               this.subscriptionTrackers,
               t ->
                   trackerEvent(
-                      t, recoveryBackOffDelayPolicy(), SubscriptionStateMachine::onConnectionLost));
+                      t, recoveryBackOffDelayPolicy(), AgentStateMachine::onConnectionLost));
         }
       };
     }
@@ -1508,7 +1524,7 @@ final class ConsumersCoordinator implements AutoCloseable {
                       trackerEvent(
                           t,
                           metadataUpdateBackOffDelayPolicy(),
-                          SubscriptionStateMachine::onStreamUnavailable));
+                          AgentStateMachine::onStreamUnavailable));
               submitRecovery(this::closeIfEmpty);
             });
       };

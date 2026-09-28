@@ -14,33 +14,28 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.State.ACTIVE;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.State.CLOSED;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.State.OPENING;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.State.RECOVERING;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onAssignmentFailed;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onAssignmentSucceeded;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onCancelled;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onConnectionLost;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onStreamDeleted;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onStreamUnavailable;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.onWatchdogTick;
-import static com.rabbitmq.stream.impl.SubscriptionStateMachine.recoverable;
+import static com.rabbitmq.stream.impl.AgentStateMachine.State.ACTIVE;
+import static com.rabbitmq.stream.impl.AgentStateMachine.State.CLOSED;
+import static com.rabbitmq.stream.impl.AgentStateMachine.State.OPENING;
+import static com.rabbitmq.stream.impl.AgentStateMachine.State.RECOVERING;
+import static com.rabbitmq.stream.impl.AgentStateMachine.onAssignmentFailed;
+import static com.rabbitmq.stream.impl.AgentStateMachine.onAssignmentSucceeded;
+import static com.rabbitmq.stream.impl.AgentStateMachine.onCancelled;
+import static com.rabbitmq.stream.impl.AgentStateMachine.onConnectionLost;
+import static com.rabbitmq.stream.impl.AgentStateMachine.onStreamDeleted;
+import static com.rabbitmq.stream.impl.AgentStateMachine.onStreamUnavailable;
+import static com.rabbitmq.stream.impl.AgentStateMachine.onWatchdogTick;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.StreamDoesNotExistException;
-import com.rabbitmq.stream.StreamException;
-import com.rabbitmq.stream.StreamNotAvailableException;
-import com.rabbitmq.stream.impl.CoordinatorUtils.ClientClosedException;
-import com.rabbitmq.stream.impl.SubscriptionStateMachine.Actions;
-import com.rabbitmq.stream.impl.SubscriptionStateMachine.TransitionResult;
+import com.rabbitmq.stream.impl.AgentStateMachine.Actions;
+import com.rabbitmq.stream.impl.AgentStateMachine.TransitionResult;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** No threads, no mocks, no clock: only the decision logic. */
-public class SubscriptionStateMachineTest {
+public class AgentStateMachineTest {
 
   static final Throwable CONNECTION_ERROR = new ConnectionStreamException("connection closed");
   static final Throwable STREAM_GONE = new StreamDoesNotExistException("stream");
@@ -175,16 +170,17 @@ public class SubscriptionStateMachineTest {
     TransitionResult r = run(onAssignmentFailed(RECOVERING, 2, 2, STREAM_GONE, false));
     assertThat(r.state()).isEqualTo(CLOSED);
     assertThat(r.state().terminal()).isTrue();
-    assertThat(actions.calls).containsExactly("closeConsumerAfterStreamDeletion");
+    assertThat(actions.calls).containsExactly("closeAfterStreamDeletion");
   }
 
   @Test
-  void exhaustedCandidateLookupIsTerminalEvenThoughItsExceptionLooksRefreshable() {
+  void assignmentFailureClassifiedAsUnrecoverableIsTerminalWhateverTheException() {
+    // the caller decides: an exception that looks refreshable, e.g. from a candidate lookup that
+    // has exhausted its retry policy, is terminal when classified as such
     Throwable lookupGaveUp = new TimeoutStreamException("candidate lookup gave up");
-    assertThat(recoverable(lookupGaveUp)).isTrue();
     TransitionResult r = run(onAssignmentFailed(RECOVERING, 2, 2, lookupGaveUp, false));
     assertThat(r.state()).isEqualTo(CLOSED);
-    assertThat(actions.calls).containsExactly("closeConsumerAfterStreamDeletion");
+    assertThat(actions.calls).containsExactly("closeAfterStreamDeletion");
   }
 
   @Test
@@ -233,7 +229,7 @@ public class SubscriptionStateMachineTest {
     TransitionResult deleted = run(onStreamDeleted(RECOVERING, 4, STREAM_GONE));
     assertThat(deleted.state()).isEqualTo(CLOSED);
     assertThat(deleted.state().terminal()).isTrue();
-    assertThat(actions.calls).containsExactly("closeConsumerAfterStreamDeletion");
+    assertThat(actions.calls).containsExactly("closeAfterStreamDeletion");
   }
 
   @Test
@@ -252,21 +248,6 @@ public class SubscriptionStateMachineTest {
       assertThat(r.epoch()).isEqualTo(9);
     }
     assertThat(actions.calls).isEmpty();
-  }
-
-  @Test
-  void failureClassificationMatchesTheBlockingLoopItReplaces() {
-    assertThat(recoverable(new ConnectionStreamException("closed"))).isTrue();
-    assertThat(recoverable(new ClientClosedException())).isTrue();
-    assertThat(recoverable(new StreamNotAvailableException("stream"))).isTrue();
-    assertThat(
-            recoverable(
-                new StreamException(
-                    "already exists", Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS)))
-        .isTrue();
-    assertThat(recoverable(new StreamDoesNotExistException("stream"))).isFalse();
-    assertThat(recoverable(new IllegalStateException("boom"))).isFalse();
-    assertThat(recoverable(null)).isFalse();
   }
 
   private TransitionResult run(TransitionResult result) {
@@ -299,8 +280,8 @@ public class SubscriptionStateMachineTest {
     }
 
     @Override
-    public void closeConsumerAfterStreamDeletion(Throwable cause) {
-      this.calls.add("closeConsumerAfterStreamDeletion");
+    public void closeAfterStreamDeletion(Throwable cause) {
+      this.calls.add("closeAfterStreamDeletion");
     }
 
     @Override

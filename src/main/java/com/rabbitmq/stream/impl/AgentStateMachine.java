@@ -14,15 +14,12 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
-import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
-import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
-
-import com.rabbitmq.stream.StreamException;
 import java.util.function.Consumer;
 
 /**
- * Decision logic for the lifecycle of a single subscription, as pure functions of {@code (state,
- * attempt epoch, event)} returning the next state and a side effect.
+ * Decision logic for the lifecycle of a single coordinator agent, i.e. a subscription, a producer,
+ * or a producer-side tracking consumer, as pure functions of {@code (state, attempt epoch, event)}
+ * returning the next state and a side effect.
  *
  * <p>The functions are pure so that the interleavings that matter can be tested without threads,
  * mocks, or a clock; the event loop applies the result by setting its state fields and then running
@@ -32,17 +29,17 @@ import java.util.function.Consumer;
  * attempt carry the epoch they were started with, so a late one is recognised as stale and becomes
  * a no-op that cleans up whatever it managed to establish. This inverts the semantics of the
  * compare-and-set it replaces: a new trigger <b>supersedes</b> an in-flight attempt rather than
- * being <b>dropped by</b> it, which is what stops a subscription being stranded in {@code
- * RECOVERING} forever.
+ * being <b>dropped by</b> it, which is what stops an agent being stranded in {@code RECOVERING}
+ * forever.
  *
  * <p>There is deliberately no connection-level state machine or connection epoch: a {@code Client}
  * is created once per connection and never reused, so a replacement connection is a new entry with
  * a new monotonic id, and an event carrying an id that is no longer in the pool is stale by that
  * fact alone.
  */
-final class SubscriptionStateMachine {
+final class AgentStateMachine {
 
-  private SubscriptionStateMachine() {}
+  private AgentStateMachine() {}
 
   enum State {
     OPENING,
@@ -51,8 +48,8 @@ final class SubscriptionStateMachine {
     CLOSED;
 
     /**
-     * Whether this state is terminal, i.e. no event and no watchdog may bring the subscription
-     * back. Reached by user cancellation, stream deletion, and giving up on recovery.
+     * Whether this state is terminal, i.e. no event and no watchdog may bring the agent back.
+     * Reached by user cancellation, stream deletion, and giving up on recovery.
      */
     boolean terminal() {
       return this == CLOSED;
@@ -62,9 +59,8 @@ final class SubscriptionStateMachine {
   /**
    * The effect surface of a transition.
    *
-   * <p>Every method here must be implemented so it does not block the event loop: the consumer
-   * notifications in particular take {@code StreamConsumer}'s lock, which is shared with the
-   * offset-tracking coordinator, so they have to run off-loop.
+   * <p>Effects block and notify application code, so the event loop runs them off-loop and they
+   * must never be invoked on it.
    */
   interface Actions {
 
@@ -82,12 +78,12 @@ final class SubscriptionStateMachine {
 
     void markOpen();
 
-    void closeConsumerAfterStreamDeletion(Throwable cause);
+    void closeAfterStreamDeletion(Throwable cause);
 
     /**
-     * Tear down an assignment established by a superseded attempt, or by an attempt whose
-     * subscription has since been cancelled: unsubscribe on the broker and release the slot.
-     * Without this a live subscription is left on the broker owned by nobody.
+     * Tear down an assignment established by a superseded attempt, or by an attempt whose agent has
+     * since been cancelled: release the broker-side resource and the slot. Without this a live
+     * subscription or publisher is left on the broker owned by nobody.
      */
     void releaseAssignment();
   }
@@ -138,7 +134,7 @@ final class SubscriptionStateMachine {
 
   static TransitionResult onAssignmentSucceeded(State state, long epoch, long eventEpoch) {
     if (isStale(epoch, eventEpoch) || state.terminal()) {
-      // a superseded or cancelled attempt still managed to subscribe on the broker: undo it,
+      // a superseded or cancelled attempt still managed to assign on the broker: undo it,
       // and in particular never go from CLOSED back to ACTIVE
       return TransitionResult.of(state, epoch, Actions::releaseAssignment);
     }
@@ -150,7 +146,8 @@ final class SubscriptionStateMachine {
    *     same exception type means different things depending on which phase failed: a {@link
    *     TimeoutStreamException} from opening a connection is worth retrying, whereas the same
    *     exception from a candidate lookup that has exhausted its retry policy is the end of the
-   *     road. {@link #recoverable(Throwable)} is the classifier for the assignment phase.
+   *     road. Each coordinator supplies its own classifier for the assignment phase ({@code
+   *     ConsumersCoordinator.recoverable}, {@code ProducersCoordinator.recoverable}).
    */
   static TransitionResult onAssignmentFailed(
       State state, long epoch, long eventEpoch, Throwable cause, boolean recoverable) {
@@ -158,12 +155,12 @@ final class SubscriptionStateMachine {
       return TransitionResult.noChange(state, epoch);
     }
     if (state == State.OPENING) {
-      // initial subscription does not retry: the failure is reported to the caller of subscribe()
+      // initial assignment does not retry: the failure is reported to the caller that registered
+      // the agent
       return TransitionResult.noChange(State.CLOSED, epoch);
     }
     if (!recoverable) {
-      return TransitionResult.of(
-          State.CLOSED, epoch, a -> a.closeConsumerAfterStreamDeletion(cause));
+      return TransitionResult.of(State.CLOSED, epoch, a -> a.closeAfterStreamDeletion(cause));
     }
     long newEpoch = epoch + 1;
     return TransitionResult.of(
@@ -183,7 +180,7 @@ final class SubscriptionStateMachine {
       return TransitionResult.noChange(state, epoch);
     }
     if (state == State.OPENING) {
-      // the in-flight initial attempt will fail and surface to the caller of subscribe()
+      // the in-flight initial attempt will fail and surface to the caller that registered the agent
       return TransitionResult.noChange(state, epoch);
     }
     long newEpoch = epoch + 1;
@@ -234,26 +231,7 @@ final class SubscriptionStateMachine {
     if (state.terminal()) {
       return TransitionResult.noChange(state, epoch);
     }
-    return TransitionResult.of(
-        State.CLOSED, epoch + 1, a -> a.closeConsumerAfterStreamDeletion(cause));
-  }
-
-  /**
-   * Whether a failed assignment is worth another attempt, mirroring the classification the blocking
-   * recovery loop performs today.
-   */
-  static boolean recoverable(Throwable cause) {
-    if (cause == null) {
-      return false;
-    }
-    if (shouldRefreshCandidates(cause)) {
-      return true;
-    }
-    if (cause instanceof StreamException) {
-      short code = ((StreamException) cause).getCode();
-      return code == RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
-    }
-    return false;
+    return TransitionResult.of(State.CLOSED, epoch + 1, a -> a.closeAfterStreamDeletion(cause));
   }
 
   /**

@@ -19,6 +19,7 @@ import static com.rabbitmq.stream.impl.ConsumersCoordinator.MAX_SUBSCRIPTIONS_PE
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.deprioritizeSuspects;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickBroker;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.pickSlot;
+import static com.rabbitmq.stream.impl.ConsumersCoordinator.recoverable;
 import static com.rabbitmq.stream.impl.ConsumersCoordinator.watchdogShouldReDispatch;
 import static com.rabbitmq.stream.impl.TestUtils.b;
 import static com.rabbitmq.stream.impl.TestUtils.latchAssert;
@@ -55,13 +56,15 @@ import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.codec.WrapperMessageBuilder;
+import com.rabbitmq.stream.impl.AgentStateMachine.State;
 import com.rabbitmq.stream.impl.Client.MessageListener;
 import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.Client.Response;
+import com.rabbitmq.stream.impl.CoordinatorUtils.ClientClosedException;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerCoordinatorInfo;
-import com.rabbitmq.stream.impl.SubscriptionStateMachine.State;
 import com.rabbitmq.stream.impl.Utils.ClientFactory;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
@@ -2798,6 +2801,28 @@ public class ConsumersCoordinatorTest {
 
   List<Client.Broker> replica() {
     return replicas().subList(0, 1);
+  }
+
+  @Test
+  void failureClassificationMatchesTheBlockingLoopItReplaces() {
+    assertThat(recoverable(new ConnectionStreamException("closed"))).isTrue();
+    assertThat(recoverable(new ClientClosedException())).isTrue();
+    assertThat(recoverable(new StreamNotAvailableException("stream"))).isTrue();
+    assertThat(
+            recoverable(
+                new StreamException(
+                    "already exists", Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS)))
+        .isTrue();
+    assertThat(recoverable(new StreamDoesNotExistException("stream"))).isFalse();
+    assertThat(recoverable(new IllegalStateException("boom"))).isFalse();
+    assertThat(recoverable(null)).isFalse();
+  }
+
+  @Test
+  void exhaustedCandidateLookupExceptionIsClassifiedAsRefreshable() {
+    // which is why the lookup phase must not use this classifier: a lookup that has exhausted its
+    // retry policy is terminal, see AgentStateMachineTest
+    assertThat(recoverable(new TimeoutStreamException("candidate lookup gave up"))).isTrue();
   }
 
   @Test
