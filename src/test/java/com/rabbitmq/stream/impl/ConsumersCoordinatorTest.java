@@ -39,8 +39,10 @@ import static org.mockito.ArgumentMatchers.anyByte;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -1205,6 +1207,114 @@ public class ConsumersCoordinatorTest {
 
     // the now-empty connection lingers for a bit before it actually closes
     waitAtMost(() -> coordinator.managerCount() == 0);
+  }
+
+  @Test
+  void metadataUpdateDuringInFlightSubscriptionShouldNotAffectOtherSubscriptions() {
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replica()));
+    when(locator.metadata("other")).thenReturn(metadata("other", null, replica()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.unsubscribe(anyByte())).thenReturn(responseOk());
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .then(
+            invocation -> {
+              if ("stream".equals(invocation.getArgument(1))) {
+                // the stream becomes unavailable while its subscription is in flight
+                metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+                // barrier: the listener's loop task has run once this returns
+                coordinator.managerCount();
+              }
+              return responseOk();
+            });
+
+    // fill all the slots, so that the unrelated subscription ends up on slot 255
+    List<Runnable> closingRunnables = new ArrayList<>();
+    AtomicInteger lastSlotMessageCount = new AtomicInteger();
+    for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+      MessageHandler messageHandler =
+          i == MAX_SUBSCRIPTIONS_PER_CLIENT - 1
+              ? (offset, message) -> lastSlotMessageCount.incrementAndGet()
+              : (offset, message) -> {};
+      closingRunnables.add(subscribe(consumer, "other", messageHandler));
+    }
+    // frees slot 0, which the next subscription gets
+    closingRunnables.get(0).run();
+
+    subscribe(consumer, "stream", (offset, message) -> {});
+    verify(clientFactory, times(1)).client(any());
+    verify(client, times(1)).subscribe(eq(b(0)), eq("stream"), any(), anyInt(), anyMap());
+
+    messageListener.handle(b(255), 0, 0, 0, null, new WrapperMessageBuilder().build());
+    assertThat(lastSlotMessageCount).hasValue(1);
+    verify(client, never()).unsubscribe(b(255));
+  }
+
+  @Test
+  void lateSlotReleaseShouldNotFreeAReusedSlot() {
+    when(locator.metadata("stream")).thenReturn(metadata("stream", null, replica()));
+    when(locator.metadata("blocked")).thenReturn(metadata("blocked", null, replica()));
+    when(locator.metadata("other")).thenReturn(metadata("other", null, replica()));
+    when(clientFactory.client(any())).thenReturn(client);
+    when(client.unsubscribe(anyByte())).thenReturn(responseOk());
+    when(client.subscribe(
+            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+        .thenReturn(responseOk());
+
+    Runnable closeUnderTest = subscribe(consumer, "stream", (offset, message) -> {});
+    byte slotUnderTest = 0;
+    // their recovery effects occupy every recovery thread, which holds the effect that would
+    // detach the subscription under test
+    CountDownLatch blockersReleased = new CountDownLatch(1);
+    int blockerCount = 4;
+    for (int i = 0; i < blockerCount; i++) {
+      StreamConsumer blocker = mock(StreamConsumer.class);
+      doAnswer(
+              invocation -> {
+                blockersReleased.await(10, TimeUnit.SECONDS);
+                return null;
+              })
+          .when(blocker)
+          .markRecovering();
+      subscribe(blocker, "blocked", (offset, message) -> {});
+    }
+    // fill the remaining slots, so that the next subscription reuses the slot under test
+    for (int i = blockerCount + 1; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+      subscribe(consumer, "other", (offset, message) -> {});
+    }
+
+    try {
+      metadataListener.handle("blocked", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+      metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
+      // barriers: the listeners' loop tasks, then the events they posted, have run
+      coordinator.managerCount();
+      coordinator.managerCount();
+      AtomicInteger newOwnerMessageCount = new AtomicInteger();
+      subscribe(consumer, "other", (offset, message) -> newOwnerMessageCount.incrementAndGet());
+      verify(client, times(1)).subscribe(eq(slotUnderTest), eq("other"), any(), anyInt(), anyMap());
+
+      // the subscription under test is closed before its detach effect runs
+      closeUnderTest.run();
+
+      messageListener.handle(slotUnderTest, 0, 0, 0, null, new WrapperMessageBuilder().build());
+      assertThat(newOwnerMessageCount).hasValue(1);
+    } finally {
+      blockersReleased.countDown();
+    }
+  }
+
+  private Runnable subscribe(
+      StreamConsumer consumer, String stream, MessageHandler messageHandler) {
+    return coordinator.subscribe(
+        consumer,
+        stream,
+        OffsetSpecification.first(),
+        null,
+        NO_OP_SUBSCRIPTION_LISTENER,
+        NO_OP_TRACKING_CLOSING_CALLBACK,
+        messageHandler,
+        Collections.emptyMap(),
+        flowStrategy());
   }
 
   @Test

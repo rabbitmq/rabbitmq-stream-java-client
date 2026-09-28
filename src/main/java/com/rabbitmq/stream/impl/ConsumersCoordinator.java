@@ -1491,28 +1491,29 @@ final class ConsumersCoordinator implements AutoCloseable {
         submitState(
             s -> {
               List<SubscriptionTracker> current = this.subscriptionTrackers;
+              List<SubscriptionTracker> updated = createSubscriptionTrackerList();
               List<SubscriptionTracker> affected = new ArrayList<>();
               for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
                 SubscriptionTracker t = current.get(i);
+                updated.set(i, t);
                 if (t != null && t.stream.equals(stream)) {
                   affected.add(t);
+                  if (this.isLiveAssignment(s, t, i)) {
+                    LOGGER.debug(
+                        "Subscription {} ({}) was at offset {} (received something? {})",
+                        i,
+                        t.label(),
+                        t.offset,
+                        t.hasReceivedSomething);
+                    updated.set(i, null);
+                  }
+                  // otherwise an attempt is in flight in this slot: it releases the slot itself,
+                  // freeing it here would let it be reused while the attempt's subscribe or
+                  // unsubscribe for this ID is still in flight
                 }
               }
               if (affected.isEmpty()) {
                 return;
-              }
-              List<SubscriptionTracker> updated = createSubscriptionTrackerList();
-              for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-                updated.set(i, current.get(i));
-              }
-              for (SubscriptionTracker subscription : affected) {
-                LOGGER.debug(
-                    "Subscription {} ({}) was at offset {} (received something? {})",
-                    subscription.subscriptionIdInClient(),
-                    subscription.label(),
-                    subscription.offset,
-                    subscription.hasReceivedSomething);
-                updated.set(subscription.subscriptionIdInClient() & 0xFF, null);
               }
               this.setSubscriptionTrackers(updated);
 
@@ -1658,7 +1659,7 @@ final class ConsumersCoordinator implements AutoCloseable {
         tracker.confirmAssignment(subscriptionId, this);
         LOGGER.debug("Subscribed to '{}'", tracker.stream);
       } catch (RuntimeException e) {
-        releaseSlot(subscriptionId);
+        releaseSlot(subscriptionId, tracker);
         throw e;
       }
     }
@@ -1702,12 +1703,32 @@ final class ConsumersCoordinator implements AutoCloseable {
     // nothing to unsubscribe, only the array slot to free. Blocking (not fire-and-forget): the
     // caller is addToManager(), off-loop, which checks isEmpty() right after this returns, so the
     // free must be visible by then
-    private void releaseSlot(byte subscriptionId) {
+    private void releaseSlot(byte subscriptionId, SubscriptionTracker tracker) {
       ConsumersCoordinator.this.state.query(
           s -> {
-            this.setSubscriptionTrackers(update(this.subscriptionTrackers, subscriptionId, null));
+            this.freeSlot(subscriptionId & 0xFF, tracker);
             return null;
           });
+    }
+
+    // loop only; only if the slot still holds this tracker: it may have been freed and reused
+    // since, and nulling it would silently cut the new owner off
+    private void freeSlot(int slot, SubscriptionTracker tracker) {
+      if (this.subscriptionTrackers.get(slot) == tracker) {
+        this.setSubscriptionTrackers(update(this.subscriptionTrackers, (byte) slot, null));
+      }
+    }
+
+    // loop only: the tracker is active and its confirmed assignment is this very slot, as opposed
+    // to a reservation of an attempt still in flight
+    private boolean isLiveAssignment(CoordinatorState s, SubscriptionTracker tracker, int slot) {
+      TrackerState trackerState = s.subscriptions.get(tracker.id);
+      // a single read: a stale attempt can confirm concurrently, off-loop
+      Assignment assignment = tracker.assignment.get();
+      return trackerState != null
+          && trackerState.state == State.ACTIVE
+          && assignment.manager == this
+          && (assignment.subscriptionIdInClient & 0xFF) == slot;
     }
 
     void remove(SubscriptionTracker subscriptionTracker) {
@@ -1754,8 +1775,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       boolean empty =
           ConsumersCoordinator.this.state.query(
               s -> {
-                this.setSubscriptionTrackers(
-                    update(this.subscriptionTrackers, subscriptionIdInClient, null));
+                this.freeSlot(slot, subscriptionTracker);
                 return this.isEmpty();
               });
       if (empty) {
