@@ -29,6 +29,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -60,6 +61,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -211,7 +213,7 @@ public class ProducersCoordinatorTest {
 
     Runnable cleanTask = coordinator.registerProducer(producer, null, "stream");
 
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
 
     cleanTask.run();
   }
@@ -226,7 +228,7 @@ public class ProducersCoordinatorTest {
     coordinator.registerProducer(producer, null, "stream");
     coordinator.registerTrackingConsumer(trackingConsumer);
 
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(trackingConsumer, times(1)).setTrackingClient(client);
     // registration runs inside the agent's constructor, running() would touch unset state
     verify(producer, after(500).never()).running();
@@ -259,7 +261,7 @@ public class ProducersCoordinatorTest {
       Runnable cleanTask = c.registerProducer(producer, null, "stream");
 
       verify(clientFactory, times(2)).client(any());
-      verify(producer, times(1)).setClient(client);
+      verify(producer, times(1)).assign(anyByte(), eq(client));
 
       cleanTask.run();
     } finally {
@@ -292,7 +294,7 @@ public class ProducersCoordinatorTest {
       Runnable cleanTask = c.registerProducer(producer, null, "stream");
 
       verify(clientFactory, times(1)).client(any());
-      verify(producer, times(1)).setClient(client);
+      verify(producer, times(1)).assign(anyByte(), eq(client));
 
       cleanTask.run();
     } finally {
@@ -322,14 +324,14 @@ public class ProducersCoordinatorTest {
     StreamProducer producerClosedAfterDisconnection = mock(StreamProducer.class);
     when(producerClosedAfterDisconnection.isOpen()).thenReturn(false);
 
-    CountDownLatch setClientLatch = new CountDownLatch(2 + 2 + 1);
-    doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
-    doAnswer(answer(() -> setClientLatch.countDown()))
+    CountDownLatch assignLatch = new CountDownLatch(2 + 2 + 1);
+    doAnswer(answer(() -> assignLatch.countDown())).when(producer).assign(anyByte(), eq(client));
+    doAnswer(answer(() -> assignLatch.countDown()))
         .when(trackingConsumer)
         .setTrackingClient(client);
-    doAnswer(answer(() -> setClientLatch.countDown()))
+    doAnswer(answer(() -> assignLatch.countDown()))
         .when(producerClosedAfterDisconnection)
-        .setClient(client);
+        .assign(anyByte(), eq(client));
 
     CountDownLatch runningLatch = new CountDownLatch(1 + 1);
     doAnswer(answer(() -> runningLatch.countDown())).when(producer).running();
@@ -342,25 +344,25 @@ public class ProducersCoordinatorTest {
     coordinator.registerTrackingConsumer(trackingConsumer);
     coordinator.registerProducer(producerClosedAfterDisconnection, null, "stream");
 
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(trackingConsumer, times(1)).setTrackingClient(client);
-    verify(producerClosedAfterDisconnection, times(1)).setClient(client);
+    verify(producerClosedAfterDisconnection, times(1)).assign(anyByte(), eq(client));
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
 
-    assertThat(setClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+    assertThat(assignLatch.await(5, TimeUnit.SECONDS)).isTrue();
     assertThat(runningLatch.await(5, TimeUnit.SECONDS)).isTrue();
     verify(producer, times(1)).unavailable();
-    verify(producer, times(2)).setClient(client);
+    verify(producer, times(2)).assign(anyByte(), eq(client));
     verify(producer, times(1)).running();
     verify(trackingConsumer, times(1)).unavailable();
     verify(trackingConsumer, times(2)).setTrackingClient(client);
     verify(trackingConsumer, times(1)).running();
     verify(producerClosedAfterDisconnection, times(1)).unavailable();
-    verify(producerClosedAfterDisconnection, times(1)).setClient(client);
+    verify(producerClosedAfterDisconnection, times(1)).assign(anyByte(), eq(client));
     verify(producerClosedAfterDisconnection, never()).running();
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
@@ -405,9 +407,41 @@ public class ProducersCoordinatorTest {
     shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
 
-    verify(producer, timeout(5_000).times(2)).setClient(client);
+    verify(client, timeout(5_000).times(2)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(client, timeout(5_000)).deletePublisher(anyByte());
     // the new connection had the closed producer only, so it goes away once it is released
     waitAtMost(() -> coordinator.clientCount() == 0);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
+    verify(producer, never()).running();
+  }
+
+  @Test
+  void producerClosedRightAfterItsRecoveryAssignmentShouldBeReleased() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(clientFactory.client(any())).thenReturn(client);
+    AtomicReference<Runnable> cleanTask = new AtomicReference<>();
+    AtomicInteger isOpenCalls = new AtomicInteger();
+    when(producer.isOpen())
+        .then(
+            invocation -> {
+              if (isOpenCalls.incrementAndGet() == 2) {
+                // closed right after the attempt checked it is still open
+                cleanTask.get().run();
+              }
+              return true;
+            });
+
+    cleanTask.set(coordinator.registerProducer(producer, null, "stream"));
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    verify(client, timeout(5_000).times(2)).declarePublisher(anyByte(), isNull(), anyString());
+    verify(client, timeout(5_000)).deletePublisher(anyByte());
+    waitAtMost(() -> coordinator.clientCount() == 0);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(producer, never()).running();
   }
 
@@ -467,7 +501,7 @@ public class ProducersCoordinatorTest {
     shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
     verify(producer, timeout(10_000).times(2)).running();
-    verify(producer, times(3)).setClient(client);
+    verify(producer, times(3)).assign(anyByte(), eq(client));
   }
 
   @Test
@@ -523,7 +557,7 @@ public class ProducersCoordinatorTest {
     verify(client, after(1000).times(1)).declarePublisher(anyByte(), isNull(), anyString());
     verify(locator, times(1)).metadata("stream");
     verify(clientFactory, times(1)).client(any());
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(producer, never()).running();
   }
 
@@ -595,6 +629,167 @@ public class ProducersCoordinatorTest {
   }
 
   @Test
+  void staleAttemptLandingLastShouldNotLeaveProducerOnADeletedPublisher() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy())
+        .thenReturn(BackOffDelayPolicy.fixedWithInitialDelay(ms(50), Duration.ofMinutes(10)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(producer.isOpen()).thenReturn(true);
+    Client client2 = mockClient(new AtomicBoolean(true));
+    CountDownLatch staleDeclareStarted = new CountDownLatch(1);
+    CountDownLatch releaseStaleDeclare = new CountDownLatch(1);
+    AtomicBoolean firstDeclare = new AtomicBoolean(true);
+    when(client2.declarePublisher(anyByte(), isNull(), anyString()))
+        .then(
+            invocation -> {
+              if (firstDeclare.getAndSet(false)) {
+                staleDeclareStarted.countDown();
+                releaseStaleDeclare.await(10, TimeUnit.SECONDS);
+              }
+              return new Response(Constants.RESPONSE_CODE_OK);
+            });
+    when(clientFactory.client(any())).thenReturn(client, client2);
+
+    coordinator.registerProducer(producer, null, "stream");
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    assertThat(staleDeclareStarted.await(10, TimeUnit.SECONDS)).isTrue();
+
+    // the watchdog supersedes the attempt held in its declaration, the new attempt completes
+    coordinator.ageWatchdogClocksBy(Duration.ofMinutes(10).plusSeconds(121));
+    coordinator.watchdogTick();
+    verify(producer, timeout(10_000)).running();
+
+    releaseStaleDeclare.countDown();
+
+    ArgumentCaptor<Byte> declaredIds = ArgumentCaptor.forClass(Byte.class);
+    verify(client2, times(2)).declarePublisher(declaredIds.capture(), isNull(), anyString());
+    byte staleId = declaredIds.getAllValues().get(0);
+    byte currentId = declaredIds.getAllValues().get(1);
+    verify(client2, timeout(10_000)).deletePublisher(staleId);
+    verify(client2, after(300).never()).deletePublisher(currentId);
+    ArgumentCaptor<Byte> assignedIds = ArgumentCaptor.forClass(Byte.class);
+    ArgumentCaptor<Client> assignedClients = ArgumentCaptor.forClass(Client.class);
+    verify(producer, atLeastOnce()).assign(assignedIds.capture(), assignedClients.capture());
+    assertThat(assignedIds.getAllValues()).last().isEqualTo(currentId);
+    assertThat(assignedClients.getAllValues()).last().isSameAs(client2);
+    verify(producer, times(1)).running();
+  }
+
+  @Test
+  void disruptionDuringMarkOpenShouldLeaveProducerUnavailable() {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(producer.isOpen()).thenReturn(true);
+    AtomicBoolean client2Open = new AtomicBoolean(true);
+    Client client2 = mockClient(client2Open);
+    Client client3 = mockClient(new AtomicBoolean(true));
+    when(clientFactory.client(any())).thenReturn(client, client2, client3);
+    List<String> timeline = Collections.synchronizedList(new ArrayList<>());
+    doAnswer(answer(() -> timeline.add("unavailable"))).when(producer).unavailable();
+    AtomicBoolean firstRunning = new AtomicBoolean(true);
+    doAnswer(
+            answer(
+                () -> {
+                  timeline.add("running start");
+                  if (firstRunning.getAndSet(false)) {
+                    // the connection dies while running() republishes, before it sets OPEN
+                    client2Open.set(false);
+                    shutdownListener.handle(
+                        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+                  }
+                  timeline.add("running end");
+                }))
+        .when(producer)
+        .running();
+
+    coordinator.registerProducer(producer, null, "stream");
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+
+    verify(producer, timeout(10_000).times(2)).running();
+    InOrder inOrder = inOrder(producer);
+    inOrder.verify(producer).assign(anyByte(), eq(client2));
+    inOrder.verify(producer).running();
+    inOrder.verify(producer).assign(anyByte(), eq(client3));
+    inOrder.verify(producer).running();
+    // the first reopening ends with the producer flipped back, since its OPEN may have overwritten
+    // the flip of the disruption
+    assertThat(timeline)
+        .containsExactly(
+            "unavailable",
+            "running start",
+            "unavailable",
+            "running end",
+            "unavailable",
+            "running start",
+            "running end");
+  }
+
+  @Test
+  void olderMarkOpenShouldNotOverrideANewerAssignment() throws Exception {
+    scheduledExecutorService = createScheduledExecutorService(2);
+    when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.recoveryBackOffDelayPolicy()).thenReturn(BackOffDelayPolicy.fixed(ms(50)));
+    when(locator.metadata("stream")).thenReturn(metadata(leader(), replicas()));
+    when(producer.isOpen()).thenReturn(true);
+    AtomicBoolean client2Open = new AtomicBoolean(true);
+    Client client2 = mockClient(client2Open);
+    Client client3 = mockClient(new AtomicBoolean(true));
+    when(clientFactory.client(any())).thenReturn(client, client2, client3);
+    List<String> timeline = Collections.synchronizedList(new ArrayList<>());
+    doAnswer(answer(() -> timeline.add("unavailable"))).when(producer).unavailable();
+    CountDownLatch olderRunningStarted = new CountDownLatch(1);
+    CountDownLatch releaseOlderRunning = new CountDownLatch(1);
+    AtomicBoolean firstRunning = new AtomicBoolean(true);
+    doAnswer(
+            invocation -> {
+              timeline.add("running start");
+              if (firstRunning.getAndSet(false)) {
+                olderRunningStarted.countDown();
+                releaseOlderRunning.await(10, TimeUnit.SECONDS);
+              }
+              timeline.add("running end");
+              return null;
+            })
+        .when(producer)
+        .running();
+
+    coordinator.registerProducer(producer, null, "stream");
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    assertThat(olderRunningStarted.await(10, TimeUnit.SECONDS)).isTrue();
+
+    // the connection dies while the older reopening is held, the producer gets a new assignment
+    client2Open.set(false);
+    shutdownListener.handle(
+        new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
+    verify(client3, timeout(10_000)).declarePublisher(anyByte(), isNull(), anyString());
+    // the newer reopening waits for the older one
+    verify(producer, after(300).times(1)).running();
+
+    releaseOlderRunning.countDown();
+
+    verify(producer, timeout(10_000).times(2)).running();
+    ArgumentCaptor<Client> assignedClients = ArgumentCaptor.forClass(Client.class);
+    verify(producer, times(3)).assign(anyByte(), assignedClients.capture());
+    assertThat(assignedClients.getAllValues()).containsExactly(client, client2, client3);
+    waitAtMost(() -> timeline.size() == 7);
+    assertThat(timeline)
+        .containsExactly(
+            "unavailable",
+            "running start",
+            "unavailable",
+            "running end",
+            "unavailable",
+            "running start",
+            "running end");
+  }
+
+  @Test
   void producerShouldRecoverAgainIfConnectionDiesRightAfterDeclarePublisher() {
     scheduledExecutorService = createScheduledExecutorService(2);
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
@@ -623,7 +818,7 @@ public class ProducersCoordinatorTest {
     verify(client3, timeout(10_000)).declarePublisher(anyByte(), isNull(), anyString());
     verify(producer, timeout(10_000)).running();
     InOrder inOrder = inOrder(producer);
-    inOrder.verify(producer).setClient(client3);
+    inOrder.verify(producer).assign(anyByte(), eq(client3));
     inOrder.verify(producer).running();
     verify(producer, after(300).times(1)).running();
   }
@@ -756,7 +951,7 @@ public class ProducersCoordinatorTest {
 
     Runnable cleanTask = coordinator.registerProducer(producer, null, "stream");
     Runnable trackingConsumerCleanTask = coordinator.registerTrackingConsumer(trackingConsumer);
-    verify(producer).setPublisherId(publisherId.capture());
+    verify(producer).assign(publisherId.capture(), any());
 
     trackingConsumerCleanTask.run();
     verify(client, never()).deletePublisher(anyByte());
@@ -791,14 +986,14 @@ public class ProducersCoordinatorTest {
 
     coordinator.registerProducer(this.producer, null, "stream");
 
-    verify(this.producer, times(1)).setClient(client);
+    verify(this.producer, times(1)).assign(anyByte(), eq(client));
 
     shutdownListener.handle(
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
 
     assertThat(runningLatch.await(5, TimeUnit.SECONDS)).isTrue();
     verify(this.producer, times(1)).unavailable();
-    verify(this.producer, times(2)).setClient(client);
+    verify(this.producer, times(2)).assign(anyByte(), eq(client));
   }
 
   @Test
@@ -825,7 +1020,7 @@ public class ProducersCoordinatorTest {
     coordinator.registerProducer(producer, null, "stream");
     coordinator.registerTrackingConsumer(trackingConsumer);
 
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(trackingConsumer, times(1)).setTrackingClient(client);
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
@@ -835,7 +1030,7 @@ public class ProducersCoordinatorTest {
 
     assertThat(closeClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
     verify(producer, times(1)).unavailable();
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(producer, never()).running();
     verify(trackingConsumer, times(1)).unavailable();
     verify(trackingConsumer, times(1)).setTrackingClient(client);
@@ -879,22 +1074,24 @@ public class ProducersCoordinatorTest {
     StreamProducer producerClosedAfterDisconnection = mock(StreamProducer.class);
     when(producerClosedAfterDisconnection.isOpen()).thenReturn(false);
 
-    CountDownLatch setClientLatch = new CountDownLatch(2 + 2 + 1);
+    CountDownLatch assignLatch = new CountDownLatch(2 + 2 + 1);
 
     when(fixedProducer.isOpen()).thenReturn(true);
     when(movingProducer.isOpen()).thenReturn(true);
     when(movingTrackingConsumer.isOpen()).thenReturn(true);
     when(fixedTrackingConsumer.isOpen()).thenReturn(true);
 
-    doAnswer(answer(() -> setClientLatch.countDown())).when(movingProducer).setClient(client);
+    doAnswer(answer(() -> assignLatch.countDown()))
+        .when(movingProducer)
+        .assign(anyByte(), eq(client));
 
-    doAnswer(answer(() -> setClientLatch.countDown()))
+    doAnswer(answer(() -> assignLatch.countDown()))
         .when(movingTrackingConsumer)
         .setTrackingClient(client);
 
-    doAnswer(answer(() -> setClientLatch.countDown()))
+    doAnswer(answer(() -> assignLatch.countDown()))
         .when(producerClosedAfterDisconnection)
-        .setClient(client);
+        .assign(anyByte(), eq(client));
 
     CountDownLatch runningLatch = new CountDownLatch(1 + 1);
     doAnswer(answer(() -> runningLatch.countDown())).when(movingProducer).running();
@@ -906,9 +1103,9 @@ public class ProducersCoordinatorTest {
     coordinator.registerTrackingConsumer(movingTrackingConsumer);
     coordinator.registerTrackingConsumer(fixedTrackingConsumer);
 
-    verify(movingProducer, times(1)).setClient(client);
-    verify(fixedProducer, times(1)).setClient(client);
-    verify(producerClosedAfterDisconnection, times(1)).setClient(client);
+    verify(movingProducer, times(1)).assign(anyByte(), eq(client));
+    verify(fixedProducer, times(1)).assign(anyByte(), eq(client));
+    verify(producerClosedAfterDisconnection, times(1)).assign(anyByte(), eq(client));
     verify(movingTrackingConsumer, times(1)).setTrackingClient(client);
     verify(fixedTrackingConsumer, times(1)).setTrackingClient(client);
     assertThat(coordinator.clientCount()).isEqualTo(1);
@@ -919,21 +1116,21 @@ public class ProducersCoordinatorTest {
 
     metadataListener.handle(movingStream, Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
 
-    assertThat(setClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
+    assertThat(assignLatch.await(5, TimeUnit.SECONDS)).isTrue();
     assertThat(runningLatch.await(5, TimeUnit.SECONDS)).isTrue();
     verify(movingProducer, times(1)).unavailable();
-    verify(movingProducer, times(2)).setClient(client);
+    verify(movingProducer, times(2)).assign(anyByte(), eq(client));
     verify(movingProducer, times(1)).running();
     verify(movingTrackingConsumer, times(1)).unavailable();
     verify(movingTrackingConsumer, times(2)).setTrackingClient(client);
     verify(movingTrackingConsumer, times(1)).running();
 
     verify(producerClosedAfterDisconnection, times(1)).unavailable();
-    verify(producerClosedAfterDisconnection, times(1)).setClient(client);
+    verify(producerClosedAfterDisconnection, times(1)).assign(anyByte(), eq(client));
     verify(producerClosedAfterDisconnection, never()).running();
 
     verify(fixedProducer, never()).unavailable();
-    verify(fixedProducer, times(1)).setClient(client);
+    verify(fixedProducer, times(1)).assign(anyByte(), eq(client));
     verify(fixedProducer, never()).running();
     verify(fixedTrackingConsumer, never()).unavailable();
     verify(fixedTrackingConsumer, times(1)).setTrackingClient(client);
@@ -964,7 +1161,7 @@ public class ProducersCoordinatorTest {
 
     coordinator.registerProducer(producer, null, "stream");
 
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
     metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -973,7 +1170,7 @@ public class ProducersCoordinatorTest {
     verify(producer, times(1))
         .closeAfterStreamDeletion(Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
     verify(producer, times(1)).unavailable();
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(producer, never()).running();
 
     waitAtMost(() -> coordinator.clientCount() == 0);
@@ -1026,7 +1223,7 @@ public class ProducersCoordinatorTest {
     coordinator.registerProducer(producer, null, "stream");
     coordinator.registerTrackingConsumer(trackingConsumer);
 
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(trackingConsumer, times(1)).setTrackingClient(client);
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
@@ -1035,7 +1232,7 @@ public class ProducersCoordinatorTest {
 
     assertThat(closeClientLatch.await(5, TimeUnit.SECONDS)).isTrue();
     verify(producer, times(1)).unavailable();
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     verify(producer, never()).running();
     verify(trackingConsumer, times(1)).unavailable();
     verify(trackingConsumer, times(1)).setTrackingClient(client);
@@ -1083,7 +1280,7 @@ public class ProducersCoordinatorTest {
               info.producer = p;
               doAnswer(answer(invocation -> info.publishingId = invocation.getArgument(0)))
                   .when(p)
-                  .setPublisherId(anyByte());
+                  .assign(anyByte(), any());
               Runnable cleaningCallback = coordinator.registerProducer(p, null, "stream");
               info.cleaningCallback = cleaningCallback;
               producerInfos.add(info);
@@ -1144,10 +1341,10 @@ public class ProducersCoordinatorTest {
     AtomicReference<Byte> publishingIdForNewProducer = new AtomicReference<>();
     doAnswer(answer(invoc -> publishingIdForNewProducer.set(invoc.getArgument(0))))
         .when(p)
-        .setPublisherId(anyByte());
+        .assign(anyByte(), any());
     coordinator.registerProducer(p, null, "stream");
 
-    verify(p, times(1)).setClient(client);
+    verify(p, times(1)).assign(anyByte(), eq(client));
     // if the soft limit is less than the hard limit, publisher IDs keep going up
     // if the soft limit is equal to the hard limit, we re-use the ID that has just been left
     // available
@@ -1192,16 +1389,16 @@ public class ProducersCoordinatorTest {
     when(producer.isOpen()).thenReturn(true);
     when(trackingConsumer.isOpen()).thenReturn(true);
 
-    CountDownLatch setClientLatch = new CountDownLatch(1);
-    doAnswer(answer(() -> setClientLatch.countDown())).when(producer).setClient(client);
+    CountDownLatch assignLatch = new CountDownLatch(1);
+    doAnswer(answer(() -> assignLatch.countDown())).when(producer).assign(anyByte(), eq(client));
 
     coordinator.registerProducer(producer, null, "stream");
 
-    verify(producer, times(1)).setClient(client);
+    verify(producer, times(1)).assign(anyByte(), eq(client));
     assertThat(coordinator.nodesConnected()).isEqualTo(1);
     assertThat(coordinator.clientCount()).isEqualTo(1);
 
-    assertThat(setClientLatch).is(completed());
+    assertThat(assignLatch).is(completed());
   }
 
   @Test

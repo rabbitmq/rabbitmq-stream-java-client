@@ -75,6 +75,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -194,9 +196,9 @@ final class ProducersCoordinator implements AutoCloseable {
     List<BrokerWrapper> candidates = findCandidateNodes(stream, this.forceLeader);
     Broker broker = pickBroker(candidates);
     registerAgent(tracker);
-    ClientProducersManager manager;
+    Assignment assignment;
     try {
-      manager = addToManager(broker, candidates, tracker);
+      assignment = addToManager(broker, candidates, tracker);
     } catch (RuntimeException e) {
       // the initial registration does not retry, the failure goes back to the caller
       trackerEvent(
@@ -205,8 +207,11 @@ final class ProducersCoordinator implements AutoCloseable {
           (st, epoch) -> AgentStateMachine.onAssignmentFailed(st, epoch, epoch, e, false));
       throw e;
     }
+    // before the assignment becomes the agent's, not after: a recovery started right after would
+    // point the agent at its own assignment, which this must not overwrite
+    tracker.use(assignment);
     RuntimeException invalidation =
-        completeInitialAssignment(tracker, manager, recoveryBackOffDelayPolicy());
+        completeInitialAssignment(tracker, assignment, recoveryBackOffDelayPolicy());
     if (invalidation != null) {
       throw invalidation;
     }
@@ -248,17 +253,27 @@ final class ProducersCoordinator implements AutoCloseable {
       AgentTracker tracker,
       BackOffDelayPolicy delayPolicy,
       BiFunction<State, Long, TransitionResult> decision) {
-    submitState(s -> applyTransition(s, tracker, delayPolicy, decision));
+    submitState(s -> applyTransition(s, tracker, delayPolicy, decision, null));
   }
 
+  /**
+   * @param assignment the assignment established by the attempt the event comes from, or null if it
+   *     does not come from a successful attempt
+   */
   // loop only
   private void applyTransition(
       CoordinatorState s,
       AgentTracker tracker,
       BackOffDelayPolicy delayPolicy,
-      BiFunction<State, Long, TransitionResult> decision) {
+      BiFunction<State, Long, TransitionResult> decision,
+      Assignment assignment) {
     TrackerState trackerState = s.agents.get(tracker.uniqueId());
     if (trackerState == null) {
+      if (assignment != null) {
+        // the agent is over, and the attempt's assignment was never published for its
+        // cancellation to find
+        submitRecovery(() -> assignment.manager.release(tracker, assignment));
+      }
       return;
     }
     State previous = trackerState.state;
@@ -292,7 +307,8 @@ final class ProducersCoordinator implements AutoCloseable {
       // (detach before re-assign, for instance), which separate tasks on a multi-threaded
       // pool would not guarantee
       AgentActions actions =
-          new AgentActions(tracker, delayPolicy, backOffIndex, previous == State.OPENING);
+          new AgentActions(
+              tracker, delayPolicy, backOffIndex, previous == State.OPENING, assignment);
       submitRecovery(
           () -> {
             try {
@@ -399,10 +415,17 @@ final class ProducersCoordinator implements AutoCloseable {
 
   private void assignmentSucceeded(
       AgentTracker tracker,
-      ClientProducersManager manager,
+      Assignment assignment,
       BackOffDelayPolicy delayPolicy,
       long attemptEpoch) {
-    trackerEvent(tracker, delayPolicy, successDecision(tracker, manager, attemptEpoch, null));
+    submitState(
+        s ->
+            applyTransition(
+                s,
+                tracker,
+                delayPolicy,
+                successDecision(tracker, assignment, attemptEpoch, null),
+                assignment));
   }
 
   /**
@@ -412,7 +435,7 @@ final class ProducersCoordinator implements AutoCloseable {
    * @return the reason the assignment is no longer valid, or null
    */
   private RuntimeException completeInitialAssignment(
-      AgentTracker tracker, ClientProducersManager manager, BackOffDelayPolicy delayPolicy) {
+      AgentTracker tracker, Assignment assignment, BackOffDelayPolicy delayPolicy) {
     AtomicReference<RuntimeException> invalidation = new AtomicReference<>();
     // not run if the coordinator is closing: no failure to report then
     queryState(
@@ -421,7 +444,8 @@ final class ProducersCoordinator implements AutoCloseable {
               s,
               tracker,
               delayPolicy,
-              successDecision(tracker, manager, FIRST_ATTEMPT_EPOCH, invalidation));
+              successDecision(tracker, assignment, FIRST_ATTEMPT_EPOCH, invalidation),
+              assignment);
           return null;
         },
         null);
@@ -430,17 +454,23 @@ final class ProducersCoordinator implements AutoCloseable {
 
   private BiFunction<State, Long, TransitionResult> successDecision(
       AgentTracker tracker,
-      ClientProducersManager manager,
+      Assignment assignment,
       long attemptEpoch,
       AtomicReference<RuntimeException> invalidationHolder) {
     return (st, epoch) -> {
       if (AgentStateMachine.isStale(epoch, attemptEpoch) || st.terminal()) {
         return AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch);
       }
-      RuntimeException invalidation = manager.invalidation(tracker);
+      ClientProducersManager manager = assignment.manager;
+      // published before the validation, not after: see ClientProducersManager.invalidation
+      tracker.publish(assignment);
+      manager.addToStreamToTrackers(tracker);
+      RuntimeException invalidation = manager.invalidation(tracker, assignment);
       if (invalidation == null) {
         return AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch);
       }
+      tracker.unpublish(assignment);
+      manager.removeFromStreamToTrackers(tracker);
       LOGGER.debug(
           "Assignment of {} is already gone: {}",
           tracker.label(),
@@ -519,21 +549,16 @@ final class ProducersCoordinator implements AutoCloseable {
         return;
       }
       LOGGER.debug("Using {} to resume {}", broker.label(), tracker.label());
-      ClientProducersManager manager = addToManager(broker, candidates, tracker);
+      Assignment assignment = addToManager(broker, candidates, tracker);
       if (!tracker.isOpen()) {
-        // closed while this attempt was assigning: cancel() may have found no manager to
-        // unregister from, and the success event cannot release anything once the closed agent
-        // is gone from the loop state. The agent is flagged closed before cancel() runs, so
-        // either cancel() or this check sees the new assignment
+        // closed while this attempt was assigning: cancel() cannot see an assignment that was
+        // never published
         LOGGER.debug("{} closed during its assignment, releasing it", tracker.label());
-        ClientProducersManager assigned = tracker.manager();
-        if (assigned != null) {
-          assigned.unregister(tracker);
-        }
+        assignment.manager.release(tracker, assignment);
         trackerEvent(tracker, delayPolicy, AgentStateMachine::onCancelled);
         return;
       }
-      assignmentSucceeded(tracker, manager, delayPolicy, attemptEpoch);
+      assignmentSucceeded(tracker, assignment, delayPolicy, attemptEpoch);
     } catch (Exception e) {
       LOGGER.debug("Error while assigning {}: {}", tracker.label(), Utils.exceptionMessage(e));
       assignmentFailed(tracker, delayPolicy, attemptEpoch, e, recoverable(e));
@@ -614,16 +639,20 @@ final class ProducersCoordinator implements AutoCloseable {
     // the transition left OPENING, i.e. this is the registration made from the agent's own
     // constructor (see markOpen)
     private final boolean initialAssignment;
+    // the assignment of the attempt a success comes from, null for any other event
+    private final Assignment assignment;
 
     private AgentActions(
         AgentTracker tracker,
         BackOffDelayPolicy delayPolicy,
         int backOffIndex,
-        boolean initialAssignment) {
+        boolean initialAssignment,
+        Assignment assignment) {
       this.tracker = tracker;
       this.delayPolicy = delayPolicy;
       this.backOffIndex = backOffIndex;
       this.initialAssignment = initialAssignment;
+      this.assignment = assignment;
     }
 
     @Override
@@ -671,8 +700,7 @@ final class ProducersCoordinator implements AutoCloseable {
         // would touch producer state that does not exist yet
         return;
       }
-      // blocking: republishes the producer's unconfirmed messages under the producer lock
-      notifyAgent(this.tracker::running, "marking open");
+      notifyAgent(() -> this.tracker.open(this.assignment), "marking open");
     }
 
     private void notifyAgent(Runnable notification, String description) {
@@ -698,14 +726,16 @@ final class ProducersCoordinator implements AutoCloseable {
 
     @Override
     public void releaseAssignment() {
-      ClientProducersManager manager = this.tracker.manager();
-      if (manager != null) {
-        manager.unregister(this.tracker);
+      // exactly the attempt's own for a success, which may never have been published, the current
+      // one otherwise
+      Assignment toRelease = this.assignment == null ? this.tracker.assignment() : this.assignment;
+      if (toRelease.manager != null) {
+        toRelease.manager.release(this.tracker, toRelease);
       }
     }
   }
 
-  private ClientProducersManager addToManager(
+  private Assignment addToManager(
       Broker node, List<BrokerWrapper> candidates, AgentTracker tracker) {
     ClientParameters clientParameters =
         environment
@@ -736,7 +766,7 @@ final class ProducersCoordinator implements AutoCloseable {
         creationFinished(node, pickedManager);
       }
       try {
-        pickedManager.register(tracker);
+        Assignment assignment = pickedManager.register(tracker);
         LOGGER.debug(
             "Assigned {} tracker {} (stream '{}') to manager {} (node {}), publisher ID {}",
             tracker.type(),
@@ -744,8 +774,8 @@ final class ProducersCoordinator implements AutoCloseable {
             tracker.stream(),
             pickedManager.id,
             pickedManager.name,
-            tracker.identifiable() ? tracker.id() : "N/A");
-        return pickedManager;
+            tracker.identifiable() ? assignment.slot() : "N/A");
+        return assignment;
       } catch (IllegalStateException e) {
         // full or closed in the meantime, pick again
       } catch (RuntimeException e) {
@@ -1052,7 +1082,7 @@ final class ProducersCoordinator implements AutoCloseable {
               .map(
                   t -> {
                     StringBuilder b = new StringBuilder("{");
-                    b.append(quote("stream")).append(":").append(quote(t.stream)).append(",");
+                    b.append(quote("stream")).append(":").append(quote(t.stream())).append(",");
                     b.append(quote("node")).append(":");
                     Client client = null;
                     ClientProducersManager manager = t.manager();
@@ -1072,275 +1102,242 @@ final class ProducersCoordinator implements AutoCloseable {
     return builder.append("}").toString();
   }
 
-  private interface AgentTracker {
+  /**
+   * The coordinator's side of an agent: its current assignment, and how to notify it.
+   *
+   * <p>An attempt carries the assignment it establishes to the event loop instead of writing it
+   * here: only the loop publishes one, when it applies a current, valid success. The assignment is
+   * cleared by the thread that sees a disruption and by releases.
+   */
+  private abstract static class AgentTracker {
 
-    void assign(byte producerId, Client client, ClientProducersManager manager);
+    private final long uniqueId;
+    private final String stream;
+    private final AtomicReference<Assignment> assignment = new AtomicReference<>(Assignment.NONE);
+    private final Lock openingLock = new ReentrantLock();
 
-    boolean identifiable();
+    private AgentTracker(long uniqueId, String stream) {
+      this.uniqueId = uniqueId;
+      this.stream = stream;
+    }
 
-    byte id();
+    abstract boolean identifiable();
+
+    String reference() {
+      throw new UnsupportedOperationException();
+    }
+
+    /** Point the agent at the connection of the assignment, and at its publisher ID if any. */
+    abstract void use(Assignment assignment);
+
+    abstract void running();
+
+    /** Notify the agent it is unavailable, leaving the assignment alone. */
+    abstract void unavailable();
+
+    abstract void closeAfterStreamDeletion(short code);
+
+    abstract boolean isOpen();
+
+    abstract String type();
+
+    Assignment assignment() {
+      return this.assignment.get();
+    }
+
+    ClientProducersManager manager() {
+      return this.assignment.get().manager;
+    }
+
+    // loop only
+    void publish(Assignment assignment) {
+      this.assignment.set(assignment);
+    }
+
+    boolean unpublish(Assignment expected) {
+      return this.assignment.compareAndSet(expected, Assignment.NONE);
+    }
 
     /**
      * Clear the assignment and notify the agent it is unavailable. Called inline by the thread that
      * saw the disruption, so publishing stops right away.
      */
-    void markUnavailable();
+    void markUnavailable() {
+      this.detachFromManager();
+      this.unavailable();
+    }
 
     /** Clear the assignment only. Idempotent. */
-    void detachFromManager();
-
-    ClientProducersManager manager();
+    void detachFromManager() {
+      this.assignment.set(Assignment.NONE);
+    }
 
     /**
-     * Release the assignment to {@code expected}, if it is still the current one.
+     * Point the agent at an assignment the loop has published, and mark it running, unless the
+     * assignment has been superseded in the meantime.
      *
-     * @return the slot to free, or a negative value if there is nothing to release
+     * <p>A disruption clears the assignment before flipping the agent, and this marks the agent
+     * running before checking the assignment again, so either the check sees the clear and flips
+     * the agent back, or the flip of the disruption comes after. The lock keeps an older call from
+     * flipping the agent back after a newer call has marked it running.
      */
-    int detachIfOwnedBy(ClientProducersManager expected);
+    void open(Assignment expected) {
+      this.openingLock.lock();
+      try {
+        if (this.assignment.get() != expected) {
+          return;
+        }
+        this.use(expected);
+        this.running();
+        if (this.assignment.get() != expected) {
+          this.unavailable();
+        }
+      } finally {
+        this.openingLock.unlock();
+      }
+    }
 
-    void running();
+    void cancel() {
+      Assignment current = this.assignment.get();
+      if (current.manager != null) {
+        current.manager.release(this, current);
+      }
+    }
 
-    void cancel();
+    String stream() {
+      return this.stream;
+    }
 
-    void closeAfterStreamDeletion(short code);
+    long uniqueId() {
+      return this.uniqueId;
+    }
 
-    String stream();
-
-    String reference();
-
-    boolean isOpen();
-
-    long uniqueId();
-
-    String type();
-
-    default String label() {
+    String label() {
       return String.format("[%s %d, stream '%s']", type(), uniqueId(), stream());
     }
   }
 
-  private static class ProducerTracker implements AgentTracker {
+  private static final class ProducerTracker extends AgentTracker {
 
-    private final long uniqueId;
     private final String reference;
-    private final String stream;
     private final StreamProducer producer;
-    // set only once the broker has confirmed the publisher declaration, never while the slot is
-    // merely reserved
-    private final AtomicReference<Assignment> assignment = new AtomicReference<>(Assignment.NONE);
 
     private ProducerTracker(
         long uniqueId, String reference, String stream, StreamProducer producer) {
-      this.uniqueId = uniqueId;
+      super(uniqueId, stream);
       this.reference = reference;
-      this.stream = stream;
       this.producer = producer;
     }
 
     @Override
-    public void assign(byte producerId, Client client, ClientProducersManager manager) {
-      this.assignment.set(new Assignment(producerId, manager));
-      this.producer.setPublisherId(producerId);
-      this.producer.setClient(client);
-    }
-
-    @Override
-    public boolean identifiable() {
+    boolean identifiable() {
       return true;
     }
 
     @Override
-    public byte id() {
-      return this.assignment.get().publisherId;
-    }
-
-    @Override
-    public String reference() {
+    String reference() {
       return this.reference;
     }
 
     @Override
-    public String stream() {
-      return this.stream;
+    void use(Assignment assignment) {
+      this.producer.assign(assignment.publisherId, assignment.manager.client);
     }
 
     @Override
-    public void markUnavailable() {
-      this.detachFromManager();
-      this.producer.unavailable();
-    }
-
-    @Override
-    public void detachFromManager() {
-      this.assignment.set(Assignment.NONE);
-    }
-
-    @Override
-    public ClientProducersManager manager() {
-      return this.assignment.get().manager;
-    }
-
-    /**
-     * Release this tracker's assignment to {@code expected}, if it is still the current one.
-     *
-     * <p>Idempotent by construction: of two concurrent callers (the direct call in {@link
-     * #cancel()} and the async {@code releaseAssignment} effect), only the one that wins the CAS
-     * gets a slot back to release; the other sees the assignment already cleared and no-ops.
-     */
-    @Override
-    public int detachIfOwnedBy(ClientProducersManager expected) {
-      Assignment current = this.assignment.get();
-      if (current.manager != expected) {
-        return -1;
-      }
-      if (!this.assignment.compareAndSet(current, Assignment.NONE)) {
-        return -1;
-      }
-      // masked to an unsigned 0-255 range: a plain byte cannot serve as its own "no slot"
-      // sentinel, since slot 255's byte representation (0xFF) is indistinguishable from -1
-      return current.publisherId & 0xFF;
-    }
-
-    @Override
-    public void running() {
+    void running() {
+      // blocking: republishes the producer's unconfirmed messages under the producer lock
       this.producer.running();
     }
 
     @Override
-    public void cancel() {
-      ClientProducersManager manager = this.manager();
-      if (manager != null) {
-        manager.unregister(this);
-      }
+    void unavailable() {
+      this.producer.unavailable();
     }
 
     @Override
-    public void closeAfterStreamDeletion(short code) {
+    void closeAfterStreamDeletion(short code) {
       this.producer.closeAfterStreamDeletion(code);
     }
 
     @Override
-    public boolean isOpen() {
-      return producer.isOpen();
+    boolean isOpen() {
+      return this.producer.isOpen();
     }
 
     @Override
-    public long uniqueId() {
-      return this.uniqueId;
-    }
-
-    @Override
-    public String type() {
+    String type() {
       return "producer";
     }
   }
 
-  /** A producer's current manager and publisher ID, or {@link #NONE} if it has none. */
+  /**
+   * The manager and publisher ID an attempt established, {@link #NO_SLOT} for a tracking consumer,
+   * or {@link #NONE}.
+   *
+   * <p>Compared by identity: two attempts landing on the same manager make two assignments.
+   */
   private static final class Assignment {
 
     private static final Assignment NONE = new Assignment(NO_SLOT, null);
 
     private final byte publisherId;
     private final ClientProducersManager manager;
+    private final AtomicBoolean released = new AtomicBoolean(false);
 
     private Assignment(byte publisherId, ClientProducersManager manager) {
       this.publisherId = publisherId;
       this.manager = manager;
     }
+
+    // masked to an unsigned 0-255 range: slot 255's byte representation is the same as NO_SLOT's
+    private int slot() {
+      return this.publisherId & 0xFF;
+    }
   }
 
-  private static class TrackingConsumerTracker implements AgentTracker {
+  private static final class TrackingConsumerTracker extends AgentTracker {
 
-    private final long uniqueId;
-    private final String stream;
     private final StreamConsumer consumer;
-    private final AtomicReference<ClientProducersManager> manager = new AtomicReference<>();
 
     private TrackingConsumerTracker(long uniqueId, String stream, StreamConsumer consumer) {
-      this.uniqueId = uniqueId;
-      this.stream = stream;
+      super(uniqueId, stream);
       this.consumer = consumer;
     }
 
     @Override
-    public void assign(byte producerId, Client client, ClientProducersManager manager) {
-      this.manager.set(manager);
-      this.consumer.setTrackingClient(client);
-    }
-
-    @Override
-    public boolean identifiable() {
+    boolean identifiable() {
       return false;
     }
 
     @Override
-    public byte id() {
-      throw new UnsupportedOperationException();
+    void use(Assignment assignment) {
+      this.consumer.setTrackingClient(assignment.manager.client);
     }
 
     @Override
-    public String reference() {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public String stream() {
-      return this.stream;
-    }
-
-    @Override
-    public void markUnavailable() {
-      this.detachFromManager();
-      this.consumer.unavailable();
-    }
-
-    @Override
-    public void detachFromManager() {
-      this.manager.set(null);
-    }
-
-    @Override
-    public ClientProducersManager manager() {
-      return this.manager.get();
-    }
-
-    // no slot to give back, only the ownership, hence 0 for the winner of the CAS
-    @Override
-    public int detachIfOwnedBy(ClientProducersManager expected) {
-      return expected != null && this.manager.compareAndSet(expected, null) ? 0 : -1;
-    }
-
-    @Override
-    public void running() {
+    void running() {
       this.consumer.running();
     }
 
     @Override
-    public void cancel() {
-      ClientProducersManager manager = this.manager();
-      if (manager != null) {
-        manager.unregister(this);
-      }
+    void unavailable() {
+      this.consumer.unavailable();
     }
 
     @Override
-    public void closeAfterStreamDeletion(short code) {
+    void closeAfterStreamDeletion(short code) {
       // nothing to do here, the consumer will be closed by the consumers coordinator if
       // the stream has been deleted
     }
 
     @Override
-    public boolean isOpen() {
+    boolean isOpen() {
       return this.consumer.isOpen();
     }
 
     @Override
-    public long uniqueId() {
-      return this.uniqueId;
-    }
-
-    @Override
-    public String type() {
+    String type() {
       return "tracking consumer";
     }
   }
@@ -1565,13 +1562,8 @@ final class ProducersCoordinator implements AutoCloseable {
       if (trackerState == null || trackerState.state != State.ACTIVE) {
         return false;
       }
-      if (tracker.identifiable()) {
-        // a single read: a stale attempt can assign concurrently, off-loop
-        Assignment assignment = ((ProducerTracker) tracker).assignment.get();
-        return assignment.manager == this && (assignment.publisherId & 0xFF) == slot;
-      } else {
-        return tracker.manager() == this;
-      }
+      Assignment assignment = tracker.assignment();
+      return assignment.manager == this && (!tracker.identifiable() || assignment.slot() == slot);
     }
 
     /**
@@ -1579,25 +1571,26 @@ final class ProducersCoordinator implements AutoCloseable {
      * or null if it still stands.
      *
      * <p>Sound for the connection case without any lock: the shutdown listener sets {@code closed}
-     * and then reads the agents' assignments, the attempt publishes its assignment before this
-     * reads {@code closed}. Either this sees the connection dead, or the listener reads the
-     * assignment after this has run, and flips the agent and starts a recovery. The metadata
-     * listener's loop task runs before the success event it races with, since the listener posts it
-     * before the attempt returns.
+     * and then reads the agents' assignments, the loop publishes the assignment before this reads
+     * {@code closed}. Either this sees the connection dead, or the listener reads the assignment
+     * after this has run, and flips the agent and starts a recovery. The metadata listener's loop
+     * task runs before the success event it races with, since the listener posts it before the
+     * attempt returns.
      */
-    private RuntimeException invalidation(AgentTracker tracker) {
+    private RuntimeException invalidation(AgentTracker tracker, Assignment assignment) {
       if (this.isDead()) {
         return new ClientClosedException();
       }
-      if (this.poisoned.contains(tracker) || !this.holds(tracker)) {
+      if (this.poisoned.contains(tracker) || !this.holds(tracker, assignment)) {
         return new StreamNotAvailableException(tracker.stream());
       }
       return null;
     }
 
-    private boolean holds(AgentTracker tracker) {
+    // loop only
+    private boolean holds(AgentTracker tracker, Assignment assignment) {
       if (tracker.identifiable()) {
-        return this.producerTrackers.contains(tracker);
+        return this.producerTrackers.get(assignment.slot()) == tracker;
       } else {
         return this.trackingConsumerTrackers.contains(tracker);
       }
@@ -1614,7 +1607,11 @@ final class ProducersCoordinator implements AutoCloseable {
       return trackers == null ? Collections.emptyList() : new ArrayList<>(trackers);
     }
 
-    private void register(AgentTracker tracker) {
+    /**
+     * Establish an assignment for the attempt of an agent, without making it the agent's: that is
+     * up to the loop, once it knows the attempt is still the current one.
+     */
+    private Assignment register(AgentTracker tracker) {
       if (tracker.identifiable()) {
         ProducerTracker producerTracker = (ProducerTracker) tracker;
         byte publisherId = reserveSlot(producerTracker);
@@ -1637,27 +1634,15 @@ final class ProducersCoordinator implements AutoCloseable {
             LOGGER.info(message);
             throw new StreamException(message, response.getResponseCode());
           }
-          tracker.assign(publisherId, this.client, this);
+          return new Assignment(publisherId, this);
         } catch (RuntimeException e) {
           releaseSlot(publisherId, producerTracker);
           throw e;
         }
       } else {
         reserveTrackingConsumer(tracker);
-        tracker.assign((byte) 0, this.client, this);
+        return new Assignment(NO_SLOT, this);
       }
-      queryState(
-          s -> {
-            // not if it has been detached in the meantime, e.g. by a cancellation: the entry would
-            // outlive the unregistration that was meant to remove it
-            if (tracker.manager() == this) {
-              this.streamToTrackers
-                  .computeIfAbsent(tracker.stream(), st -> ConcurrentHashMap.newKeySet())
-                  .add(tracker);
-            }
-            return null;
-          },
-          null);
     }
 
     /**
@@ -1740,20 +1725,29 @@ final class ProducersCoordinator implements AutoCloseable {
       this.poisoned.remove(tracker);
     }
 
-    private void unregister(AgentTracker tracker) {
-      int slot = tracker.detachIfOwnedBy(this);
-      if (slot < 0) {
-        // already removed, e.g. by the direct call in cancel() racing the async
-        // releaseAssignment effect: detachIfOwnedBy() is idempotent, so this is a no-op
+    /**
+     * Release exactly the given assignment of the agent: its publisher and its slot, and the
+     * agent's assignment if it is still this one. At most once per assignment, so the direct call
+     * in {@link AgentTracker#cancel()} and the {@code releaseAssignment} effect cannot both delete
+     * it.
+     */
+    private void release(AgentTracker tracker, Assignment assignment) {
+      if (!assignment.released.compareAndSet(false, true)) {
         return;
       }
+      tracker.unpublish(assignment);
       LOGGER.debug(
-          "Unregistering {} {} from manager on {}", tracker.type(), tracker.uniqueId(), this.name);
-      if (tracker.identifiable() && this.client.isOpen()) {
+          "Releasing {} {} from manager on {}", tracker.type(), tracker.uniqueId(), this.name);
+      // not if the slot is no longer the agent's, e.g. freed by a metadata update: its publisher ID
+      // may belong to another producer by now
+      boolean held =
+          tracker.identifiable()
+              && Boolean.TRUE.equals(queryState(s -> this.holds(tracker, assignment), false));
+      if (held && this.client.isOpen()) {
         try {
           Response response =
               callAndMaybeRetry(
-                  () -> this.client.deletePublisher((byte) slot),
+                  () -> this.client.deletePublisher(assignment.publisherId),
                   RETRY_ON_TIMEOUT,
                   "Delete publisher request for publisher %d on stream '%s'",
                   tracker.uniqueId(),
@@ -1763,7 +1757,7 @@ final class ProducersCoordinator implements AutoCloseable {
                 "Unexpected response code when deleting publisher on stream '{}': {} (publisher ID {})",
                 tracker.stream(),
                 formatConstant(response.getResponseCode()),
-                slot);
+                assignment.slot());
           }
         } catch (TimeoutStreamException e) {
           LOGGER.debug(
@@ -1778,20 +1772,31 @@ final class ProducersCoordinator implements AutoCloseable {
       Boolean empty =
           queryState(
               s -> {
+                // another attempt of the agent can have landed here too
+                boolean stillAssignedHere = tracker.manager() == this;
                 if (tracker.identifiable()) {
-                  this.freeSlot(slot, (ProducerTracker) tracker);
-                } else {
+                  this.freeSlot(assignment.slot(), (ProducerTracker) tracker);
+                } else if (!stillAssignedHere) {
                   this.trackingConsumerTrackers.remove(tracker);
                   this.trackingConsumerCount = this.trackingConsumerTrackers.size();
                   this.poisoned.remove(tracker);
                 }
-                this.removeFromStreamToTrackers(tracker);
+                if (!stillAssignedHere) {
+                  this.removeFromStreamToTrackers(tracker);
+                }
                 return this.isEmpty();
               },
               false);
       if (Boolean.TRUE.equals(empty)) {
         this.closeIfEmpty();
       }
+    }
+
+    // loop only
+    private void addToStreamToTrackers(AgentTracker tracker) {
+      this.streamToTrackers
+          .computeIfAbsent(tracker.stream(), st -> ConcurrentHashMap.newKeySet())
+          .add(tracker);
     }
 
     private void removeFromStreamToTrackers(AgentTracker tracker) {

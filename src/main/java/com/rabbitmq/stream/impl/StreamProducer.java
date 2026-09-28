@@ -588,12 +588,12 @@ final class StreamProducer extends ResourceBase implements Producer {
     this.state(OPEN);
   }
 
-  void setClient(Client client) {
-    this.executeInLock(() -> this.client = client);
-  }
-
-  void setPublisherId(byte publisherId) {
-    this.executeInLock(() -> this.publisherId = publisherId);
+  void assign(byte publisherId, Client client) {
+    this.executeInLock(
+        () -> {
+          this.publisherId = publisherId;
+          this.client = client;
+        });
   }
 
   @Override

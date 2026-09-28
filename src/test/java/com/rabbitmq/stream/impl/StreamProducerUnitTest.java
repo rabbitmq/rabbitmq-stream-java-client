@@ -136,8 +136,7 @@ public class StreamProducerUnitTest {
             (Answer<Runnable>)
                 invocationOnMock -> {
                   StreamProducer p = invocationOnMock.getArgument(0);
-                  p.setClient(client);
-                  p.setPublisherId((byte) 0);
+                  p.assign((byte) 0, client);
                   return () -> {};
                 })
         .when(env)
@@ -331,8 +330,7 @@ public class StreamProducerUnitTest {
             (Answer<Runnable>)
                 invocationOnMock -> {
                   StreamProducer p = invocationOnMock.getArgument(0);
-                  p.setClient(client);
-                  p.setPublisherId((byte) 0);
+                  p.assign((byte) 0, client);
                   // a disruption right after the registration, before the constructor returns
                   p.unavailable();
                   return () -> {};
@@ -358,6 +356,54 @@ public class StreamProducerUnitTest {
             env);
 
     assertThat(producer.state()).isEqualTo(Resource.State.RECOVERING);
+    producer.close();
+  }
+
+  @Test
+  void assignShouldSetPublisherIdAndClientUnderTheProducerLock() throws Exception {
+    StreamProducer producer =
+        new StreamProducer(
+            null,
+            "stream",
+            1,
+            10,
+            true,
+            Compression.NONE,
+            Duration.ofMillis(100),
+            100,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(10),
+            true,
+            null,
+            emptyList(),
+            env);
+    Client client2 = Mockito.mock(Client.class);
+    when(client2.connectionName()).thenReturn("client-2");
+
+    CountDownLatch assigned = new CountDownLatch(1);
+    producer.lock();
+    try {
+      new Thread(
+              () -> {
+                producer.assign((byte) 3, client2);
+                assigned.countDown();
+              })
+          .start();
+      assertThat(assigned.await(200, TimeUnit.MILLISECONDS)).isFalse();
+    } finally {
+      producer.unlock();
+    }
+    assertThat(assigned.await(10, TimeUnit.SECONDS)).isTrue();
+
+    producer.publishInternal(emptyList());
+    Mockito.verify(client2)
+        .publishInternal(
+            anyShort(),
+            Mockito.eq((byte) 3),
+            anyList(),
+            any(OutboundEntityWriteCallback.class),
+            any());
+    assertThat(producer.toString()).contains("client-2");
     producer.close();
   }
 
