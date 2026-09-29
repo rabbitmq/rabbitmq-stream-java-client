@@ -70,6 +70,7 @@ public class StreamConsumerUnitTest {
     closeable = MockitoAnnotations.openMocks(this);
     scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     when(environment.scheduledExecutorService()).thenReturn(scheduledExecutorService);
+    when(environment.stateListenerExecutor()).thenReturn(Runnable::run);
   }
 
   @AfterEach

@@ -26,9 +26,11 @@ import com.rabbitmq.stream.ResourceClosedException;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 abstract class ResourceBase implements Resource {
 
@@ -38,8 +40,13 @@ abstract class ResourceBase implements Resource {
   private final boolean multiComponent;
   private final Lock stateLock = new ReentrantLock();
 
-  ResourceBase(List<StateListener> listeners, String... componentIds) {
-    this.stateEventSupport = new StateEventSupport(listeners);
+  ResourceBase(
+      List<StateListener> listeners,
+      Supplier<Executor> stateListenerExecutor,
+      String... componentIds) {
+    // no executor needed without listeners, it is created on demand
+    this.stateEventSupport =
+        new StateEventSupport(listeners, listeners.isEmpty() ? null : stateListenerExecutor.get());
     if (componentIds != null && componentIds.length > 0) {
       this.multiComponent = true;
       this.componentReadyState = new ConcurrentHashMap<>();
