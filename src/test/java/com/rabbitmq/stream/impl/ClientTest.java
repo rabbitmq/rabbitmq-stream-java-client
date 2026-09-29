@@ -79,7 +79,10 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -142,6 +145,37 @@ public class ClientTest {
   }
 
   @Test
+  void failedConnectionShouldReleaseExecutors() throws Exception {
+    int port;
+    try (ServerSocket socket = new ServerSocket(0)) {
+      port = socket.getLocalPort();
+    }
+    int closedPort = port;
+    RecordingExecutorServiceFactory executorServiceFactory = new RecordingExecutorServiceFactory();
+    RecordingExecutorServiceFactory dispatchingExecutorServiceFactory =
+        new RecordingExecutorServiceFactory();
+    try {
+      assertThatThrownBy(
+              () ->
+                  cf.get(
+                      new ClientParameters()
+                          .port(closedPort)
+                          .executorServiceFactory(executorServiceFactory)
+                          .dispatchingExecutorServiceFactory(dispatchingExecutorServiceFactory)))
+          .isInstanceOf(ConnectionStreamException.class);
+      assertThat(executorServiceFactory.provided).hasSize(1);
+      assertThat(dispatchingExecutorServiceFactory.provided).hasSize(1);
+      assertThat(executorServiceFactory.released)
+          .containsExactlyElementsOf(executorServiceFactory.provided);
+      assertThat(dispatchingExecutorServiceFactory.released)
+          .containsExactlyElementsOf(dispatchingExecutorServiceFactory.provided);
+    } finally {
+      executorServiceFactory.close();
+      dispatchingExecutorServiceFactory.close();
+    }
+  }
+
+  @Test
   void connectionAttemptShouldNotWaitOnMonitor() throws Exception {
     AtomicReference<io.netty.channel.Channel> channel = new AtomicReference<>();
     Thread connectingThread =
@@ -191,6 +225,29 @@ public class ClientTest {
         .hasCauseInstanceOf(InterruptedException.class);
     assertThat(interrupted).isTrue();
     waitAtMost(() -> !channel.get().isOpen());
+  }
+
+  private static class RecordingExecutorServiceFactory implements ExecutorServiceFactory {
+
+    private final List<ExecutorService> provided = new CopyOnWriteArrayList<>();
+    private final List<ExecutorService> released = new CopyOnWriteArrayList<>();
+
+    @Override
+    public ExecutorService get() {
+      ExecutorService executorService = Executors.newSingleThreadExecutor();
+      provided.add(executorService);
+      return executorService;
+    }
+
+    @Override
+    public void clientClosed(ExecutorService executorService) {
+      released.add(executorService);
+    }
+
+    @Override
+    public void close() {
+      provided.forEach(ExecutorService::shutdownNow);
+    }
   }
 
   private static ClientParameters stalledConnection(
