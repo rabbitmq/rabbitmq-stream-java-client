@@ -432,6 +432,9 @@ public class Client implements AutoCloseable {
       f = b.connect(parameters.host, parameters.port);
       awaitConnection(f);
     } catch (Exception e) {
+      // releases the executors, which may come from factories shared with other clients, and the
+      // event loop group, if the client created it
+      this.closingSequence(null);
       String message =
           format(
               "Error while creating stream connection to %s:%d", parameters.host, parameters.port);
