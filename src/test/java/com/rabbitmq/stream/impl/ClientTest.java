@@ -53,10 +53,16 @@ import com.rabbitmq.stream.impl.TestUtils.DisabledIfFilteringNotSupported;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.ConnectTimeoutException;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.net.ConnectException;
+import java.net.ServerSocket;
+import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
@@ -75,6 +81,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -120,6 +127,91 @@ public class ClientTest {
         .isInstanceOf(StreamException.class)
         .cause()
         .isInstanceOfAny(ConnectTimeoutException.class, UnknownHostException.class);
+  }
+
+  @Test
+  void refusedConnectionShouldReturnConnectionStreamException() throws Exception {
+    int port;
+    try (ServerSocket socket = new ServerSocket(0)) {
+      port = socket.getLocalPort();
+    }
+    int closedPort = port;
+    assertThatThrownBy(() -> cf.get(new ClientParameters().port(closedPort)))
+        .isInstanceOf(ConnectionStreamException.class)
+        .hasCauseInstanceOf(ConnectException.class);
+  }
+
+  @Test
+  void connectionAttemptShouldNotWaitOnMonitor() throws Exception {
+    AtomicReference<io.netty.channel.Channel> channel = new AtomicReference<>();
+    Thread connectingThread =
+        new Thread(
+            () -> {
+              try {
+                cf.get(stalledConnection(channel));
+              } catch (StreamException e) {
+                // expected, the thread is interrupted at the end of the test
+              }
+            });
+    connectingThread.start();
+    try {
+      waitAtMost(() -> connectingThread.getState() == Thread.State.WAITING);
+      // Object.wait() in synchronized pins the carrier of a virtual thread on JDK 21 to 23
+      assertThat(connectingThread.getStackTrace())
+          .noneMatch(
+              e -> "java.lang.Object".equals(e.getClassName()) && "wait".equals(e.getMethodName()));
+    } finally {
+      connectingThread.interrupt();
+      connectingThread.join(10_000);
+    }
+  }
+
+  @Test
+  void interruptionOfConnectionAttemptShouldCloseChannelAndKeepInterruptFlag() throws Exception {
+    AtomicReference<io.netty.channel.Channel> channel = new AtomicReference<>();
+    AtomicReference<Exception> exception = new AtomicReference<>();
+    AtomicBoolean interrupted = new AtomicBoolean(false);
+    Thread connectingThread =
+        new Thread(
+            () -> {
+              try {
+                cf.get(stalledConnection(channel));
+              } catch (Exception e) {
+                exception.set(e);
+                interrupted.set(Thread.currentThread().isInterrupted());
+              }
+            });
+    connectingThread.start();
+    waitAtMost(() -> connectingThread.getState() == Thread.State.WAITING);
+    connectingThread.interrupt();
+    connectingThread.join(10_000);
+    assertThat(connectingThread.isAlive()).isFalse();
+    assertThat(exception.get())
+        .isInstanceOf(StreamException.class)
+        .hasCauseInstanceOf(InterruptedException.class);
+    assertThat(interrupted).isTrue();
+    waitAtMost(() -> !channel.get().isOpen());
+  }
+
+  private static ClientParameters stalledConnection(
+      AtomicReference<io.netty.channel.Channel> channel) {
+    return new ClientParameters()
+        .channelCustomizer(
+            ch -> {
+              channel.set(ch);
+              ch.pipeline()
+                  .addFirst(
+                      new ChannelOutboundHandlerAdapter() {
+                        @Override
+                        public void connect(
+                            ChannelHandlerContext ctx,
+                            SocketAddress remoteAddress,
+                            SocketAddress localAddress,
+                            ChannelPromise promise) {
+                          // never completes the connection
+                        }
+                      });
+            });
   }
 
   @Test
