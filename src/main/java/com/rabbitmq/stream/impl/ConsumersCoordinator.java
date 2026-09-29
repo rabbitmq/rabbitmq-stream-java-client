@@ -15,7 +15,16 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.Constants.RESPONSE_CODE_SUBSCRIPTION_ID_ALREADY_EXISTS;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.NO_SLOT;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.SLOTS_PER_CLIENT;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.SlotReservation;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.WATCHDOG_TICK_INTERVAL_MS;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.backOffNanos;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.emptySlots;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.pickSlot;
 import static com.rabbitmq.stream.impl.CoordinatorUtils.shouldRefreshCandidates;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.update;
+import static com.rabbitmq.stream.impl.CoordinatorUtils.watchdogShouldReDispatch;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
 import static com.rabbitmq.stream.impl.Utils.brokerFromClient;
@@ -40,6 +49,7 @@ import com.rabbitmq.stream.MessageHandler.Context;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.StreamDoesNotExistException;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.StreamNotAvailableException;
 import com.rabbitmq.stream.SubscriptionListener;
 import com.rabbitmq.stream.SubscriptionListener.SubscriptionContext;
 import com.rabbitmq.stream.impl.AgentStateMachine.State;
@@ -66,21 +76,16 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeSet;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -95,20 +100,13 @@ import org.slf4j.LoggerFactory;
 
 final class ConsumersCoordinator implements AutoCloseable {
 
-  static final int MAX_SUBSCRIPTIONS_PER_CLIENT = 256;
+  static final int MAX_SUBSCRIPTIONS_PER_CLIENT = SLOTS_PER_CLIENT;
   static final int MAX_ATTEMPT_BEFORE_FALLING_BACK_TO_LEADER = 5;
   private static final int RECOVERY_THREADS = Math.max(2, Math.min(4, AVAILABLE_PROCESSORS));
   private static final long FIRST_ATTEMPT_EPOCH = 1;
-  // sentinel subscription ID: no slot reserved, or a reservation that was rolled back or freed
-  private static final byte NO_SLOT = -1;
   // how long a node that just failed a connection attempt is deprioritized for new placements;
   // short enough that a node which has actually come back is not avoided for long
   private static final long SUSPECT_TTL_NANOS = SECONDS.toNanos(5);
-  // insurance against a subscription stuck in RECOVERING because of a bug not yet found: every
-  // known way to get stuck is already fixed by the epoch-supersede mechanism the watchdog itself
-  // uses, so the threshold is generous, not tuned to any known failure timing
-  private static final long WATCHDOG_TICK_INTERVAL_MS = SECONDS.toMillis(30);
-  static final long WATCHDOG_STUCK_THRESHOLD_NANOS = SECONDS.toNanos(120);
   // how long an emptied connection is kept around before actually closing it, so a subscription
   // landing on the same node moments later (e.g. during a rolling restart) can reuse it instead
   // of reconnecting. Has to outlast the recovery back-off delay (5s by default), since a
@@ -224,40 +222,56 @@ final class ConsumersCoordinator implements AutoCloseable {
             flowStrategy);
 
     registerSubscription(subscriptionTracker);
+    Assignment assignment;
     try {
-      addToManager(newNode, candidates, subscriptionTracker, offsetSpecification, true);
+      assignment =
+          addToManager(
+              newNode,
+              candidates,
+              subscriptionTracker,
+              offsetSpecification,
+              true,
+              FIRST_ATTEMPT_EPOCH);
     } catch (RuntimeException e) {
       // the initial subscription does not retry, the failure goes back to the caller
       trackerEvent(
           subscriptionTracker,
           recoveryBackOffDelayPolicy(),
           (st, epoch) -> AgentStateMachine.onAssignmentFailed(st, epoch, epoch, e, false));
-      if (e instanceof ConnectionStreamException) {
-        // these exceptions are not public
-        throw new StreamException(e.getMessage());
-      }
-      throw e;
+      throw publicException(e);
     }
-    assignmentSucceeded(subscriptionTracker, recoveryBackOffDelayPolicy(), FIRST_ATTEMPT_EPOCH);
+    RuntimeException invalidation =
+        completeInitialAssignment(subscriptionTracker, assignment, recoveryBackOffDelayPolicy());
+    if (invalidation != null) {
+      throw publicException(invalidation);
+    }
 
     return () -> {
       // cancel() first, synchronously: if the assignment is already confirmed, this is the only
       // remover in the race and always wins it. Posting onCancelled afterward means its async
-      // releaseAssignment effect finds nothing left to do in that case, and remains the sole,
-      // eventual remover for an assignment that was still being established (see
-      // SubscriptionTracker.confirmAssignment)
+      // releaseAssignment effect finds nothing left to do in that case. An assignment still being
+      // established is not the tracker's yet: its success, found stale, releases it
       subscriptionTracker.cancel();
       trackerEvent(
           subscriptionTracker, recoveryBackOffDelayPolicy(), AgentStateMachine::onCancelled);
     };
   }
 
-  private void addToManager(
+  private static RuntimeException publicException(RuntimeException e) {
+    if (e instanceof ConnectionStreamException) {
+      // these exceptions are not public
+      return new StreamException(e.getMessage());
+    }
+    return e;
+  }
+
+  private Assignment addToManager(
       Broker node,
       List<BrokerWrapper> candidates,
       SubscriptionTracker tracker,
       OffsetSpecification offsetSpecification,
-      boolean isInitialSubscription) {
+      boolean isInitialSubscription,
+      long attemptEpoch) {
     ClientParameters clientParameters =
         environment
             .clientParametersCopy()
@@ -266,13 +280,14 @@ final class ConsumersCoordinator implements AutoCloseable {
             .port(node.getPort());
     LOGGER.debug("Finding a manager for consumer {}", tracker.consumer.id());
     while (true) {
-      Placement placement = placement(node);
-      if (placement.waitFor != null) {
+      ConnectionPool.Placement<ClientSubscriptionsManager> placement = placement(node);
+      if (placement.waitFor() != null) {
         // a connection to this node is being opened, share it instead of opening another one
-        awaitConnectionCreation(placement.waitFor);
+        ConnectionPool.awaitCreation(
+            placement.waitFor(), this.environment.rpcTimeout(), "consumer");
         continue;
       }
-      ClientSubscriptionsManager pickedManager = placement.manager;
+      ClientSubscriptionsManager pickedManager = placement.connection();
       if (pickedManager == null) {
         String name = keyForNode(node);
         LOGGER.debug("Creating subscription manager on {}", name);
@@ -286,15 +301,16 @@ final class ConsumersCoordinator implements AutoCloseable {
         creationFinished(node, pickedManager);
       }
       try {
-        pickedManager.add(tracker, offsetSpecification, isInitialSubscription);
+        Assignment assignment =
+            pickedManager.add(tracker, offsetSpecification, isInitialSubscription, attemptEpoch);
         LOGGER.debug(
             "Assigned tracker {} to manager {} (node {}), subscription ID {}, consumer {}",
             tracker.label(),
             pickedManager.id,
             pickedManager.name,
-            tracker.subscriptionIdInClient(),
+            assignment.slot(),
             tracker.consumer.id());
-        return;
+        return assignment;
       } catch (IllegalStateException e) {
         // full or closed in the meantime, pick again
       } catch (RuntimeException e) {
@@ -302,7 +318,7 @@ final class ConsumersCoordinator implements AutoCloseable {
           // manager connection is dead or stream not available: deprioritize this node for new
           // placements for a short while, so a subscription being redistributed does not keep
           // landing back on a node that is mid-restart
-          submitState(
+          state.submitIfOpen(
               s -> s.suspectUntil.put(keyForNode(node), System.nanoTime() + SUSPECT_TTL_NANOS));
           // scheduling manager closing if necessary in another thread to avoid blocking this one
           if (pickedManager.isEmpty()) {
@@ -326,23 +342,8 @@ final class ConsumersCoordinator implements AutoCloseable {
    *
    * <p>Atomic by construction: it runs on the event loop, which is the single writer of the pool.
    */
-  private Placement placement(Broker node) {
-    String key = keyForNode(node);
-    return this.state.query(
-        s -> {
-          s.connections.removeIf(ClientSubscriptionsManager::isDead);
-          for (ClientSubscriptionsManager manager : s.connections) {
-            if (node.equals(manager.node) && !manager.isFull()) {
-              return Placement.use(manager);
-            }
-          }
-          if (s.creating.add(key)) {
-            return Placement.create();
-          }
-          CompletableFuture<Void> waiter = new CompletableFuture<>();
-          s.waiters.computeIfAbsent(key, k -> new ArrayList<>()).add(waiter);
-          return Placement.waitFor(waiter);
-        });
+  private ConnectionPool.Placement<ClientSubscriptionsManager> placement(Broker node) {
+    return this.state.query(s -> s.pool.placement(node, m -> !m.isFull()));
   }
 
   /**
@@ -356,68 +357,11 @@ final class ConsumersCoordinator implements AutoCloseable {
   }
 
   private void creationFinished(Broker node, ClientSubscriptionsManager manager) {
-    String key = keyForNode(node);
-    submitState(
-        s -> {
-          s.creating.remove(key);
-          if (manager != null) {
-            s.connections.add(manager);
-          }
-          List<CompletableFuture<Void>> waiters = s.waiters.remove(key);
-          if (waiters != null) {
-            waiters.forEach(w -> w.complete(null));
-          }
-        });
-  }
-
-  private void awaitConnectionCreation(CompletableFuture<Void> waiter) {
-    try {
-      waiter.get(this.environment.rpcTimeout().toMillis(), MILLISECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new StreamException("Interrupted while waiting for a consumer connection", e);
-    } catch (ExecutionException e) {
-      throw new StreamException("Error while waiting for a consumer connection", e);
-    } catch (TimeoutException e) {
-      throw new TimeoutStreamException("Timeout while waiting for a consumer connection");
-    }
-  }
-
-  /**
-   * Read loop-owned state for monitoring, falling back when the loop is gone.
-   *
-   * <p>Monitoring outlives the coordinator: {@code StreamEnvironment.toString()} is legitimately
-   * called on a closed environment, and must not throw.
-   */
-  private <R> R queryState(
-      java.util.function.Function<CoordinatorState, R> query, R valueIfClosed) {
-    if (this.state.isClosed()) {
-      return valueIfClosed;
-    }
-    try {
-      return this.state.query(query);
-    } catch (IllegalStateException e) {
-      // the loop was closed concurrently
-      return valueIfClosed;
-    }
-  }
-
-  /**
-   * Post to the loop, tolerating a closed loop.
-   *
-   * <p>Callers include netty I/O threads, whose connection events can arrive while the coordinator
-   * is closing; an exception there would surface on an I/O thread.
-   */
-  private void submitState(java.util.function.Consumer<CoordinatorState> task) {
-    try {
-      this.state.submit(task);
-    } catch (IllegalStateException e) {
-      LOGGER.debug("Coordinator event loop is closed, dropping task");
-    }
+    state.submitIfOpen(s -> s.pool.creationFinished(node, manager));
   }
 
   private void registerSubscription(SubscriptionTracker tracker) {
-    submitState(s -> s.subscriptions.put(tracker.id, new TrackerState(tracker)));
+    state.submitIfOpen(s -> s.subscriptions.put(tracker.id, new TrackerState(tracker)));
   }
 
   /**
@@ -442,84 +386,77 @@ final class ConsumersCoordinator implements AutoCloseable {
       BackOffDelayPolicy delayPolicy,
       java.util.function.Consumer<TrackerState> beforeDecision,
       BiFunction<State, Long, TransitionResult> decision) {
-    submitState(
-        s -> {
-          TrackerState trackerState = s.subscriptions.get(tracker.id);
-          if (trackerState == null) {
-            return;
-          }
-          beforeDecision.accept(trackerState);
-          TransitionResult result = decision.apply(trackerState.state, trackerState.epoch);
-          boolean newAttempt =
-              result.state() == State.RECOVERING && result.epoch() != trackerState.epoch;
-          trackerState.state = result.state();
-          trackerState.epoch = result.epoch();
-          // 0-based, as BackOffDelayPolicy defines it (see AsyncRetry): delay(0) is the wait before
-          // an episode's first attempt, delay(n) the wait after n failed ones. Read before the
-          // increment and passed to the effect, so the deadline below and the delay
-          // scheduleAssignment applies come from the same index
-          int backOffIndex = trackerState.attempts;
-          if (newAttempt) {
-            trackerState.attempts++;
-            // the attempt is either scheduled after its back-off delay or, for a watchdog rescue,
-            // dispatched right away, and which one is only decided in the effect. Assume the delay
-            // applies, so the watchdog measures "stuck" from the point the attempt is due at the
-            // latest and never cuts short a configured back-off
-            trackerState.nextAttemptAt =
-                System.nanoTime() + backOffNanos(delayPolicy, backOffIndex);
-          }
-          if (result.state() == State.ACTIVE) {
-            // a successful assignment ends the recovery episode: the retry timeout is meant to
-            // bound one episode, not the subscription's whole life
-            trackerState.attempts = 0;
-            trackerState.failedLookups = 0;
-          }
-          if (result.state().terminal()) {
-            s.subscriptions.remove(tracker.id);
-          }
-          if (result.hasEffect()) {
-            // the whole effect goes to a single task: the effects of one transition are ordered
-            // (detach before re-assign, for instance), which separate tasks on a multi-threaded
-            // pool would not guarantee
-            TrackerActions actions =
-                new TrackerActions(tracker, delayPolicy, backOffIndex, trackerState.failedLookups);
-            submitRecovery(
-                () -> {
-                  try {
-                    result.applyEffect(actions);
-                  } catch (Throwable e) {
-                    LOGGER.warn(
-                        "Error while applying transition effect for subscription {}: {}",
-                        tracker.label(),
-                        e.getMessage());
-                  }
-                });
-          }
-        });
+    state.submitIfOpen(
+        s -> applyTransition(s, tracker, delayPolicy, beforeDecision, decision, null));
   }
 
   /**
-   * The back-off delay for an attempt, in nanoseconds, or 0 if the policy has given up.
-   *
-   * <p>{@link BackOffDelayPolicy#TIMEOUT} is {@code Duration.ofMillis(Long.MAX_VALUE)}, so it has
-   * to be excluded before converting: {@code toNanos()} would overflow on it.
+   * @param assignment the assignment established by the attempt the event comes from, or null if it
+   *     does not come from a successful attempt
    */
-  private static long backOffNanos(BackOffDelayPolicy delayPolicy, int attempts) {
-    Duration delay = delayPolicy.delay(attempts);
-    return BackOffDelayPolicy.TIMEOUT.equals(delay) ? 0 : delay.toNanos();
-  }
-
-  /**
-   * Whether the watchdog should start a fresh attempt for a subscription in this state.
-   *
-   * <p>Measured against when the current attempt is <b>due</b>, not when it was created: a
-   * subscription waiting out its back-off delay is waiting by design, not stuck, so comparing
-   * against the creation time would let the watchdog cut short any configured delay longer than the
-   * stuck threshold.
-   */
-  static boolean watchdogShouldReDispatch(State state, long nextAttemptAt, long now) {
-    // subtraction, not a direct comparison, so this stays correct across a nanoTime() wraparound
-    return state == State.RECOVERING && now - nextAttemptAt > WATCHDOG_STUCK_THRESHOLD_NANOS;
+  // loop only
+  private void applyTransition(
+      CoordinatorState s,
+      SubscriptionTracker tracker,
+      BackOffDelayPolicy delayPolicy,
+      java.util.function.Consumer<TrackerState> beforeDecision,
+      BiFunction<State, Long, TransitionResult> decision,
+      Assignment assignment) {
+    TrackerState trackerState = s.subscriptions.get(tracker.id);
+    if (trackerState == null) {
+      if (assignment != null) {
+        // the subscription is over, and the attempt's assignment was never published for its
+        // cancellation to find
+        submitRecovery(() -> assignment.manager.release(tracker, assignment));
+      }
+      return;
+    }
+    beforeDecision.accept(trackerState);
+    TransitionResult result = decision.apply(trackerState.state, trackerState.epoch);
+    boolean newAttempt = result.state() == State.RECOVERING && result.epoch() != trackerState.epoch;
+    trackerState.state = result.state();
+    trackerState.epoch = result.epoch();
+    // 0-based, as BackOffDelayPolicy defines it (see AsyncRetry): delay(0) is the wait before
+    // an episode's first attempt, delay(n) the wait after n failed ones. Read before the
+    // increment and passed to the effect, so the deadline below and the delay
+    // scheduleAssignment applies come from the same index
+    int backOffIndex = trackerState.attempts;
+    if (newAttempt) {
+      trackerState.attempts++;
+      // the attempt is either scheduled after its back-off delay or, for a watchdog rescue,
+      // dispatched right away, and which one is only decided in the effect. Assume the delay
+      // applies, so the watchdog measures "stuck" from the point the attempt is due at the
+      // latest and never cuts short a configured back-off
+      trackerState.nextAttemptAt = System.nanoTime() + backOffNanos(delayPolicy, backOffIndex);
+    }
+    if (result.state() == State.ACTIVE) {
+      // a successful assignment ends the recovery episode: the retry timeout is meant to
+      // bound one episode, not the subscription's whole life
+      trackerState.attempts = 0;
+      trackerState.failedLookups = 0;
+    }
+    if (result.state().terminal()) {
+      s.subscriptions.remove(tracker.id);
+    }
+    if (result.hasEffect()) {
+      // the whole effect goes to a single task: the effects of one transition are ordered
+      // (detach before re-assign, for instance), which separate tasks on a multi-threaded
+      // pool would not guarantee
+      TrackerActions actions =
+          new TrackerActions(
+              tracker, delayPolicy, backOffIndex, trackerState.failedLookups, assignment);
+      submitRecovery(
+          () -> {
+            try {
+              result.applyEffect(actions);
+            } catch (Throwable e) {
+              LOGGER.warn(
+                  "Error while applying transition effect for subscription {}: {}",
+                  tracker.label(),
+                  e.getMessage());
+            }
+          });
+    }
   }
 
   private void ensureWatchdogScheduled() {
@@ -546,7 +483,7 @@ final class ConsumersCoordinator implements AutoCloseable {
    * tick interval.
    */
   void watchdogTick() {
-    submitState(
+    state.submitIfOpen(
         s -> {
           long now = System.nanoTime();
           // collected first, then dispatched from a separate pass: dispatching inline while
@@ -589,11 +526,74 @@ final class ConsumersCoordinator implements AutoCloseable {
   }
 
   private void assignmentSucceeded(
-      SubscriptionTracker tracker, BackOffDelayPolicy delayPolicy, long attemptEpoch) {
-    trackerEvent(
-        tracker,
-        delayPolicy,
-        (st, epoch) -> AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch));
+      SubscriptionTracker tracker,
+      Assignment assignment,
+      BackOffDelayPolicy delayPolicy,
+      long attemptEpoch) {
+    state.submitIfOpen(
+        s ->
+            applyTransition(
+                s,
+                tracker,
+                delayPolicy,
+                NO_STATE_CHANGE,
+                successDecision(tracker, assignment, attemptEpoch, null),
+                assignment));
+  }
+
+  /**
+   * The initial subscription's success, applied synchronously so the subscribing thread can fail if
+   * the assignment is already gone.
+   *
+   * @return the reason the assignment is no longer valid, or null
+   */
+  private RuntimeException completeInitialAssignment(
+      SubscriptionTracker tracker, Assignment assignment, BackOffDelayPolicy delayPolicy) {
+    AtomicReference<RuntimeException> invalidation = new AtomicReference<>();
+    // not run if the coordinator is closing: no failure to report then
+    state.queryIfOpen(
+        s -> {
+          applyTransition(
+              s,
+              tracker,
+              delayPolicy,
+              NO_STATE_CHANGE,
+              successDecision(tracker, assignment, FIRST_ATTEMPT_EPOCH, invalidation),
+              assignment);
+          return null;
+        },
+        null);
+    return invalidation.get();
+  }
+
+  private BiFunction<State, Long, TransitionResult> successDecision(
+      SubscriptionTracker tracker,
+      Assignment assignment,
+      long attemptEpoch,
+      AtomicReference<RuntimeException> invalidationHolder) {
+    return (st, epoch) -> {
+      if (AgentStateMachine.isStale(epoch, attemptEpoch) || st.terminal()) {
+        return AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch);
+      }
+      ClientSubscriptionsManager manager = assignment.manager;
+      // published before the validation, not after: see ClientSubscriptionsManager.invalidation
+      tracker.publish(assignment);
+      RuntimeException invalidation = manager.invalidation(tracker, assignment);
+      if (invalidation == null) {
+        // a plain field write for a non-null client, fine on the loop
+        tracker.consumer.setSubscriptionClient(manager.client);
+        return AgentStateMachine.onAssignmentSucceeded(st, epoch, attemptEpoch);
+      }
+      tracker.unpublish(assignment);
+      LOGGER.debug(
+          "Assignment of subscription {} is already gone: {}",
+          tracker.label(),
+          Utils.exceptionMessage(invalidation));
+      if (invalidationHolder != null) {
+        invalidationHolder.set(invalidation);
+      }
+      return AgentStateMachine.onAssignmentInvalidated(st, epoch, attemptEpoch, invalidation);
+    };
   }
 
   private void assignmentFailed(
@@ -685,8 +685,9 @@ final class ConsumersCoordinator implements AutoCloseable {
         LOGGER.debug("Not assigning superseded attempt for subscription {}", tracker.label());
         return;
       }
-      addToManager(broker, candidates, tracker, offsetSpecification, false);
-      assignmentSucceeded(tracker, delayPolicy, attemptEpoch);
+      Assignment assignment =
+          addToManager(broker, candidates, tracker, offsetSpecification, false, attemptEpoch);
+      assignmentSucceeded(tracker, assignment, delayPolicy, attemptEpoch);
     } catch (Exception e) {
       LOGGER.debug(
           "Error while assigning subscription {}: {}", tracker.label(), Utils.exceptionMessage(e));
@@ -716,9 +717,9 @@ final class ConsumersCoordinator implements AutoCloseable {
    * Whether an attempt has been superseded, and so must not touch the broker.
    *
    * <p>A superseded attempt that subscribes anyway is undone by the {@code releaseAssignment}
-   * effect, but only once the broker has already started delivering to it, which the application
-   * sees as duplicate messages. The event that superseded it always started an attempt of its own,
-   * so giving up here does not cost the subscription its recovery.
+   * effect of its stale success, but only once the broker has already started delivering to it,
+   * which the application sees as duplicate messages. The event that superseded it always started
+   * an attempt of its own, so giving up here does not cost the subscription its recovery.
    */
   private boolean superseded(SubscriptionTracker tracker, long attemptEpoch) {
     Boolean superseded =
@@ -758,16 +759,20 @@ final class ConsumersCoordinator implements AutoCloseable {
     // attempt's delay comes from
     private final int backOffIndex;
     private final int failedLookups;
+    // the assignment of the attempt a success comes from, null for any other event
+    private final Assignment assignment;
 
     private TrackerActions(
         SubscriptionTracker tracker,
         BackOffDelayPolicy delayPolicy,
         int backOffIndex,
-        int failedLookups) {
+        int failedLookups,
+        Assignment assignment) {
       this.tracker = tracker;
       this.delayPolicy = delayPolicy;
       this.backOffIndex = backOffIndex;
       this.failedLookups = failedLookups;
+      this.assignment = assignment;
     }
 
     @Override
@@ -837,68 +842,24 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     @Override
     public void releaseAssignment() {
-      ClientSubscriptionsManager manager = this.tracker.manager();
-      if (manager != null) {
-        // detachIfOwnedBy() is idempotent, so this is a no-op if the assignment has already
-        // been released (e.g. by the direct call in cancel())
-        manager.remove(this.tracker);
+      // exactly the attempt's own for a success, which may never have been published, the current
+      // one otherwise
+      Assignment toRelease = this.assignment == null ? this.tracker.assignment() : this.assignment;
+      if (toRelease.manager != null) {
+        toRelease.manager.release(this.tracker, toRelease);
       }
     }
   }
 
-  private static final class Placement {
-
-    private final ClientSubscriptionsManager manager;
-    private final CompletableFuture<Void> waitFor;
-
-    private Placement(ClientSubscriptionsManager manager, CompletableFuture<Void> waitFor) {
-      this.manager = manager;
-      this.waitFor = waitFor;
-    }
-
-    private static Placement use(ClientSubscriptionsManager manager) {
-      return new Placement(manager, null);
-    }
-
-    private static Placement create() {
-      return new Placement(null, null);
-    }
-
-    private static Placement waitFor(CompletableFuture<Void> waiter) {
-      return new Placement(null, waiter);
-    }
-  }
-
-  /** Result of {@code reserveSlot}: a slot number, or the reason none was reserved. */
-  private static final class SlotReservation {
-
-    private static final SlotReservation FULL = new SlotReservation(NO_SLOT, true, false);
-    private static final SlotReservation DEAD = new SlotReservation(NO_SLOT, false, true);
-
-    private final byte subscriptionId;
-    private final boolean full;
-    private final boolean dead;
-
-    private SlotReservation(byte subscriptionId, boolean full, boolean dead) {
-      this.subscriptionId = subscriptionId;
-      this.full = full;
-      this.dead = dead;
-    }
-
-    private static SlotReservation reserved(byte subscriptionId) {
-      return new SlotReservation(subscriptionId, false, false);
-    }
-  }
-
   int managerCount() {
-    return queryState(s -> s.connections.size(), 0);
+    return state.queryIfOpen(s -> s.pool.size(), 0);
   }
 
   // the connection pool is coordinator-owned state, so managers do not reach into it directly.
   // step 4 of the redesign replaces this call with an event posted to the event loop
   private void removeFromPool(ClientSubscriptionsManager manager) {
     // fire-and-forget: this is called from netty I/O threads, which must never wait on the loop
-    submitState(s -> s.connections.remove(manager));
+    state.submitIfOpen(s -> s.pool.remove(manager));
   }
 
   // package protected for testing
@@ -974,13 +935,7 @@ final class ConsumersCoordinator implements AutoCloseable {
       this.watchdogTask.cancel(false);
     }
     List<ClientSubscriptionsManager> connections =
-        queryState(
-            s -> {
-              List<ClientSubscriptionsManager> all = new ArrayList<>(s.connections);
-              s.connections.clear();
-              return all;
-            },
-            Collections.emptyList());
+        state.queryIfOpen(s -> s.pool.drain(), Collections.emptyList());
     for (ClientSubscriptionsManager manager : connections) {
       try {
         manager.close();
@@ -1005,27 +960,14 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
     this.recoveryExecutor.shutdownNow();
     if (this.privateEventExecutorGroup) {
-      closeEventExecutorGroup(this.eventExecutorGroup);
-    }
-  }
-
-  private static void closeEventExecutorGroup(EventExecutorGroup group) {
-    try {
-      if (!group.isShuttingDown()) {
-        // no quiet period: the loop is a control plane, there is no in-flight batch to drain
-        group.shutdownGracefully(0, 10, SECONDS).get(10, SECONDS);
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    } catch (Exception e) {
-      LOGGER.info("Error while closing coordinator event executor group: {}", e.getMessage());
+      CoordinatorUtils.closeEventExecutorGroup(this.eventExecutorGroup);
     }
   }
 
   @Override
   public String toString() {
     List<ClientSubscriptionsManager> connections =
-        queryState(s -> new ArrayList<>(s.connections), Collections.emptyList());
+        state.queryIfOpen(s -> s.pool.connections(), Collections.emptyList());
     StringBuilder builder = new StringBuilder("{");
     builder.append(jsonField("client_count", connections.size())).append(", ");
     builder
@@ -1092,10 +1034,9 @@ final class ConsumersCoordinator implements AutoCloseable {
     private final Map<String, String> subscriptionProperties;
     private volatile long offset;
     private volatile boolean hasReceivedSomething = false;
-    // set only once a manager has confirmed the subscription with the broker, never during the
-    // reserve-then-dispatch window: a concurrent cancel or supersede sees no manager yet and
-    // defers to the epoch check that runs once the in-flight attempt finishes (see
-    // ConsumersCoordinator.assignmentSucceeded)
+    // an attempt carries the assignment it establishes to the event loop instead of writing it
+    // here: only the loop publishes one, when it applies a current, valid success. Cleared by
+    // releases and by the markRecovering effect
     private final AtomicReference<Assignment> assignment = new AtomicReference<>(Assignment.NONE);
     private final ConsumerFlowStrategy flowStrategy;
 
@@ -1136,46 +1077,26 @@ final class ConsumersCoordinator implements AutoCloseable {
       // offset
       LOGGER.debug("Calling tracking consumer closing callback (may be no-op)");
       this.trackingClosingCallback.run();
-      ClientSubscriptionsManager manager = this.manager();
-      if (manager != null) {
+      Assignment current = this.assignment.get();
+      if (current.manager != null) {
         LOGGER.debug("Removing tracker {} from manager", this.label());
-        manager.remove(this);
+        current.manager.release(this, current);
       } else {
         LOGGER.debug("No manager to remove consumer from");
       }
     }
 
-    ClientSubscriptionsManager manager() {
-      return this.assignment.get().manager;
+    Assignment assignment() {
+      return this.assignment.get();
     }
 
-    byte subscriptionIdInClient() {
-      return this.assignment.get().subscriptionIdInClient;
+    // loop only
+    void publish(Assignment assignment) {
+      this.assignment.set(assignment);
     }
 
-    void confirmAssignment(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
-      this.assignment.set(new Assignment(subscriptionIdInClient, manager));
-      this.consumer.setSubscriptionClient(manager.client);
-    }
-
-    /**
-     * Release this tracker's assignment to {@code expected}, if it is still the current one.
-     *
-     * <p>Idempotent by construction: of two concurrent callers (the direct call in {@link
-     * #cancel()} and the async {@code releaseAssignment} effect), only the one that wins the CAS
-     * gets a slot back to release; the other sees the assignment already cleared and no-ops.
-     */
-    int detachIfOwnedBy(ClientSubscriptionsManager expected) {
-      Assignment current = this.assignment.get();
-      if (current.manager != expected) {
-        return -1;
-      }
-      if (!this.assignment.compareAndSet(current, Assignment.NONE)) {
-        return -1;
-      }
-      // masked to an unsigned 0-255 range: a plain byte cannot serve as its own "no slot"
-      // sentinel, since slot 255's byte representation (0xFF) is indistinguishable from -1
-      return current.subscriptionIdInClient & 0xFF;
+    boolean unpublish(Assignment expected) {
+      return this.assignment.compareAndSet(expected, Assignment.NONE);
     }
 
     void detachFromManager() {
@@ -1202,17 +1123,27 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
   }
 
-  /** A subscription's current manager and slot, or {@link #NONE} if it has none. */
+  /**
+   * The manager and slot an attempt established, or {@link #NONE}.
+   *
+   * <p>Compared by identity: two attempts landing on the same manager make two assignments.
+   */
   private static final class Assignment {
 
     private static final Assignment NONE = new Assignment(NO_SLOT, null);
 
     private final byte subscriptionIdInClient;
     private final ClientSubscriptionsManager manager;
+    private final AtomicBoolean released = new AtomicBoolean(false);
 
     private Assignment(byte subscriptionIdInClient, ClientSubscriptionsManager manager) {
       this.subscriptionIdInClient = subscriptionIdInClient;
       this.manager = manager;
+    }
+
+    // masked to an unsigned 0-255 range: slot 255's byte representation is the same as NO_SLOT's
+    private int slot() {
+      return this.subscriptionIdInClient & 0xFF;
     }
   }
 
@@ -1231,12 +1162,8 @@ final class ConsumersCoordinator implements AutoCloseable {
    */
   static final class CoordinatorState {
 
-    private final NavigableSet<ClientSubscriptionsManager> connections = new TreeSet<>();
+    private final ConnectionPool<ClientSubscriptionsManager> pool = new ConnectionPool<>();
     private final Map<Long, TrackerState> subscriptions = new HashMap<>();
-    // one connection creation at a time per node, so concurrent placements share the connection
-    // being opened instead of each opening their own
-    private final Set<String> creating = new HashSet<>();
-    private final Map<String, List<CompletableFuture<Void>>> waiters = new HashMap<>();
     // broker key -> suspect-until deadline (System.nanoTime() terms); consulted lazily by
     // deprioritizeSuspects, so a stale entry just stops mattering once its TTL passes, no active
     // expiry needed
@@ -1326,7 +1253,8 @@ final class ConsumersCoordinator implements AutoCloseable {
    * <p>It dispatches inbound messages to the appropriate {@link SubscriptionTracker} and
    * re-allocates {@link SubscriptionTracker}s in case of stream unavailability or disconnection.
    */
-  private class ClientSubscriptionsManager implements Comparable<ClientSubscriptionsManager> {
+  private class ClientSubscriptionsManager
+      implements ConnectionPool.PooledConnection, Comparable<ClientSubscriptionsManager> {
 
     private final long id;
     private final Broker node;
@@ -1336,9 +1264,16 @@ final class ConsumersCoordinator implements AutoCloseable {
     // trackers and tracker count must be kept in sync; the array has a single writer, the event
     // loop, so a slot picked there is never picked twice, and a slot freed there is never freed
     // while its unsubscribe RPC is still in flight (the array stays occupied until then)
-    private volatile List<SubscriptionTracker> subscriptionTrackers =
-        createSubscriptionTrackerList();
+    private volatile List<SubscriptionTracker> subscriptionTrackers = emptySlots();
     private final AtomicInteger consumerIndexSequence = new AtomicInteger(0);
+    // loop only: subscriptions whose attempt was in flight here when their stream became
+    // unavailable. Their assignment must not become active, but their slot stays theirs until the
+    // attempt releases it, so its ID cannot be reused while its subscribe or unsubscribe is in
+    // flight
+    private final Set<SubscriptionTracker> poisoned =
+        Collections.newSetFromMap(new IdentityHashMap<>());
+    // loop only: the epoch of the attempt that reserved each slot
+    private final long[] slotEpochs = new long[MAX_SUBSCRIPTIONS_PER_CLIENT];
     private volatile int trackerCount;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicBoolean clientInitialized = new AtomicBoolean(false);
@@ -1473,11 +1408,31 @@ final class ConsumersCoordinator implements AutoCloseable {
                 consumerCount,
                 streamCount);
           }
-          iterate(
-              this.subscriptionTrackers,
-              t ->
-                  trackerEvent(
-                      t, recoveryBackOffDelayPolicy(), AgentStateMachine::onConnectionLost));
+          // on the loop, which knows each subscription's current attempt: a slot reserved by a
+          // superseded attempt belongs to that attempt, which either fails with the connection or
+          // has its success found stale, and must not disrupt the subscription's current
+          // assignment on another connection
+          state.submitIfOpen(
+              s -> {
+                Set<SubscriptionTracker> affected =
+                    Collections.newSetFromMap(new IdentityHashMap<>());
+                List<SubscriptionTracker> trackers = this.subscriptionTrackers;
+                for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
+                  SubscriptionTracker t = trackers.get(i);
+                  if (t != null && this.isCurrentAttempt(s, t, i)) {
+                    affected.add(t);
+                  }
+                }
+                affected.forEach(
+                    t ->
+                        applyTransition(
+                            s,
+                            t,
+                            recoveryBackOffDelayPolicy(),
+                            NO_STATE_CHANGE,
+                            AgentStateMachine::onConnectionLost,
+                            null));
+              });
         }
       };
     }
@@ -1488,31 +1443,34 @@ final class ConsumersCoordinator implements AutoCloseable {
             "Received metadata notification for '{}', stream is likely to have become unavailable",
             stream);
         // fire-and-forget: this runs on a netty I/O thread, which must never wait on the loop
-        submitState(
+        state.submitIfOpen(
             s -> {
               List<SubscriptionTracker> current = this.subscriptionTrackers;
+              List<SubscriptionTracker> updated = emptySlots();
               List<SubscriptionTracker> affected = new ArrayList<>();
               for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
                 SubscriptionTracker t = current.get(i);
+                updated.set(i, t);
                 if (t != null && t.stream.equals(stream)) {
                   affected.add(t);
+                  if (this.isLiveAssignment(s, t, i)) {
+                    LOGGER.debug(
+                        "Subscription {} ({}) was at offset {} (received something? {})",
+                        i,
+                        t.label(),
+                        t.offset,
+                        t.hasReceivedSomething);
+                    updated.set(i, null);
+                  } else {
+                    // an attempt is in flight in this slot: it releases the slot itself, freeing
+                    // it here would let it be reused while the attempt's subscribe or
+                    // unsubscribe for this ID is still in flight
+                    this.poisoned.add(t);
+                  }
                 }
               }
               if (affected.isEmpty()) {
                 return;
-              }
-              List<SubscriptionTracker> updated = createSubscriptionTrackerList();
-              for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-                updated.set(i, current.get(i));
-              }
-              for (SubscriptionTracker subscription : affected) {
-                LOGGER.debug(
-                    "Subscription {} ({}) was at offset {} (received something? {})",
-                    subscription.subscriptionIdInClient(),
-                    subscription.label(),
-                    subscription.offset,
-                    subscription.hasReceivedSomething);
-                updated.set(subscription.subscriptionIdInClient() & 0xFF, null);
               }
               this.setSubscriptionTrackers(updated);
 
@@ -1548,23 +1506,22 @@ final class ConsumersCoordinator implements AutoCloseable {
       };
     }
 
-    private List<SubscriptionTracker> createSubscriptionTrackerList() {
-      List<SubscriptionTracker> newSubscriptions = new ArrayList<>(MAX_SUBSCRIPTIONS_PER_CLIENT);
-      IntStream.range(0, MAX_SUBSCRIPTIONS_PER_CLIENT).forEach(i -> newSubscriptions.add(null));
-      return newSubscriptions;
-    }
-
     private void checkNotClosed() {
       if (!this.client.isOpen()) {
         throw new ClientClosedException();
       }
     }
 
-    void add(
+    /**
+     * Establish an assignment for the attempt of a subscription, without making it the
+     * subscription's: that is up to the loop, once it knows the attempt is still the current one.
+     */
+    Assignment add(
         SubscriptionTracker tracker,
         OffsetSpecification offsetSpecification,
-        boolean isInitialSubscription) {
-      byte subscriptionId = reserveSlot(tracker);
+        boolean isInitialSubscription,
+        long attemptEpoch) {
+      byte subscriptionId = reserveSlot(tracker, attemptEpoch);
       LOGGER.debug(
           "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
               + "subscription ID is {}, consumer {}",
@@ -1652,13 +1609,10 @@ final class ConsumersCoordinator implements AutoCloseable {
           throw convertCodeToException(
               subscribeResponse.getResponseCode(), tracker.stream, () -> message);
         }
-        // only confirmed now: a cancellation racing the RPCs above finds no manager yet on the
-        // tracker, and defers to the epoch check that runs once this attempt finishes (see
-        // ConsumersCoordinator.assignmentSucceeded)
-        tracker.confirmAssignment(subscriptionId, this);
         LOGGER.debug("Subscribed to '{}'", tracker.stream);
+        return new Assignment(subscriptionId, this);
       } catch (RuntimeException e) {
-        releaseSlot(subscriptionId);
+        releaseSlot(subscriptionId, tracker);
         throw e;
       }
     }
@@ -1669,7 +1623,7 @@ final class ConsumersCoordinator implements AutoCloseable {
      *
      * <p>Atomic by construction: it runs on the event loop, the single writer of the array.
      */
-    private byte reserveSlot(SubscriptionTracker tracker) {
+    private byte reserveSlot(SubscriptionTracker tracker, long attemptEpoch) {
       SlotReservation reservation =
           ConsumersCoordinator.this.state.query(
               s -> {
@@ -1683,6 +1637,10 @@ final class ConsumersCoordinator implements AutoCloseable {
                     (byte) pickSlot(this.subscriptionTrackers, this.consumerIndexSequence);
                 this.setSubscriptionTrackers(
                     update(this.subscriptionTrackers, subscriptionId, tracker));
+                this.slotEpochs[subscriptionId & 0xFF] = attemptEpoch;
+                // the poison is for an older attempt, which is stale by now, and its release can
+                // lag behind this attempt's validation
+                this.poisoned.remove(tracker);
                 return SlotReservation.reserved(subscriptionId);
               });
       if (reservation.full) {
@@ -1695,56 +1653,117 @@ final class ConsumersCoordinator implements AutoCloseable {
             "Cannot add subscription tracker for stream '{}', manager is closed", tracker.stream);
         throw new IllegalStateException("Cannot add subscription tracker, the manager is closed");
       }
-      return reservation.subscriptionId;
+      return reservation.slot;
     }
 
     // undo a reservation that failed to subscribe: the tracker was never confirmed, so there is
     // nothing to unsubscribe, only the array slot to free. Blocking (not fire-and-forget): the
     // caller is addToManager(), off-loop, which checks isEmpty() right after this returns, so the
     // free must be visible by then
-    private void releaseSlot(byte subscriptionId) {
+    private void releaseSlot(byte subscriptionId, SubscriptionTracker tracker) {
       ConsumersCoordinator.this.state.query(
           s -> {
-            this.setSubscriptionTrackers(update(this.subscriptionTrackers, subscriptionId, null));
+            this.freeSlot(subscriptionId & 0xFF, tracker);
             return null;
           });
     }
 
-    void remove(SubscriptionTracker subscriptionTracker) {
-      int slot = subscriptionTracker.detachIfOwnedBy(this);
-      if (slot < 0) {
-        // already removed, e.g. by the direct call in cancel() racing the async
-        // releaseAssignment effect: detachIfOwnedBy() is idempotent, so this is a no-op
+    // loop only; only if the slot still holds this tracker: it may have been freed and reused
+    // since, and nulling it would silently cut the new owner off
+    private void freeSlot(int slot, SubscriptionTracker tracker) {
+      if (this.subscriptionTrackers.get(slot) == tracker) {
+        this.setSubscriptionTrackers(update(this.subscriptionTrackers, (byte) slot, null));
+      }
+      this.poisoned.remove(tracker);
+    }
+
+    /**
+     * Loop only: why an assignment made here by the subscription's current attempt must not become
+     * active, or null if it still stands.
+     *
+     * <p>Sound for the connection case without any lock: the shutdown listener sets {@code closed}
+     * and then posts the loop task that reads the slots, the loop publishes the assignment before
+     * this reads {@code closed}. Either this sees the connection dead, or the listener's task runs
+     * after this one, and finds the published assignment, whose attempt is the current one. The
+     * metadata listener's loop task runs before the success event it races with, since the listener
+     * posts it before the attempt returns.
+     */
+    private RuntimeException invalidation(SubscriptionTracker tracker, Assignment assignment) {
+      if (this.isDead()) {
+        return new ClientClosedException();
+      }
+      if (this.poisoned.contains(tracker)
+          || this.subscriptionTrackers.get(assignment.slot()) != tracker) {
+        return new StreamNotAvailableException(tracker.stream);
+      }
+      return null;
+    }
+
+    // loop only: the slot was reserved by the subscription's current attempt, which includes its
+    // published assignment while it is active
+    private boolean isCurrentAttempt(CoordinatorState s, SubscriptionTracker tracker, int slot) {
+      TrackerState trackerState = s.subscriptions.get(tracker.id);
+      return trackerState != null && this.slotEpochs[slot] == trackerState.epoch;
+    }
+
+    // loop only: the tracker is active and its published assignment is this very slot, as opposed
+    // to a reservation of an attempt still in flight
+    private boolean isLiveAssignment(CoordinatorState s, SubscriptionTracker tracker, int slot) {
+      TrackerState trackerState = s.subscriptions.get(tracker.id);
+      // a single read: a release can clear it concurrently, off-loop
+      Assignment assignment = tracker.assignment.get();
+      return trackerState != null
+          && trackerState.state == State.ACTIVE
+          && assignment.manager == this
+          && assignment.slot() == slot;
+    }
+
+    /**
+     * Release exactly the given assignment of the subscription: its broker subscription and its
+     * slot, and the subscription's assignment if it is still this one. At most once per assignment,
+     * so the direct call in {@link SubscriptionTracker#cancel()} and the {@code releaseAssignment}
+     * effect cannot both unsubscribe it.
+     */
+    void release(SubscriptionTracker subscriptionTracker, Assignment assignment) {
+      if (!assignment.released.compareAndSet(false, true)) {
         return;
       }
-      byte subscriptionIdInClient = (byte) slot;
-
-      try {
-        Client.Response unsubscribeResponse =
-            Utils.callAndMaybeRetry(
-                () -> {
-                  if (client.isOpen()) {
-                    return client.unsubscribe(subscriptionIdInClient);
-                  } else {
-                    return Client.responseOk();
-                  }
-                },
-                RETRY_ON_TIMEOUT,
-                "Unsubscribe request for consumer %d on stream '%s'",
-                subscriptionTracker.consumer.id(),
-                subscriptionTracker.stream);
-        if (!unsubscribeResponse.isOk()) {
-          LOGGER.warn(
-              "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
-              subscriptionTracker.stream,
-              formatConstant(unsubscribeResponse.getResponseCode()),
-              subscriptionIdInClient);
+      subscriptionTracker.unpublish(assignment);
+      int slot = assignment.slot();
+      byte subscriptionIdInClient = assignment.subscriptionIdInClient;
+      // not if the slot is no longer the subscription's, e.g. freed by a metadata update: its ID
+      // may belong to another subscription by now
+      boolean held =
+          ConsumersCoordinator.this.state.query(
+              s -> this.subscriptionTrackers.get(slot) == subscriptionTracker);
+      if (held) {
+        try {
+          Client.Response unsubscribeResponse =
+              Utils.callAndMaybeRetry(
+                  () -> {
+                    if (client.isOpen()) {
+                      return client.unsubscribe(subscriptionIdInClient);
+                    } else {
+                      return Client.responseOk();
+                    }
+                  },
+                  RETRY_ON_TIMEOUT,
+                  "Unsubscribe request for consumer %d on stream '%s'",
+                  subscriptionTracker.consumer.id(),
+                  subscriptionTracker.stream);
+          if (!unsubscribeResponse.isOk()) {
+            LOGGER.warn(
+                "Unexpected response code when unsubscribing from {}: {} (subscription ID {})",
+                subscriptionTracker.stream,
+                formatConstant(unsubscribeResponse.getResponseCode()),
+                subscriptionIdInClient);
+          }
+        } catch (TimeoutStreamException e) {
+          LOGGER.debug(
+              "Reached timeout when trying to unsubscribe consumer {} from stream '{}'",
+              subscriptionTracker.consumer.id(),
+              subscriptionTracker.stream);
         }
-      } catch (TimeoutStreamException e) {
-        LOGGER.debug(
-            "Reached timeout when trying to unsubscribe consumer {} from stream '{}'",
-            subscriptionTracker.consumer.id(),
-            subscriptionTracker.stream);
       }
 
       // the array keeps the slot occupied until now, so no new subscription can reuse the same
@@ -1754,23 +1773,12 @@ final class ConsumersCoordinator implements AutoCloseable {
       boolean empty =
           ConsumersCoordinator.this.state.query(
               s -> {
-                this.setSubscriptionTrackers(
-                    update(this.subscriptionTrackers, subscriptionIdInClient, null));
+                this.freeSlot(slot, subscriptionTracker);
                 return this.isEmpty();
               });
       if (empty) {
         this.closeIfEmpty();
       }
-    }
-
-    private List<SubscriptionTracker> update(
-        List<SubscriptionTracker> original, byte index, SubscriptionTracker newValue) {
-      List<SubscriptionTracker> newSubcriptions = createSubscriptionTrackerList();
-      int intIndex = index & 0xFF;
-      for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_CLIENT; i++) {
-        newSubcriptions.set(i, i == intIndex ? newValue : original.get(i));
-      }
-      return newSubcriptions;
     }
 
     private void setSubscriptionTrackers(List<SubscriptionTracker> trackers) {
@@ -1786,9 +1794,15 @@ final class ConsumersCoordinator implements AutoCloseable {
       return this.trackerCount == 0;
     }
 
+    @Override
+    public Broker node() {
+      return this.node;
+    }
+
     // deliberately side-effect free: a predicate that closes a connection and mutates the pool
     // makes this class impossible to reason about, and the loop must never close inline
-    boolean isDead() {
+    @Override
+    public boolean isDead() {
       return this.closed.get() || !this.client.isOpen();
     }
 
@@ -1843,7 +1857,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             }
           }
         }
-        submitState(s -> this.setSubscriptionTrackers(createSubscriptionTrackerList()));
+        state.submitIfOpen(s -> this.setSubscriptionTrackers(emptySlots()));
 
         if (this.client.isOpen()) {
           this.client.close();
@@ -1946,14 +1960,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     public long chunkId() {
       return this.chunkId;
     }
-  }
-
-  static <T> int pickSlot(List<T> list, AtomicInteger sequence) {
-    int index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
-    while (list.get(index) != null) {
-      index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
-    }
-    return index;
   }
 
   private static List<Broker> keepReplicasIfPossible(Collection<BrokerWrapper> brokers) {

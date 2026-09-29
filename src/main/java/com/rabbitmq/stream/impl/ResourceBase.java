@@ -73,6 +73,17 @@ abstract class ResourceBase implements Resource {
     }
   }
 
+  /** Only dispatches to the listeners if the state actually changed. */
+  protected boolean compareAndSetState(State expected, State newState) {
+    if (this.state.compareAndSet(expected, newState)) {
+      if (expected != newState) {
+        this.dispatch(expected, newState);
+      }
+      return true;
+    }
+    return false;
+  }
+
   protected void componentUnavailable(String componentId) {
     if (!multiComponent) {
       throw new IllegalStateException("Resource is not configured for multi-component tracking");
