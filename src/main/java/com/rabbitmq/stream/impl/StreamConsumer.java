@@ -92,7 +92,7 @@ final class StreamConsumer extends ResourceBase implements Consumer {
       ConsumerUpdateListener consumerUpdateListener,
       ConsumerFlowStrategy flowStrategy,
       List<StateListener> listeners) {
-    super(listeners, componentIds(trackingConfiguration));
+    super(listeners, environment::stateListenerExecutor, componentIds(trackingConfiguration));
     if (Utils.filteringEnabled(subscriptionProperties) && !environment.filteringSupported()) {
       throw new IllegalArgumentException(
           "Filtering is not supported by the broker "

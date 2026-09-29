@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.AsyncRetry.asyncRetry;
 import static com.rabbitmq.stream.impl.Client.DEFAULT_RPC_TIMEOUT;
 import static com.rabbitmq.stream.impl.Client.maybeSetUpClientParametersFromUris;
+import static com.rabbitmq.stream.impl.ThreadUtils.internalThreadFactory;
 import static com.rabbitmq.stream.impl.ThreadUtils.threadFactory;
 import static com.rabbitmq.stream.impl.Utils.AVAILABLE_PROCESSORS;
 import static com.rabbitmq.stream.impl.Utils.DEFAULT_ADDRESS_RESOLVER;
@@ -77,6 +78,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -85,6 +87,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -130,6 +134,8 @@ final class StreamEnvironment implements Environment {
   private final Duration rpcTimeout;
   private final CredentialsManager credentialsManager;
   private final ExecutorService oauthExecutor;
+  private final Lock stateListenerExecutorLock = new ReentrantLock();
+  private ExecutorService stateListenerExecutor;
 
   StreamEnvironment(
       ScheduledExecutorService scheduledExecutorService,
@@ -738,6 +744,15 @@ final class StreamEnvironment implements Environment {
       this.consumersCoordinator.close();
       this.offsetTrackingCoordinator.close();
 
+      // not shutdownNow(): the events of the closing above must still reach the listeners
+      Utils.lock(
+          this.stateListenerExecutorLock,
+          () -> {
+            if (this.stateListenerExecutor != null) {
+              this.stateListenerExecutor.shutdown();
+            }
+          });
+
       for (Locator locator : this.locators) {
         try {
           if (locator.isSet()) {
@@ -796,6 +811,23 @@ final class StreamEnvironment implements Environment {
 
   ScheduledExecutorService scheduledExecutorService() {
     return this.scheduledExecutorService;
+  }
+
+  Executor stateListenerExecutor() {
+    return Utils.lock(
+        this.stateListenerExecutorLock,
+        () -> {
+          if (this.stateListenerExecutor == null) {
+            this.stateListenerExecutor =
+                Executors.newCachedThreadPool(
+                    internalThreadFactory("rabbitmq-stream-state-listener-"));
+            if (this.closed.get()) {
+              // created concurrently with the closing: events are delivered in line
+              this.stateListenerExecutor.shutdown();
+            }
+          }
+          return this.stateListenerExecutor;
+        });
   }
 
   Duration rpcTimeout() {

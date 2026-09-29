@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -189,6 +189,8 @@ public interface ProducerBuilder {
 
   /**
    * Add {@link Resource.StateListener}s to the producer.
+   *
+   * <p>Listeners are called asynchronously, see {@link Resource.StateListener}.
    *
    * @param listeners listeners
    * @return this builder instance

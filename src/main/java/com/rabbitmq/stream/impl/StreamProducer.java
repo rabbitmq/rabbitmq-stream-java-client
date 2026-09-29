@@ -110,7 +110,7 @@ final class StreamProducer extends ResourceBase implements Producer {
       Function<Message, String> filterValueExtractor,
       List<StateListener> listeners,
       StreamEnvironment environment) {
-    super(listeners);
+    super(listeners, environment::stateListenerExecutor);
     if (filterValueExtractor != null && !environment.filteringSupported()) {
       throw new IllegalArgumentException(
           "Filtering is not supported by the broker "

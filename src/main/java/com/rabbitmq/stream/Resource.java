@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -31,6 +31,11 @@ public interface Resource {
    * Application listener for a {@link com.rabbitmq.stream.Resource}.
    *
    * <p>They are registered at creation time.
+   *
+   * <p>Listeners are called asynchronously, on a thread of the library, so the state of the
+   * resource may have changed again by the time a listener is called. The listeners of a given
+   * resource are called in the order of the state changes and never concurrently. A long-running
+   * listener delays only the next state updates of its resource.
    *
    * @see
    *     com.rabbitmq.stream.ProducerBuilder#listeners(com.rabbitmq.stream.Resource.StateListener...)
