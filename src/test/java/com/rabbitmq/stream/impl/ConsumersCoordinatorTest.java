@@ -42,17 +42,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.after;
-<<<<<<< HEAD
-<<<<<<< HEAD
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
-=======
-=======
-import static org.mockito.Mockito.atLeastOnce;
->>>>>>> 48d50d885e (Implement ByteCreditAccountant)
->>>>>>> 3bf5953df6 (Implement ByteCreditAccountant)
-=======
-import static org.mockito.Mockito.atLeastOnce;
->>>>>>> 95cc1e0976 (Fix conflicts after consumer coordinator refactoring)
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -884,13 +875,13 @@ public class ConsumersCoordinatorTest {
           }
 
           @Override
-          public CreditUnit unit() {
-            return CreditUnit.CHUNK;
+          public MessageProcessedCallback start(Context context) {
+            return flowStrategyCallback;
           }
 
           @Override
-          public MessageProcessedCallback start(Context context) {
-            return flowStrategyCallback;
+          public CreditUnit unit() {
+            return CreditUnit.CHUNK;
           }
         };
 
@@ -1361,7 +1352,12 @@ public class ConsumersCoordinatorTest {
     when(clientFactory.client(any())).thenReturn(client);
     when(client.unsubscribe(anyByte())).thenReturn(responseOk());
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .then(
             invocation -> {
               if ("stream".equals(invocation.getArgument(1))) {
@@ -1389,7 +1385,14 @@ public class ConsumersCoordinatorTest {
     assertThatThrownBy(() -> subscribe(consumer, "stream", (offset, message) -> {}))
         .isInstanceOf(StreamNotAvailableException.class);
     verify(clientFactory, times(1)).client(any());
-    verify(client, times(1)).subscribe(eq(b(0)), eq("stream"), any(), anyInt(), anyMap());
+    verify(client, times(1))
+        .subscribe(
+            eq(b(0)),
+            eq("stream"),
+            any(),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
 
     messageListener.handle(b(255), 0, 0, 0, null, new WrapperMessageBuilder().build());
     assertThat(lastSlotMessageCount).hasValue(1);
@@ -1404,7 +1407,12 @@ public class ConsumersCoordinatorTest {
     when(clientFactory.client(any())).thenReturn(client);
     when(client.unsubscribe(anyByte())).thenReturn(responseOk());
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
 
     Runnable closeUnderTest = subscribe(consumer, "stream", (offset, message) -> {});
@@ -1437,7 +1445,14 @@ public class ConsumersCoordinatorTest {
       coordinator.managerCount();
       AtomicInteger newOwnerMessageCount = new AtomicInteger();
       subscribe(consumer, "other", (offset, message) -> newOwnerMessageCount.incrementAndGet());
-      verify(client, times(1)).subscribe(eq(slotUnderTest), eq("other"), any(), anyInt(), anyMap());
+      verify(client, times(1))
+          .subscribe(
+              eq(slotUnderTest),
+              eq("other"),
+              any(),
+              anyInt(),
+              anyMap(),
+              any(ConsumerFlowStrategy.CreditUnit.class));
 
       // the subscription under test is closed before its detach effect runs
       closeUnderTest.run();
@@ -1458,13 +1473,23 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
     AtomicBoolean client2Open = new AtomicBoolean(true);
     Client client2 = mockClient(client2Open);
     Client client3 = mockClient(new AtomicBoolean(true));
     when(client2.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .then(
             invocation -> {
               // the broker accepted the subscription, but the connection dies before the
@@ -1481,7 +1506,13 @@ public class ConsumersCoordinatorTest {
         new Client.ShutdownContext(Client.ShutdownContext.ShutdownReason.UNKNOWN));
 
     verify(client3, timeout(10_000))
-        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+        .subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
     // the initial subscription, then the recovery on the third connection
     verify(consumer, timeout(10_000).times(2)).markOpen();
     verify(consumer, after(300).times(2)).markOpen();
@@ -1494,7 +1525,12 @@ public class ConsumersCoordinatorTest {
     AtomicBoolean clientOpen = new AtomicBoolean(true);
     Client client = mockClient(clientOpen);
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .then(
             invocation -> {
               clientOpen.set(false);
@@ -1520,12 +1556,22 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
     Client client2 = mockClient(new AtomicBoolean(true));
     AtomicBoolean firstSubscribe = new AtomicBoolean(true);
     when(client2.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .then(
             invocation -> {
               if (firstSubscribe.getAndSet(false)) {
@@ -1547,7 +1593,8 @@ public class ConsumersCoordinatorTest {
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
-            anyMap());
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
     verify(client2, timeout(10_000)).unsubscribe(subscriptionIds.getAllValues().get(0));
     verify(consumer, timeout(10_000).times(2)).markOpen();
     verify(client2, after(300).times(1)).unsubscribe(anyByte());
@@ -1565,12 +1612,22 @@ public class ConsumersCoordinatorTest {
     doAnswer(invocation -> opened.incrementAndGet()).when(consumer).markOpen();
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
     Client client2 = mockClient(new AtomicBoolean(true));
     AtomicInteger subscribeCount = new AtomicInteger();
     when(client2.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .then(
             invocation -> {
               if (subscribeCount.incrementAndGet() == 1) {
@@ -1596,7 +1653,13 @@ public class ConsumersCoordinatorTest {
 
     verify(consumer, timeout(10_000).times(2)).markOpen();
     verify(client2, after(300).times(2))
-        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+        .subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
     verify(client2, times(1)).unsubscribe(anyByte());
   }
 
@@ -1607,7 +1670,12 @@ public class ConsumersCoordinatorTest {
     when(clientFactory.client(any())).thenReturn(client);
     when(client.unsubscribe(anyByte())).thenReturn(responseOk());
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .then(
             invocation -> {
               metadataListener.handle("stream", Constants.RESPONSE_CODE_STREAM_NOT_AVAILABLE);
@@ -2766,7 +2834,12 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
     Client client2 = mockClient(new AtomicBoolean(true));
     CountDownLatch staleSubscribeStarted = new CountDownLatch(1);
@@ -2793,7 +2866,8 @@ public class ConsumersCoordinatorTest {
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
-            anyMap());
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
     byte staleId = subscribedIds.getAllValues().get(0);
     byte currentId = subscribedIds.getAllValues().get(1);
     verify(client2, timeout(TIMEOUT_MS)).unsubscribe(staleId);
@@ -2812,7 +2886,12 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
     AtomicBoolean client2Open = new AtomicBoolean(true);
     Client client2 = mockClient(client2Open);
@@ -2858,7 +2937,13 @@ public class ConsumersCoordinatorTest {
     // only the disruption of the initial connection
     verify(consumer, after(300).times(1)).markRecovering();
     verify(client3, times(1))
-        .subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap());
+        .subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
     closing.run();
     verify(client3, timeout(TIMEOUT_MS)).unsubscribe(anyByte());
   }
@@ -2872,7 +2957,12 @@ public class ConsumersCoordinatorTest {
     when(consumer.isOpen()).thenReturn(true);
     when(locator.metadata("stream")).thenReturn(metadata(null, replica()));
     when(client.subscribe(
-            anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
     Client client2 = mockClient(new AtomicBoolean(true));
     CountDownLatch subscribeStarted = new CountDownLatch(1);
@@ -2900,7 +2990,8 @@ public class ConsumersCoordinatorTest {
             anyString(),
             any(OffsetSpecification.class),
             anyInt(),
-            anyMap());
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class));
     verify(client2, timeout(TIMEOUT_MS)).unsubscribe(subscribedId.getValue());
   }
 
@@ -2908,7 +2999,13 @@ public class ConsumersCoordinatorTest {
   private static void holdFirstSubscribe(
       Client c, CountDownLatch subscribeStarted, CountDownLatch releaseSubscribe) {
     AtomicBoolean first = new AtomicBoolean(true);
-    when(c.subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+    when(c.subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .then(
             invocation -> {
               if (first.getAndSet(false)) {
@@ -3922,7 +4019,13 @@ public class ConsumersCoordinatorTest {
     when(c.brokerVersion()).thenReturn("3.11.0");
     when(c.serverAdvertisedHost()).thenReturn(replica().get(0).getHost());
     when(c.serverAdvertisedPort()).thenReturn(replica().get(0).getPort());
-    when(c.subscribe(anyByte(), anyString(), any(OffsetSpecification.class), anyInt(), anyMap()))
+    when(c.subscribe(
+            anyByte(),
+            anyString(),
+            any(OffsetSpecification.class),
+            anyInt(),
+            anyMap(),
+            any(ConsumerFlowStrategy.CreditUnit.class)))
         .thenReturn(responseOk());
     when(c.unsubscribe(anyByte())).thenReturn(responseOk());
     return c;
