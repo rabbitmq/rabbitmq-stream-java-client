@@ -132,6 +132,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -428,7 +429,8 @@ public class Client implements AutoCloseable {
           parameters.host,
           parameters.port,
           clientConnectionName);
-      f = b.connect(parameters.host, parameters.port).sync();
+      f = b.connect(parameters.host, parameters.port);
+      awaitConnection(f);
     } catch (Exception e) {
       String message =
           format(
@@ -725,6 +727,38 @@ public class Client implements AutoCloseable {
               + formatConstant(response.getResponseCode()));
     }
     return response.connectionProperties;
+  }
+
+  // not ChannelFuture#sync(): it waits in a synchronized block, which pins the carrier of a
+  // virtual thread on JDK 21 to 23, for as long as the connection attempt lasts
+  private static void awaitConnection(ChannelFuture connectFuture) throws Exception {
+    CompletableFuture<Void> connected = new CompletableFuture<>();
+    connectFuture.addListener(
+        future -> {
+          if (future.isSuccess()) {
+            connected.complete(null);
+          } else {
+            connected.completeExceptionally(future.cause());
+          }
+        });
+    try {
+      // no timeout, the connection timeout of the bootstrap bounds the attempt
+      connected.get();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      connectFuture.cancel(false);
+      connectFuture.channel().close();
+      throw e;
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof Error) {
+        throw (Error) cause;
+      } else if (cause instanceof Exception) {
+        throw (Exception) cause;
+      } else {
+        throw e;
+      }
+    }
   }
 
   // for testing
