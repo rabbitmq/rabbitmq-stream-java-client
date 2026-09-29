@@ -33,7 +33,6 @@ import static com.rabbitmq.stream.impl.Utils.formatConstant;
 import static com.rabbitmq.stream.impl.Utils.isSac;
 import static com.rabbitmq.stream.impl.Utils.jsonField;
 import static com.rabbitmq.stream.impl.Utils.keyForNode;
-import static com.rabbitmq.stream.impl.Utils.lock;
 import static com.rabbitmq.stream.impl.Utils.namedFunction;
 import static com.rabbitmq.stream.impl.Utils.quote;
 import static java.lang.String.format;
@@ -1545,12 +1544,8 @@ final class ConsumersCoordinator implements AutoCloseable {
     Assignment add(
         SubscriptionTracker tracker,
         OffsetSpecification offsetSpecification,
-<<<<<<< HEAD
         boolean isInitialSubscription,
         long attemptEpoch) {
-      byte subscriptionId = reserveSlot(tracker, attemptEpoch);
-=======
-        boolean isInitialSubscription) {
       if (tracker.flowStrategy.unit() == CreditUnit.BYTE && !this.client.byteCreditSupported()) {
         // must not be an IllegalStateException: addToManager treats that as "this manager
         // cannot take the subscription" and loops looking for another one, which would spin
@@ -1559,9 +1554,7 @@ final class ConsumersCoordinator implements AutoCloseable {
             "Byte-based consumer credit requires a broker supporting Subscribe version 2 "
                 + "and Credit version 2");
       }
-
-      byte subscriptionId = reserveSlot(tracker);
->>>>>>> 95cc1e0976 (Fix conflicts after consumer coordinator refactoring)
+      byte subscriptionId = reserveSlot(tracker, attemptEpoch);
       LOGGER.debug(
           "Subscribing to {}, requested offset specification is {}, offset tracking reference is {}, properties are {}, "
               + "subscription ID is {}, consumer {}",
@@ -2031,8 +2024,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
   }
 
-<<<<<<< HEAD
-=======
   /**
    * Grants credit for a subscription.
    *
@@ -2109,7 +2100,7 @@ final class ConsumersCoordinator implements AutoCloseable {
 
     @Override
     public void reset(int initialCredits) {
-      lock(
+      Utils.lock(
           this.lock,
           () -> {
             this.window = initialCredits;
@@ -2191,15 +2182,6 @@ final class ConsumersCoordinator implements AutoCloseable {
     }
   }
 
-  static <T> int pickSlot(List<T> list, AtomicInteger sequence) {
-    int index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
-    while (list.get(index) != null) {
-      index = Integer.remainderUnsigned(sequence.getAndIncrement(), MAX_SUBSCRIPTIONS_PER_CLIENT);
-    }
-    return index;
-  }
-
->>>>>>> 3bf5953df6 (Implement ByteCreditAccountant)
   private static List<Broker> keepReplicasIfPossible(Collection<BrokerWrapper> brokers) {
     if (brokers.size() > 1) {
       return brokers.stream()
