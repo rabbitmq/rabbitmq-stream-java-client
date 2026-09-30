@@ -58,6 +58,8 @@ import static java.lang.String.join;
 import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.rabbitmq.client.credentials.CredentialsManager;
+import com.rabbitmq.client.credentials.CredentialsManager.Registration;
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.ChunkChecksum;
@@ -79,8 +81,6 @@ import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandler;
 import com.rabbitmq.stream.impl.ServerFrameHandler.FrameHandlerInfo;
 import com.rabbitmq.stream.metrics.MetricsCollector;
 import com.rabbitmq.stream.metrics.NoOpMetricsCollector;
-import com.rabbitmq.stream.oauth2.CredentialsManager;
-import com.rabbitmq.stream.oauth2.CredentialsManager.Registration;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
 import com.rabbitmq.stream.sasl.DefaultUsernamePasswordCredentialsProvider;

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2025-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -17,7 +17,6 @@ package com.rabbitmq.stream.impl;
 import static java.lang.System.currentTimeMillis;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.rabbitmq.stream.oauth2.OAuth2TestUtils;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -52,10 +51,6 @@ public final class HttpTestUtils {
   private static final char[] KEY_STORE_PASSWORD = "password".toCharArray();
 
   private HttpTestUtils() {}
-
-  public static HttpServer startServer(int port, String path, HttpHandler handler) {
-    return startServer(port, path, null, handler);
-  }
 
   public static HttpServer startServer(
       int port, String path, KeyStore keyStore, HttpHandler handler) {
@@ -125,7 +120,7 @@ public final class HttpTestUtils {
       long expirationTime = expirationTimeSupplier.getAsLong();
       String jwtToken = JwtTestUtils.token(expirationTime);
       Duration expiresIn = Duration.ofMillis(expirationTime - currentTimeMillis());
-      String oauthToken = OAuth2TestUtils.sampleJsonToken(jwtToken, expiresIn);
+      String oauthToken = sampleJsonToken(jwtToken, expiresIn);
       byte[] data = oauthToken.getBytes(UTF_8);
       Headers responseHeaders = exchange.getResponseHeaders();
       responseHeaders.set("content-type", "application/json");
@@ -135,5 +130,18 @@ public final class HttpTestUtils {
       responseBody.close();
       requestCallback.run();
     };
+  }
+
+  static String sampleJsonToken(String accessToken, Duration expiresIn) {
+    String json =
+        "{\n"
+            + "  \"access_token\" : \"{accessToken}\",\n"
+            + "  \"token_type\" : \"bearer\",\n"
+            + "  \"expires_in\" : {expiresIn},\n"
+            + "  \"scope\" : \"clients.read emails.write scim.userids password.write idps.write notifications.write oauth.login scim.write critical_notifications.write\",\n"
+            + "  \"jti\" : \"18c1b1dfdda04382a8bcc14d077b71dd\"\n"
+            + "}";
+    return json.replace("{accessToken}", accessToken)
+        .replace("{expiresIn}", expiresIn.getSeconds() + "");
   }
 }

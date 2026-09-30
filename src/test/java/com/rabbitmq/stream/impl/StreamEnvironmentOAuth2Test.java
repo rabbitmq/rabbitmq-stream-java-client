@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2025-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -25,6 +25,7 @@ import static com.rabbitmq.stream.impl.TestUtils.waitAtMost;
 import static java.lang.System.currentTimeMillis;
 import static java.time.Duration.ofSeconds;
 
+import com.rabbitmq.client.credentials.TokenCredentialsManager;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Producer;
@@ -32,7 +33,6 @@ import com.rabbitmq.stream.Resource;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultOAuth2Configuration;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfOauth2AuthBackendNotEnabled;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
-import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.netty.channel.EventLoopGroup;
