@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.DEFAULT_ADDRESS_RESOLVER;
 import static com.rabbitmq.stream.impl.Utils.noOpConsumer;
 
+import com.rabbitmq.client.credentials.TokenCredentialsManager;
 import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.BackOffDelayPolicy;
 import com.rabbitmq.stream.ChunkChecksum;
@@ -28,7 +29,6 @@ import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.compression.CompressionCodecFactory;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
 import com.rabbitmq.stream.metrics.MetricsCollector;
-import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.DefaultSaslConfiguration;
 import com.rabbitmq.stream.sasl.SaslConfiguration;

@@ -14,12 +14,12 @@
 // info@rabbitmq.com.
 package com.rabbitmq.stream.impl;
 
+import com.rabbitmq.client.credentials.CredentialsManager;
+import com.rabbitmq.client.credentials.TokenCredentialsManager;
+import com.rabbitmq.client.credentials.TokenRequester;
+import com.rabbitmq.client.credentials.oauth2.GsonTokenParser;
+import com.rabbitmq.client.credentials.oauth2.HttpTokenRequester;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultOAuth2Configuration;
-import com.rabbitmq.stream.oauth2.CredentialsManager;
-import com.rabbitmq.stream.oauth2.GsonTokenParser;
-import com.rabbitmq.stream.oauth2.HttpTokenRequester;
-import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
-import com.rabbitmq.stream.oauth2.TokenRequester;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 

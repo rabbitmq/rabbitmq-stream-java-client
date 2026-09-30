@@ -24,13 +24,13 @@ import static java.time.Duration.ofMinutes;
 import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.rabbitmq.client.credentials.TokenCredentialsManager;
+import com.rabbitmq.client.credentials.oauth2.GsonTokenParser;
+import com.rabbitmq.client.credentials.oauth2.HttpTokenRequester;
 import com.rabbitmq.stream.AuthenticationFailureException;
 import com.rabbitmq.stream.impl.TestUtils.ClientFactory;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfOauth2AuthBackendNotEnabled;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
-import com.rabbitmq.stream.oauth2.GsonTokenParser;
-import com.rabbitmq.stream.oauth2.HttpTokenRequester;
-import com.rabbitmq.stream.oauth2.TokenCredentialsManager;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import java.security.KeyStore;

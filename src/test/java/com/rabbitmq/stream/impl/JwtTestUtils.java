@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2024-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,8 +16,6 @@ package com.rabbitmq.stream.impl;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.rabbitmq.stream.oauth2.Token;
-import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -26,8 +24,6 @@ import org.jose4j.jws.AlgorithmIdentifiers;
 import org.jose4j.jws.JsonWebSignature;
 import org.jose4j.jwt.JwtClaims;
 import org.jose4j.jwt.NumericDate;
-import org.jose4j.jwt.consumer.JwtConsumer;
-import org.jose4j.jwt.consumer.JwtConsumerBuilder;
 import org.jose4j.keys.HmacKey;
 
 final class JwtTestUtils {
@@ -61,37 +57,5 @@ final class JwtTestUtils {
       System.out.println("ERROR " + e.getMessage());
       throw new RuntimeException(e);
     }
-  }
-
-  static Token parseToken(String tokenAsString) {
-    long expirationTime;
-    try {
-      JwtConsumer consumer =
-          new JwtConsumerBuilder()
-              .setExpectedAudience(AUDIENCE)
-              // we do not validate the expiration time
-              .setEvaluationTime(NumericDate.fromMilliseconds(0))
-              .setVerificationKey(KEY)
-              .build();
-      JwtClaims claims = consumer.processToClaims(tokenAsString);
-      expirationTime = claims.getExpirationTime().getValueInMillis();
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-    return new Token() {
-      @Override
-      public String value() {
-        return tokenAsString;
-      }
-
-      @Override
-      public Instant expirationTime() {
-        return Instant.ofEpochMilli(expirationTime);
-      }
-    };
-  }
-
-  static Map<String, Object> parse(String json) {
-    return GSON.fromJson(json, MAP_TYPE);
   }
 }

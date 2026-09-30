@@ -33,6 +33,7 @@ import static java.util.Optional.ofNullable;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 
+import com.rabbitmq.client.credentials.CredentialsManager;
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.AddressResolver;
 import com.rabbitmq.stream.BackOffDelayPolicy;
@@ -60,7 +61,6 @@ import com.rabbitmq.stream.impl.StreamConsumerBuilder.TrackingConfiguration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultOAuth2Configuration;
 import com.rabbitmq.stream.impl.StreamEnvironmentBuilder.DefaultTlsConfiguration;
 import com.rabbitmq.stream.impl.Utils.ClientConnectionType;
-import com.rabbitmq.stream.oauth2.CredentialsManager;
 import com.rabbitmq.stream.sasl.CredentialsProvider;
 import com.rabbitmq.stream.sasl.UsernamePasswordCredentialsProvider;
 import io.netty.buffer.ByteBufAllocator;
