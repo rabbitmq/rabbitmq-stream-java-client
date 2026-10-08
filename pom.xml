@@ -774,17 +774,10 @@
 
   </profiles>
 
-  <distributionManagement>
-    <snapshotRepository>
-      <id>central-portal</id>
-      <url>https://central.sonatype.com/repository/maven-snapshots/</url>
-    </snapshotRepository>
-  </distributionManagement>
-
   <repositories>
 
     <repository>
-      <id>central-portal</id>
+      <id>central-portal-snapshots</id>
       <url>https://central.sonatype.com/repository/maven-snapshots/</url>
       <snapshots><enabled>true</enabled></snapshots>
       <releases><enabled>false</enabled></releases>
