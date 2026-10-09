@@ -17,6 +17,7 @@ package com.rabbitmq.stream.impl;
 import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_FILTER_PREFIX;
 import static com.rabbitmq.stream.impl.Utils.SUBSCRIPTION_PROPERTY_MATCH_UNFILTERED;
 
+import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
 import com.rabbitmq.stream.ConsumerFlowStrategy;
@@ -472,6 +473,12 @@ class StreamConsumerBuilder implements ConsumerBuilder {
       if (initialCredits <= 0) {
         throw new IllegalArgumentException("Credits must be positive");
       }
+      this.strategy = ConsumerFlowStrategy.creditOnChunkArrival(initialCredits);
+      return this;
+    }
+
+    @Override
+    public FlowConfiguration initialCredits(ByteCapacity initialCredits) {
       this.strategy = ConsumerFlowStrategy.creditOnChunkArrival(initialCredits);
       return this;
     }

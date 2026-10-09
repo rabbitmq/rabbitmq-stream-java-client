@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2021-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -523,7 +523,12 @@ public class StompInteroperabilityTest {
         cf.get(
             new Client.ClientParameters()
                 .chunkListener(
-                    (client1, subscriptionId, offset12, messageCount1, dataSize) -> {
+                    (client1,
+                        subscriptionId,
+                        offset12,
+                        messageCount1,
+                        dataSize,
+                        chunkByteCount) -> {
                       client1.credit(subscriptionId, 1);
                       chunkOffset.compareAndSet(-1, offset12);
                       return null;
