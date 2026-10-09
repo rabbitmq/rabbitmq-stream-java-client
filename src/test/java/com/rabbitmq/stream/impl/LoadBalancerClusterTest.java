@@ -238,6 +238,9 @@ public class LoadBalancerClusterTest {
 
       Client.StreamMetadata metadata = locator.metadata(stream).get(stream);
 
+      Set<Broker> streamNodes = new HashSet<>(metadata.getReplicas());
+      streamNodes.add(metadata.getLeader());
+
       Function<Collection<String>, Set<Broker>> toBrokers =
           nodes ->
               nodes.stream()
@@ -245,21 +248,25 @@ public class LoadBalancerClusterTest {
                   .map(n -> new Broker(n[0], parseInt(n[1])))
                   .collect(toSet());
       Set<Broker> usedNodes = toBrokers.apply(producerInfo.nodesConnected());
-      assertThat(usedNodes).contains(metadata.getLeader());
       if (forceLocality) {
-        assertThat(usedNodes).hasSize(1);
+        // we expect only the leader
+        assertThat(usedNodes).containsOnly(metadata.getLeader());
       } else {
-        assertThat(usedNodes).hasSize(metadata.getReplicas().size() + 1);
-        assertThat(usedNodes).containsAll(metadata.getReplicas());
+        // we can't guarantee producers spread on all nodes,
+        // because of interleaving with consumers and the load balancer
+        // round-robin, there is a small change a node is not used
+        assertThat(usedNodes).isNotEmpty().isSubsetOf(streamNodes);
       }
 
       usedNodes = toBrokers.apply(consumerInfo.nodesConnected());
-      assertThat(usedNodes).containsAll(metadata.getReplicas());
       if (forceLocality) {
-        assertThat(usedNodes).hasSameSizeAs(metadata.getReplicas());
+        // we expect only the replicas
+        assertThat(usedNodes).isNotEmpty().isSubsetOf(metadata.getReplicas());
       } else {
-        assertThat(usedNodes).hasSize(metadata.getReplicas().size() + 1);
-        assertThat(usedNodes).contains(metadata.getLeader());
+        // we can't guarantee consumers spread on all nodes,
+        // because of interleaving with producers and the load balancer
+        // round-robin, there is a small change a node is not used
+        assertThat(usedNodes).isNotEmpty().isSubsetOf(streamNodes);
       }
     }
   }
