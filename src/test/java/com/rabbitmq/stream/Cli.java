@@ -296,7 +296,6 @@ public class Cli {
 
   public static String rabbitmqctlCommand() {
     String rabbitmqCtl = rabbitmqctlBin();
-    rabbitmqCtl = DOCKER_PREFIX + "rabbitmq0";
     if (rabbitmqCtl.startsWith(DOCKER_PREFIX)) {
       String containerId = rabbitmqCtl.split(":")[1];
       return "docker exec " + containerId + " rabbitmqctl";
