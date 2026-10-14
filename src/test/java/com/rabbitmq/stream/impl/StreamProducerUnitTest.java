@@ -552,6 +552,49 @@ public class StreamProducerUnitTest {
   }
 
   @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void subEntriesShouldFitInFrame(boolean dynamicBatch) throws Exception {
+    int maxFrameSize = 1000;
+    when(client.maxFrameSize()).thenReturn(maxFrameSize);
+    StreamProducer producer = producer(dynamicBatch, 7, 10, Duration.ofMillis(10), null);
+    // fits in a frame as a plain message, not as a sub-entry
+    assertThatThrownBy(() -> producer.send(message(producer, 970), s -> {}))
+        .isInstanceOf(IllegalArgumentException.class);
+    range(0, 7).forEach(i -> producer.send(message(producer, 300), s -> {}));
+    // 3 messages at most per sub-entry
+    waitAtMost(() -> producer.unconfirmedCount() >= 3);
+    // the frame size does not include the size field
+    assertThat(buffers).allMatch(b -> b.writerIndex() - 4 <= maxFrameSize);
+    producer.close();
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void closeShouldWakeUpBlockedSenders(boolean streamDeletion) throws Exception {
+    StreamProducer producer = producer(true, 1, 1, Duration.ZERO, null);
+    producer.send(message(producer, 10), s -> {});
+    Queue<ConfirmationStatus> statuses = new ConcurrentLinkedQueue<>();
+    CountDownLatch sentLatch = new CountDownLatch(2);
+    range(0, 2)
+        .forEach(
+            i ->
+                new Thread(
+                        () -> {
+                          producer.send(message(producer, 10), statuses::add);
+                          sentLatch.countDown();
+                        })
+                    .start());
+    waitAtMost(() -> producer.unconfirmedMessagesSemaphoreQueueLength() == 2);
+    if (streamDeletion) {
+      producer.closeAfterStreamDeletion(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    } else {
+      producer.close();
+    }
+    assertThat(sentLatch.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(statuses).hasSize(2).allMatch(st -> st.getCode() == Constants.CODE_PRODUCER_CLOSED);
+  }
+
+  @ParameterizedTest
   @CsvSource({"-1,false", "0,true", "500,false", "1000,true", "5000,true"})
   void confirmTimeoutCanZeroAndLongerThanOneSecond(int timeoutInMs, boolean ok) throws Throwable {
     Duration timeout = Duration.ofMillis(timeoutInMs);

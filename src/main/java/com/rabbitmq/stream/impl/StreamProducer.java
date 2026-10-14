@@ -214,7 +214,11 @@ final class StreamProducer extends ResourceBase implements Producer {
       Runnable task =
           () -> {
             if (canSend()) {
-              this.accumulator.flush(false);
+              try {
+                this.accumulator.flush(false);
+              } catch (Exception e) {
+                LOGGER.info("Error while executing batch publishing task: {}", e.getMessage());
+              }
             }
             if (this.state() != CLOSED) {
               environment
@@ -347,6 +351,11 @@ final class StreamProducer extends ResourceBase implements Producer {
     return this.unconfirmedMessages.size();
   }
 
+  // for testing
+  int unconfirmedMessagesSemaphoreQueueLength() {
+    return this.unconfirmedMessagesSemaphore.getQueueLength();
+  }
+
   void error(long publishingId, short errorCode) {
     AccumulatedEntity accumulatedEntity = unconfirmedMessages.remove(publishingId);
     if (accumulatedEntity != null) {
@@ -465,11 +474,14 @@ final class StreamProducer extends ResourceBase implements Producer {
     cancelConfirmTimeoutTask();
     this.closed.set(true);
     this.state(CLOSED);
+    wakeUpBlockedSenders();
     LOGGER.debug("Closed publisher {} successfully", this.publisherId);
   }
 
   void closeAfterStreamDeletion(short code) {
     if (closed.compareAndSet(false, true)) {
+      // before releasing permits, so that unblocked senders do not enqueue messages
+      this.state(CLOSED);
       if (!this.unconfirmedMessages.isEmpty()) {
         Iterator<Entry<Long, AccumulatedEntity>> iterator =
             unconfirmedMessages.entrySet().iterator();
@@ -482,8 +494,14 @@ final class StreamProducer extends ResourceBase implements Producer {
       }
       cancelConfirmTimeoutTask();
       this.environment.removeProducer(this);
-      this.state(CLOSED);
+      wakeUpBlockedSenders();
     }
+  }
+
+  private void wakeUpBlockedSenders() {
+    // a sender that gets the permit fails its message (closed producer) and releases the permit,
+    // which wakes up the next blocked sender
+    this.unconfirmedMessagesSemaphore.release();
   }
 
   private void cancelConfirmTimeoutTask() {

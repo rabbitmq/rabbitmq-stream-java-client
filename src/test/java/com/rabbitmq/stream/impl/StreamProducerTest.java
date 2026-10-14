@@ -51,6 +51,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -75,6 +76,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @ExtendWith(TestUtils.StreamTestInfrastructureExtension.class)
@@ -757,8 +759,40 @@ public class StreamProducerTest {
     assertThat(status.get(10, TimeUnit.SECONDS).isConfirmed()).isTrue();
   }
 
-  @Test
-  void subEntryBatchingThrowableFromCodecShouldNackMessages() {
+  @ParameterizedTest
+  @CsvSource({"true,NONE", "false,NONE", "true,GZIP", "false,GZIP"})
+  void subEntriesLargerThanMaxFrameSizeShouldBeSplit(boolean dynamicBatch, Compression compression)
+      throws Exception {
+    int messageCount = 10;
+    Producer producer =
+        environment.producerBuilder().stream(stream)
+            .dynamicBatch(dynamicBatch)
+            .subEntrySize(messageCount)
+            .compression(compression)
+            .build();
+    CountDownLatch confirmLatch = new CountDownLatch(messageCount);
+    AtomicInteger confirmedCount = new AtomicInteger();
+    Random random = new Random();
+    for (int i = 0; i < messageCount; i++) {
+      // incompressible, the sub-entry cannot fit in a frame
+      byte[] data = new byte[Client.DEFAULT_MAX_FRAME_SIZE / 5];
+      random.nextBytes(data);
+      producer.send(
+          producer.messageBuilder().addData(data).build(),
+          status -> {
+            if (status.isConfirmed()) {
+              confirmedCount.incrementAndGet();
+            }
+            confirmLatch.countDown();
+          });
+    }
+    assertThat(latchAssert(confirmLatch)).completes();
+    assertThat(confirmedCount).hasValue(messageCount);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void subEntryBatchingThrowableFromCodecShouldNackMessages(boolean dynamicBatch) {
     Compression compression = Compression.GZIP;
     CompressionCodec codec =
         new CompressionCodec() {
@@ -786,7 +820,11 @@ public class StreamProducerTest {
     try (Environment env =
         environmentBuilder().compressionCodecFactory(compressionCodecFactory).build()) {
       Producer producer =
-          env.producerBuilder().stream(stream).subEntrySize(10).compression(compression).build();
+          env.producerBuilder().stream(stream)
+              .dynamicBatch(dynamicBatch)
+              .subEntrySize(10)
+              .compression(compression)
+              .build();
       Sync sync = sync();
       AtomicBoolean confirmed = new AtomicBoolean(true);
       AtomicInteger code = new AtomicInteger(-1);

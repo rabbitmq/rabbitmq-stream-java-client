@@ -19,6 +19,7 @@ import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.StreamException;
+import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.impl.ProducerUtils.AccumulatedEntity;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,10 +34,9 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   protected final BlockingQueue<AccumulatedEntity> messages;
   private final int capacity;
   final ObservationCollector<Object> observationCollector;
-  private final StreamProducer producer;
+  final StreamProducer producer;
   final ProducerUtils.MessageAccumulatorHelper helper;
 
-  @SuppressWarnings("unchecked")
   SimpleMessageAccumulator(
       int capacity,
       Codec codec,
@@ -47,10 +47,39 @@ class SimpleMessageAccumulator implements MessageAccumulator {
       String stream,
       ObservationCollector<?> observationCollector,
       StreamProducer producer) {
+    this(
+        capacity,
+        codec,
+        maxFrameSize,
+        1,
+        null,
+        publishSequenceFunction,
+        filterValueExtractor,
+        clock,
+        stream,
+        observationCollector,
+        producer);
+  }
+
+  @SuppressWarnings("unchecked")
+  SimpleMessageAccumulator(
+      int capacity,
+      Codec codec,
+      int maxFrameSize,
+      int subEntrySize,
+      CompressionCodec compressionCodec,
+      ToLongFunction<Message> publishSequenceFunction,
+      Function<Message, String> filterValueExtractor,
+      Clock clock,
+      String stream,
+      ObservationCollector<?> observationCollector,
+      StreamProducer producer) {
     this.helper =
         new ProducerUtils.MessageAccumulatorHelper(
             codec,
             maxFrameSize,
+            subEntrySize,
+            compressionCodec,
             publishSequenceFunction,
             filterValueExtractor,
             clock,
@@ -70,6 +99,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
         throw new StreamException("Could not accumulate outbound message");
       }
     } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
       this.producer.releasePermit();
       throw new StreamException("Error while accumulating outbound message", e);
     } catch (RuntimeException e) {

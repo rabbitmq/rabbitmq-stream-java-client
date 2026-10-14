@@ -60,6 +60,8 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
         new ProducerUtils.MessageAccumulatorHelper(
             codec,
             maxFrameSize,
+            subEntrySize,
+            compressionCodec,
             publishSequenceFunction,
             filterValueExtractor,
             clock,
@@ -94,48 +96,29 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
           new DynamicBatch<>(
               items -> {
                 List<Object> subBatches = new ArrayList<>();
-                int count = 0;
-                ProducerUtils.Batch batch =
-                    this.helper.batch(
-                        byteBufAllocator, compressionCode, compressionCodec, subEntrySize);
-                AccumulatedEntity lastMessageInBatch = null;
+                ProducerUtils.Batch batch = null;
                 for (Object msg : items) {
                   AccumulatedEntity message = (AccumulatedEntity) msg;
-                  lastMessageInBatch = message;
-                  batch.add(
-                      (Codec.EncodedMessage) message.encodedEntity(),
-                      message.confirmationCallback());
-                  count++;
-                  if (count == subEntrySize) {
-                    batch.time = lastMessageInBatch.time();
-                    batch.publishingId = lastMessageInBatch.publishingId();
-                    try {
-                      batch.encodedMessageBatch.close();
-                    } catch (Exception e) {
-                      LOGGER.warn(
-                          "Error while closing message sub-entry batch: {}", e.getMessage());
-                      this.producer.errorBeforePublish(
-                          items, Constants.CODE_MESSAGE_ENQUEUEING_FAILED);
+                  Codec.EncodedMessage encodedMessage =
+                      (Codec.EncodedMessage) message.encodedEntity();
+                  if (batch != null && !this.helper.canAddToBatch(batch, encodedMessage)) {
+                    if (!closeBatch(batch, items)) {
                       return true;
                     }
                     subBatches.add(batch);
-                    lastMessageInBatch = null;
+                    batch = null;
+                  }
+                  if (batch == null) {
                     batch =
                         this.helper.batch(
                             byteBufAllocator, compressionCode, compressionCodec, subEntrySize);
-                    count = 0;
                   }
+                  batch.add(encodedMessage, message.confirmationCallback());
+                  batch.time = message.time();
+                  batch.publishingId = message.publishingId();
                 }
-
-                if (!batch.isEmpty() && count < subEntrySize) {
-                  batch.time = lastMessageInBatch.time();
-                  batch.publishingId = lastMessageInBatch.publishingId();
-                  try {
-                    batch.encodedMessageBatch.close();
-                  } catch (Exception e) {
-                    LOGGER.warn("Error while closing message sub-entry batch: {}", e.getMessage());
-                    this.producer.errorBeforePublish(
-                        items, Constants.CODE_MESSAGE_ENQUEUEING_FAILED);
+                if (batch != null) {
+                  if (!closeBatch(batch, items)) {
                     return true;
                   }
                   subBatches.add(batch);
@@ -174,6 +157,17 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
 
   @Override
   public void flush(boolean force) {}
+
+  private boolean closeBatch(ProducerUtils.Batch batch, List<Object> items) {
+    try {
+      batch.encodedMessageBatch.close();
+      return true;
+    } catch (Exception e) {
+      LOGGER.warn("Error while closing message sub-entry batch: {}", e.getMessage());
+      this.producer.errorBeforePublish(items, Constants.CODE_MESSAGE_ENQUEUEING_FAILED);
+      return false;
+    }
+  }
 
   private boolean publish(List<Object> entities) {
     if (this.producer.canSend()) {
