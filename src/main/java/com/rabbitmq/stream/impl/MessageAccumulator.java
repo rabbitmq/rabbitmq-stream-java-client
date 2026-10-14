@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -19,6 +19,12 @@ import com.rabbitmq.stream.Message;
 
 interface MessageAccumulator extends AutoCloseable {
 
+  /**
+   * Accumulate a message.
+   *
+   * <p>If this method throws, the message is not accumulated, its confirmation handler is never
+   * called, and the permit taken for it is released.
+   */
   void add(Message message, ConfirmationHandler confirmationHandler);
 
   int size();

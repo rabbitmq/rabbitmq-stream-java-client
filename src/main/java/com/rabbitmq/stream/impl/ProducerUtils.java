@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -304,15 +304,18 @@ final class ProducerUtils {
     }
 
     AccumulatedEntity entity(Message message, ConfirmationHandler confirmationHandler) {
+      // before encoding, the observation can add annotations to the message
       Object observationContext = this.observationCollector.prePublish(this.stream, message);
       Codec.EncodedMessage encodedMessage = this.codec.encode(message);
       Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
+      // before the publishing ID, so that a rejected message does not use one
+      String filterValue = this.filterValueExtractor.apply(message);
       long publishingId = this.publishSequenceFunction.applyAsLong(message);
       return new ProducerUtils.SimpleAccumulatedEntity(
           this.clock.time(),
           publishingId,
-          this.filterValueExtractor.apply(message),
-          this.codec.encode(message),
+          filterValue,
+          encodedMessage,
           new ProducerUtils.SimpleConfirmationCallback(message, confirmationHandler),
           observationContext);
     }

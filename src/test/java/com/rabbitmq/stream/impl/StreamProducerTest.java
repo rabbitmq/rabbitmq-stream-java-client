@@ -55,6 +55,7 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -730,6 +731,30 @@ public class StreamProducerTest {
                     producer.messageBuilder().addData(new byte[messageSize]).build(),
                     confirmationStatus -> {}))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void messageLargerThanMaxFrameSizeShouldNotPreventSendingOtherMessages(boolean dynamicBatch)
+      throws Exception {
+    Producer producer =
+        environment.producerBuilder().stream(stream)
+            .dynamicBatch(dynamicBatch)
+            .maxUnconfirmedMessages(1)
+            .enqueueTimeout(Duration.ofMillis(100))
+            .build();
+    assertThatThrownBy(
+            () ->
+                producer.send(
+                    producer
+                        .messageBuilder()
+                        .addData(new byte[Client.DEFAULT_MAX_FRAME_SIZE + 1])
+                        .build(),
+                    confirmationStatus -> {}))
+        .isInstanceOf(IllegalArgumentException.class);
+    CompletableFuture<ConfirmationStatus> status = new CompletableFuture<>();
+    producer.send(producer.messageBuilder().addData(new byte[10]).build(), status::complete);
+    assertThat(status.get(10, TimeUnit.SECONDS).isConfirmed()).isTrue();
   }
 
   @Test
