@@ -568,8 +568,9 @@ public class StreamProducerUnitTest {
     producer.close();
   }
 
-  @Test
-  void closeShouldWakeUpBlockedSenders() throws Exception {
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void closeShouldWakeUpBlockedSenders(boolean streamDeletion) throws Exception {
     StreamProducer producer = producer(true, 1, 1, Duration.ZERO, null);
     producer.send(message(producer, 10), s -> {});
     Queue<ConfirmationStatus> statuses = new ConcurrentLinkedQueue<>();
@@ -584,7 +585,11 @@ public class StreamProducerUnitTest {
                         })
                     .start());
     waitAtMost(() -> producer.unconfirmedMessagesSemaphoreQueueLength() == 2);
-    producer.close();
+    if (streamDeletion) {
+      producer.closeAfterStreamDeletion(Constants.RESPONSE_CODE_STREAM_DOES_NOT_EXIST);
+    } else {
+      producer.close();
+    }
     assertThat(sentLatch.await(10, TimeUnit.SECONDS)).isTrue();
     assertThat(statuses).hasSize(2).allMatch(st -> st.getCode() == Constants.CODE_PRODUCER_CLOSED);
   }

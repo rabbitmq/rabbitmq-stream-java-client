@@ -99,6 +99,7 @@ class SimpleMessageAccumulator implements MessageAccumulator {
         throw new StreamException("Could not accumulate outbound message");
       }
     } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
       this.producer.releasePermit();
       throw new StreamException("Error while accumulating outbound message", e);
     } catch (RuntimeException e) {

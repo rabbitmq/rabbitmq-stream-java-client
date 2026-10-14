@@ -480,6 +480,8 @@ final class StreamProducer extends ResourceBase implements Producer {
 
   void closeAfterStreamDeletion(short code) {
     if (closed.compareAndSet(false, true)) {
+      // before releasing permits, so that unblocked senders do not enqueue messages
+      this.state(CLOSED);
       if (!this.unconfirmedMessages.isEmpty()) {
         Iterator<Entry<Long, AccumulatedEntity>> iterator =
             unconfirmedMessages.entrySet().iterator();
@@ -492,7 +494,6 @@ final class StreamProducer extends ResourceBase implements Producer {
       }
       cancelConfirmTimeoutTask();
       this.environment.removeProducer(this);
-      this.state(CLOSED);
       wakeUpBlockedSenders();
     }
   }

@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2007-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -46,11 +46,21 @@ public final class CompressionUtils {
 
   private CompressionUtils() {}
 
+  private static int gzipMaxCompressedLength(int sourceLength) {
+    // deflateBound() from zlib, plus 10 bytes of GZIP header and 8 bytes of GZIP trailer
+    return sourceLength
+        + (sourceLength >> 12)
+        + (sourceLength >> 14)
+        + (sourceLength >> 25)
+        + 13
+        + 18;
+  }
+
   public static class GzipCompressionCodec implements CompressionCodec {
 
     @Override
     public int maxCompressedLength(int sourceLength) {
-      return sourceLength;
+      return gzipMaxCompressedLength(sourceLength);
     }
 
     @Override
@@ -197,7 +207,7 @@ public final class CompressionUtils {
 
     @Override
     public int maxCompressedLength(int sourceLength) {
-      return sourceLength;
+      return gzipMaxCompressedLength(sourceLength);
     }
 
     @Override
@@ -273,8 +283,8 @@ public final class CompressionUtils {
 
     @Override
     public int maxCompressedLength(int sourceLength) {
-      // from LZ4Utils.maxCompressedLength(int)
-      return sourceLength + sourceLength / 255 + 16;
+      // from LZ4Utils.maxCompressedLength(int), plus 4 bytes for the frame content checksum
+      return sourceLength + sourceLength / 255 + 16 + 4;
     }
 
     @Override

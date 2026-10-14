@@ -37,11 +37,13 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class CompressionCodecsTest {
 
@@ -127,5 +129,28 @@ public class CompressionCodecsTest {
 
     destinationBb.release();
     outBb.release();
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {1, 100, 10_000, 100_000, 1_000_000})
+  void maxCompressedLengthShouldBeUpperBoundForIncompressibleData(int messageSize) {
+    byte[] body = new byte[messageSize];
+    new Random().nextBytes(body);
+    EncodedMessage encodedMessage = new ByteArrayEncodedMessage(body.length, body);
+    compressedEncodedMessageBatch()
+        .map(arguments -> (CompressionCodec) arguments.get()[0])
+        .forEach(
+            codec -> {
+              EncodedMessageBatch batch =
+                  new CompressedEncodedMessageBatch(ByteBufAllocator.DEFAULT, codec, 1);
+              batch.add(encodedMessage);
+              batch.close();
+              assertThat(batch.sizeInBytes())
+                  .as(codec.toString())
+                  .isLessThanOrEqualTo(codec.maxCompressedLength(batch.uncompressedSizeInBytes()));
+              ByteBuf bb = ByteBufAllocator.DEFAULT.buffer(batch.sizeInBytes());
+              batch.write(bb);
+              bb.release();
+            });
   }
 }
