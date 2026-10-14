@@ -29,8 +29,13 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
+import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.ConfirmationHandler;
+import com.rabbitmq.stream.ConfirmationStatus;
 import com.rabbitmq.stream.Constants;
+import com.rabbitmq.stream.Message;
+import com.rabbitmq.stream.MessageBuilder;
+import com.rabbitmq.stream.MessageHandler;
 import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.Resource;
 import com.rabbitmq.stream.StreamException;
@@ -43,9 +48,11 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -54,6 +61,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.ToLongFunction;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.assertj.core.data.Offset;
@@ -408,6 +416,142 @@ public class StreamProducerUnitTest {
   }
 
   @ParameterizedTest
+  @CsvSource({
+    "true,1,10", "false,1,10", "false,7,10", "true,7,10",
+    "true,1,0", "false,1,0", "false,7,0", "true,7,0",
+  })
+  void rejectedMessagesShouldNotUseUnconfirmedPermits(
+      boolean dynamicBatch, int subEntrySize, long enqueueTimeoutMs) throws Exception {
+    when(client.maxFrameSize()).thenReturn(1024);
+    StreamProducer producer =
+        producer(dynamicBatch, subEntrySize, 2, Duration.ofMillis(enqueueTimeoutMs), null);
+    Queue<ConfirmationStatus> statuses = new ConcurrentLinkedQueue<>();
+    ConfirmationHandler handler = statuses::add;
+    // in another thread, as sending blocks forever on leaked permits when enqueue timeout is 0
+    runWithTimeout(
+        () -> {
+          range(0, 3)
+              .forEach(
+                  i ->
+                      assertThatThrownBy(() -> producer.send(message(producer, 2048), handler))
+                          .isInstanceOf(IllegalArgumentException.class));
+          assertThat(statuses).isEmpty();
+          range(0, 2).forEach(i -> producer.send(message(producer, 10), handler));
+        });
+    assertThat(statuses).isEmpty();
+    producer.close();
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void filterValueExtractorErrorShouldNotUseUnconfirmedPermits(boolean dynamicBatch)
+      throws Exception {
+    when(env.filteringSupported()).thenReturn(true);
+    StreamProducer producer =
+        producer(dynamicBatch, 1, 2, Duration.ofMillis(10), failingFilterValueExtractor());
+    Queue<ConfirmationStatus> statuses = new ConcurrentLinkedQueue<>();
+    ConfirmationHandler handler = statuses::add;
+    runWithTimeout(
+        () -> {
+          range(0, 3)
+              .forEach(
+                  i ->
+                      assertThatThrownBy(() -> producer.send(message(producer, "bad"), handler))
+                          .isInstanceOf(IllegalStateException.class));
+          range(0, 2).forEach(i -> producer.send(message(producer, "good"), handler));
+        });
+    assertThat(statuses).isEmpty();
+    producer.close();
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void rejectedMessageShouldNotUsePublishingId(boolean dynamicBatch) throws Exception {
+    when(env.filteringSupported()).thenReturn(true);
+    StreamProducer producer =
+        producer(dynamicBatch, 1, 10, Duration.ofMillis(10), failingFilterValueExtractor());
+    Queue<ConfirmationStatus> statuses = new ConcurrentLinkedQueue<>();
+    producer.send(message(producer, "good"), statuses::add);
+    assertThatThrownBy(() -> producer.send(message(producer, "bad"), statuses::add))
+        .isInstanceOf(IllegalStateException.class);
+    producer.send(message(producer, "good"), statuses::add);
+    waitAtMost(() -> producer.unconfirmedCount() == 2);
+    producer.confirm(0);
+    producer.confirm(1);
+    assertThat(statuses).hasSize(2).allMatch(ConfirmationStatus::isConfirmed);
+    producer.close();
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void interruptedSendShouldNotUseUnconfirmedPermit(boolean dynamicBatch) throws Exception {
+    when(env.filteringSupported()).thenReturn(true);
+    StreamProducer producer =
+        producer(dynamicBatch, 1, 1, Duration.ofMillis(10), failingFilterValueExtractor());
+    Queue<ConfirmationStatus> statuses = new ConcurrentLinkedQueue<>();
+    runWithTimeout(
+        () -> {
+          // the extractor interrupts the thread, so enqueuing the message fails
+          assertThatThrownBy(() -> producer.send(message(producer, "interrupt"), statuses::add))
+              .isInstanceOf(RuntimeException.class);
+          Thread.interrupted();
+          producer.send(message(producer, "good"), statuses::add);
+        });
+    assertThat(statuses).isEmpty();
+    producer.close();
+  }
+
+  @ParameterizedTest
+  @CsvSource({"true,1", "false,1", "false,7", "true,7"})
+  void messageShouldBeEncodedOnceAfterObservationStarts(boolean dynamicBatch, int subEntrySize)
+      throws Exception {
+    Queue<String> calls = new ConcurrentLinkedQueue<>();
+    Codec delegate = new SimpleCodec();
+    Codec codec =
+        new Codec() {
+          @Override
+          public EncodedMessage encode(Message message) {
+            calls.add("encode");
+            return delegate.encode(message);
+          }
+
+          @Override
+          public Message decode(ByteBuf buf, int length) {
+            return delegate.decode(buf, length);
+          }
+
+          @Override
+          public MessageBuilder messageBuilder() {
+            return delegate.messageBuilder();
+          }
+        };
+    when(env.codec()).thenReturn(codec);
+    ObservationCollector<Object> observationCollector =
+        new ObservationCollector<Object>() {
+          @Override
+          public Object prePublish(String stream, Message message) {
+            calls.add("prePublish");
+            return new Object();
+          }
+
+          @Override
+          public void published(Object context, Message message) {}
+
+          @Override
+          public MessageHandler subscribe(MessageHandler handler) {
+            return handler;
+          }
+        };
+    when(env.observationCollector()).thenAnswer(invocation -> observationCollector);
+    StreamProducer producer = producer(dynamicBatch, subEntrySize, 10, Duration.ofMillis(10), null);
+    producer.send(message(producer, 10), s -> {});
+    waitAtMost(() -> producer.unconfirmedCount() == 1);
+    // the observation can annotate the message, so it must start before the encoding
+    assertThat(calls).containsExactly("prePublish", "encode");
+    producer.close();
+  }
+
+  @ParameterizedTest
   @CsvSource({"-1,false", "0,true", "500,false", "1000,true", "5000,true"})
   void confirmTimeoutCanZeroAndLongerThanOneSecond(int timeoutInMs, boolean ok) throws Throwable {
     Duration timeout = Duration.ofMillis(timeoutInMs);
@@ -418,5 +562,52 @@ public class StreamProducerUnitTest {
     } else {
       assertThatThrownBy(call).isInstanceOf(IllegalArgumentException.class);
     }
+  }
+
+  private StreamProducer producer(
+      boolean dynamicBatch,
+      int subEntrySize,
+      int maxUnconfirmedMessages,
+      Duration enqueueTimeout,
+      Function<Message, String> filterValueExtractor) {
+    return new StreamProducer(
+        null,
+        "stream",
+        subEntrySize,
+        10,
+        dynamicBatch,
+        Compression.NONE,
+        Duration.ofMillis(100),
+        maxUnconfirmedMessages,
+        Duration.ofMinutes(1),
+        enqueueTimeout,
+        true,
+        filterValueExtractor,
+        emptyList(),
+        env);
+  }
+
+  private static Message message(StreamProducer producer, int size) {
+    return producer.messageBuilder().addData(new byte[size]).build();
+  }
+
+  private static Message message(StreamProducer producer, String body) {
+    return producer.messageBuilder().addData(body.getBytes(StandardCharsets.UTF_8)).build();
+  }
+
+  private static Function<Message, String> failingFilterValueExtractor() {
+    return m -> {
+      String body = new String(m.getBodyAsBinary(), StandardCharsets.UTF_8);
+      if ("bad".equals(body)) {
+        throw new IllegalStateException();
+      } else if ("interrupt".equals(body)) {
+        Thread.currentThread().interrupt();
+      }
+      return "filter";
+    };
+  }
+
+  private static void runWithTimeout(Runnable task) throws Exception {
+    CompletableFuture.runAsync(task).get(10, TimeUnit.SECONDS);
   }
 }

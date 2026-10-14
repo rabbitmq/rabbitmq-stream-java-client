@@ -158,7 +158,12 @@ final class DynamicBatchMessageAccumulator implements MessageAccumulator {
 
   @Override
   public void add(Message message, ConfirmationHandler confirmationHandler) {
-    this.dynamicBatch.add(helper.entity(message, confirmationHandler));
+    try {
+      this.dynamicBatch.add(helper.entity(message, confirmationHandler));
+    } catch (RuntimeException e) {
+      this.producer.releasePermit();
+      throw e;
+    }
   }
 
   @Override

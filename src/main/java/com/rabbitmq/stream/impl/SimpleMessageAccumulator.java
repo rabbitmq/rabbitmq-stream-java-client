@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -63,15 +63,20 @@ class SimpleMessageAccumulator implements MessageAccumulator {
   }
 
   public void add(Message message, ConfirmationHandler confirmationHandler) {
-    AccumulatedEntity entity = this.helper.entity(message, confirmationHandler);
     try {
+      AccumulatedEntity entity = this.helper.entity(message, confirmationHandler);
       boolean offered = messages.offer(entity, 60, TimeUnit.SECONDS);
       if (!offered) {
         throw new StreamException("Could not accumulate outbound message");
       }
     } catch (InterruptedException e) {
+      this.producer.releasePermit();
       throw new StreamException("Error while accumulating outbound message", e);
+    } catch (RuntimeException e) {
+      this.producer.releasePermit();
+      throw e;
     }
+    // the entity is queued, its confirmation callback releases the permit from now on
     if (this.messages.size() == this.capacity) {
       publishBatch(true);
     }

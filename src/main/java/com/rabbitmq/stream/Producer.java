@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -49,8 +49,14 @@ public interface Producer extends AutoCloseable {
   /**
    * Publish a message.
    *
+   * <p>When this method throws, the message is not sent, the confirmation handler is not called,
+   * and the message does not count against the maximum number of unconfirmed messages.
+   *
    * @param message the message
    * @param confirmationHandler the callback when the message is confirmed or failed
+   * @throws IllegalArgumentException if the message does not fit in a frame (the negotiated maximum
+   *     frame size, see {@link EnvironmentBuilder#requestedMaxFrameSize(int)})
+   * @see ProducerBuilder#maxUnconfirmedMessages(int)
    */
   void send(Message message, ConfirmationHandler confirmationHandler);
 

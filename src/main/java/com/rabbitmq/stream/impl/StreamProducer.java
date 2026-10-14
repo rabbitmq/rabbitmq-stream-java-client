@@ -425,8 +425,13 @@ final class StreamProducer extends ResourceBase implements Producer {
     if (canSend()) {
       this.accumulator.add(message, confirmationHandler);
     } else {
+      releasePermit();
       failPublishing(message, confirmationHandler);
     }
+  }
+
+  void releasePermit() {
+    this.unconfirmedMessagesSemaphore.release();
   }
 
   private void failPublishing(Message message, ConfirmationHandler confirmationHandler) {
