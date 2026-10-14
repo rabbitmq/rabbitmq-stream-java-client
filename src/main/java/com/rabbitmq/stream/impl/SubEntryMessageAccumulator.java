@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2020-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -16,14 +16,20 @@ package com.rabbitmq.stream.impl;
 
 import com.rabbitmq.stream.Codec;
 import com.rabbitmq.stream.Codec.EncodedMessage;
+import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Message;
 import com.rabbitmq.stream.ObservationCollector;
 import com.rabbitmq.stream.compression.Compression;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import io.netty.buffer.ByteBufAllocator;
+import java.util.Collections;
 import java.util.function.ToLongFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(SubEntryMessageAccumulator.class);
 
   private final int subEntrySize;
   private final CompressionCodec compressionCodec;
@@ -46,6 +52,8 @@ final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
         subEntrySize * batchSize,
         codec,
         maxFrameSize,
+        subEntrySize,
+        compressionCodec,
         publishSequenceFunction,
         null,
         clock,
@@ -66,30 +74,37 @@ final class SubEntryMessageAccumulator extends SimpleMessageAccumulator {
 
   @Override
   protected ProducerUtils.AccumulatedEntity get() {
-    if (this.messages.isEmpty()) {
-      return null;
-    }
-    int count = 0;
-    ProducerUtils.Batch batch = this.createBatch();
-    ProducerUtils.AccumulatedEntity lastMessageInBatch = null;
-    while (count != this.subEntrySize) {
-      ProducerUtils.AccumulatedEntity message = messages.poll();
-      if (message == null) {
-        break;
+    while (!this.messages.isEmpty()) {
+      ProducerUtils.Batch batch = this.createBatch();
+      ProducerUtils.AccumulatedEntity lastMessageInBatch = null;
+      while (true) {
+        // only the publishing thread polls, under the producer lock
+        ProducerUtils.AccumulatedEntity message = messages.peek();
+        if (message == null
+            || (!batch.isEmpty()
+                && !this.helper.canAddToBatch(batch, (EncodedMessage) message.encodedEntity()))) {
+          break;
+        }
+        messages.poll();
+        this.observationCollector.published(
+            message.observationContext(), message.confirmationCallback().message());
+        lastMessageInBatch = message;
+        batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
       }
-      this.observationCollector.published(
-          message.observationContext(), message.confirmationCallback().message());
-      lastMessageInBatch = message;
-      batch.add((EncodedMessage) message.encodedEntity(), message.confirmationCallback());
-      count++;
-    }
-    if (batch.isEmpty()) {
-      return null;
-    } else {
+      if (batch.isEmpty()) {
+        return null;
+      }
       batch.time = lastMessageInBatch.time();
       batch.publishingId = lastMessageInBatch.publishingId();
-      batch.encodedMessageBatch.close();
-      return batch;
+      try {
+        batch.encodedMessageBatch.close();
+        return batch;
+      } catch (Exception e) {
+        LOGGER.warn("Error while closing message sub-entry batch: {}", e.getMessage());
+        this.producer.errorBeforePublish(
+            Collections.singletonList(batch), Constants.CODE_MESSAGE_ENQUEUEING_FAILED);
+      }
     }
+    return null;
   }
 }

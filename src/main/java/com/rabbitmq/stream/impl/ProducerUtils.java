@@ -275,12 +275,17 @@ final class ProducerUtils {
   static final class MessageAccumulatorHelper {
 
     private static final Function<Message, String> NULL_FILTER_VALUE_EXTRACTOR = m -> null;
+    // size, key, version, publisher ID, publishing ID count, publishing ID, entry type,
+    // message count, uncompressed size, size
+    private static final int SUB_ENTRY_FRAME_OVERHEAD = 4 + 2 + 2 + 1 + 4 + 8 + 1 + 2 + 4 + 4;
 
     private final ObservationCollector<Object> observationCollector;
     private final ToLongFunction<Message> publishSequenceFunction;
     private final String stream;
     private final Codec codec;
     private final int maxFrameSize;
+    private final int subEntrySize;
+    private final CompressionCodec compressionCodec;
     private final Clock clock;
     private final Function<Message, String> filterValueExtractor;
 
@@ -288,6 +293,8 @@ final class ProducerUtils {
     MessageAccumulatorHelper(
         Codec codec,
         int maxFrameSize,
+        int subEntrySize,
+        CompressionCodec compressionCodec,
         ToLongFunction<Message> publishSequenceFunction,
         Function<Message, String> filterValueExtractor,
         Clock clock,
@@ -297,6 +304,8 @@ final class ProducerUtils {
       this.codec = codec;
       this.clock = clock;
       this.maxFrameSize = maxFrameSize;
+      this.subEntrySize = subEntrySize;
+      this.compressionCodec = compressionCodec;
       this.filterValueExtractor =
           filterValueExtractor == null ? NULL_FILTER_VALUE_EXTRACTOR : filterValueExtractor;
       this.observationCollector = (ObservationCollector<Object>) observationCollector;
@@ -307,7 +316,14 @@ final class ProducerUtils {
       // before encoding, the observation can add annotations to the message
       Object observationContext = this.observationCollector.prePublish(this.stream, message);
       Codec.EncodedMessage encodedMessage = this.codec.encode(message);
-      Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
+      if (this.subEntrySize > 1) {
+        if (!subEntryFitsInFrame(4 + encodedMessage.getSize())) {
+          throw new IllegalArgumentException(
+              "Message too big to fit in one frame: " + encodedMessage.getSize());
+        }
+      } else {
+        Client.checkMessageFitsInFrame(this.maxFrameSize, encodedMessage);
+      }
       // before the publishing ID, so that a rejected message does not use one
       String filterValue = this.filterValueExtractor.apply(message);
       long publishingId = this.publishSequenceFunction.applyAsLong(message);
@@ -318,6 +334,21 @@ final class ProducerUtils {
           encodedMessage,
           new ProducerUtils.SimpleConfirmationCallback(message, confirmationHandler),
           observationContext);
+    }
+
+    boolean canAddToBatch(Batch batch, Codec.EncodedMessage encodedMessage) {
+      Client.EncodedMessageBatch encodedBatch = batch.encodedMessageBatch;
+      return encodedBatch.batchSize() < this.subEntrySize
+          && subEntryFitsInFrame(
+              encodedBatch.uncompressedSizeInBytes() + 4 + encodedMessage.getSize());
+    }
+
+    private boolean subEntryFitsInFrame(int uncompressedSize) {
+      long size =
+          this.compressionCodec == null
+              ? uncompressedSize
+              : this.compressionCodec.maxCompressedLength(uncompressedSize);
+      return SUB_ENTRY_FRAME_OVERHEAD + size <= this.maxFrameSize;
     }
 
     Batch batch(
