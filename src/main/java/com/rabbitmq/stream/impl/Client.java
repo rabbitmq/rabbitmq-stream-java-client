@@ -1991,7 +1991,7 @@ public class Client implements AutoCloseable {
     private final CompressionCodec codec;
     private final List<EncodedMessage> messages;
     private int uncompressedByteSize = 0;
-    private ByteBuf buffer;
+    private byte[] compressed;
 
     CompressedEncodedMessageBatch(
         ByteBufAllocator allocator,
@@ -2020,24 +2020,29 @@ public class Client implements AutoCloseable {
     @Override
     public void close() {
       int maxCompressedLength = codec.maxCompressedLength(this.uncompressedByteSize);
-      this.buffer = allocator.buffer(maxCompressedLength);
-      try (OutputStream outputStream = this.codec.compress(new ByteBufOutputStream(buffer))) {
-        for (int i = 0; i < messages.size(); i++) {
-          EncodedMessage message = messages.get(i);
-          message.writeTo(outputStream);
+      ByteBuf buffer = allocator.buffer(maxCompressedLength);
+      try {
+        try (OutputStream outputStream = this.codec.compress(new ByteBufOutputStream(buffer))) {
+          for (int i = 0; i < messages.size(); i++) {
+            EncodedMessage message = messages.get(i);
+            message.writeTo(outputStream);
+          }
+          outputStream.flush();
+        } catch (Throwable e) {
+          // compression codecs may use native libraries, so we can end up
+          // with throwables or errors
+          throw new StreamException("Error while closing compressing output stream", e);
         }
-        outputStream.flush();
-      } catch (Throwable e) {
-        // compression codecs may use native libraries, so we can end up
-        // with throwables or errors
-        throw new StreamException("Error while closing compressing output stream", e);
+        // a copy, because the batch can be written several times (recovery), or never
+        this.compressed = ByteBufUtil.getBytes(buffer, 0, buffer.writerIndex());
+      } finally {
+        buffer.release();
       }
     }
 
     @Override
     public void write(ByteBuf bb) {
-      bb.writeBytes(this.buffer, 0, this.buffer.writerIndex());
-      this.buffer.release();
+      bb.writeBytes(this.compressed);
     }
 
     @Override
@@ -2047,7 +2052,7 @@ public class Client implements AutoCloseable {
 
     @Override
     public int sizeInBytes() {
-      return this.buffer.writerIndex();
+      return this.compressed.length;
     }
 
     @Override

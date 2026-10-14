@@ -15,8 +15,13 @@
 package com.rabbitmq.stream.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.rabbitmq.stream.Codec.EncodedMessage;
+import com.rabbitmq.stream.StreamException;
 import com.rabbitmq.stream.codec.ByteArrayEncodedMessage;
 import com.rabbitmq.stream.compression.CompressionCodec;
 import com.rabbitmq.stream.compression.CompressionUtils.CommonsCompressGzipCompressionCodec;
@@ -32,14 +37,17 @@ import com.rabbitmq.stream.impl.Client.EncodedMessageBatch;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.Unpooled;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -152,5 +160,74 @@ public class CompressionCodecsTest {
               batch.write(bb);
               bb.release();
             });
+  }
+
+  @ParameterizedTest
+  @MethodSource("compressedEncodedMessageBatch")
+  void compressedEncodedMessageBatchCanBeWrittenSeveralTimes(
+      CompressionCodec compressionCodec, CompressionCodec ignored) {
+    TrackingAllocator allocator = new TrackingAllocator();
+    EncodedMessageBatch batch =
+        new CompressedEncodedMessageBatch(allocator.allocator, compressionCodec, 10);
+    IntStream.range(0, 10)
+        .forEach(
+            i -> {
+              byte[] body = ("message " + i).getBytes(StandardCharsets.UTF_8);
+              batch.add(new ByteArrayEncodedMessage(body.length, body));
+            });
+    batch.close();
+
+    ByteBuf first = ByteBufAllocator.DEFAULT.buffer(batch.sizeInBytes());
+    ByteBuf second = ByteBufAllocator.DEFAULT.buffer(batch.sizeInBytes());
+    try {
+      batch.write(first);
+      batch.write(second);
+      assertThat(first.writerIndex()).isEqualTo(batch.sizeInBytes());
+      assertThat(second).isEqualTo(first);
+      assertThat(allocator.buffers).hasSize(1);
+      assertThat(allocator.allReleased()).isTrue();
+    } finally {
+      first.release();
+      second.release();
+    }
+  }
+
+  @Test
+  void compressedEncodedMessageBatchShouldReleaseBufferWhenCompressionFails() {
+    TrackingAllocator allocator = new TrackingAllocator();
+    CompressionCodec failingCodec =
+        new GzipCompressionCodec() {
+          @Override
+          public OutputStream compress(OutputStream target) {
+            throw new IllegalStateException("compression failure");
+          }
+        };
+    EncodedMessageBatch batch =
+        new CompressedEncodedMessageBatch(allocator.allocator, failingCodec, 1);
+    byte[] body = "message".getBytes(StandardCharsets.UTF_8);
+    batch.add(new ByteArrayEncodedMessage(body.length, body));
+    assertThatThrownBy(batch::close).isInstanceOf(StreamException.class);
+    assertThat(allocator.buffers).hasSize(1);
+    assertThat(allocator.allReleased()).isTrue();
+  }
+
+  private static class TrackingAllocator {
+
+    private final List<ByteBuf> buffers = new ArrayList<>();
+    private final ByteBufAllocator allocator = mock(ByteBufAllocator.class);
+
+    private TrackingAllocator() {
+      when(this.allocator.buffer(anyInt()))
+          .thenAnswer(
+              invocation -> {
+                ByteBuf buffer = Unpooled.buffer(invocation.getArgument(0));
+                this.buffers.add(buffer);
+                return buffer;
+              });
+    }
+
+    private boolean allReleased() {
+      return this.buffers.stream().allMatch(b -> b.refCnt() == 0);
+    }
   }
 }
