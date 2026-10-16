@@ -1221,9 +1221,9 @@ chunk (`Context#chunkByteCount()`), whether on the chunk's arrival or on the pro
 messages. Granting less would make the subscription's credit drift down and eventually stall it.
 This only matters for a custom `ConsumerFlowStrategy`, the strategies described above already do
 it.
-* the broker resumes sending only once about half the window has been granted back as credit, so
-size the window to roughly twice the amount of data the application is willing to hold in memory
-at once.
+* the broker sends a chunk as soon as the subscription has positive credit, so size the window to
+roughly the amount of data the application is willing to hold in memory at once, minus the size of
+the largest chunk.
 
 [[single-active-consumer]]
 ==== Single Active Consumer
