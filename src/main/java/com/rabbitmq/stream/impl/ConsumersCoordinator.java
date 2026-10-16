@@ -2083,10 +2083,10 @@ final class ConsumersCoordinator implements AutoCloseable {
    *
    * <p>{@code credit = window + granted - received}, so it only ever decreases in {@link
    * #chunkArrived(Client, byte, long)} and only ever increases when a grant is flushed. A grant is
-   * flushed once {@code credit} drops to {@code flushThreshold}, three quarters of the window,
-   * deliberately above the broker's {@code send_limit} (half the window, see {@code
-   * rabbit_stream_reader:send_chunks/6}): the client provably owes nothing by the time the broker
-   * can become blocked, so no timer or further delivery is needed to get the grant out.
+   * flushed once {@code credit} drops to {@code flushThreshold}, three quarters of the window. The
+   * broker stops sending only when its credit is not positive, which is below the threshold, so
+   * nothing is pending by the time the broker is blocked and no timer or further delivery is needed
+   * to get the grant out.
    */
   static final class ByteCreditAccountant implements CreditAccountant {
 
