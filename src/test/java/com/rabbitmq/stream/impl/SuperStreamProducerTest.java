@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2021-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -24,9 +24,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.rabbitmq.stream.Constants;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
+import com.rabbitmq.stream.NoOffsetException;
 import com.rabbitmq.stream.OffsetSpecification;
 import com.rabbitmq.stream.Producer;
 import io.netty.channel.EventLoopGroup;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -35,6 +37,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -321,6 +324,51 @@ public class SuperStreamProducerTest {
 
     assertThat(latchAssert(publishLatch)).completes(5);
     assertThat(confirmationCodes).hasSize(1).containsExactly(Constants.CODE_PRODUCER_CLOSED);
+  }
+
+  @Test
+  void partitionProducerCreatedDuringCloseShouldBeClosed() throws Exception {
+    declareSuperStreamTopology(configurationClient, superStream, partitions);
+    String partition = superStream + "-0";
+    CountDownLatch creationStarted = new CountDownLatch(1);
+    CountDownLatch closeDone = new CountDownLatch(1);
+    AtomicReference<Producer> partitionProducer = new AtomicReference<>();
+    Producer producer =
+        new SuperStreamProducer(
+            (StreamProducerBuilder) environment.producerBuilder(),
+            null,
+            superStream,
+            (message, metadata) -> List.of(partition),
+            (StreamEnvironment) environment,
+            stream -> {
+              creationStarted.countDown();
+              assertThat(latchAssert(closeDone)).completes();
+              Producer p = environment.producerBuilder().stream(stream).build();
+              partitionProducer.set(p);
+              return p;
+            });
+
+    AtomicInteger code = new AtomicInteger();
+    CountDownLatch publishLatch = new CountDownLatch(1);
+    new Thread(
+            () ->
+                producer.send(
+                    producer.messageBuilder().addData("".getBytes()).build(),
+                    confirmationStatus -> {
+                      code.set(confirmationStatus.getCode());
+                      publishLatch.countDown();
+                    }))
+        .start();
+
+    assertThat(latchAssert(creationStarted)).completes();
+    producer.close();
+    closeDone.countDown();
+
+    assertThat(latchAssert(publishLatch)).completes();
+    assertThat(code).hasValue(Constants.CODE_PRODUCER_CLOSED);
+    assertThat(((StreamProducer) partitionProducer.get()).isOpen()).isFalse();
+    assertThatThrownBy(() -> environment.queryStreamStats(partition).committedChunkId())
+        .isInstanceOf(NoOffsetException.class);
   }
 
   @Test
