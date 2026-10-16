@@ -267,13 +267,14 @@ public class SubEntryDecompressionTest {
         bb,
         client,
         ctx,
-        (client, subscriptionId, offset, count, sizeOfData) -> null,
+        (client, subscriptionId, offset, count, sizeOfData, chunkByteCount) -> null,
         (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext, message) ->
             messageCount.incrementAndGet(),
         (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext) -> {},
         NO_OP_CODEC,
         ChunkChecksum.NO_OP,
-        NoOpMetricsCollector.SINGLETON);
+        NoOpMetricsCollector.SINGLETON,
+        0);
   }
 
   @Test
@@ -389,7 +390,7 @@ public class SubEntryDecompressionTest {
                     bb,
                     client,
                     ctx,
-                    (client, subscriptionId, offset, count, sizeOfData) -> null,
+                    (client, subscriptionId, offset, count, sizeOfData, chunkByteCount) -> null,
                     (subscriptionId,
                         offset,
                         chunkTimestamp,
@@ -399,7 +400,8 @@ public class SubEntryDecompressionTest {
                     (subscriptionId, offset, chunkTimestamp, committedChunkId, chunkContext) -> {},
                     corruptCodec,
                     ChunkChecksum.NO_OP,
-                    NoOpMetricsCollector.SINGLETON))
+                    NoOpMetricsCollector.SINGLETON,
+                    0))
         .isInstanceOf(StreamException.class);
 
     assertThat(allocator.requests).hasSize(1);

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2025-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -21,13 +21,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.ConsumerFlowStrategy;
 import com.rabbitmq.stream.ConsumerFlowStrategy.Context;
+import com.rabbitmq.stream.ConsumerFlowStrategy.CreditUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 public class CreditEveryNthChunkConsumerFlowStrategyTest {
 
   AtomicInteger requestedCredits = new AtomicInteger();
+
+  @Test
+  void unitIsAlwaysChunk() {
+    assertThat(build(10, 5).unit()).isEqualTo(CreditUnit.CHUNK);
+  }
 
   @ParameterizedTest
   @CsvSource({"10,6", "1,1", "1,0", "10,0"})
@@ -69,6 +76,11 @@ public class CreditEveryNthChunkConsumerFlowStrategyTest {
 
       @Override
       public long chunkId() {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public long chunkByteCount() {
         throw new UnsupportedOperationException();
       }
     };
