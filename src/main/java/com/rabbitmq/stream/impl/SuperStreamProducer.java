@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 Broadcom. All Rights Reserved.
+// Copyright (c) 2021-2026 Broadcom. All Rights Reserved.
 // The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
 //
 // This software, the RabbitMQ Stream Java client library, is dual-licensed under the
@@ -31,6 +31,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +48,7 @@ class SuperStreamProducer implements Producer {
   private final String name;
   private final Metadata superStreamMetadata;
   private final AtomicBoolean closed = new AtomicBoolean(false);
+  private final Function<String, Producer> producerCreation;
 
   /**
    * passthrough, except when observation collector is not no-op and a message must be sent to
@@ -61,6 +63,16 @@ class SuperStreamProducer implements Producer {
       String superStream,
       RoutingStrategy routingStrategy,
       StreamEnvironment streamEnvironment) {
+    this(producerBuilder, name, superStream, routingStrategy, streamEnvironment, null);
+  }
+
+  SuperStreamProducer(
+      StreamProducerBuilder producerBuilder,
+      String name,
+      String superStream,
+      RoutingStrategy routingStrategy,
+      StreamEnvironment streamEnvironment,
+      Function<String, Producer> producerFactory) {
     this.routingStrategy = routingStrategy;
     this.codec = streamEnvironment.codec();
     this.name = name;
@@ -70,6 +82,11 @@ class SuperStreamProducer implements Producer {
     this.producerBuilder = producerBuilder.duplicate();
     this.producerBuilder.stream(null);
     this.producerBuilder.resetRouting();
+    Function<String, Producer> factory =
+        producerFactory == null
+            ? s -> this.producerBuilder.duplicate().superStream(null).stream(s).build()
+            : producerFactory;
+    this.producerCreation = s -> this.closed.get() ? null : factory.apply(s);
     this.messageInterceptor =
         environment.observationCollector().isNoop()
             ? (i, msg) -> msg
@@ -124,25 +141,51 @@ class SuperStreamProducer implements Producer {
         confirmationHandler.handle(
             new ConfirmationStatus(message, false, Constants.CODE_NO_ROUTE_FOUND));
       } else if (streams.size() == 1) {
-        producer(streams.get(0)).send(message, confirmationHandler);
+        send(streams.get(0), message, confirmationHandler);
       } else {
         for (int i = 0; i < streams.size(); i++) {
-          producer(streams.get(i)).send(messageInterceptor.apply(i, message), confirmationHandler);
+          send(streams.get(i), messageInterceptor.apply(i, message), confirmationHandler);
         }
       }
     } else {
-      confirmationHandler.handle(
-          new ConfirmationStatus(message, false, Constants.CODE_PRODUCER_CLOSED));
+      failClosed(message, confirmationHandler);
     }
   }
 
+  private void send(String stream, Message message, ConfirmationHandler confirmationHandler) {
+    Producer producer = producer(stream);
+    if (producer == null) {
+      failClosed(message, confirmationHandler);
+    } else {
+      producer.send(message, confirmationHandler);
+    }
+  }
+
+  private static void failClosed(Message message, ConfirmationHandler confirmationHandler) {
+    confirmationHandler.handle(
+        new ConfirmationStatus(message, false, Constants.CODE_PRODUCER_CLOSED));
+  }
+
   private Producer producer(String stream) {
-    return producers.computeIfAbsent(
-        stream,
-        stream1 -> {
-          Producer p = producerBuilder.duplicate().superStream(null).stream(stream1).build();
-          return p;
-        });
+    Producer producer = producers.computeIfAbsent(stream, this.producerCreation);
+    if (producer != null && this.closed.get()) {
+      // close() may have iterated the map before the producer was in it
+      close(stream, producer);
+      return null;
+    }
+    return producer;
+  }
+
+  private void close(String stream, Producer producer) {
+    try {
+      producer.close();
+    } catch (Exception e) {
+      LOGGER.info(
+          "Error while closing producer for partition {} of super stream {}: {}",
+          stream,
+          this.superStream,
+          e.getMessage());
+    }
   }
 
   private boolean canSend() {
@@ -153,15 +196,7 @@ class SuperStreamProducer implements Producer {
   public void close() {
     if (this.closed.compareAndSet(false, true)) {
       for (Entry<String, Producer> entry : producers.entrySet()) {
-        try {
-          entry.getValue().close();
-        } catch (Exception e) {
-          LOGGER.info(
-              "Error while closing producer for partition {} of super stream {}: {}",
-              entry.getKey(),
-              this.superStream,
-              e.getMessage());
-        }
+        close(entry.getKey(), entry.getValue());
       }
     }
   }
