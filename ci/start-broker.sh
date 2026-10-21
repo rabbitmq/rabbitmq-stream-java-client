@@ -2,8 +2,7 @@
 
 LOCAL_SCRIPT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-RABBITMQ_IMAGE=${RABBITMQ_IMAGE:-rabbitmq:4.3}
-ERLANG_VERSION=${ERLANG_VERSION:-27}
+RABBITMQ_IMAGE=${RABBITMQ_IMAGE:-rabbitmq:4.4}
 
 wait_for_message() {
   while ! docker logs "$1" | grep -q "$2";
@@ -23,33 +22,6 @@ chmod g+r rabbitmq-configuration/tls/*
 
 echo "[rabbitmq_stream,rabbitmq_mqtt,rabbitmq_stomp,rabbitmq_auth_mechanism_ssl,rabbitmq_auth_backend_oauth2]." >> rabbitmq-configuration/enabled_plugins
 
-if [ "$ERLANG_VERSION" -lt 28 ]; then
-
-# Erlang < 28
-
-echo "loopback_users = none
-
-listeners.ssl.default = 5671
-
-ssl_options.cacertfile = /etc/rabbitmq/tls/ca_certificate.pem
-ssl_options.certfile   = /etc/rabbitmq/tls/server_$(hostname)_certificate.pem
-ssl_options.keyfile    = /etc/rabbitmq/tls/server_$(hostname)_key.pem
-ssl_options.verify     = verify_peer
-ssl_options.fail_if_no_peer_cert = false
-ssl_options.depth = 1
-
-auth_mechanisms.1 = PLAIN
-auth_mechanisms.2 = ANONYMOUS
-auth_mechanisms.3 = EXTERNAL
-
-auth_backends.1 = internal
-auth_backends.2 = rabbit_auth_backend_oauth2
-
-stream.listeners.ssl.1 = 5551" >> rabbitmq-configuration/rabbitmq.conf
-
-else
-
-# Erlang >= 28
 echo "loopback_users = none
 
 listeners.ssl.default = 5671
@@ -80,8 +52,6 @@ auth_backends.1 = internal
 auth_backends.2 = rabbit_auth_backend_oauth2
 
 stream.listeners.ssl.1 = 5551" >> rabbitmq-configuration/rabbitmq.conf
-
-fi
 
 echo "[
   {rabbitmq_auth_backend_oauth2, [{key_config,
