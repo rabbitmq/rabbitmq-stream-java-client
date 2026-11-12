@@ -98,6 +98,12 @@ final class StreamConsumer extends ResourceBase implements Consumer {
           "Filtering is not supported by the broker "
               + "(requires RabbitMQ 3.13+ and stream_filtering feature flag activated");
     }
+    if (flowStrategy.unit() == ConsumerFlowStrategy.CreditUnit.BYTE
+        && !environment.byteCreditSupported()) {
+      throw new IllegalArgumentException(
+          "Byte-based consumer credit is not supported by the broker "
+              + "(requires a broker supporting Subscribe version 2 and Credit version 2)");
+    }
     this.id = ID_SEQUENCE.getAndIncrement();
     Runnable trackingClosingCallback;
     try {
