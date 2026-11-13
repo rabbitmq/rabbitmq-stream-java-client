@@ -173,7 +173,12 @@ extends <a href="https://docs.oracle.com/javase/8/docs/api/java/lang/AutoCloseab
 <div class="block">Get the last publishing ID for a named producer.
 
 <p>The value can be mapped to a business index to restart publishing where a previous
-incarnation of the producer left off.</div>
+incarnation of the producer left off.
+
+<p>For a super stream producer, this is the smallest last publishing ID of the partitions, 0 if
+a partition has no publishing ID for the name yet. Resuming after this value never skips a
+message a partition did not get: it sends again the messages the partitions ahead already have,
+and deduplication drops them.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the last publishing ID for this named producer</dd>
