@@ -42,6 +42,11 @@ public interface Producer extends AutoCloseable {
    * <p>The value can be mapped to a business index to restart publishing where a previous
    * incarnation of the producer left off.
    *
+   * <p>For a super stream producer, this is the smallest last publishing ID of the partitions, 0 if
+   * a partition has no publishing ID for the name yet. Resuming after this value never skips a
+   * message a partition did not get: it sends again the messages the partitions ahead already have,
+   * and deduplication drops them.
+   *
    * @return the last publishing ID for this named producer
    */
   long getLastPublishingId();
