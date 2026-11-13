@@ -1095,7 +1095,7 @@ final class StreamEnvironment implements Environment {
     }
   }
 
-  private void checkNotClosed() {
+  void checkNotClosed() {
     if (this.closed.get()) {
       throw new IllegalStateException("This environment instance has been closed");
     }
