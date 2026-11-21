@@ -15,6 +15,8 @@
 package com.rabbitmq.stream.impl;
 
 import static com.rabbitmq.stream.ConsumerFlowStrategy.creditEveryNthChunk;
+import static com.rabbitmq.stream.ConsumerFlowStrategy.creditOnChunkArrival;
+import static com.rabbitmq.stream.ConsumerFlowStrategy.creditOnProcessedMessageCount;
 import static com.rabbitmq.stream.ConsumerFlowStrategy.creditWhenHalfMessagesProcessed;
 import static com.rabbitmq.stream.impl.Assertions.assertThat;
 import static com.rabbitmq.stream.impl.TestUtils.CountDownLatchConditions.completed;
@@ -33,10 +35,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.BackOffDelayPolicy;
+import com.rabbitmq.stream.ByteCapacity;
 import com.rabbitmq.stream.Cli;
 import com.rabbitmq.stream.ConfirmationHandler;
 import com.rabbitmq.stream.Consumer;
 import com.rabbitmq.stream.ConsumerBuilder;
+import com.rabbitmq.stream.ConsumerFlowStrategy;
 import com.rabbitmq.stream.Environment;
 import com.rabbitmq.stream.EnvironmentBuilder;
 import com.rabbitmq.stream.Message;
@@ -53,6 +57,7 @@ import com.rabbitmq.stream.impl.Client.QueryOffsetResponse;
 import com.rabbitmq.stream.impl.MonitoringTestUtils.ConsumerInfo;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersion;
 import com.rabbitmq.stream.impl.TestUtils.BrokerVersionAtLeast;
+import com.rabbitmq.stream.impl.TestUtils.DisabledIfByteCreditNotSupported;
 import com.rabbitmq.stream.impl.TestUtils.DisabledIfRabbitMqCtlNotSet;
 import com.rabbitmq.stream.impl.TestUtils.Sync;
 import io.netty.channel.ChannelOption;
@@ -313,6 +318,208 @@ public class StreamConsumerTest {
       org.assertj.core.api.Assertions.assertThat(latch).is(completed());
     } finally {
       executorService.shutdownNow();
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource
+  @DisabledIfByteCreditNotSupported
+  void consumeBacklogToCompletionWithByteBasedStrategies(ConsumerFlowStrategy strategy)
+      throws Exception {
+    int messageCount = 10_000;
+    publishAndWaitForConfirms(cf, messageCount, stream);
+
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
+            .flow()
+            .strategy(strategy)
+            .builder()
+            .messageHandler(
+                (context, message) -> {
+                  // harmless no-op for the arrival-based strategy, which ignores it
+                  context.processed();
+                  consumeLatch.countDown();
+                })
+            .build();
+
+    org.assertj.core.api.Assertions.assertThat(consumeLatch.await(10, TimeUnit.SECONDS)).isTrue();
+
+    consumer.close();
+  }
+
+  static Stream<ConsumerFlowStrategy> consumeBacklogToCompletionWithByteBasedStrategies() {
+    return Stream.of(
+        creditOnChunkArrival(ByteCapacity.kB(64)),
+        creditWhenHalfMessagesProcessed(ByteCapacity.kB(64)),
+        creditOnProcessedMessageCount(ByteCapacity.kB(64), 0.3),
+        // window smaller than a single chunk: the broker still delivers it (overshoot rule)
+        creditOnChunkArrival(ByteCapacity.B(1)));
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void chunksLargerThanHalfWindowAreConsumedToCompletion() throws Exception {
+    int messageCount = 200;
+    int bodySize = 20_000;
+    // close to one chunk's size, so a chunk is always comfortably above half the window
+    ByteCapacity window = ByteCapacity.kB(20);
+    publishAndWaitForConfirms(
+        cf, builder -> builder.addData(new byte[bodySize]).build(), messageCount, stream);
+
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
+            .flow()
+            .strategy(creditWhenHalfMessagesProcessed(window))
+            .builder()
+            .messageHandler(
+                (context, message) -> {
+                  context.processed();
+                  consumeLatch.countDown();
+                })
+            .build();
+
+    org.assertj.core.api.Assertions.assertThat(consumeLatch.await(20, TimeUnit.SECONDS)).isTrue();
+
+    consumer.close();
+  }
+
+  @Test
+  @DisabledIfRabbitMqCtlNotSet
+  @DisabledIfByteCreditNotSupported
+  void byteBasedConsumerRecoversAfterConnectionKill() throws Exception {
+    int messageCount = 50_000;
+    publishAndWaitForConfirms(cf, messageCount, stream);
+
+    CountDownLatch consumeLatch = new CountDownLatch(messageCount);
+    AtomicInteger receivedMessageCount = new AtomicInteger();
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
+            .flow()
+            .strategy(creditOnChunkArrival(ByteCapacity.kB(4)))
+            .builder()
+            .messageHandler(
+                (context, message) -> {
+                  receivedMessageCount.incrementAndGet();
+                  consumeLatch.countDown();
+                })
+            .build();
+
+    waitAtMost(() -> receivedMessageCount.get() > 0);
+
+    Cli.killConnection("rabbitmq-stream-consumer-0");
+
+    // the accountant is reset on the reconnection, so the mirror is correct from a full window
+    latchAssert(consumeLatch).completes(recoveryInitialDelay.plusSeconds(10));
+
+    consumer.close();
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void byteBasedConsumerWithProcessedNeverCalledStopsThenResumes() throws Exception {
+    int messageCount = 5_000;
+    int bodySize = 200;
+    ByteCapacity window = ByteCapacity.kB(20);
+    publishAndWaitForConfirms(
+        cf, builder -> builder.addData(new byte[bodySize]).build(), messageCount, stream);
+
+    List<MessageHandler.Context> heldContexts = synchronizedList(new ArrayList<>());
+    AtomicInteger receivedMessageCount = new AtomicInteger();
+    AtomicBoolean processingStarted = new AtomicBoolean(false);
+    Consumer consumer =
+        environment.consumerBuilder().stream(stream)
+            .offset(OffsetSpecification.first())
+            .flow()
+            .strategy(creditWhenHalfMessagesProcessed(window))
+            .builder()
+            .messageHandler(
+                (context, message) -> {
+                  receivedMessageCount.incrementAndGet();
+                  if (processingStarted.get()) {
+                    context.processed();
+                  } else {
+                    heldContexts.add(context);
+                  }
+                })
+            .build();
+
+    waitAtMost(() -> receivedMessageCount.get() > 0);
+    waitUntilStable(receivedMessageCount::get);
+
+    org.assertj.core.api.Assertions.assertThat(receivedMessageCount.get()).isLessThan(messageCount);
+
+    // future arrivals now process themselves, the held backlog is flushed once
+    processingStarted.set(true);
+    heldContexts.forEach(MessageHandler.Context::processed);
+    waitAtMost(() -> receivedMessageCount.get() == messageCount);
+
+    consumer.close();
+  }
+
+  @Test
+  @DisabledIfByteCreditNotSupported
+  void feedbackPropertyBoundsUnprocessedBytesUnlikeArrivalBasedStrategy(TestInfo info)
+      throws Exception {
+    int messageCount = 5_000;
+    int bodySize = 200;
+    ByteCapacity window = ByteCapacity.kB(20);
+
+    String processedStream = streamName(info) + "-processed";
+    String arrivalStream = streamName(info) + "-arrival";
+    try {
+      environment.streamCreator().stream(processedStream).create();
+      environment.streamCreator().stream(arrivalStream).create();
+      publishAndWaitForConfirms(
+          cf,
+          builder -> builder.addData(new byte[bodySize]).build(),
+          messageCount,
+          processedStream);
+      publishAndWaitForConfirms(
+          cf, builder -> builder.addData(new byte[bodySize]).build(), messageCount, arrivalStream);
+
+      // creditWhenHalfMessagesProcessed: bytes received but not processed are bounded by the
+      // window, so consumption stalls well before the whole backlog is delivered
+      AtomicInteger processedStreamReceived = new AtomicInteger();
+      Consumer processedStreamConsumer =
+          environment.consumerBuilder().stream(processedStream)
+              .offset(OffsetSpecification.first())
+              .flow()
+              .strategy(creditWhenHalfMessagesProcessed(window))
+              .builder()
+              // processed() deliberately never called, simulating a stuck application
+              .messageHandler((context, message) -> processedStreamReceived.incrementAndGet())
+              .build();
+
+      waitAtMost(() -> processedStreamReceived.get() > 0);
+      waitUntilStable(processedStreamReceived::get);
+      org.assertj.core.api.Assertions.assertThat(processedStreamReceived.get())
+          .isLessThan(messageCount);
+      processedStreamConsumer.close();
+
+      // creditOnChunkArrival: credit is granted on arrival, not on processing, so the whole
+      // backlog is delivered regardless of processing speed
+      CountDownLatch arrivalConsumeLatch = new CountDownLatch(messageCount);
+      Consumer arrivalStreamConsumer =
+          environment.consumerBuilder().stream(arrivalStream)
+              .offset(OffsetSpecification.first())
+              .flow()
+              .strategy(creditOnChunkArrival(window))
+              .builder()
+              // processed() is ignored by this strategy, never called here either
+              .messageHandler((context, message) -> arrivalConsumeLatch.countDown())
+              .build();
+
+      org.assertj.core.api.Assertions.assertThat(arrivalConsumeLatch.await(10, TimeUnit.SECONDS))
+          .isTrue();
+      arrivalStreamConsumer.close();
+    } finally {
+      environment.deleteStream(processedStream);
+      environment.deleteStream(arrivalStream);
     }
   }
 
