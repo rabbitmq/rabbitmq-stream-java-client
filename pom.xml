@@ -52,7 +52,7 @@
     <netty.version>4.2.21.Final</netty.version>
     <proton-j.version>0.35.0</proton-j.version>
     <metrics.version>4.2.40</metrics.version>
-    <micrometer.version>1.17.2</micrometer.version>
+    <micrometer.version>1.18.0</micrometer.version>
     <credentials.version>0.2.0</credentials.version>
     <gson.version>2.15.0</gson.version>
     <swiftmq-client.version>13.2.5</swiftmq-client.version>
