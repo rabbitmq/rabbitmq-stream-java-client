@@ -319,7 +319,7 @@ public class RecoveryClusterTest {
           });
 
       LOGGER.info("Stream status...");
-      streams.forEach(s -> System.out.println(Cli.streamStatus(s)));
+      streams.forEach(RecoveryClusterTest::printStreamStatus);
 
       consumers.forEach(
           c -> {
@@ -641,5 +641,15 @@ public class RecoveryClusterTest {
     LOGGER.info("Rebalancing...");
     Cli.rebalance();
     LOGGER.info("Rebalancing over.");
+  }
+
+  private static void printStreamStatus(String stream) {
+    // stream_status can fail on the broker side (case_clause in safe_get_overview/3),
+    // this diagnostic must not replace the test outcome
+    try {
+      System.out.println(Cli.streamStatus(stream));
+    } catch (Exception e) {
+      LOGGER.info("Error while getting status of stream '{}': {}", stream, e.getMessage());
+    }
   }
 }
